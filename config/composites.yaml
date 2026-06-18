@@ -1,0 +1,72 @@
+# Composite score definitions (Phase 1B implementation)
+# ADR-005: equal weights by default; override here without code changes.
+# Indicators with is_stale=true or low_history=true are excluded at runtime.
+# invert: true  → multiply Z-score by -1 before averaging (lower raw = better)
+
+growth_score:
+  description: "Equal-weight Z-score composite of growth-force coincident/leading signals"
+  indicators:
+    - id: growth.payrolls
+      weight: 1.0
+    - id: growth.industrial_prod
+      weight: 1.0
+    - id: growth.retail_sales
+      weight: 1.0
+    - id: growth.real_pce
+      weight: 1.0
+    - id: growth.capacity_util
+      weight: 1.0
+    - id: growth.job_openings
+      weight: 1.0
+    - id: growth.pmi_proxy
+      weight: 1.0
+    - id: growth.labor_force_part
+      weight: 1.0
+    - id: growth.unemployment
+      weight: 1.0
+      invert: true          # lower unemployment = better growth
+  # Excluded from composite (structural frequency): growth.productivity, growth.tfp, growth.rnd_intensity
+
+inflation_score:
+  description: "Equal-weight Z-score composite of inflation-force signals"
+  indicators:
+    - id: inflation.pce_core
+      weight: 1.0
+    - id: inflation.cpi_core
+      weight: 1.0
+    - id: inflation.wages
+      weight: 1.0
+    - id: inflation.breakeven_5y
+      weight: 1.0
+    - id: inflation.breakeven_10y
+      weight: 1.0
+    - id: inflation.cpi_headline
+      weight: 0.5           # half-weight: correlated with core, adds commodity noise
+    - id: inflation.crude_oil
+      weight: 0.5           # half-weight: leading but volatile
+    - id: inflation.commodity_index
+      weight: 0.5           # half-weight (included when available)
+
+# Regime quadrant confidence: fraction of contributing signals whose
+# direction vector agrees with the assigned quadrant label.
+# E.g. if 7/10 growth signals are "rising" → growth_confidence = 0.70.
+regime_confidence:
+  min_signals_required: 4   # refuse to label quadrant if fewer than 4 signals available
+
+# Disequilibrium score: equal weight over |distance_from_equilibrium| Z-scores
+# across all five structural force lenses. Forces with no data contribute 0
+# but reduce the denominator; a low_coverage flag fires if < 3 of 5 lenses present.
+disequilibrium_score:
+  forces:
+    - debt_money:    [credit, policy]          # Lens C + D
+    - internal_order: [governance]             # Lens H  (Phase 1A-ii)
+    - external_order: [external, capital, currency]  # Lens F + G (Phase 1A-ii)
+    - climate:       [climate]                 # Lens I (deferred)
+    - technology:    [growth.productivity, growth.tfp, growth.rnd_intensity]
+  min_forces_required: 3
+
+# What-Changed feed thresholds (used by dashboard)
+what_changed:
+  weekly_delta_threshold_zscore: 0.25   # highlight if Z-score moved > 0.25 in 7 days
+  exclude_frequencies: [Q, A]           # quarterly/annual series excluded from weekly feed
+  quarterly_delta_threshold_zscore: 0.50

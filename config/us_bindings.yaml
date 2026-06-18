@@ -1,0 +1,669 @@
+# US indicator bindings — Phase 1A-i (FRED-only: lenses A-E + Master)
+# verified: true  → series_id confirmed live against FRED
+# verified: false → ⚠ VERIFY before ingesting (pipeline skips these)
+# Equilibrium values are in the same units as the transformed series:
+#   yoy_pct series  → decimal  (0.020 = 2.0 %)
+#   level rate/yield → % level (4.50 = 4.5 %)
+#   level ratio/util → natural  (80.0 = 80 %)
+#   spread           → % level  (1.50 = 1.5 %)
+
+country: US
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_nominal
+    series_id: GDP
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.050
+    linkage: "Total nominal dollar spending — the master synthesis variable. When nominal GDP accelerates beyond capacity, inflation follows."
+    sanity_min: -0.20
+    sanity_max: 0.25
+
+  - id: master.gdp_real
+    series_id: GDPC1
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.025
+    linkage: "Physical production volume. Separates real output growth from price effects."
+    sanity_min: -0.15
+    sanity_max: 0.15
+
+  - id: master.gdp_deflator
+    series_id: GDPDEF
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Broadest domestic price index — captures inflation across all spending, not just consumer goods."
+    sanity_min: -0.05
+    sanity_max: 0.20
+
+  - id: master.spending_vs_labor
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: master
+    lead_lag: leading
+    transformation: derived
+    units: yoy_pct_spread
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.0
+    linkage: "YoY(GDP) − (YoY(PAYEMS) + YoY(OPHNFB)). Excess nominal spending over labor+productivity capacity manifests as structural inflation."
+    sanity_min: -0.10
+    sanity_max: 0.10
+
+  - id: master.ngdp_minus_yield
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: master
+    lead_lag: coincident
+    transformation: derived
+    units: yoy_pct_spread
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.0
+    linkage: "YoY(GDP) − 10Y Yield (both in decimal). When nominal growth exceeds bond yields, real returns favour equities/commodities over fixed income."
+    sanity_min: -0.10
+    sanity_max: 0.10
+
+  # ─── Lens A — Growth Force ─────────────────────────────────────────────────
+
+  - id: growth.payrolls
+    series_id: PAYEMS
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "Nonfarm payrolls growth is the primary coincident signal for labour market health and aggregate demand."
+    sanity_min: -0.10
+    sanity_max: 0.08
+
+  - id: growth.unemployment
+    series_id: UNRATE
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4.0
+    linkage: "Unemployment rate lags the cycle; falling below NAIRU signals overheating; rising above signals contraction."
+    sanity_min: 1.0
+    sanity_max: 25.0
+
+  - id: growth.job_openings
+    series_id: JTSJOL
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: leading
+    transformation: level
+    units: thousands
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 6500.0
+    linkage: "Job openings lead hiring; a high openings-to-unemployment ratio signals labour tightness and wage inflation risk."
+    sanity_min: 1000.0
+    sanity_max: 15000.0
+
+  - id: growth.industrial_prod
+    series_id: INDPRO
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "Industrial production captures goods-sector output; early-cycle sensitivity makes it a key growth coincident."
+    sanity_min: -0.20
+    sanity_max: 0.20
+
+  - id: growth.retail_sales
+    series_id: RSAFS
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.035
+    linkage: "Advance retail sales measure consumer spending on goods; two-thirds of GDP is consumer-driven."
+    sanity_min: -0.20
+    sanity_max: 0.20
+
+  - id: growth.real_pce
+    series_id: PCEC96
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.025
+    linkage: "Real personal consumption expenditures is the Fed's preferred gauge of consumer demand in volume terms."
+    sanity_min: -0.15
+    sanity_max: 0.12
+
+  - id: growth.capacity_util
+    series_id: TCU
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 80.0
+    linkage: "Capacity utilisation above ~82% signals constrained supply and inflation risk; below 75% signals slack."
+    sanity_min: 50.0
+    sanity_max: 100.0
+
+  - id: growth.productivity
+    series_id: OPHNFB
+    provider: FRED
+    frequency: Q
+    force: growth
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "Nonfarm business labour productivity — secular rise supports real wages without inflation; decline compresses margins."
+    sanity_min: -0.08
+    sanity_max: 0.08
+
+  - id: growth.pmi_proxy
+    series_id: GACDISA066MSFRBPHI
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: leading
+    transformation: level
+    units: diffusion_index
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 52.0
+    linkage: "Philly Fed Manufacturing Business Outlook (regional proxy; corr ~0.85 with ISM). >0 = expansion, >50-neutral convention not applicable — this is a diffusion index centred at 0."
+    sanity_min: -60.0
+    sanity_max: 60.0
+    notes: "Regional proxy for US manufacturing sentiment (ADR-004). is_proxy=true."
+
+  - id: growth.labor_force_part
+    series_id: CIVPART
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 63.0
+    linkage: "Labour force participation rate; structural decline (ageing, disability) reduces potential output and masks true unemployment."
+    sanity_min: 55.0
+    sanity_max: 70.0
+
+  # ─── Lens B — Inflation Force ──────────────────────────────────────────────
+
+  - id: inflation.cpi_headline
+    series_id: CPIAUCSL
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "All-items CPI; headline inflation drives nominal wage demands and political response, but is volatile due to food and energy."
+    sanity_min: -0.05
+    sanity_max: 0.20
+
+  - id: inflation.cpi_core
+    series_id: CPILFESL
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Core CPI (ex food & energy) strips transitory commodity effects; more predictive of future inflation persistence."
+    sanity_min: -0.02
+    sanity_max: 0.15
+
+  - id: inflation.pce_core
+    series_id: PCEPILFE
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Core PCE is the Fed's official inflation target. Persistence above 2% drives rate hikes; below 2% drives easing."
+    sanity_min: -0.02
+    sanity_max: 0.15
+
+  - id: inflation.wages
+    series_id: CES0500000003
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.035
+    linkage: "Average hourly earnings growth; wage-price spirals are a key channel for inflation entrenchment."
+    sanity_min: -0.05
+    sanity_max: 0.15
+
+  - id: inflation.breakeven_5y
+    series_id: T5YIE
+    provider: FRED
+    frequency: D
+    force: inflation
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "5-year inflation breakeven (TIPS spread) — market's near-term inflation forecast, heavily influenced by energy prices."
+    sanity_min: -1.0
+    sanity_max: 6.0
+
+  - id: inflation.breakeven_10y
+    series_id: T10YIE
+    provider: FRED
+    frequency: D
+    force: inflation
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "10-year inflation breakeven — long-run inflation expectations; a rise above 2.5% signals de-anchoring risk."
+    sanity_min: -1.0
+    sanity_max: 6.0
+
+  - id: inflation.crude_oil
+    series_id: DCOILWTICO
+    provider: FRED
+    frequency: D
+    force: inflation
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "WTI crude oil YoY% — energy price shocks transmit to headline CPI within 1–3 months and compress consumer real incomes."
+    sanity_min: -0.80
+    sanity_max: 2.00
+
+  # ─── Lens C — Monetary Policy & Rates ─────────────────────────────────────
+
+  - id: policy.fed_funds
+    series_id: DFF
+    provider: FRED
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "Effective Fed funds rate — the primary lever of monetary policy; distance above neutral is the degree of restriction."
+    sanity_min: 0.0
+    sanity_max: 25.0
+
+  - id: policy.real_fed_funds
+    series_id: null
+    provider: derived
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: derived
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.5
+    linkage: "DFF − YoY(Core CPI) × 100. Real policy rate — negative real rates are historically stimulative; deeply negative is inflationary."
+    sanity_min: -10.0
+    sanity_max: 15.0
+
+  - id: policy.yield_2y
+    series_id: DGS2
+    provider: FRED
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "2-year Treasury yield — most sensitive to Fed rate expectations; leads policy turns by 3–6 months."
+    sanity_min: 0.0
+    sanity_max: 20.0
+
+  - id: policy.yield_10y
+    series_id: DGS10
+    provider: FRED
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "10-year Treasury yield — the global risk-free benchmark; drives mortgage rates, corporate borrowing costs, and equity valuation."
+    sanity_min: 0.0
+    sanity_max: 20.0
+
+  - id: policy.real_yield_10y
+    series_id: DFII10
+    provider: FRED
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.0
+    linkage: "10-year TIPS real yield — positive real yields tighten financial conditions; negative real yields inflate asset prices."
+    sanity_min: -5.0
+    sanity_max: 10.0
+
+  - id: policy.fed_balance_sheet
+    series_id: WALCL
+    provider: FRED
+    frequency: W
+    force: policy
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Fed balance sheet YoY% — QE (expansion) injects liquidity; QT (contraction) withdraws it."
+    sanity_min: -0.30
+    sanity_max: 1.50
+
+  - id: policy.monetary_base_gdp
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: policy
+    lead_lag: coincident
+    transformation: derived
+    units: ratio
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.25
+    linkage: "Fed balance sheet ÷ Nominal GDP — measures monetisation intensity; pre-GFC ~0.06, post-QE normalised near 0.25."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens D — Credit & Debt Cycle ─────────────────────────────────────────
+
+  - id: credit.debt_service_ratio
+    series_id: TDSP
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 15.0
+    linkage: "Household debt service ratio — rising DSR compresses discretionary spending and leads consumer downturns by 2–4 quarters."
+    sanity_min: 5.0
+    sanity_max: 30.0
+
+  - id: credit.bank_loans
+    series_id: TOTBKCR
+    provider: FRED
+    frequency: W
+    force: credit
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.05
+    linkage: "Total bank credit YoY% — credit expansion finances spending; contraction is the classic credit-cycle brake."
+    sanity_min: -0.20
+    sanity_max: 0.30
+
+  - id: credit.lending_standards
+    series_id: DRTSCILM
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: net_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Net % of banks tightening C&I lending standards. Positive = tightening (restrictive); negative = easing (stimulative). Leads credit slowdowns by 1–3 quarters."
+    sanity_min: -60.0
+    sanity_max: 80.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GFDEGDQ188S
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 80.0
+    linkage: "Federal debt as % of GDP. Elevated levels constrain fiscal space, raise roll-over risk, and increase long-term inflation potential."
+    sanity_min: 0.0
+    sanity_max: 400.0
+
+  # ─── Lens E — Risk Premiums ────────────────────────────────────────────────
+
+  - id: premium.yield_curve_10y2y
+    series_id: T10Y2Y
+    provider: FRED
+    frequency: D
+    force: premium
+    lead_lag: leading
+    transformation: spread
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "10Y−2Y spread. Inversion (< 0) predicts recessions with 12–18 month lead. Steepening from inverted signals recovery."
+    sanity_min: -3.0
+    sanity_max: 4.0
+
+  - id: premium.yield_curve_10y3m
+    series_id: T10Y3M
+    provider: FRED
+    frequency: D
+    force: premium
+    lead_lag: leading
+    transformation: spread
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "10Y−3M spread — the Fed's preferred recession predictor (Estrella/Mishkin). Inversion has preceded all post-war US recessions."
+    sanity_min: -3.0
+    sanity_max: 5.0
+
+  - id: premium.credit_spread_corp
+    series_id: BAA10Y
+    provider: FRED
+    frequency: D
+    force: premium
+    lead_lag: leading
+    transformation: spread
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "Moody's Baa corporate spread over 10Y Treasury. Widening signals rising default risk and tightening financial conditions."
+    sanity_min: 0.5
+    sanity_max: 8.0
+
+  - id: premium.high_yield_spread
+    series_id: BAMLH0A0HYM2
+    provider: FRED
+    frequency: D
+    force: premium
+    lead_lag: leading
+    transformation: spread
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4.5
+    linkage: "ICE BofA US High Yield OAS. The 'fear gauge' of credit markets. Widening above 600–700 bps signals financial-stress regime."
+    sanity_min: 1.0
+    sanity_max: 25.0
+
+  # ─── DEFERRED / ⚠ VERIFY — not yet ingested ───────────────────────────────
+  # The following are present as reference; pipeline skips them (verified: false).
+
+  # growth.tfp         → RTFPNAUSA632NRUG  ⚠ VERIFY (PWT TFP, annual) — also WorldBank
+  # growth.rnd_intensity → GB.XPD.RSDV.GD.ZS (WorldBank) — Phase 1A-ii
+  # inflation.commodity_index → PPIACO     ⚠ VERIFY
+  # credit.household_debt_gdp → HDTGPDUSQ163N ⚠ VERIFY
+  # credit.corporate_debt     → BCNSDODNS  ⚠ VERIFY
+  # external.* → WorldBank / FRED          — Phase 1A-ii
+  # capital.* / currency.* → WorldBank / BIS — Phase 1A-ii
+  # governance.* → WorldBank WGI           — Phase 1A-ii
+  # fiscal.* → IMF WEO                     — Phase 1A-iii
+  # demographics.* → WorldBank             — Phase 1A-ii
+  # climate.* → EM-DAT (deferred/manual)   — slot only

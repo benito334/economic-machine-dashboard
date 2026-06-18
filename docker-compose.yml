@@ -1,0 +1,24 @@
+version: "3.9"
+
+x-common: &common
+  build: .
+  env_file: .env
+  volumes:
+    - /mnt/data/project_data/all_weather/indicators_machine:/data
+    - /mnt/data/db/all_weather/indicators_machine:/db
+  environment:
+    DATA_DIR: /data
+    DB_PATH: /db/signals.duckdb
+    RAW_CACHE_DIR: /data/raw_cache
+    SNAPSHOTS_DIR: /data/snapshots
+
+services:
+  pipeline:
+    <<: *common
+    command: python -m indicators.pipeline
+
+  dashboard:
+    <<: *common
+    ports:
+      - "8501:8501"
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0

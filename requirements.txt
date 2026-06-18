@@ -1,0 +1,16 @@
+fredapi>=0.5.1
+wbgapi>=1.0.12
+duckdb>=0.10.0
+pandas>=2.1.0
+numpy>=1.26.0
+scipy>=1.11.0
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+PyYAML>=6.0.1
+pytest>=7.4.0
+pytest-cov>=4.1.0
+streamlit>=1.28.0
+plotly>=5.17.0
+APScheduler>=3.10.4
+requests>=2.31.0
