@@ -4,6 +4,15 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-18 — Session close
+- Shipped Phase 1A-i end-to-end: FRED loader, transform, normalize, DuckDB store, pipeline orchestrator, 51 tests (all pass)
+- Pipeline verified live against FRED: 37/37 signals OK, 0 errors, 0 sanity warnings; ~85k rows in DuckDB
+- Fixed spec error: Philly Fed PMI series ID `GACDISA066MSFRBPHI` → `GACDFSA066MSFRBPHI`; documented ICE BofA FRED truncation (HY spread 3yr history only, G-10)
+- ADRs 001–005 decided and written; G-01 through G-10 tracked in session-checklist.md
+- Next: Phase 1A-ii (World Bank lenses) or Phase 1B (composites engine) — user's choice at next session open
+
+---
+
 ## 2026-06-18 — Session 2: Phase 1A-i Code Complete
 
 **Done:**
