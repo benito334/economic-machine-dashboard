@@ -87,6 +87,15 @@ The following IDs from the spec are unconfirmed and must be resolved before inge
 **Protocol:** Call provider search API first; write confirmed ID + title to binding config before ingesting. Halt if result is empty.
 **Status:** Open — close as each ID is verified during Phase 1A.
 
+### G-10: HY spread (BAMLH0A0HYM2) truncated to 2023 on FRED
+**Problem:** ICE/BofA data-licensing change truncated all ICE BofA series on FRED to start 2023-06-19. `premium.high_yield_spread` therefore only has ~787 days of history. Z-score and percentile are relative to a 3-year window — historically misleading (current spreads look "very tight" vs 3 years but the full ICE history shows this is less extreme).
+**Resolution:** 
+- Long-history credit premium is covered by `premium.credit_spread_corp` (BAA10Y, since 1986) — this is the primary indicator.
+- BAMLH0A0HYM2 is kept for current-readings but its Z-score/percentile must be interpreted with caution.
+- Phase 1C dashboard: add a tooltip/badge on this signal noting "Z-score vs 3yr window only (FRED data truncated 2023)".
+- Future: explore direct ICE BofA API or alternative proxy (DBAA-DAAA quality spread as HY proxy).
+**Status:** Open — document in dashboard when Lens E is built.
+
 ---
 
 ## Acceptance Gates (do not advance phase without passing)

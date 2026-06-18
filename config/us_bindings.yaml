@@ -237,7 +237,7 @@ bindings:
     sanity_max: 0.08
 
   - id: growth.pmi_proxy
-    series_id: GACDISA066MSFRBPHI
+    series_id: GACDFSA066MSFRBPHI
     provider: FRED
     frequency: M
     force: growth
@@ -652,6 +652,7 @@ bindings:
     linkage: "ICE BofA US High Yield OAS. The 'fear gauge' of credit markets. Widening above 600–700 bps signals financial-stress regime."
     sanity_min: 1.0
     sanity_max: 25.0
+    notes: "⚠ FRED/ICE data-licensing change: FRED only serves this series from 2023-06-19 onward (~787 obs). Z-score and percentile are relative to a 3-year window only — not full history. Long-history credit premium is covered by premium.credit_spread_corp (BAA10Y, since 1986). Tracked in session-checklist G-10."
 
   # ─── DEFERRED / ⚠ VERIFY — not yet ingested ───────────────────────────────
   # The following are present as reference; pipeline skips them (verified: false).
