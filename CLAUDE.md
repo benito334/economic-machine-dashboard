@@ -84,19 +84,19 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-18:** Phase 1A-i complete and verified.
+**As of 2026-06-18:** Phase 1A-ii complete and verified.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
 | 1A-i FRED lenses A–E + Master | ✅ **Done** | 37/37 signals live in DuckDB, 51 tests pass |
-| 1A-ii World Bank lenses F/G/H/demo | ⬜ Next | `wbgapi`; external, capital, governance, demographics |
-| 1A-iii IMF/OECD fiscal lenses | ⬜ Pending | `imfp`/SDMX; structural balance, revenue/GDP |
+| 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
+| 1A-iii IMF/OECD fiscal lenses | ⬜ **Next** | Verify FYFSD/FYOINT, GGXONLB/GGSB, PPIACO, HDTGPDUSQ163N, BCNSDODNS |
 | 1B Composites engine | ⬜ Pending | Growth Score, Inflation Score, Regime Quadrant |
 | 1C Streamlit dashboard | ⬜ Pending | 4-quadrant scatter, accordions, conflict panel |
 | 2 Country rollout | ⬜ Pending | Eurozone first |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with 1A-ii or 1B.
+**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with Phase 1A-iii.
 
 ---
 
@@ -110,16 +110,18 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - 51 unit + integration tests passing
 - Known: Philly Fed PMI series ID corrected; ICE BofA HY spread truncated to 2023 (G-10)
 
-### Phase 1A-ii — World Bank lenses ← **next**
-1. Add `wbgapi` fetcher to `indicators/loader.py`.
-2. Add WB bindings to `config/us_bindings.yaml`: Lens F (external), G (capital/currency), H (governance/WGI), demographics.
-3. Verify each WB series ID before ingesting.
-4. **Acceptance gate:** WB series ingest, no empty results, sanity checks pass.
+### Phase 1A-ii — World Bank lenses ✅ COMPLETE (2026-06-18)
+- `fetch_wb_series()` added to `loader.py` via direct REST API (not `wbgapi` — JSON-decoding issues in this env)
+- 13 new bindings: Lens F (external/trade), Lens G (capital/currency), Lens A R&D, Demographics
+- Lens H (governance): 5 WGI deferred slots — `.EST` series deleted/archived from WB v2 API
+- Pipeline Pass 2 (WorldBank) + Pass 3 (derived); 60/60 tests; 50/50 signals live
 
-### Phase 1A-iii — IMF/OECD fiscal lenses
-1. Add `imfp` / SDMX fetcher.
-2. Add fiscal bindings: `GGXONLB`, `GGSB`, `GC.REV.XGRT.GD.ZS`.
-3. **Acceptance gate:** fiscal series ingest and sanity check.
+### Phase 1A-iii — IMF/OECD fiscal lenses ← **next**
+1. Verify and add FRED fiscal series: `FYFSD` (federal surplus/deficit), `FYOINT` (net interest).
+2. Add `imfp` / SDMX fetcher for IMF WEO series: `GGXONLB` (primary balance % GDP), `GGSB` (structural balance).
+3. Bind `GC.REV.XGRT.GD.ZS` (already verified — WB revenue % GDP).
+4. Verify remaining FRED ⚠ IDs: `PPIACO` (broad PPI), `HDTGPDUSQ163N` (BIS household debt/GDP), `BCNSDODNS` (nonfin corp debt).
+5. **Acceptance gate:** all fiscal series ingest with no empty results; sanity checks pass.
 
 ### Phase 1B — Composites & Snapshot Engine
 1. Daily orchestration compiles current signal state.

@@ -159,7 +159,7 @@ For every registered series the engine runs five steps before archiving:
 | `growth.real_pce` | `PCEC96` ✓ | M | Coincident |
 | `growth.capacity_util` | `TCU` ✓ | M | Coincident |
 | `growth.productivity` | `OPHNFB` ✓ | Q | Lagging |
-| `growth.pmi_proxy` | `GACDISA066MSFRBPHI` ✓ | M | Leading |
+| `growth.pmi_proxy` | `GACDFSA066MSFRBPHI` ✓ *(corrected from spec; original ID was wrong)* | M | Leading |
 | **`growth.labor_force_part`** *(new)* | `CIVPART` ✓ | M | Coincident |
 | **`growth.tfp`** *(new)* | `RTFPNAUSA632NRUG` ⚠ VERIFY (Penn World Table TFP, annual) | A | Structural |
 | **`growth.rnd_intensity`** *(new)* | WorldBank:`GB.XPD.RSDV.GD.ZS` ✓ (R&D % of GDP) | A | Structural |
@@ -212,30 +212,33 @@ For every registered series the engine runs five steps before archiving:
 | :--- | :--- | :---: | :---: |
 | `external.current_account` | FRED:`IEABC` ✓ (quarterly, SA, $) | Q | Leading |
 | `external.current_account_gdp` | WorldBank:`BN.CAB.XOKA.GD.ZS` ✓ (% GDP, annual) | A | Leading |
-| `external.exports_gdp` | WorldBank:`NE.EXP.GNFS.ZS` ⚠ VERIFY | A | Coincident |
-| `external.imports_gdp` | WorldBank:`NE.IMP.GNFS.ZS` ⚠ VERIFY | A | Coincident |
+| `external.exports_gdp` | WorldBank:`NE.EXP.GNFS.ZS` ✓ | A | Coincident |
+| `external.imports_gdp` | WorldBank:`NE.IMP.GNFS.ZS` ✓ | A | Coincident |
 | `external.niip` | FRED:`IIPUSNETIQ` ✓ (Net Intl Investment Position, quarterly) | Q | Structural |
 
 #### Lens G — Capital Flows & Currency *(new)*
 | Concept | Source | Freq | Timing |
 | :--- | :--- | :---: | :---: |
-| `capital.fdi_net_inflows_gdp` | WorldBank:`BX.KLT.DINV.WD.GD.ZS` ⚠ VERIFY | A | Leading |
-| `capital.portfolio_flows` | IMF BOP / Treasury TIC ⚠ VERIFY (US: TIC monthly) | M/Q | Leading |
+| `capital.fdi_net_inflows_gdp` | WorldBank:`BX.KLT.DINV.WD.GD.ZS` ✓ | A | Leading |
+| `capital.portfolio_flows` | IMF BOP / Treasury TIC ⚠ VERIFY (US: TIC monthly) — **deferred to Phase 1A-iii** | M/Q | Leading |
 | `currency.reer` | FRED:`RBUSBIS` ✓ (BIS Real Broad Effective Exch Rate, US) | M | Coincident |
-| `currency.reer_xcountry` | WorldBank:`PX.REX.REER` ⚠ VERIFY (fallback for non-BIS countries) | A | Coincident |
-| `currency.ppp_gap` | *Derived* from OECD/WB PPP conversion vs market FX ⚠ VERIFY | A | Structural |
+| `currency.reer_xcountry` | WorldBank:`PX.REX.REER` ✓ (fallback for non-BIS countries; `is_proxy=true`) | A | Coincident |
+| `currency.ppp_gap` | *Derived* from OECD/WB PPP conversion vs market FX ⚠ VERIFY — **deferred to Phase 1A-iii** | A | Structural |
 
 > Prefer **BIS REER via FRED** (`RB<country>BIS` pattern — e.g. `RBUSBIS`, monthly, broad) for all countries BIS covers; fall back to World Bank `PX.REX.REER` only where BIS coverage is missing. SWF holdings (Ray's third capital-flow item) have no reliable free programmatic feed → **deferred tier** (§8.2).
 
-#### Lens H — Governance & Political Risk *(new)*
+#### Lens H — Governance & Political Risk *(new — deferred slots only)*
 Free programmatic substitute for paywalled EIU/ICRG: **World Bank Worldwide Governance Indicators (WGI)**, annual, all countries.
-| Concept | WorldBank ID | Freq | Timing |
-| :--- | :--- | :---: | :---: |
-| `governance.political_stability` | `PV.EST` ✓ | A | Structural |
-| `governance.control_of_corruption` | `CC.EST` ⚠ VERIFY | A | Structural |
-| `governance.govt_effectiveness` | `GE.EST` ⚠ VERIFY | A | Structural |
-| `governance.rule_of_law` | `RL.EST` ✓ | A | Structural |
-| `governance.regulatory_quality` | `RQ.EST` ⚠ VERIFY | A | Structural |
+
+> ⚠ **API finding (2026-06-18):** All five WGI `.EST` series are **deleted/archived from the WB v2 indicator API** — confirmed via direct REST calls. The `✓` marks in the original spec were incorrect. Deferred slots created in `us_bindings.yaml` with `verified: false`, `source_tier: deferred`. Resolution: WGI bulk CSV download from the WGI portal, or a future WB API endpoint. See session-checklist G-03.
+
+| Concept | WorldBank ID | Freq | Timing | Status |
+| :--- | :--- | :---: | :---: | :---: |
+| `governance.political_stability` | `PV.EST` | A | Structural | ⛔ API unavailable |
+| `governance.control_of_corruption` | `CC.EST` | A | Structural | ⛔ API unavailable |
+| `governance.govt_effectiveness` | `GE.EST` | A | Structural | ⛔ API unavailable |
+| `governance.rule_of_law` | `RL.EST` | A | Structural | ⛔ API unavailable |
+| `governance.regulatory_quality` | `RQ.EST` | A | Structural | ⛔ API unavailable |
 
 #### Lens I — Climate / Nature *(new, deferred-tier data)*
 | Concept | Source | Freq | Timing |
@@ -248,16 +251,16 @@ Free programmatic substitute for paywalled EIU/ICRG: **World Bank Worldwide Gove
 | Concept | Source | Freq | Timing |
 | :--- | :--- | :---: | :---: |
 | `fiscal.primary_balance` | *Derived* US: `FYFSD` (surplus/deficit) net of `FYOINT` (net interest), annual ⚠ VERIFY; cross-country: IMF WEO `GGXONLB` (primary net lending/borrowing % GDP) ⚠ VERIFY | A | Leading |
-| `fiscal.revenue_gdp` | WorldBank:`GC.REV.XGRT.GD.ZS` ⚠ VERIFY (revenue excl. grants % GDP) | A | Coincident |
+| `fiscal.revenue_gdp` | WorldBank:`GC.REV.XGRT.GD.ZS` ✓ (revenue excl. grants % GDP) | A | Coincident |
 | `fiscal.structural_balance` | IMF WEO `GGSB` ⚠ VERIFY (structural balance % potential GDP) | A | Leading |
 
 #### Demographics *(new)*
 | Concept | WorldBank ID | Freq | Timing |
 | :--- | :--- | :---: | :---: |
-| `demo.population_growth` | `SP.POP.GROW` ⚠ VERIFY | A | Structural |
-| `demo.age_dependency` | `SP.POP.DPND` ✓ (old: `SP.POP.DPND.OL`, young: `SP.POP.DPND.YG`) | A | Structural |
-| `demo.urbanization` | `SP.URB.TOTL.IN.ZS` ⚠ VERIFY | A | Structural |
-| `demo.labor_force_part_wb` | `SL.TLF.CACT.ZS` ⚠ VERIFY (cross-country LFPR, modeled ILO) | A | Structural |
+| `demo.population_growth` | `SP.POP.GROW` ✓ | A | Structural |
+| `demo.age_dependency` | `SP.POP.DPND` ✓ | A | Structural |
+| `demo.urbanization` | `SP.URB.TOTL.IN.ZS` ✓ | A | Structural |
+| `demo.labor_force_part_wb` | `SL.TLF.CACT.ZS` ✓ (cross-country LFPR, modeled ILO) | A | Structural |
 
 ---
 
@@ -349,22 +352,46 @@ The Credit/Debt/Fiscal lens must bifurcate leverage for EM countries:
 
 > **Sequencing principle:** prove the full architecture **end-to-end on the US with the complete expanded indicator set first**. Only then add countries one at a time, each with a human verifying its bindings. Do **not** attempt to instantiate all 10 countries × all sources in one pass — that is the primary failure path (§9).
 
-### Phase 1A — US Data Pipeline & Relational Store
-1. Define DuckDB schema mirroring the §2.2 `Signal` contract (incl. new fields).
-2. Integrate `fredapi` with a registered API key. Use **API vintage parameters** (`realtime_start`/`realtime_end`, `get_series_vintage_dates`) for point-in-time backtests — **not** the deprecated ALFRED web-account feature (§0.4).
-3. Integrate the **World Bank API** (`wbgapi` or direct REST `/v2/country/{iso}/indicator/{code}?format=json`) for the annual structural families.
-4. Write transformation, Z-score, percentile, momentum, and equilibrium-distance processors. Honor the `low_history` rule (§3).
-5. **Acceptance:** ingestion runs across **all Section 4 lenses (A–I + fiscal + demographics)** for the US, normalizes, and populates queryable `Signal` records. Every `⚠ VERIFY` ID has been confirmed and the resolved ID written back to the binding config.
+### ✅ Phase 1A-i — FRED lenses A–E + Master (COMPLETE 2026-06-18)
+1. ✅ DuckDB schema (`store/store.py`), Pydantic `Signal` + `CountryBinding` models (`indicators/models.py`)
+2. ✅ `fredapi` loader with parquet disk cache, tenacity retry (`indicators/loader.py`)
+3. ✅ Transform (YoY%, level, spread), normalize (Z-score, percentile, momentum, equilibrium distance, staleness) — `indicators/transform.py`, `indicators/normalize.py`
+4. ✅ Pipeline orchestrator with Pass 1 (FRED) + Pass 2 (derived) — `indicators/pipeline.py`
+5. ✅ `config/us_bindings.yaml` — 29 FRED bindings (lenses A–E + Master) + 4 derived; all `verified: true`
+6. ✅ 51 unit + integration tests passing (`tests/`)
+7. ✅ **Acceptance gate passed:** 37/37 signals ingesting, 0 empty, 0 errors, 0 sanity warnings
+   - Corrected series ID: Philly Fed PMI `GACDISA066MSFRBPHI` → `GACDFSA066MSFRBPHI`
+   - Documented: ICE BofA HY spread (BAMLH0A0HYM2) truncated to 2023-06-19 on FRED (3yr window only); primary long-history credit premium is BAA10Y
 
-### Phase 1B — System State Archiving & Snapshots
+### ✅ Phase 1A-ii — World Bank lenses F/G/H/demographics (COMPLETE 2026-06-18)
+1. ✅ `fetch_wb_series()` added to `indicators/loader.py` — direct REST API (`/v2/country/{iso}/indicator/{code}?format=json`), parquet cache, tenacity retry. Note: `wbgapi` library has JSON-decoding issues in this environment; direct `requests` used instead.
+2. ✅ WB + new FRED bindings added to `config/us_bindings.yaml`:
+   - Lens F (External): `external.current_account` (FRED IEABC), `external.current_account_gdp`, `external.exports_gdp`, `external.imports_gdp` (WB), `external.niip` (FRED IIPUSNETIQ)
+   - Lens A supplement: `growth.rnd_intensity` (WB GB.XPD.RSDV.GD.ZS)
+   - Lens G (Capital/Currency): `capital.fdi_net_inflows_gdp` (WB), `currency.reer` (FRED RBUSBIS), `currency.reer_xcountry` (WB PX.REX.REER, `is_proxy=true`)
+   - Lens H (Governance): 5 deferred slots — WGI `.EST` series confirmed deleted/archived from WB v2 API (2026-06-18); resolution requires WGI bulk CSV download (see session-checklist G-03)
+   - Demographics: population growth, age dependency, urbanization, WB LFPR (all WB)
+3. ✅ Pipeline updated with WorldBank Pass 2; derived promoted to Pass 3
+4. ✅ 9 new WB fetcher tests; full suite 60/60 passing
+5. ✅ **Acceptance gate passed:** 50/50 signals ingesting, 0 empty, 0 errors, 0 sanity warnings
+
+### Phase 1A-iii — IMF/OECD fiscal lenses ← **next**
+1. Add `imfp` / SDMX fetcher for IMF WEO data.
+2. Verify and add fiscal bindings: `FYFSD`/`FYOINT` (FRED primary balance), `GGXONLB`, `GGSB` (IMF WEO), `GC.REV.XGRT.GD.ZS` (WB, already verified — bind now).
+3. Also verify remaining FRED series: `PPIACO`, `HDTGPDUSQ163N`, `BCNSDODNS`.
+4. **Acceptance gate:** all fiscal series ingest with no empty results; sanity checks pass.
+
+### Phase 1B — Composites & Snapshot Engine
 1. Daily orchestration compiles current signal state.
-2. Record historical snapshots of composites (Growth, Inflation, Quadrant, Disequilibrium) into time-indexed tables.
-3. **Acceptance:** DB resolves multi-year time-series arrays into a coherent macro-regime timeline.
+2. Compute Growth Score, Inflation Score, Regime Quadrant (+ Confidence %), Disequilibrium Score across all five forces.
+3. Archive composite snapshots to time-indexed DuckDB tables.
+4. **Acceptance:** DB resolves multi-year composite timeline; quadrant labels match known historical regimes (spot-check: 2022 → Stagflation).
 
 ### Phase 1C — US Streamlit Frontend (architecture proof)
 1. Build the §5.1 grid; render the 4-quadrant Plotly scatter with a 12-month tail.
 2. Build all accordions (A–I + demographics), percentile color badges, data-quality badges, causal tooltips, and the **Geopolitical-Risk Overlay**.
-3. **Acceptance:** UI launches, queries DuckDB, paints heat by percentile correctly, and runs a manual refresh smoothly.
+3. Dashboard note: add tooltip on `premium.high_yield_spread` flagging "Z-score vs 3yr window only (FRED data truncated 2023)".
+4. **Acceptance:** UI launches, queries DuckDB, paints heat by percentile correctly, and runs a manual refresh smoothly.
 
 ### Phase 2 — Country Rollout (one at a time, in this order)
 Recommended order (data-availability descending): **Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.**
@@ -446,8 +473,15 @@ Build the `IndicatorConcept` slots and leave bindings as `provider="manual"`, `s
 
 ## Appendix A — Quick Reference: New v2 Series (verification status)
 
-**Verified (`✓`):** `CIVPART`, `GB.XPD.RSDV.GD.ZS`, `IEABC`, `IIPUSNETIQ`, `RBUSBIS`, `BN.CAB.XOKA.GD.ZS`, `GC.DOD.TOTL.GD.ZS`, `SP.POP.DPND`, `PV.EST`, `RL.EST`.
+> Last updated: 2026-06-18 (after Phase 1A-i and 1A-ii)
 
-**Must verify before ingestion (`⚠`):** `RTFPNAUSA632NRUG`, `PPIACO`, `HDTGPDUSQ163N`, `BCNSDODNS`, `NE.EXP.GNFS.ZS`, `NE.IMP.GNFS.ZS`, `BX.KLT.DINV.WD.GD.ZS`, `PX.REX.REER`, `CC.EST`, `GE.EST`, `RQ.EST`, `FYFSD`, `FYOINT`, `GGXONLB`, `GGSB`, `GC.REV.XGRT.GD.ZS`, `SP.POP.GROW`, `SP.URB.TOTL.IN.ZS`, `SL.TLF.CACT.ZS`, plus all per-country bindings in Phase 2.
+**Verified and ingesting (`✓`):**
+`CIVPART`, `GACDFSA066MSFRBPHI` *(corrected from original `GACDISA066MSFRBPHI`)*, `GB.XPD.RSDV.GD.ZS`, `IEABC`, `IIPUSNETIQ`, `RBUSBIS`, `BN.CAB.XOKA.GD.ZS`, `NE.EXP.GNFS.ZS`, `NE.IMP.GNFS.ZS`, `BX.KLT.DINV.WD.GD.ZS`, `PX.REX.REER`, `GC.DOD.TOTL.GD.ZS`, `SP.POP.DPND`, `SP.POP.GROW`, `SP.URB.TOTL.IN.ZS`, `SL.TLF.CACT.ZS`, `GC.REV.XGRT.GD.ZS` *(verified; bound in Phase 1A-iii fiscal section)*.
 
-**Deferred / manual:** SWF holdings, EM-DAT disaster losses, EIU/ICRG, CEIC/Bloomberg, NBS-China automated, Russia automated.
+**Must verify before ingestion (`⚠`) — Phase 1A-iii scope:**
+`RTFPNAUSA632NRUG`, `PPIACO`, `HDTGPDUSQ163N`, `BCNSDODNS`, `FYFSD`, `FYOINT`, `GGXONLB`, `GGSB`, plus all per-country bindings in Phase 2.
+
+**API unavailable — deferred (`⛔`):**
+`PV.EST`, `CC.EST`, `GE.EST`, `RL.EST`, `RQ.EST` — WGI governance series deleted/archived from WB v2 indicator API (confirmed 2026-06-18). Deferred slots exist in `us_bindings.yaml`. Resolution: WGI bulk CSV download.
+
+**Deferred / manual:** SWF holdings, EM-DAT disaster losses, EIU/ICRG, CEIC/Bloomberg, NBS-China automated, Russia automated, `capital.portfolio_flows` (IMF BOP/TIC), `currency.ppp_gap` (derived OECD/WB PPP).

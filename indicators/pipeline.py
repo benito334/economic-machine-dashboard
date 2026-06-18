@@ -1,9 +1,9 @@
 """
-Phase 1A-i pipeline: fetch FRED series, transform, normalize, store to DuckDB.
+Phase 1A pipeline: fetch FRED + WorldBank series, transform, normalize, store to DuckDB.
 
 Usage:
     python -m indicators.pipeline              # normal run (uses cache)
-    python -m indicators.pipeline --refresh    # force re-fetch from FRED
+    python -m indicators.pipeline --refresh    # force re-fetch from all providers
     python -m indicators.pipeline --latest     # print latest signals only
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Optional
 import pandas as pd
 import yaml
 
-from indicators.loader import fetch_series
+from indicators.loader import fetch_series, fetch_wb_series
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
@@ -135,7 +135,7 @@ def _print_signal(s: Signal) -> None:
 
 def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     print("=" * 70)
-    print("  Indicators Machine — Phase 1A-i Pipeline (US / FRED)")
+    print("  Indicators Machine — Phase 1A Pipeline (US / FRED + WorldBank)")
     print("=" * 70)
 
     # Ensure data dirs exist
@@ -146,12 +146,14 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
     bindings = load_bindings(_CONFIG_DIR / "us_bindings.yaml")
     raw_bindings = [b for b in bindings if b.provider == "FRED" and b.verified]
+    wb_bindings = [b for b in bindings if b.provider == "WorldBank" and b.verified]
     derived_bindings = [b for b in bindings if b.provider == "derived" and b.verified]
     skipped = [b for b in bindings if not b.verified]
 
-    print(f"\n  FRED series : {len(raw_bindings)}")
-    print(f"  Derived     : {len(derived_bindings)}")
-    print(f"  Skipped (⚠ VERIFY) : {len(skipped)}")
+    print(f"\n  FRED series      : {len(raw_bindings)}")
+    print(f"  WorldBank series : {len(wb_bindings)}")
+    print(f"  Derived          : {len(derived_bindings)}")
+    print(f"  Skipped (deferred / ⚠ VERIFY) : {len(skipped)}")
     if skipped:
         print(f"    {', '.join(b.id for b in skipped)}")
     print()
@@ -207,8 +209,53 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             logger.exception("[ERROR] %s: %s", binding.id, exc)
             results["error"] += 1
 
-    # ── Pass 2: Derived series ─────────────────────────────────────────────
-    print("\n─── Pass 2: Derived series ────────────────────────────────────────")
+    # ── Pass 2: WorldBank series ───────────────────────────────────────────
+    print("\n─── Pass 2: WorldBank series ──────────────────────────────────────")
+    for binding in wb_bindings:
+        try:
+            raw = fetch_wb_series(
+                binding.series_id,
+                country_iso=binding.country,
+                frequency=binding.frequency,
+                force_refresh=force_refresh,
+            )
+            if raw is None or raw.empty:
+                print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                results["empty"] += 1
+                continue
+
+            transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+            transformed = transformed.dropna()
+
+            if transformed.empty:
+                print(f"  [EMPTY after transform] {binding.id}")
+                results["empty"] += 1
+                continue
+
+            transformed_store[binding.id] = transformed
+
+            signals = build_signals(transformed, binding, raw)
+            latest = signals[-1] if signals else None
+
+            if latest:
+                warns = sanity_check(latest, binding)
+                for w in warns:
+                    print(f"  [SANITY WARN] {w}")
+                    results["sanity_warn"] += 1
+
+            n = upsert_signals(conn, signals)
+            status = "PROXY" if binding.is_proxy else "OK"
+            latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+            latest_dt = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  A  {latest_dt}  {latest_val}  ({n} rows)")
+            results["ok"] += 1
+
+        except Exception as exc:
+            logger.exception("[ERROR] %s: %s", binding.id, exc)
+            results["error"] += 1
+
+    # ── Pass 3: Derived series ─────────────────────────────────────────────
+    print("\n─── Pass 3: Derived series ────────────────────────────────────────")
     for binding in derived_bindings:
         try:
             series = compute_derived(binding, raw_store, transformed_store)

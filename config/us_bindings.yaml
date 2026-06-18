@@ -654,17 +654,343 @@ bindings:
     sanity_max: 25.0
     notes: "⚠ FRED/ICE data-licensing change: FRED only serves this series from 2023-06-19 onward (~787 obs). Z-score and percentile are relative to a 3-year window only — not full history. Long-history credit premium is covered by premium.credit_spread_corp (BAA10Y, since 1986). Tracked in session-checklist G-10."
 
-  # ─── DEFERRED / ⚠ VERIFY — not yet ingested ───────────────────────────────
-  # The following are present as reference; pipeline skips them (verified: false).
+  # ─── Lens A supplement — Growth structural ────────────────────────────────
 
-  # growth.tfp         → RTFPNAUSA632NRUG  ⚠ VERIFY (PWT TFP, annual) — also WorldBank
-  # growth.rnd_intensity → GB.XPD.RSDV.GD.ZS (WorldBank) — Phase 1A-ii
-  # inflation.commodity_index → PPIACO     ⚠ VERIFY
-  # credit.household_debt_gdp → HDTGPDUSQ163N ⚠ VERIFY
-  # credit.corporate_debt     → BCNSDODNS  ⚠ VERIFY
-  # external.* → WorldBank / FRED          — Phase 1A-ii
-  # capital.* / currency.* → WorldBank / BIS — Phase 1A-ii
-  # governance.* → WorldBank WGI           — Phase 1A-ii
-  # fiscal.* → IMF WEO                     — Phase 1A-iii
-  # demographics.* → WorldBank             — Phase 1A-ii
-  # climate.* → EM-DAT (deferred/manual)   — slot only
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "R&D expenditure as % of GDP — structural driver of productivity and long-run potential growth."
+    sanity_min: 0.0
+    sanity_max: 8.0
+
+  # ─── Lens F — External & Trade ────────────────────────────────────────────
+
+  - id: external.current_account
+    series_id: IEABC
+    provider: FRED
+    frequency: Q
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: millions_usd
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "US current account balance (SA, $M). Persistent deficit signals external borrowing dependency and currency vulnerability."
+    sanity_min: -350000.0
+    sanity_max: 100000.0
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Current account balance as % of GDP. Negative = structural external deficit; beyond -4% historically precedes adjustment crises."
+    sanity_min: -15.0
+    sanity_max: 15.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 12.0
+    linkage: "Exports of goods and services as % of GDP — measures external demand contribution and trade openness."
+    sanity_min: 0.0
+    sanity_max: 50.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 12.0
+    linkage: "Imports of goods and services as % of GDP — high relative to exports signals current account deficit pressure."
+    sanity_min: 0.0
+    sanity_max: 50.0
+
+  - id: external.niip
+    series_id: IIPUSNETIQ
+    provider: FRED
+    frequency: Q
+    force: external
+    lead_lag: structural
+    transformation: level
+    units: millions_usd
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Net International Investment Position ($M). Large negative NIIP (US: ~-$27T) reflects accumulated CA deficits; amplifies currency risk."
+    sanity_min: -35000000.0
+    sanity_max: 5000000.0
+
+  # ─── Lens G — Capital Flows & Currency ────────────────────────────────────
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "FDI net inflows as % of GDP — sustained inflows signal confidence in growth prospects; sudden reversals precede crises."
+    sanity_min: -5.0
+    sanity_max: 20.0
+
+  - id: currency.reer
+    series_id: RBUSBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "BIS Real Broad Effective Exchange Rate for the US (2020=100). Above 100 = real appreciation = competitiveness loss for exporters."
+    sanity_min: 60.0
+    sanity_max: 140.0
+
+  - id: currency.reer_xcountry
+    series_id: PX.REX.REER
+    provider: WorldBank
+    frequency: A
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2010eq100
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 100.0
+    linkage: "World Bank REER index (2010=100). Fallback for countries not covered by BIS REER. is_proxy=true; prefer RBUSBIS for US."
+    sanity_min: 50.0
+    sanity_max: 200.0
+    notes: "Fallback REER for non-BIS countries. For US, prefer currency.reer (RBUSBIS, monthly). is_proxy=true."
+
+  # ─── Lens G deferred slots ─────────────────────────────────────────────────
+  # capital.portfolio_flows → IMF BOP / Treasury TIC (Phase 1A-iii)
+  # currency.ppp_gap        → derived from OECD/WB PPP vs market FX (Phase 1A-iii)
+
+  # ─── Lens H — Governance & Political Risk (deferred) ──────────────────────
+  # WGI .EST series (PV.EST, CC.EST, GE.EST, RL.EST, RQ.EST) were confirmed
+  # deleted/archived from the World Bank v2 indicator API (2026-06-18).
+  # Slots are recorded here with verified: false and source_tier: deferred.
+  # Resolution: explore WGI bulk download or alternative endpoint in Phase 2+.
+  # See session-checklist G-03.
+
+  - id: governance.political_stability
+    series_id: PV.EST
+    provider: WorldBank
+    frequency: A
+    force: governance
+    lead_lag: structural
+    transformation: level
+    units: wgi_score
+    source_tier: deferred
+    vintage_available: false
+    is_proxy: false
+    verified: false
+    equilibrium: 0.0
+    linkage: "WGI Political Stability & Absence of Violence estimate (z-score, −2.5 to +2.5). High = stable; declining trend precedes capital flight."
+    sanity_min: -3.0
+    sanity_max: 3.0
+    notes: "⚠ WGI API not available via WB v2 indicator endpoint (deleted/archived 2026-06-18). Deferred."
+
+  - id: governance.control_of_corruption
+    series_id: CC.EST
+    provider: WorldBank
+    frequency: A
+    force: governance
+    lead_lag: structural
+    transformation: level
+    units: wgi_score
+    source_tier: deferred
+    vintage_available: false
+    is_proxy: false
+    verified: false
+    equilibrium: 0.0
+    linkage: "WGI Control of Corruption estimate (z-score). Decline signals institutional erosion and misallocation of capital."
+    sanity_min: -3.0
+    sanity_max: 3.0
+    notes: "⚠ WGI API not available via WB v2 indicator endpoint (deleted/archived 2026-06-18). Deferred."
+
+  - id: governance.govt_effectiveness
+    series_id: GE.EST
+    provider: WorldBank
+    frequency: A
+    force: governance
+    lead_lag: structural
+    transformation: level
+    units: wgi_score
+    source_tier: deferred
+    vintage_available: false
+    is_proxy: false
+    verified: false
+    equilibrium: 0.0
+    linkage: "WGI Government Effectiveness estimate (z-score). Measures quality of public services and policy implementation."
+    sanity_min: -3.0
+    sanity_max: 3.0
+    notes: "⚠ WGI API not available via WB v2 indicator endpoint (deleted/archived 2026-06-18). Deferred."
+
+  - id: governance.rule_of_law
+    series_id: RL.EST
+    provider: WorldBank
+    frequency: A
+    force: governance
+    lead_lag: structural
+    transformation: level
+    units: wgi_score
+    source_tier: deferred
+    vintage_available: false
+    is_proxy: false
+    verified: false
+    equilibrium: 0.0
+    linkage: "WGI Rule of Law estimate (z-score). Contract enforcement and property rights underpin investment."
+    sanity_min: -3.0
+    sanity_max: 3.0
+    notes: "⚠ WGI API not available via WB v2 indicator endpoint (deleted/archived 2026-06-18). Deferred."
+
+  - id: governance.regulatory_quality
+    series_id: RQ.EST
+    provider: WorldBank
+    frequency: A
+    force: governance
+    lead_lag: structural
+    transformation: level
+    units: wgi_score
+    source_tier: deferred
+    vintage_available: false
+    is_proxy: false
+    verified: false
+    equilibrium: 0.0
+    linkage: "WGI Regulatory Quality estimate (z-score). Capacity to formulate sound policies that permit private sector development."
+    sanity_min: -3.0
+    sanity_max: 3.0
+    notes: "⚠ WGI API not available via WB v2 indicator endpoint (deleted/archived 2026-06-18). Deferred."
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.7
+    linkage: "Annual population growth rate %. Secular deceleration reduces potential output growth and strains pension/social systems."
+    sanity_min: -2.0
+    sanity_max: 5.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Age dependency ratio (dependents per 100 working-age). Rising ratio compresses savings, increases fiscal pressure on health/pensions."
+    sanity_min: 20.0
+    sanity_max: 100.0
+
+  - id: demo.urbanization
+    series_id: SP.URB.TOTL.IN.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_total_pop
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 80.0
+    linkage: "Urban population as % of total. Higher urbanization correlates with productivity gains and services-sector dominance."
+    sanity_min: 0.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 63.0
+    linkage: "ILO-modeled labor force participation rate (% of population 15+). Cross-country comparable; secular decline signals aging and skills-mismatch."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  # ─── DEFERRED — not yet ingested ──────────────────────────────────────────
+  # growth.tfp              → RTFPNAUSA632NRUG  ⚠ VERIFY (PWT TFP, annual)
+  # inflation.commodity_index → PPIACO          ⚠ VERIFY
+  # credit.household_debt_gdp → HDTGPDUSQ163N   ⚠ VERIFY
+  # credit.corporate_debt   → BCNSDODNS          ⚠ VERIFY
+  # capital.portfolio_flows → IMF BOP / TIC      — Phase 1A-iii
+  # currency.ppp_gap        → OECD/WB PPP derived — Phase 1A-iii
+  # fiscal.*                → IMF WEO            — Phase 1A-iii
+  # climate.*               → EM-DAT (manual)    — slot only

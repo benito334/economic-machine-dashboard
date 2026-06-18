@@ -14,6 +14,7 @@
 - [ ] Add a worklog entry: date, what was done, what is next, blockers
 - [ ] Mark any completed ADRs as `Status: Accepted`
 - [ ] Update this checklist if new blockers/pending items arose
+- [ ] **Update `docs/project_plan.md`:** mark newly completed phases in §7, update any `⚠ VERIFY` → `✓` in §4 tables for series confirmed this session, and refresh Appendix A verification lists
 - [ ] Update memory if key project facts changed
 
 ---
@@ -30,10 +31,17 @@
 **Resolution:** ADR-004 — use Philly Fed with `is_proxy=true`; add ISM Manufacturing (`MANEMP` → actually `NAPM`, verify) as a cross-check in Phase 1A.
 **Status:** Decided. Close when binding is confirmed and `is_proxy=true` is set.
 
-### G-03: WGI governance data lag
-**Problem:** World Bank WGI scores are released with ~1-year lag (e.g., 2024 estimates released late 2025). The "Geopolitical-Risk Overlay" in the dashboard will show stale data by design.
-**Resolution:** Surface this explicitly in the dashboard with a `data_vintage` label and tooltip. Do not pretend the score is current. Log decision in ADR-006.
-**Status:** Open — create ADR-006 when building Lens H.
+### G-03: WGI governance data lag + API unavailability
+**Problem:** World Bank WGI scores (.EST series) are: (a) released with ~1-year lag; and
+(b) deleted/archived from the WB v2 indicator API as of 2026-06-18 — confirmed for
+PV.EST, CC.EST, GE.EST, RL.EST, RQ.EST.
+**Resolution:**
+- Deferred slots created in `us_bindings.yaml` with `verified: false`, `source_tier: deferred`.
+- Resolution options for Phase 2+: (1) WGI bulk download CSV from World Bank WGI portal
+  and load manually; (2) check if WB DataBank API has a separate endpoint.
+- Surface data_vintage label + tooltip in dashboard (Phase 1C).
+- Log final decision in ADR-006 when building Lens H.
+**Status:** API unavailability confirmed. Deferred to Phase 2. ADR-006 pending.
 
 ### G-04: Climate lens (Lens I) slot-only
 **Problem:** EM-DAT requires manual registration and provides no clean API. The spec says to "build the slot and leave the binding as manual."
@@ -70,22 +78,34 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 **Status:** Open — enforce sub-order at Phase 1A kickoff.
 
 ### G-07: `⚠ VERIFY` series IDs must be confirmed before ingestion
-The following IDs from the spec are unconfirmed and must be resolved before ingestion:
+
+**Resolved (Phase 1A-ii, 2026-06-18):**
+- ✅ `NE.EXP.GNFS.ZS` — Exports of goods and services (% of GDP)
+- ✅ `NE.IMP.GNFS.ZS` — Imports of goods and services (% of GDP)
+- ✅ `BX.KLT.DINV.WD.GD.ZS` — FDI net inflows (% of GDP)
+- ✅ `PX.REX.REER` — Real effective exchange rate index (2010=100)
+- ✅ `SP.POP.GROW` — Population growth (annual %)
+- ✅ `SP.URB.TOTL.IN.ZS` — Urban population (% of total)
+- ✅ `SL.TLF.CACT.ZS` — Labor force participation rate (ILO modeled)
+- ✅ `GC.REV.XGRT.GD.ZS` — Revenue excl. grants (% GDP) — confirmed, reserved for Phase 1A-iii
+- ✅ `IEABC` — US current account balance (FRED, quarterly)
+- ✅ `IIPUSNETIQ` — Net IIP (FRED, quarterly)
+- ✅ `RBUSBIS` — BIS REER for US (FRED, monthly)
+
+**Deferred (WGI API unavailable):**
+- ❌ `CC.EST`, `GE.EST`, `RQ.EST`, `PV.EST`, `RL.EST` — WGI governance series deleted/archived
+  from WB v2 indicator API (confirmed 2026-06-18). Slots created with `verified: false`,
+  `source_tier: deferred`. See G-03 for resolution path.
+
+**Still open (Phase 1A-iii):**
 - `RTFPNAUSA632NRUG` (TFP, Penn World Table)
 - `PPIACO` (broad PPI commodities)
 - `HDTGPDUSQ163N` (BIS household debt/GDP)
 - `BCNSDODNS` (nonfin corporate debt)
-- `NE.EXP.GNFS.ZS`, `NE.IMP.GNFS.ZS` (WB exports/imports % GDP)
-- `BX.KLT.DINV.WD.GD.ZS` (WB FDI net inflows % GDP)
-- `PX.REX.REER` (WB fallback REER)
-- `CC.EST`, `GE.EST`, `RQ.EST` (WGI governance)
-- `FYFSD`, `FYOINT` (US fiscal primary balance)
+- `FYFSD`, `FYOINT` (US fiscal primary balance, FRED)
 - `GGXONLB`, `GGSB` (IMF WEO fiscal)
-- `GC.REV.XGRT.GD.ZS` (WB revenue % GDP)
-- `SP.POP.GROW`, `SP.URB.TOTL.IN.ZS`, `SL.TLF.CACT.ZS` (WB demographics)
 
-**Protocol:** Call provider search API first; write confirmed ID + title to binding config before ingesting. Halt if result is empty.
-**Status:** Open — close as each ID is verified during Phase 1A.
+**Status:** Partially closed. Remaining items are Phase 1A-iii (fiscal/IMF) scope.
 
 ### G-10: HY spread (BAMLH0A0HYM2) truncated to 2023 on FRED
 **Problem:** ICE/BofA data-licensing change truncated all ICE BofA series on FRED to start 2023-06-19. `premium.high_yield_spread` therefore only has ~787 days of history. Z-score and percentile are relative to a 3-year window — historically misleading (current spreads look "very tight" vs 3 years but the full ICE history shows this is less extreme).
