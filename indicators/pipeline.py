@@ -17,7 +17,7 @@ from typing import Optional
 import pandas as pd
 import yaml
 
-from indicators.loader import fetch_series, fetch_wb_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
@@ -147,11 +147,13 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     bindings = load_bindings(_CONFIG_DIR / "us_bindings.yaml")
     raw_bindings = [b for b in bindings if b.provider == "FRED" and b.verified]
     wb_bindings = [b for b in bindings if b.provider == "WorldBank" and b.verified]
+    imf_bindings = [b for b in bindings if b.provider == "IMF" and b.verified]
     derived_bindings = [b for b in bindings if b.provider == "derived" and b.verified]
     skipped = [b for b in bindings if not b.verified]
 
     print(f"\n  FRED series      : {len(raw_bindings)}")
     print(f"  WorldBank series : {len(wb_bindings)}")
+    print(f"  IMF series       : {len(imf_bindings)}")
     print(f"  Derived          : {len(derived_bindings)}")
     print(f"  Skipped (deferred / ⚠ VERIFY) : {len(skipped)}")
     if skipped:
@@ -254,8 +256,53 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             logger.exception("[ERROR] %s: %s", binding.id, exc)
             results["error"] += 1
 
-    # ── Pass 3: Derived series ─────────────────────────────────────────────
-    print("\n─── Pass 3: Derived series ────────────────────────────────────────")
+    # ── Pass 3: IMF series ────────────────────────────────────────────────
+    print("\n─── Pass 3: IMF series ─────────────────────────────────────────────")
+    for binding in imf_bindings:
+        try:
+            raw = fetch_imf_series(
+                binding.series_id,
+                country_iso2=binding.country,
+                frequency=binding.frequency,
+                force_refresh=force_refresh,
+            )
+            if raw is None or raw.empty:
+                print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                results["empty"] += 1
+                continue
+
+            transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+            transformed = transformed.dropna()
+
+            if transformed.empty:
+                print(f"  [EMPTY after transform] {binding.id}")
+                results["empty"] += 1
+                continue
+
+            transformed_store[binding.id] = transformed
+
+            signals = build_signals(transformed, binding, raw)
+            latest = signals[-1] if signals else None
+
+            if latest:
+                warns = sanity_check(latest, binding)
+                for w in warns:
+                    print(f"  [SANITY WARN] {w}")
+                    results["sanity_warn"] += 1
+
+            n = upsert_signals(conn, signals)
+            status = "PROXY" if binding.is_proxy else "OK"
+            latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+            latest_dt = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  A  {latest_dt}  {latest_val}  ({n} rows)")
+            results["ok"] += 1
+
+        except Exception as exc:
+            logger.exception("[ERROR] %s: %s", binding.id, exc)
+            results["error"] += 1
+
+    # ── Pass 4: Derived series ─────────────────────────────────────────────
+    print("\n─── Pass 4: Derived series ────────────────────────────────────────")
     for binding in derived_bindings:
         try:
             series = compute_derived(binding, raw_store, transformed_store)

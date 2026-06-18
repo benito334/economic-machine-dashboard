@@ -97,15 +97,18 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
   from WB v2 indicator API (confirmed 2026-06-18). Slots created with `verified: false`,
   `source_tier: deferred`. See G-03 for resolution path.
 
-**Still open (Phase 1A-iii):**
-- `RTFPNAUSA632NRUG` (TFP, Penn World Table)
-- `PPIACO` (broad PPI commodities)
-- `HDTGPDUSQ163N` (BIS household debt/GDP)
-- `BCNSDODNS` (nonfin corporate debt)
-- `FYFSD`, `FYOINT` (US fiscal primary balance, FRED)
-- `GGXONLB`, `GGSB` (IMF WEO fiscal)
+**Verified in Phase 1A-iii (2026-06-18) — all active series confirmed:**
+- ✅ `RTFPNAUSA632NRUG` — TFP (PWT, annual, via FRED)
+- ✅ `PPIACO` — Broad PPI all commodities (FRED, monthly)
+- ✅ `HDTGPDUSQ163N` — Household debt/GDP (BIS, FRED, quarterly)
+- ✅ `BCNSDODNS` — Nonfinancial corporate debt (FRED, quarterly)
+- ✅ `FYFSD` — Federal surplus/deficit (FRED, annual)
+- ✅ `FYOINT` — Federal interest outlays (FRED, annual)
+- ✅ `pb` — IMF primary balance % GDP (Datamapper, 96 obs; replaces `GGXONLB`)
+- ✅ `GGCB_G01_PGDP_PT` — IMF structural balance % pot. GDP (Datamapper; replaces `GGSB`)
+- ✅ `GC.REV.XGRT.GD.ZS` — WB govt revenue % GDP (bound)
 
-**Status:** Partially closed. Remaining items are Phase 1A-iii (fiscal/IMF) scope.
+**Status:** ✅ CLOSED. No unresolved ⚠ VERIFY items remain in active config. Phase 2 per-country bindings are the next scope.
 
 ### G-10: HY spread (BAMLH0A0HYM2) truncated to 2023 on FRED
 **Problem:** ICE/BofA data-licensing change truncated all ICE BofA series on FRED to start 2023-06-19. `premium.high_yield_spread` therefore only has ~787 days of history. Z-score and percentile are relative to a 3-year window — historically misleading (current spreads look "very tight" vs 3 years but the full ICE history shows this is less extreme).

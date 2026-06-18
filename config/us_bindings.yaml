@@ -985,12 +985,169 @@ bindings:
     sanity_min: 30.0
     sanity_max: 90.0
 
+  # ─── Lens A supplement — TFP (structural growth) ─────────────────────────
+
+  - id: growth.tfp
+    series_id: RTFPNAUSA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "Total Factor Productivity YoY% (Penn World Tables via FRED). Secular TFP decline compresses potential growth; acceleration supports non-inflationary expansion."
+    sanity_min: -0.05
+    sanity_max: 0.08
+
+  # ─── Lens B supplement — Inflation upstream ───────────────────────────────
+
+  - id: inflation.ppi_broad
+    series_id: PPIACO
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Broad producer price index (all commodities) YoY%. Upstream price pressure transmits to consumer prices with a 3–6 month lag; leads CPI trajectory."
+    sanity_min: -0.30
+    sanity_max: 0.40
+
+  # ─── Lens D supplement — Debt cycle detail ────────────────────────────────
+
+  - id: credit.household_debt_gdp
+    series_id: HDTGPDUSQ163N
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 65.0
+    linkage: "Household debt as % of GDP (BIS measure, quarterly). Above equilibrium signals leveraged consumer balance sheets; declining from peak precedes spending compression."
+    sanity_min: 20.0
+    sanity_max: 150.0
+
+  - id: credit.corporate_debt
+    series_id: BCNSDODNS
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.050
+    linkage: "Nonfinancial corporate debt YoY%. Rapid accumulation amplifies the leverage cycle; contraction signals deleveraging and credit-cycle compression."
+    sanity_min: -0.30
+    sanity_max: 0.30
+
+  # ─── Lens I — Fiscal ──────────────────────────────────────────────────────
+
+  - id: fiscal.federal_deficit
+    series_id: FYFSD
+    provider: FRED
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: millions_usd
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Federal surplus (+) or deficit (−) in millions of dollars. Persistent large deficits monetise the cycle; a Z-score captures how extreme the current fiscal position is relative to history."
+    sanity_min: -3000000.0
+    sanity_max: 500000.0
+
+  - id: fiscal.interest_payments
+    series_id: FYOINT
+    provider: FRED
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: millions_usd
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 300000.0
+    linkage: "Federal interest outlays in $M. Rising share of budget spending crowds out discretionary fiscal support; extreme levels create sovereign debt dynamics risk."
+    sanity_min: 0.0
+    sanity_max: 2000000.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 18.0
+    linkage: "General government revenue (excl. grants) as % of GDP. Measures fiscal capacity; below equilibrium indicates revenue shortfall constraining spending flexibility."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "IMF general government primary balance as % of GDP (excl. interest). Negative = primary deficit; stabilising the debt ratio requires a primary surplus near r × d (real rate × debt/GDP)."
+    sanity_min: -20.0
+    sanity_max: 10.0
+
+  - id: fiscal.structural_balance
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: coincident
+    transformation: level
+    units: pct_pot_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -2.0
+    linkage: "IMF cyclically adjusted (structural) fiscal balance as % of potential GDP. Removes output-gap effects to reveal the underlying fiscal policy stance; tightening = balance rising toward zero."
+    sanity_min: -25.0
+    sanity_max: 10.0
+    notes: "Available from 2001 (IMF WEO vintage). Forecasts filtered to current year only."
+
   # ─── DEFERRED — not yet ingested ──────────────────────────────────────────
-  # growth.tfp              → RTFPNAUSA632NRUG  ⚠ VERIFY (PWT TFP, annual)
-  # inflation.commodity_index → PPIACO          ⚠ VERIFY
-  # credit.household_debt_gdp → HDTGPDUSQ163N   ⚠ VERIFY
-  # credit.corporate_debt   → BCNSDODNS          ⚠ VERIFY
-  # capital.portfolio_flows → IMF BOP / TIC      — Phase 1A-iii
-  # currency.ppp_gap        → OECD/WB PPP derived — Phase 1A-iii
-  # fiscal.*                → IMF WEO            — Phase 1A-iii
-  # climate.*               → EM-DAT (manual)    — slot only
+  # capital.portfolio_flows → IMF BOP / Treasury TIC — Phase 2
+  # currency.ppp_gap        → OECD/WB PPP derived    — Phase 2
+  # climate.*               → EM-DAT (manual)         — slot only

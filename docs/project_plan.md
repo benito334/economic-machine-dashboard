@@ -375,11 +375,13 @@ The Credit/Debt/Fiscal lens must bifurcate leverage for EM countries:
 4. ✅ 9 new WB fetcher tests; full suite 60/60 passing
 5. ✅ **Acceptance gate passed:** 50/50 signals ingesting, 0 empty, 0 errors, 0 sanity warnings
 
-### Phase 1A-iii — IMF/OECD fiscal lenses ← **next**
-1. Add `imfp` / SDMX fetcher for IMF WEO data.
-2. Verify and add fiscal bindings: `FYFSD`/`FYOINT` (FRED primary balance), `GGXONLB`, `GGSB` (IMF WEO), `GC.REV.XGRT.GD.ZS` (WB, already verified — bind now).
-3. Also verify remaining FRED series: `PPIACO`, `HDTGPDUSQ163N`, `BCNSDODNS`.
-4. **Acceptance gate:** all fiscal series ingest with no empty results; sanity checks pass.
+### Phase 1A-iii — IMF/OECD fiscal lenses ✅ COMPLETE (2026-06-18)
+1. ✅ `fetch_imf_series()` added to `loader.py` using IMF Datamapper REST API (`https://www.imf.org/external/datamapper/api/v1/{indicator}/{iso3}`). No auth required. ISO-3 country codes (USA). Forecast-year filter (year ≤ current year). Parquet cache + tenacity retry.
+2. ✅ FRED fiscal bindings verified and added: `FYFSD` ✓ (federal surplus/deficit, A), `FYOINT` ✓ (interest outlays, A), `PPIACO` ✓ (broad PPI, M), `HDTGPDUSQ163N` ✓ (household debt/GDP, Q), `BCNSDODNS` ✓ (corporate debt, Q), `RTFPNAUSA632NRUG` ✓ (TFP PWT, A — was last ⚠ VERIFY item)
+3. ✅ IMF bindings: `pb` ✓ (primary balance % GDP, 96 obs 1929–2024), `GGCB_G01_PGDP_PT` ✓ (structural/cyclically-adjusted balance % potential GDP, 26 obs 2001–2026). Note: GGXONLB/GGSB are not the Datamapper IDs; actual IDs are `pb` and `GGCB_G01_PGDP_PT`.
+4. ✅ WB: `GC.REV.XGRT.GD.ZS` ✓ bound (`fiscal.govt_revenue_gdp`)
+5. ✅ 13 new IMF loader tests; full suite 73/73 passing
+6. ✅ **Acceptance gate passed:** 59/59 signals ingesting, 0 empty, 0 errors, 0 sanity warnings; no ⚠ VERIFY items remain in active config
 
 ### Phase 1B — Composites & Snapshot Engine
 1. Daily orchestration compiles current signal state.
@@ -478,8 +480,11 @@ Build the `IndicatorConcept` slots and leave bindings as `provider="manual"`, `s
 **Verified and ingesting (`✓`):**
 `CIVPART`, `GACDFSA066MSFRBPHI` *(corrected from original `GACDISA066MSFRBPHI`)*, `GB.XPD.RSDV.GD.ZS`, `IEABC`, `IIPUSNETIQ`, `RBUSBIS`, `BN.CAB.XOKA.GD.ZS`, `NE.EXP.GNFS.ZS`, `NE.IMP.GNFS.ZS`, `BX.KLT.DINV.WD.GD.ZS`, `PX.REX.REER`, `GC.DOD.TOTL.GD.ZS`, `SP.POP.DPND`, `SP.POP.GROW`, `SP.URB.TOTL.IN.ZS`, `SL.TLF.CACT.ZS`, `GC.REV.XGRT.GD.ZS` *(verified; bound in Phase 1A-iii fiscal section)*.
 
-**Must verify before ingestion (`⚠`) — Phase 1A-iii scope:**
-`RTFPNAUSA632NRUG`, `PPIACO`, `HDTGPDUSQ163N`, `BCNSDODNS`, `FYFSD`, `FYOINT`, `GGXONLB`, `GGSB`, plus all per-country bindings in Phase 2.
+**Verified in Phase 1A-iii (2026-06-18):**
+`RTFPNAUSA632NRUG` ✓, `PPIACO` ✓, `HDTGPDUSQ163N` ✓, `BCNSDODNS` ✓, `FYFSD` ✓, `FYOINT` ✓. IMF Datamapper IDs: `pb` ✓ (primary balance, replaces `GGXONLB`), `GGCB_G01_PGDP_PT` ✓ (structural balance, replaces `GGSB`).
+
+**Must verify before ingestion (`⚠`) — Phase 2+ scope:**
+All per-country bindings (Eurozone, Japan, UK, etc.).
 
 **API unavailable — deferred (`⛔`):**
 `PV.EST`, `CC.EST`, `GE.EST`, `RL.EST`, `RQ.EST` — WGI governance series deleted/archived from WB v2 indicator API (confirmed 2026-06-18). Deferred slots exist in `us_bindings.yaml`. Resolution: WGI bulk CSV download.

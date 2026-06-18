@@ -1,6 +1,7 @@
-"""FRED and World Bank data fetchers with parquet-based disk cache."""
+"""FRED, World Bank, and IMF data fetchers with parquet-based disk cache."""
 from __future__ import annotations
 
+import datetime
 import logging
 import os
 import time
@@ -196,4 +197,113 @@ def fetch_wb_series(
 
     series.to_frame().to_parquet(cache)
     logger.debug("[cached] WB %s/%s → %s (%d obs)", country_iso, series_id, cache.name, len(series))
+    return series
+
+
+# ─── IMF Datamapper fetcher ──────────────────────────────────────────────────
+
+_IMF_BASE = "https://www.imf.org/external/datamapper/api/v1"
+
+# Map 2-letter country codes (used in CountryBinding) to IMF Datamapper ISO-3 codes
+_IMF_COUNTRY_MAP: dict[str, str] = {
+    "US": "USA",
+    "EA": "EUR",
+    "JP": "JPN",
+    "GB": "GBR",
+    "CN": "CHN",
+    "KR": "KOR",
+    "IN": "IND",
+    "BR": "BRA",
+    "SA": "SAU",
+    "RU": "RUS",
+}
+
+
+def _imf_cache_path(indicator: str, country_iso2: str) -> Path:
+    safe = indicator.replace(".", "_")
+    return RAW_CACHE_DIR / f"imf_{country_iso2}_{safe}.parquet"
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_imf_from_api(indicator: str, country_iso3: str) -> pd.Series:
+    url = f"{_IMF_BASE}/{indicator}/{country_iso3}"
+    resp = requests.get(url, timeout=40)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    vals: dict = (
+        payload.get("values", {})
+        .get(indicator, {})
+        .get(country_iso3, {})
+    )
+    if not vals:
+        raise ValueError(
+            f"Empty IMF Datamapper response for {indicator}/{country_iso3}. "
+            f"Top-level keys: {list(payload.keys())}"
+        )
+
+    current_year = datetime.date.today().year
+    records = [
+        (int(yr), float(v))
+        for yr, v in vals.items()
+        if v is not None and int(yr) <= current_year
+    ]
+    if not records:
+        raise ValueError(f"All values null or future-only for {indicator}/{country_iso3}")
+
+    dates = pd.to_datetime([str(yr) for yr, _ in records], format="%Y") + pd.offsets.YearEnd(0)
+    values = [v for _, v in records]
+    series = pd.Series(values, index=dates, name="value", dtype=float)
+    series.index.name = "date"
+    return series.sort_index()
+
+
+def fetch_imf_series(
+    indicator: str,
+    country_iso2: str = "US",
+    frequency: str = "A",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """
+    Return a pandas Series for the given IMF Datamapper indicator.
+
+    Calls https://www.imf.org/external/datamapper/api/v1/{indicator}/{iso3}.
+    Forecast years (year > current calendar year) are filtered out.
+    Annual data index is converted to year-end timestamps.
+    Caches to parquet; TTL same as annual series (300 days).
+    Returns None and logs a warning if the result is empty.
+    """
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _imf_cache_path(indicator, country_iso2)
+
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] IMF %s/%s", country_iso2, indicator)
+        df = pd.read_parquet(cache)
+        return df["value"]
+
+    country_iso3 = _IMF_COUNTRY_MAP.get(country_iso2)
+    if not country_iso3:
+        logger.error("[IMF] No ISO-3 mapping for country '%s'", country_iso2)
+        return None
+
+    logger.info("[IMF fetch] %s/%s", country_iso2, indicator)
+
+    try:
+        series = _fetch_imf_from_api(indicator, country_iso3)
+    except Exception as exc:
+        logger.error("[IMF] Failed to fetch %s/%s: %s", country_iso2, indicator, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for IMF %s/%s", country_iso2, indicator)
+            df = pd.read_parquet(cache)
+            return df["value"]
+        return None
+
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] IMF %s/%s → %s (%d obs)", country_iso2, indicator, cache.name, len(series))
     return series

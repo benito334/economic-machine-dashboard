@@ -90,13 +90,13 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | :--- | :--- | :--- |
 | 1A-i FRED lenses A–E + Master | ✅ **Done** | 37/37 signals live in DuckDB, 51 tests pass |
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
-| 1A-iii IMF/OECD fiscal lenses | ⬜ **Next** | Verify FYFSD/FYOINT, GGXONLB/GGSB, PPIACO, HDTGPDUSQ163N, BCNSDODNS |
-| 1B Composites engine | ⬜ Pending | Growth Score, Inflation Score, Regime Quadrant |
+| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 73 tests pass; no unresolved ⚠ in active config |
+| 1B Composites engine | ⬜ **Next** | Growth Score, Inflation Score, Regime Quadrant |
 | 1C Streamlit dashboard | ⬜ Pending | 4-quadrant scatter, accordions, conflict panel |
 | 2 Country rollout | ⬜ Pending | Eurozone first |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with Phase 1A-iii.
+**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with Phase 1B (composites engine).
 
 ---
 
@@ -116,12 +116,18 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - Lens H (governance): 5 WGI deferred slots — `.EST` series deleted/archived from WB v2 API
 - Pipeline Pass 2 (WorldBank) + Pass 3 (derived); 60/60 tests; 50/50 signals live
 
-### Phase 1A-iii — IMF/OECD fiscal lenses ← **next**
-1. Verify and add FRED fiscal series: `FYFSD` (federal surplus/deficit), `FYOINT` (net interest).
-2. Add `imfp` / SDMX fetcher for IMF WEO series: `GGXONLB` (primary balance % GDP), `GGSB` (structural balance).
-3. Bind `GC.REV.XGRT.GD.ZS` (already verified — WB revenue % GDP).
-4. Verify remaining FRED ⚠ IDs: `PPIACO` (broad PPI), `HDTGPDUSQ163N` (BIS household debt/GDP), `BCNSDODNS` (nonfin corp debt).
-5. **Acceptance gate:** all fiscal series ingest with no empty results; sanity checks pass.
+### Phase 1A-iii — IMF/OECD fiscal lenses ✅ COMPLETE (2026-06-18)
+- `fetch_imf_series()` added to `loader.py` using IMF Datamapper REST API (no auth, ISO-3 country codes, forecast-year filter)
+- 9 new bindings: TFP (RTFPNAUSA632NRUG), PPI broad (PPIACO), household debt/GDP (HDTGPDUSQ163N), corporate debt (BCNSDODNS), federal deficit (FYFSD), interest payments (FYOINT), govt revenue % GDP (WB), IMF primary balance (`pb`), IMF structural balance (`GGCB_G01_PGDP_PT`)
+- Pass 3 (IMF) + Pass 4 (derived) in pipeline; 73/73 tests; 59/59 signals live
+- All ⚠ VERIFY items in active config resolved; no empty results; 0 sanity warnings
+- Note: `fiscal.structural_balance` last obs is 2026-12-31 (IMF in-year WEO projection) — flagged in `notes`
+
+### Phase 1B — Composites & Snapshot Engine ← **next**
+1. Daily orchestration compiles current signal state.
+2. Compute Growth Score, Inflation Score, Regime Quadrant (+ Confidence %), Disequilibrium Score.
+3. Archive composite snapshots to time-indexed DuckDB tables.
+4. **Acceptance gate:** DB resolves multi-year composite timeline; quadrant labels match historical regimes visually.
 
 ### Phase 1B — Composites & Snapshot Engine
 1. Daily orchestration compiles current signal state.
