@@ -28,6 +28,7 @@ from plotly.subplots import make_subplots
 from dashboard.charting_data import (
     available_dates_for_yield_curve,
     load_composite_history,
+    load_debt_stress_component_dates,
     load_debt_stress_history,
     load_series_catalog,
     load_signal_history,
@@ -314,17 +315,19 @@ app.layout = dbc.Container(
                             dbc.Col(
                                 dbc.Card(dbc.CardBody(
                                     html.Div(id="debt-stress-info-box"),
-                                    style={"padding": "12px"},
-                                ), style={"position": "relative"}),
-                                width=3,
+                                    style={"padding": "16px"},
+                                )),
+                                width=12,
                             ),
+                        ], className="pt-2"),
+                        dbc.Row([
                             dbc.Col(
                                 dcc.Graph(
                                     id="debt-stress-chart",
                                     config={"displayModeBar": True},
-                                    style={"height": "70vh"},
+                                    style={"height": "65vh"},
                                 ),
-                                width=9,
+                                width=12,
                             ),
                         ], className="pt-2"),
                     ]),
@@ -976,34 +979,60 @@ def _parse_stress_components(raw: str) -> dict[str, int]:
     return result
 
 
-def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> list:
-    """Build the left-panel children for the Debt Stress tab."""
-    muted   = {"color": "var(--muted-color)"}
-    val_s   = {"color": "var(--font-color)", "fontWeight": "500"}
-    row_sty = {
-        "display": "flex", "justifyContent": "space-between", "alignItems": "center",
-        "padding": "5px 0", "borderBottom": "1px solid var(--border-color)",
-        "fontSize": "0.83rem",
-    }
+def _fmt_period(ts: pd.Timestamp, freq: str) -> str:
+    """Format a timestamp as 'YYYY-Qn' (quarterly) or 'YYYY' (annual)."""
+    if freq == "Q":
+        q = (ts.month - 1) // 3 + 1
+        return f"{ts.year}-Q{q}"
+    return str(ts.year)
+
+
+def _carry_expires(last_obs: pd.Timestamp, freq: str, max_carry_q: int) -> str:
+    """Return a human label for the quarter when the carry-forward expires."""
+    last_q = last_obs.to_period("Q")
+    carry_end = last_q + max_carry_q
+    return f"{carry_end.year}-Q{carry_end.quarter}"
+
+
+def _build_debt_stress_info(
+    ds_latest: pd.Series | None,
+    theme_name: str,
+    component_dates: dict[str, Any] | None = None,
+) -> list:
+    """Build the full-width top-panel children for the Debt Stress tab."""
+    muted = {"color": "var(--muted-color)"}
 
     if ds_latest is None or ds_latest.empty:
         return [html.Div("No debt stress data — run pipeline.", style=muted)]
 
-    score    = ds_latest.get("stress_score")
-    n_comp   = int(ds_latest.get("n_components", 0))
-    low_cov  = bool(ds_latest.get("low_coverage", False))
+    # ── Load stress config for weights, frequencies, carry cap ────────────────
+    try:
+        from indicators.longterm_stress import load_longterm_stress_config
+        stress_cfg = load_longterm_stress_config()
+        comp_cfg_list = stress_cfg.get("components", [])
+        stale_cfg     = stress_cfg.get("staleness", {})
+        max_carry_q   = int(stale_cfg.get("max_carry_quarters", 4))
+        halflife      = stale_cfg.get("stale_weight_halflife")
+        min_frac      = float(stale_cfg.get("stale_min_weight_fraction", 0.20))
+        extrap_on     = bool(stale_cfg.get("extrapolation", {}).get("enabled", False))
+    except Exception:
+        comp_cfg_list, max_carry_q, halflife, min_frac, extrap_on = [], 4, None, 0.20, False
+
+    comp_cfg_by_id = {c["id"]: c for c in comp_cfg_list}
+
+    score   = ds_latest.get("stress_score")
+    n_comp  = int(ds_latest.get("n_components", 0))
+    ret_wt  = ds_latest.get("retained_weight")
+    low_cov = bool(ds_latest.get("low_coverage", False))
     stale_dict  = _parse_stress_components(ds_latest.get("stale_components") or "")
     extrap_dict = _parse_stress_components(ds_latest.get("extrapolated_components") or "")
-    as_of_ts  = ds_latest.get("as_of")
+    as_of_ts = ds_latest.get("as_of")
     try:
-        as_of_str = pd.Timestamp(as_of_ts).strftime("%b %Y")
+        as_of_ts_p = pd.Timestamp(as_of_ts)
+        as_of_str  = as_of_ts_p.strftime("%b %Y")
     except Exception:
-        as_of_str = str(as_of_ts)[:7]
-
-    def _fmt(v: Any) -> str:
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return "—"
-        return f"{v:+.2f}"
+        as_of_ts_p = None
+        as_of_str  = str(as_of_ts)[:7]
 
     if score is not None and not (isinstance(score, float) and pd.isna(score)):
         band_label, band_color = _stress_band(float(score))
@@ -1012,91 +1041,238 @@ def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> lis
         band_label, band_color = ("⚠ low coverage" if low_cov else "No data"), "#888"
         score_display = "—"
 
-    children: list = [
-        html.Div(
-            f"Debt Stress  ·  {as_of_str}",
-            style={"fontSize": "0.72rem", "color": "var(--muted-color)",
-                   "textTransform": "uppercase", "letterSpacing": "0.08em",
-                   "marginBottom": "6px"},
-        ),
-        html.Div(
-            score_display,
-            style={"fontSize": "2.0rem", "fontWeight": "700", "color": band_color,
-                   "fontFamily": "monospace", "lineHeight": "1.1"},
-        ),
-        html.Div(
-            band_label,
-            style={"fontSize": "0.82rem", "color": band_color, "opacity": "0.85",
-                   "marginBottom": "8px"},
-        ),
-        html.Div(
-            f"{n_comp}/7 components" + (" · ⚠ low coverage" if low_cov else ""),
-            style={"fontSize": "0.7rem", "color": "#888", "marginBottom": "12px"},
-        ),
-        html.Hr(style={"margin": "6px 0", "borderColor": "var(--border-color)"}),
-    ]
+    ret_str = f"{ret_wt * 100:.0f}%" if (ret_wt is not None and not pd.isna(ret_wt)) else "—"
 
-    # Per-component Z-score bars
+    # ── Score summary strip ────────────────────────────────────────────────────
+    summary_strip = html.Div(
+        style={
+            "display": "flex", "alignItems": "baseline", "gap": "20px",
+            "marginBottom": "14px", "flexWrap": "wrap",
+        },
+        children=[
+            html.Div([
+                html.Span(
+                    "DEBT STRESS",
+                    style={"fontSize": "0.65rem", "color": "var(--muted-color)",
+                           "textTransform": "uppercase", "letterSpacing": "0.08em",
+                           "marginRight": "6px"},
+                ),
+                html.Span(
+                    f"as of {as_of_str}",
+                    style={"fontSize": "0.65rem", "color": "var(--muted-color)"},
+                ),
+            ]),
+            html.Span(
+                score_display,
+                style={"fontSize": "2.2rem", "fontWeight": "700", "color": band_color,
+                       "fontFamily": "monospace", "lineHeight": "1.0"},
+            ),
+            html.Span(
+                band_label,
+                style={"fontSize": "0.88rem", "color": band_color, "opacity": "0.85"},
+            ),
+            html.Span(
+                f"{n_comp}/7 components active",
+                style={"fontSize": "0.75rem", "color": "var(--muted-color)"},
+            ),
+            html.Span(
+                f"retained weight: {ret_str}",
+                style={"fontSize": "0.75rem", "color": "var(--muted-color)"},
+            ),
+            *(
+                [html.Span("⚠ LOW COVERAGE",
+                           style={"fontSize": "0.75rem", "color": "#E8734C",
+                                  "fontWeight": "600"})]
+                if low_cov else []
+            ),
+        ],
+    )
+
+    # ── Component detail table ─────────────────────────────────────────────────
+    th_sty = {
+        "textAlign": "left", "padding": "5px 10px",
+        "fontSize": "0.68rem", "textTransform": "uppercase",
+        "letterSpacing": "0.06em", "color": "var(--muted-color)",
+        "borderBottom": "1px solid var(--border-color)",
+        "whiteSpace": "nowrap",
+    }
+    td_sty = {
+        "padding": "6px 10px", "fontSize": "0.82rem",
+        "borderBottom": "1px solid var(--border-color)",
+        "color": "var(--font-color)", "verticalAlign": "middle",
+    }
+    td_mono = {**td_sty, "fontFamily": "monospace"}
+
+    header_row = html.Tr([
+        html.Th("Component",        style=th_sty),
+        html.Th("Freq",             style={**th_sty, "textAlign": "center"}),
+        html.Th("Config Wt",        style={**th_sty, "textAlign": "center"}),
+        html.Th("Eff Wt",           style={**th_sty, "textAlign": "center"}),
+        html.Th("Last Data",        style={**th_sty, "textAlign": "center"}),
+        html.Th("Z-Score",          style={**th_sty, "textAlign": "right"}),
+        html.Th("Status / Detail",  style=th_sty),
+    ])
+
+    rows = []
     for col, label, direction in _DEBT_STRESS_COMPONENTS:
-        z = ds_latest.get(col)
-        cid = col.replace("z_", "")
-        lag_q   = stale_dict.get(cid, 0)
+        cid   = col.replace("z_", "")
+        z     = ds_latest.get(col)
+        val   = ds_latest.get(f"val_{cid}")
+        cfg   = comp_cfg_by_id.get(cid, {})
+        freq  = cfg.get("frequency", "Q")
+        config_wt = float(cfg.get("weight", 0.0))
+        lag_q    = stale_dict.get(cid, 0)
         extrap_q = extrap_dict.get(cid, 0)
+        z_missing = z is None or (isinstance(z, float) and pd.isna(z))
         bar_color = "#E8734C" if direction == "positive" else "#4C9BE8"
 
-        if z is None or (isinstance(z, float) and pd.isna(z)):
-            bar_html = html.Span("—", style={"color": "#555", "fontSize": "0.78rem"})
+        # ── Last data cell ───────────────────────────────────────────────────
+        last_obs: pd.Timestamp | None = (component_dates or {}).get(cid)
+        if last_obs is not None:
+            last_data_str = _fmt_period(last_obs, freq)
+        elif not z_missing:
+            last_data_str = "active (derived)"
         else:
-            bar_w = min(abs(float(z)) / 2.0 * 100, 100)
-            bar_html = html.Div(
-                style={"display": "flex", "alignItems": "center", "gap": "4px"},
-                children=[
-                    html.Div(style={
-                        "width": f"{bar_w:.0f}%", "maxWidth": "70px", "height": "6px",
-                        "backgroundColor": bar_color, "borderRadius": "2px",
-                        "opacity": "0.7",
-                    }),
-                    html.Span(f"{z:+.2f}", style={"fontSize": "0.78rem",
-                                                   "color": bar_color,
-                                                   "fontFamily": "monospace"}),
-                ],
-            )
+            last_data_str = "derived"
 
-        if lag_q > 0:
-            badge_node = html.Span(
-                f" stale {lag_q}q", style={
-                    "background": "#7a4a00", "color": "#ffcc80",
-                    "padding": "0 3px", "borderRadius": "3px",
-                    "fontSize": "0.65rem", "marginLeft": "4px",
-                }
-            )
-        elif extrap_q > 0:
-            badge_node = html.Span(
-                f" extrap {extrap_q}q", style={
-                    "background": "#2a3a5a", "color": "#88aadd",
-                    "padding": "0 3px", "borderRadius": "3px",
-                    "fontSize": "0.65rem", "marginLeft": "4px",
-                }
-            )
+        # ── Effective weight ─────────────────────────────────────────────────
+        if z_missing and extrap_q == 0:
+            eff_wt = 0.0
+        elif halflife and halflife > 0 and lag_q > 0:
+            decay = max(0.0, 1.0 - lag_q / halflife)
+            eff_wt = config_wt * decay
+            if eff_wt < min_frac * config_wt:
+                eff_wt = 0.0
         else:
-            badge_node = None
+            eff_wt = config_wt if not z_missing else 0.0
 
-        label_children: list = [html.Span(label, style=muted)]
-        if badge_node:
-            label_children.append(badge_node)
-
-        children.append(
-            html.Div([
-                html.Div(label_children, style={"display": "flex", "alignItems": "center"}),
-                bar_html,
-            ], style=row_sty)
+        config_wt_str = f"{config_wt * 100:.0f}%"
+        eff_wt_str    = f"{eff_wt * 100:.0f}%"
+        eff_wt_color  = (
+            "var(--font-color)" if eff_wt == config_wt
+            else ("#E8734C" if eff_wt == 0 else "#F4C842")
         )
 
-    children.append(html.Div(
-        "⚠ Bands are NOT validated risk thresholds",
-        style={"fontSize": "0.65rem", "color": "#555", "marginTop": "8px"},
-    ))
-    return children
+        # ── Z-score cell ─────────────────────────────────────────────────────
+        if z_missing:
+            z_cell = html.Td("—", style={**td_mono, "color": "#555", "textAlign": "right"})
+        else:
+            bar_w = min(abs(float(z)) / 2.5 * 80, 80)
+            z_cell = html.Td(
+                html.Div(
+                    style={"display": "flex", "alignItems": "center",
+                           "justifyContent": "flex-end", "gap": "6px"},
+                    children=[
+                        html.Div(style={
+                            "width": f"{bar_w:.0f}px", "height": "6px",
+                            "backgroundColor": bar_color, "borderRadius": "2px",
+                            "opacity": "0.65", "flexShrink": "0",
+                        }),
+                        html.Span(f"{float(z):+.2f}",
+                                  style={"color": bar_color, "fontFamily": "monospace",
+                                         "fontSize": "0.82rem"}),
+                    ],
+                ),
+                style={**td_sty, "textAlign": "right"},
+            )
+
+        # ── Status / Detail cell ──────────────────────────────────────────────
+        if extrap_q > 0:
+            status_badge = html.Span(
+                f"EXTRAPOLATED · {extrap_q}q stale",
+                style={"background": "#2a3a5a", "color": "#88aadd",
+                       "padding": "1px 5px", "borderRadius": "3px", "fontSize": "0.72rem"},
+            )
+            if last_obs is not None:
+                detail_text = f" · last: {_fmt_period(last_obs, freq)}"
+            else:
+                detail_text = ""
+            status_cell_children: list = [status_badge, html.Span(detail_text, style={"color": "var(--muted-color)", "fontSize": "0.75rem"})]
+
+        elif lag_q > 0:
+            status_badge = html.Span(
+                f"STALE · {lag_q}q excess",
+                style={"background": "#7a4a00", "color": "#ffcc80",
+                       "padding": "1px 5px", "borderRadius": "3px", "fontSize": "0.72rem"},
+            )
+            if last_obs is not None:
+                detail_text = f" · last: {_fmt_period(last_obs, freq)} · active with decay"
+            else:
+                detail_text = " · active with decay"
+            status_cell_children = [status_badge, html.Span(detail_text, style={"color": "var(--muted-color)", "fontSize": "0.75rem"})]
+
+        elif z_missing:
+            # Blank — explain why
+            if last_obs is not None and as_of_ts_p is not None:
+                total_lag = max(0, as_of_ts_p.to_period("Q").ordinal - last_obs.to_period("Q").ordinal)
+                expected  = 4 if freq == "A" else 1
+                excess    = max(0, total_lag - expected)
+                carry_end = _carry_expires(last_obs, freq, max_carry_q)
+                reason = (
+                    f"carry expired · last data: {_fmt_period(last_obs, freq)} · "
+                    f"carry cap {max_carry_q}q → covered to {carry_end}"
+                )
+                if extrap_on:
+                    reason += f" · excess lag {excess}q ≤ carry cap (no extrap trigger)"
+                else:
+                    reason += " · extrapolation disabled"
+                if val is not None and not (isinstance(val, float) and pd.isna(val)):
+                    reason += f" · last known value: {float(val):.2f}"
+            else:
+                reason = "derived series · insufficient data for Z-score"
+            status_badge = html.Span(
+                "BLANK",
+                style={"background": "#3a2020", "color": "#cc7777",
+                       "padding": "1px 5px", "borderRadius": "3px", "fontSize": "0.72rem"},
+            )
+            status_cell_children = [
+                status_badge,
+                html.Span(f" {reason}", style={"color": "var(--muted-color)", "fontSize": "0.75rem"}),
+            ]
+
+        else:
+            status_badge = html.Span(
+                "ACTIVE",
+                style={"background": "#1a3a1a", "color": "#88cc88",
+                       "padding": "1px 5px", "borderRadius": "3px", "fontSize": "0.72rem"},
+            )
+            status_cell_children = [status_badge]
+
+        row_bg = "rgba(60,20,20,0.15)" if z_missing else "transparent"
+        rows.append(html.Tr(
+            style={"backgroundColor": row_bg},
+            children=[
+                html.Td(label, style=td_sty),
+                html.Td(
+                    "Annual" if freq == "A" else "Quarterly",
+                    style={**td_sty, "textAlign": "center",
+                           "color": "var(--muted-color)", "fontSize": "0.75rem"},
+                ),
+                html.Td(config_wt_str, style={**td_mono, "textAlign": "center"}),
+                html.Td(
+                    eff_wt_str,
+                    style={**td_mono, "textAlign": "center", "color": eff_wt_color,
+                           "fontWeight": "600" if eff_wt < config_wt else "400"},
+                ),
+                html.Td(last_data_str, style={**td_mono, "textAlign": "center",
+                                              "color": "var(--muted-color)", "fontSize": "0.75rem"}),
+                z_cell,
+                html.Td(status_cell_children, style=td_sty),
+            ],
+        ))
+
+    table = html.Table(
+        [html.Thead(header_row), html.Tbody(rows)],
+        style={"width": "100%", "borderCollapse": "collapse"},
+    )
+
+    footer = html.Div(
+        "⚠ Bands are NOT validated risk thresholds · Eff Wt applies staleness decay (halflife "
+        + (f"{int(halflife)}q" if halflife else "off") + f") · carry cap {max_carry_q}q",
+        style={"fontSize": "0.65rem", "color": "#555", "marginTop": "10px"},
+    )
+
+    return [summary_strip, table, footer]
 
 
 @callback(
@@ -1110,7 +1286,8 @@ def update_debt_stress_info(active_tab: str, date_range: dict, theme_name: str) 
     end = (date_range or {}).get("end")
     df = load_debt_stress_history(country="US", end_date=end)
     latest = df.iloc[-1] if not df.empty else None
-    return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME)
+    comp_dates = load_debt_stress_component_dates(country="US")
+    return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME, comp_dates)
 
 
 @callback(

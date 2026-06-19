@@ -95,7 +95,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 225 tests pass |
 | 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; Chart Overlay + Yield Curve + Regime History + 📉 Debt Stress + 🔬 Data Explorer tabs |
 | 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
-| 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab; 225 tests pass |
+| 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; staleness decay (Gaps 1–3); `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab; 239 tests pass |
 | 2 Country rollout | ⬜ **Next** | Eurozone first — pending user sign-off on US data quality via Explorer |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
@@ -165,15 +165,15 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - 31 original feature tests; 203/203 repository tests passing after code-review regressions; Docker :8502 healthy
 
 ### Phase 1F — Long-Term Debt Stress Indicator ✅ COMPLETE (2026-06-19)
-- `config/longterm_stress.yaml`: all tunable parameters (weights, rolling windows, coverage threshold, bands) annotated with `# TUNABLE` comments and rationale — no values buried in code
-- `indicators/longterm_stress.py`: 7-component weighted Z-score composite; rolling Z at quarterly (window=40) or annual (window=10) native frequency; shift(1) look-ahead protection; `_extend_to_current_quarter()` for publication-lag forward-fill; weight renormalisation + `low_coverage` flag when retained < 60%; stale-component tracking
-- `indicators/models.py`: `DebtStressSnapshot` Pydantic model with all 7 z_* and val_* fields + `stale_components`
-- `store/store.py`: `debt_stress_snapshots` table + `upsert_debt_stress()` + `query_debt_stress_history()`; `init_schema` migration handles column additions
-- `indicators/pipeline.py`: Pass 6 — runs stress computation and upserts; 185 quarterly snapshots stored; latest (2026-Q1): stress=+0.447, 7/7 components, retained=100%
-- `dashboard/charting_data.py`: `load_debt_stress_history()` query helper
-- `dashboard/app.py`: `load_debt_stress_latest()` + `_render_hud_debt_stress()` — HUD now shows Debt Stress cell after Disequilibrium (score, band label, N/7, stale badge)
-- `dashboard/charting.py`: "📉 Debt Stress" tab — left card with per-component Z bars + stale badges; right chart with composite score time series (band shading) + component Z-scores subplot; two callbacks
-- `tests/test_longterm_stress.py`: 22 tests (look-ahead, sign convention, coverage, unit conversion, band labels, config integrity); 225/225 repository tests passing
+- `config/longterm_stress.yaml`: all tunable parameters (weights, rolling windows, coverage threshold, bands, staleness) annotated with `# TUNABLE` — no values buried in code; `staleness:` section with `stale_weight_halflife`, `stale_min_weight_fraction`, `max_carry_quarters`, `extrapolation` gate
+- `indicators/longterm_stress.py`: 7-component weighted Z-score composite; rolling Z at quarterly (window=40) or annual (window=10); shift(1) look-ahead protection; `_extend_to_current_quarter()` for publication-lag forward-fill; **Gap 1**: weight decay proportional to excess staleness lag; **Gap 2**: carry-forward limit + YAML-gated model-based extrapolation (`_extrapolate_z_score`); **Gap 3**: structured stale strings `"cid:lag_q"` + `extrapolated_components` field
+- `indicators/models.py`: `DebtStressSnapshot` with `stale_components` (`"cid:lag_q"` format) + `extrapolated_components`
+- `store/store.py`: `debt_stress_snapshots` table + `upsert_debt_stress()` + `query_debt_stress_history()`; migration adds `extrapolated_components` column
+- `indicators/pipeline.py`: Pass 6 — 185 quarterly snapshots; latest (2026-Q1): stress=+0.497, 5/7 components, retained=67.5%
+- `dashboard/charting_data.py`: `load_debt_stress_history()` + `load_debt_stress_component_dates()` (queries signals table for last `as_of` per underlying signal)
+- `dashboard/app.py`: HUD Debt Stress cell with stale/extrap badges; `_parse_stale_components()` handles `"cid:lag_q"` and legacy plain-`"cid"` format
+- `dashboard/charting.py`: "📉 Debt Stress" tab — **full-width** component table (freq, config wt, eff wt post-decay, last data date, Z-score bar, status/reason); `BLANK` rows explain carry expiry + last known value; chart pushed below; `_parse_stress_components()` + `_fmt_period()` + `_carry_expires()` helpers
+- `tests/test_longterm_stress.py`: 36 tests covering staleness gaps 1–3, look-ahead, sign convention, coverage, unit conversion, band labels, config integrity; 239/239 repository tests passing
 
 ### Phase 2 — Country Rollout (one at a time)
 Order: Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.

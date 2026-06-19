@@ -4,6 +4,31 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Session 17: Debt Stress tab — full-width component detail table
+
+- `dashboard/charting_data.py`: added `_COMPONENT_SIGNAL_MAP` + `load_debt_stress_component_dates()` — queries signals table for last `as_of` per underlying signal (min of sub-components for derived series)
+- `dashboard/charting.py`: Debt Stress tab layout changed from 3/9 split to stacked (full-width info card → full-width chart); `_build_debt_stress_info` rewritten with score summary strip + 7-column component table; new helpers `_fmt_period`, `_carry_expires`; callback now passes `component_dates` dict; old narrow bar list replaced
+- Component table columns: Component · Freq · Config Wt · Eff Wt (post-decay, coloured amber/red when reduced/zero) · Last Data (YYYY-Qn or YYYY) · Z-Score (mini bar) · Status/Detail
+- `BLANK` status rows explain carry expiry in full: "carry expired · last data: 2024 · carry cap 4q → covered to 2025-Q4 · extrapolation disabled · last known value: −4.08"
+- 239/239 tests pass; committed + pushed
+- Next: Phase 2 Eurozone rollout; pipeline re-run after June 26 BEA release
+- Blockers: None
+
+---
+
+## 2026-06-19 — Session 16: Long-Term Debt Stress — Staleness Handling (Gaps 1–3)
+
+- **Gap 1 (weight decay)**: Components with excess staleness lag decay linearly toward zero weight; drops below `stale_min_weight_fraction` are excluded from the score. Parameters in `config/longterm_stress.yaml` under `staleness:`.
+- **Gap 2 (carry limit + extrapolation)**: All builder functions and `_rolling_z_annual_then_ffill` now take `ffill_limit=max_carry_q` from config; `_extrapolate_z_score` adds `rolling_mean` / `linear_trend` extrapolation behind `extrapolation.enabled: false` config gate.
+- **Gap 3 (structured stale strings)**: `stale_components` and new `extrapolated_components` fields store `"cid:lag_q"` strings; dashboards parse and display amber (stale Nq) and blue (extrap Nq) badges; backward-compatible parser handles old plain-`"cid"` format.
+- `indicators/models.py`, `store/store.py`: `extrapolated_components` column added with migration guard.
+- 14 new tests; bug fix in `test_extrapolated_components_populated_when_enabled` — dsr used `periods=80` (ends 2019), which meant q_index never reached recent stale quarters; fixed to `pd.Timestamp.today()`.
+- 239/239 tests pass; committed `2f0a97f`; pushed.
+- Next: rebuild containers to pick up staleness changes; pipeline re-run after June 26 BEA release; Phase 2 Eurozone rollout.
+- Blockers: None
+
+---
+
 ## 2026-06-19 — Session 15: Long-Term Debt Stress Indicator (UI layer)
 
 - Fixed invalid Z-scores in prior session's pipeline output: root causes were `ffill(limit=1)` not covering BIS publication lag + `resample("QE").last()` not extending past last data point; added `_extend_to_current_quarter()` helper; all 7/7 components now active at 2026-Q1 (stress=+0.447, retained_weight=100%); stale component tracking introduced (`stale_components` field)

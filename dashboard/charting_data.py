@@ -199,6 +199,54 @@ def available_dates_for_yield_curve() -> list[str]:
 
 # ── Long-Term Debt Stress ─────────────────────────────────────────────────────
 
+# Maps each component ID to the underlying signal IDs in the signals table.
+# Derived components (built from raw FRED parquet) have empty lists.
+_COMPONENT_SIGNAL_MAP: dict[str, list[str]] = {
+    "gov_household_debt_gdp": ["us.credit.gov_debt_gdp", "us.credit.household_debt_gdp"],
+    "corporate_debt_gdp": [],
+    "household_debt_service": ["us.credit.debt_service_ratio"],
+    "federal_interest_gdp": [],
+    "primary_balance_gdp": ["us.fiscal.primary_balance_gdp"],
+    "structural_balance": ["us.fiscal.structural_balance"],
+    "govt_revenue_gdp": ["us.fiscal.govt_revenue_gdp"],
+}
+
+
+def load_debt_stress_component_dates(country: str = "US") -> dict[str, Optional[pd.Timestamp]]:
+    """Return the last as_of date per debt-stress component from the signals table.
+
+    For components that use multiple underlying signals, the *earliest* (most
+    restrictive) last-date is returned. Components derived purely from raw FRED
+    parquet (no signal record) return None.
+    """
+    all_ids = [sid for sids in _COMPONENT_SIGNAL_MAP.values() for sid in sids]
+    if not all_ids:
+        return {cid: None for cid in _COMPONENT_SIGNAL_MAP}
+
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        placeholders = ",".join("?" * len(all_ids))
+        df = con.execute(
+            f"SELECT id, MAX(as_of) AS last_as_of FROM signals WHERE id IN ({placeholders}) GROUP BY id",
+            all_ids,
+        ).df()
+    finally:
+        con.close()
+
+    signal_dates: dict[str, pd.Timestamp] = {}
+    for _, row in df.iterrows():
+        signal_dates[row["id"]] = pd.Timestamp(row["last_as_of"])
+
+    result: dict[str, Optional[pd.Timestamp]] = {}
+    for cid, sids in _COMPONENT_SIGNAL_MAP.items():
+        if not sids:
+            result[cid] = None
+        else:
+            dates = [signal_dates[sid] for sid in sids if sid in signal_dates]
+            result[cid] = min(dates) if dates else None
+    return result
+
+
 def load_debt_stress_history(
     country: str = "US",
     start_date: Optional[str] = None,
