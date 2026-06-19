@@ -4,6 +4,19 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-18 — Repository-wide code review remediation
+
+- Resolved all eight findings in `code_review/2026-06-18-repository-code-review.md`
+- Fixed ingestion failure exit status, country/provider metadata, PMI equilibrium, non-finite values, IMF forecast handling, future-date cleanup, and atomic DuckDB upserts
+- Added the deferred Lens I climate slot and a read-only Streamlit status entry point
+- Expanded regression suite from 73 to 79 tests; all pass
+- Live pipeline verified: 59/59 OK, 0 empty, 0 errors, 0 sanity warnings, 0 future-dated rows
+- Full `docker compose up --build -d` acceptance run passed: pipeline exited 0 and dashboard served on port 8501
+- Next: Phase 1B composites engine (Growth Score, Inflation Score, Regime Quadrant, Disequilibrium Score)
+- Blockers: None
+
+---
+
 ## 2026-06-18 — Session 4: Phase 1A-iii Fiscal / IMF lenses
 
 - Shipped Phase 1A-iii end-to-end: 9 new bindings (FRED: TFP, PPI broad, household debt/GDP, corporate debt, federal deficit, interest payments; WB: govt revenue % GDP; IMF: primary balance, structural balance); 13 new tests; suite 73/73 passing

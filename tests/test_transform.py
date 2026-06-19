@@ -37,13 +37,13 @@ class TestApplyYoyPct:
         assert result.iloc[:4].isna().all()
         assert np.allclose(result.iloc[4:].dropna(), 0.05, atol=1e-9)
 
-    def test_zero_base_produces_inf_or_nan(self):
-        # pct_change on 0→positive is inf — we accept that and dropna handles it later
+    def test_zero_base_produces_nan_not_infinity(self):
         s = pd.Series([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0])
         idx = pd.date_range("2020-01", periods=13, freq="MS")
         s.index = idx
         result = apply_yoy_pct(s, "M")
-        assert not np.isfinite(result.iloc[-1])  # inf or nan
+        assert np.isnan(result.iloc[-1])
+        assert not np.isinf(result).any()
 
     def test_daily_uses_252_periods(self):
         # 252 daily values of 1.0 then 252 of 1.05 → YoY = 0.05

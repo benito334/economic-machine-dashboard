@@ -1,6 +1,7 @@
 """Series transformation: YoY%, level pass-through, spread pass-through."""
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 # Number of native periods that constitute one year for each frequency
@@ -26,7 +27,8 @@ _MOMENTUM_PERIODS: dict[str, tuple[int, int, int]] = {
 def apply_yoy_pct(series: pd.Series, frequency: str) -> pd.Series:
     """Return year-over-year % change as a decimal (0.025 = 2.5 %)."""
     periods = _YOY_PERIODS.get(frequency, 12)
-    return series.pct_change(periods)
+    result = series.pct_change(periods)
+    return result.replace([np.inf, -np.inf], np.nan)
 
 
 def apply_transformation(series: pd.Series, transformation: str, frequency: str) -> pd.Series:

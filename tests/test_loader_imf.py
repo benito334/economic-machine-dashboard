@@ -60,13 +60,13 @@ class TestFetchImfFromApi:
         assert current_year + 1 not in years_in_result
         assert 2022 in years_in_result
 
-    def test_current_year_included(self):
+    def test_current_year_estimate_excluded(self):
         current_year = datetime.date.today().year
         year_vals = {"2022": -3.1, str(current_year): -4.0}
         with patch("indicators.loader.requests.get",
                    return_value=self._mock_get("pb", "USA", year_vals)):
             s = _fetch_imf_from_api("pb", "USA")
-        assert current_year in [ts.year for ts in s.index]
+        assert current_year not in [ts.year for ts in s.index]
 
     def test_raises_on_empty_response(self):
         resp = MagicMock()
@@ -119,6 +119,23 @@ class TestFetchImfSeries:
 
         mock_fetch.assert_not_called()
         assert result is not None
+
+    def test_cached_current_year_estimate_is_excluded(self, tmp_path, monkeypatch):
+        import indicators.loader as ldr
+
+        ldr.RAW_CACHE_DIR = tmp_path
+        current_year = datetime.date.today().year
+        s = pd.Series(
+            [1.0, 2.0],
+            index=pd.to_datetime([f"{current_year - 1}-12-31", f"{current_year}-12-31"]),
+            name="value",
+        )
+        s.to_frame().to_parquet(tmp_path / "imf_US_pb.parquet")
+
+        result = fetch_imf_series("pb", country_iso2="US")
+
+        assert result is not None
+        assert list(result.index.year) == [current_year - 1]
 
     def test_force_refresh_bypasses_cache(self, tmp_path, monkeypatch):
         monkeypatch.setenv("RAW_CACHE_DIR", str(tmp_path))

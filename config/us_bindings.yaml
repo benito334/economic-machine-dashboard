@@ -248,7 +248,7 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
-    equilibrium: 52.0
+    equilibrium: 0.0
     linkage: "Philly Fed Manufacturing Business Outlook (regional proxy; corr ~0.85 with ISM). >0 = expansion, >50-neutral convention not applicable — this is a diffusion index centred at 0."
     sanity_min: -60.0
     sanity_max: 60.0
@@ -1145,9 +1145,27 @@ bindings:
     linkage: "IMF cyclically adjusted (structural) fiscal balance as % of potential GDP. Removes output-gap effects to reveal the underlying fiscal policy stance; tightening = balance rising toward zero."
     sanity_min: -25.0
     sanity_max: 10.0
-    notes: "Available from 2001 (IMF WEO vintage). Forecasts filtered to current year only."
+    notes: "Available from 2001 (IMF WEO vintage). Current-year estimates and future forecasts are excluded."
 
   # ─── DEFERRED — not yet ingested ──────────────────────────────────────────
   # capital.portfolio_flows → IMF BOP / Treasury TIC — Phase 2
   # currency.ppp_gap        → OECD/WB PPP derived    — Phase 2
   # climate.*               → EM-DAT (manual)         — slot only
+
+  - id: climate.disaster_loss
+    series_id: null
+    provider: manual
+    frequency: A
+    force: climate
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    source_tier: deferred
+    vintage_available: false
+    is_proxy: false
+    verified: false
+    equilibrium: 0.0
+    linkage: "Annual disaster losses as % of GDP. Large climate and natural-disaster costs impair productive capacity and fiscal resilience."
+    sanity_min: 0.0
+    sanity_max: 100.0
+    notes: "Deferred Lens I slot. EM-DAT requires manual registration and licensed data provisioning."

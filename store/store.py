@@ -44,6 +44,15 @@ CREATE TABLE IF NOT EXISTS signals (
 )
 """
 
+_SIGNAL_COLUMNS = [
+    "id", "country", "force", "lead_lag", "as_of", "value", "units",
+    "level_percentile", "zscore", "change_1m", "change_3m", "change_12m",
+    "direction", "equilibrium_estimate", "distance_from_equilibrium",
+    "surprise", "is_constructed", "is_proxy", "is_stale", "low_history",
+    "provider", "source_tier", "vintage_available", "linkage", "source",
+    "ingested_at",
+]
+
 
 def get_connection(db_path: Path = DB_PATH) -> duckdb.DuckDBPyConnection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +61,16 @@ def get_connection(db_path: Path = DB_PATH) -> duckdb.DuckDBPyConnection:
 
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
+
+
+def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
+    """Remove forecast-like rows that violate the observation-date contract."""
+    count = conn.execute(
+        "SELECT COUNT(*) FROM signals WHERE as_of > CURRENT_DATE"
+    ).fetchone()[0]
+    if count:
+        conn.execute("DELETE FROM signals WHERE as_of > CURRENT_DATE")
+    return count
 
 
 def upsert_signals(conn: duckdb.DuckDBPyConnection, signals: List[Signal]) -> int:
@@ -70,6 +89,7 @@ def upsert_signals(conn: duckdb.DuckDBPyConnection, signals: List[Signal]) -> in
     conn.register("_staging", df)
 
     try:
+        conn.execute("BEGIN TRANSACTION")
         conn.execute("""
             DELETE FROM signals
             WHERE EXISTS (
@@ -78,7 +98,14 @@ def upsert_signals(conn: duckdb.DuckDBPyConnection, signals: List[Signal]) -> in
                   AND _staging.as_of::DATE = signals.as_of
             )
         """)
-        conn.execute("INSERT INTO signals SELECT * FROM _staging")
+        columns = ", ".join(_SIGNAL_COLUMNS)
+        conn.execute(
+            f"INSERT INTO signals ({columns}) SELECT {columns} FROM _staging"
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
     finally:
         conn.unregister("_staging")
 

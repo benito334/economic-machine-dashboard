@@ -21,7 +21,7 @@ from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
-from store.store import get_connection, init_schema, upsert_signals, query_latest
+from store.store import delete_future_signals, get_connection, init_schema, upsert_signals, query_latest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -143,6 +143,9 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
     conn = get_connection()
     init_schema(conn)
+    removed_future = delete_future_signals(conn)
+    if removed_future:
+        logger.warning("Removed %d future-dated signal rows", removed_future)
 
     bindings = load_bindings(_CONFIG_DIR / "us_bindings.yaml")
     raw_bindings = [b for b in bindings if b.provider == "FRED" and b.verified]
@@ -322,8 +325,8 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                     results["sanity_warn"] += 1
 
             n = upsert_signals(conn, signals)
-            latest_val = f"{series.iloc[-1]:.4f}"
-            latest_dt = str(series.index[-1].date())
+            latest_val = f"{latest.value:.4f}" if latest and latest.value is not None else "?"
+            latest_dt = str(latest.as_of) if latest else "?"
             print(f"  [DERIVED] {binding.id:40s}  {latest_dt}  {latest_val}  ({n} rows)")
             results["ok"] += 1
 
@@ -346,7 +349,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
     conn.close()
 
-    if results["error"] > 0:
+    if results["error"] > 0 or results["empty"] > 0:
         sys.exit(1)
 
 

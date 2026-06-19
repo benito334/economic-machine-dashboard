@@ -64,7 +64,9 @@ def build_signals(
     (not expanding).  This is appropriate for Phase 1A display.  Phase 3
     backtests will switch to expanding windows for look-ahead-free results.
     """
-    clean = transformed.dropna()
+    clean = transformed.replace([np.inf, -np.inf], np.nan).dropna()
+    if isinstance(clean.index, pd.DatetimeIndex):
+        clean = clean[clean.index.normalize() <= pd.Timestamp(date.today())]
     if clean.empty:
         return []
 
@@ -75,8 +77,13 @@ def build_signals(
     percentiles = _percentile_series(clean)
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
 
-    signal_id = f"us.{binding.id}"
-    source_label = f"FRED:{binding.series_id}" if binding.series_id else f"derived:{binding.id}"
+    country_namespace = binding.country.lower()
+    signal_id = f"{country_namespace}.{binding.id}"
+    source_label = (
+        f"{binding.provider}:{binding.series_id}"
+        if binding.series_id
+        else f"{binding.provider}:{binding.id}"
+    )
 
     signals: list[Signal] = []
     last_idx = len(clean) - 1

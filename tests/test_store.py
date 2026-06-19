@@ -6,7 +6,7 @@ import duckdb
 import pytest
 
 from indicators.models import Signal
-from store.store import get_connection, init_schema, query_latest, query_series, upsert_signals
+from store.store import delete_future_signals, get_connection, init_schema, query_latest, query_series, upsert_signals
 
 
 @pytest.fixture
@@ -128,3 +128,15 @@ class TestQuerySeries:
         upsert_signals(conn, sigs)
         df = query_series(conn, "us.growth.payrolls", start="2024-04-01")
         assert len(df) == 3  # Apr, May, Jun
+
+
+class TestDeleteFutureSignals:
+    def test_removes_only_future_rows(self, conn):
+        upsert_signals(conn, [
+            _signal(as_of=date(2024, 1, 1)),
+            _signal(as_of=date(2099, 1, 1)),
+        ])
+
+        assert delete_future_signals(conn) == 1
+        rows = query_series(conn, "us.growth.payrolls")
+        assert list(rows["as_of"].dt.year) == [2024]
