@@ -277,6 +277,50 @@ def test_regime_chart_callback():
 
 
 @pytest.mark.integration
+def test_regime_chart_highlight_at_step():
+    """Step > 0 adds highlight marker traces (one per subplot = 3 extra)."""
+    import plotly.graph_objects as go
+    from dashboard.charting import update_regime_chart
+    fig0 = update_regime_chart("tab-regime", {"start": "2010-01-01", "end": None}, step=0)
+    fig5 = update_regime_chart("tab-regime", {"start": "2010-01-01", "end": None}, step=5)
+    # step=5 adds up to 3 highlight marker traces on top of the base traces
+    assert len(fig5.data) >= len(fig0.data)
+    # A vline shape should be present
+    assert len(fig5.layout.shapes) >= 1
+
+
+@pytest.mark.integration
+def test_regime_info_box_current():
+    from dashboard.charting import update_regime_info
+    children, date_display = update_regime_info(0, {"start": None, "end": None})
+    assert "current" in date_display
+    assert isinstance(children, list)
+    assert len(children) > 0
+    # "Past Data" warning must NOT appear when step == 0
+    texts = [c.children if hasattr(c, "children") and isinstance(c.children, str) else "" for c in children]
+    assert "⚠ Past Data" not in texts
+
+
+@pytest.mark.integration
+def test_regime_info_box_past():
+    from dashboard.charting import update_regime_info
+    children, date_display = update_regime_info(12, {"start": None, "end": None})
+    assert "ago" in date_display
+    # "Past Data" warning must appear
+    texts = [c.children if hasattr(c, "children") and isinstance(c.children, str) else "" for c in children]
+    assert "⚠ Past Data" in texts
+
+
+@pytest.mark.integration
+def test_composite_history_has_disequilibrium():
+    from dashboard.charting_data import load_composite_history
+    df = load_composite_history(start_date="2020-01-01")
+    assert "disequilibrium_score" in df.columns
+    assert "n_growth_signals" in df.columns
+    assert "n_inflation_signals" in df.columns
+
+
+@pytest.mark.integration
 def test_yield_curve_chart_callback():
     import plotly.graph_objects as go
     from dashboard.charting import update_yield_curve

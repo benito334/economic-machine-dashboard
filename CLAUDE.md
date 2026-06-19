@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E complete and verified.
+**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E complete and verified. Theme switcher + staleness fix + Regime History nav controls shipped. Methodology and data release calendar docs added.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -98,7 +98,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 2 Country rollout | ⬜ **Next** | Eurozone first — pending user sign-off on US data quality via Explorer |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current, then begin Phase 2 Eurozone rollout (first non-US country binding).
+**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current (BEA releases current account / NIIP / DSR Q1 2026 data ~June 26 — re-run after that date), then begin Phase 2 Eurozone rollout. US data quality verified; methodology and release calendar documented in `docs/`.
 
 ---
 

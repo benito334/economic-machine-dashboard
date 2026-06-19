@@ -15,9 +15,17 @@ _LOW_HISTORY_THRESHOLD = 15  # fewer obs → set low_history=True
 _STALE_THRESHOLDS: dict[str, timedelta] = {
     "D": timedelta(days=5),
     "W": timedelta(days=12),
-    "M": timedelta(days=50),
-    "Q": timedelta(days=120),
-    "A": timedelta(days=400),
+    # Monthly: data is released ~60 days after period start; allow one full
+    # extra release cycle (90 days) before flagging as stale.
+    "M": timedelta(days=90),
+    # Quarterly: obs_date is the START of the quarter. Advance estimates
+    # arrive ~120 days later; revised estimates up to ~150 days later. The
+    # next quarter's data is first available ~210 days from period start,
+    # so flag stale only at 200 days.
+    "Q": timedelta(days=200),
+    # Annual: World Bank / IMF annual data is typically published 12–24
+    # months after the reference year end, so allow 600 days before flagging.
+    "A": timedelta(days=600),
 }
 
 _DIRECTION_THRESHOLD = 1e-9  # treat anything smaller as flat

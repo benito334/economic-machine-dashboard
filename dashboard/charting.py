@@ -147,6 +147,7 @@ app.layout = dbc.Container(
         dcc.Store(id="selected-series", data=[]),
         dcc.Store(id="date-range", data={"start": None, "end": None}),
         dcc.Store(id="theme-store", data=DEFAULT_THEME),
+        dcc.Store(id="regime-step-index", data=0),
         html.Div(id="theme-dummy", style={"display": "none"}),
 
         # Header
@@ -228,11 +229,48 @@ app.layout = dbc.Container(
                     ]),
 
                     dbc.Tab(label="Regime History", tab_id="tab-regime", children=[
-                        dcc.Graph(
-                            id="regime-chart",
-                            config={"displayModeBar": True},
-                            style={"height": "65vh"},
-                        ),
+                        # Navigation bar
+                        dbc.Row([
+                            dbc.Col([
+                                dbc.ButtonGroup([
+                                    dbc.Button(
+                                        "←", id="btn-regime-prev",
+                                        color="secondary", size="sm", outline=True,
+                                        title="Step back in time",
+                                    ),
+                                    dbc.Button(
+                                        "→", id="btn-regime-next",
+                                        color="secondary", size="sm", outline=True,
+                                        title="Step forward in time",
+                                    ),
+                                ], className="me-3"),
+                                html.Span(
+                                    id="regime-date-display",
+                                    className="text-muted small align-middle",
+                                ),
+                            ], className="d-flex align-items-center pt-2 pb-1"),
+                        ]),
+                        # Info box (left) + chart (right)
+                        dbc.Row([
+                            dbc.Col(
+                                dbc.Card(
+                                    dbc.CardBody(
+                                        html.Div(id="regime-info-box"),
+                                        style={"padding": "12px"},
+                                    ),
+                                    style={"position": "relative"},
+                                ),
+                                width=3,
+                            ),
+                            dbc.Col(
+                                dcc.Graph(
+                                    id="regime-chart",
+                                    config={"displayModeBar": True},
+                                    style={"height": "70vh"},
+                                ),
+                                width=9,
+                            ),
+                        ]),
                     ]),
 
                     dbc.Tab(label="🔬 Data Explorer", tab_id="tab-explorer", children=[
@@ -261,7 +299,7 @@ app.clientside_callback(
     f"""
     function(theme) {{
         var themes = {json.dumps(THEME_CSS_VARS)};
-        var t = themes[theme] || themes['midnight'];
+        var t = themes[theme] || themes['carbon'];
         var r = document.documentElement;
         Object.entries(t).forEach(function(pair) {{
             r.style.setProperty(pair[0], pair[1]);
@@ -544,19 +582,150 @@ def update_yield_curve(
     return fig
 
 
-# ── Callbacks — regime history ────────────────────────────────────────────────
+# ── Regime History — helpers + callbacks ─────────────────────────────────────
+
+def _regime_info_children(row: dict, is_current: bool) -> list:
+    """Build children for the regime-info-box Div from one CompositeSnapshot row."""
+    quadrant = row.get("quadrant") or "—"
+    g_score = row.get("growth_score")
+    i_score = row.get("inflation_score")
+    confidence = row.get("confidence")
+    diseq = row.get("disequilibrium_score")
+
+    q_color = _QUADRANT_COLOR.get(quadrant, "#888")
+
+    row_style = {
+        "display": "flex", "justifyContent": "space-between", "alignItems": "center",
+        "padding": "5px 0", "borderBottom": "1px solid var(--border-color)",
+        "fontSize": "0.83rem",
+    }
+    muted = {"color": "var(--muted-color)"}
+    val_s = {"color": "var(--font-color)", "fontWeight": "500"}
+
+    def _arrow(v: Any) -> str:
+        return "↑" if (v is not None and not pd.isna(v) and v >= 0) else "↓"
+
+    def _fmt(v: Any, prec: int = 3) -> str:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return "—"
+        return f"{v:+.{prec}f}"
+
+    children: list = [
+        html.Div(
+            quadrant,
+            style={
+                "backgroundColor": q_color, "color": "#111",
+                "textAlign": "center", "fontWeight": "bold",
+                "fontSize": "0.9rem", "padding": "8px 4px",
+                "borderRadius": "4px", "marginBottom": "10px",
+            },
+        ),
+        html.Div([
+            html.Span("Growth", style=muted),
+            html.Span(f"{_arrow(g_score)} {_fmt(g_score)}", style=val_s),
+        ], style=row_style),
+        html.Div([
+            html.Span("Inflation", style=muted),
+            html.Span(f"{_arrow(i_score)} {_fmt(i_score)}", style=val_s),
+        ], style=row_style),
+        html.Div([
+            html.Span("Confidence", style=muted),
+            html.Span(
+                f"{int(confidence * 100)}%" if (confidence is not None and not pd.isna(confidence)) else "—",
+                style=val_s,
+            ),
+        ], style=row_style),
+        html.Div([
+            html.Span("Disequilibrium", style=muted),
+            html.Span(_fmt(diseq), style=val_s),
+        ], style={**row_style, "borderBottom": "none"}),
+    ]
+
+    if not is_current:
+        children.append(
+            html.Div(
+                "⚠ Past Data",
+                style={
+                    "position": "absolute", "bottom": "8px", "right": "10px",
+                    "fontSize": "0.72rem", "color": "#F4C842", "fontWeight": "500",
+                },
+            )
+        )
+
+    return children
+
+
+@callback(
+    Output("regime-step-index", "data"),
+    [Input("btn-regime-prev", "n_clicks"),
+     Input("btn-regime-next", "n_clicks"),
+     Input("date-range", "data")],
+    State("regime-step-index", "data"),
+    prevent_initial_call=True,
+)
+def update_regime_step(
+    _prev: Any,
+    _next: Any,
+    date_range: dict,
+    current_step: int,
+) -> int:
+    triggered = dash.callback_context.triggered_id
+    if triggered == "date-range":
+        return 0  # reset to latest on range change
+
+    step = current_step or 0
+    start = (date_range or {}).get("start")
+    end = (date_range or {}).get("end")
+    comp = load_composite_history(start_date=start, end_date=end)
+    max_step = max(0, len(comp) - 1)
+
+    if triggered == "btn-regime-prev":
+        return min(step + 1, max_step)
+    if triggered == "btn-regime-next":
+        return max(step - 1, 0)
+    return step
+
+
+@callback(
+    [Output("regime-info-box", "children"),
+     Output("regime-date-display", "children")],
+    [Input("regime-step-index", "data"),
+     Input("date-range", "data")],
+    prevent_initial_call=False,
+)
+def update_regime_info(step: int, date_range: dict) -> tuple:
+    step = step or 0
+    start = (date_range or {}).get("start")
+    end = (date_range or {}).get("end")
+    comp = load_composite_history(start_date=start, end_date=end)
+
+    if comp.empty:
+        return [], "No data"
+
+    n = len(comp)
+    idx = max(0, min(n - 1 - step, n - 1))
+    selected = comp.iloc[idx].to_dict()
+    is_current = (step == 0)
+
+    date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
+    date_display = f"{date_str} · current" if is_current else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
+
+    return _regime_info_children(selected, is_current), date_display
+
 
 @callback(
     Output("regime-chart", "figure"),
     [Input("main-tabs", "active_tab"),
      Input("date-range", "data"),
-     Input("theme-store", "data")],
+     Input("theme-store", "data"),
+     Input("regime-step-index", "data")],
     prevent_initial_call=False,
 )
 def update_regime_chart(
     active_tab: str,
     date_range: dict,
     theme_name: str = DEFAULT_THEME,
+    step: int = 0,
 ) -> go.Figure:
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
@@ -633,6 +802,68 @@ def update_regime_chart(
     )
 
     fig.update_layout(**figure_layout(theme_name), hovermode="x unified", height=700)
+
+    # ── Step-selection highlight ──────────────────────────────────────────────
+    step = step or 0
+    n = len(comp)
+    sel_idx = max(0, min(n - 1 - step, n - 1))
+    sel = comp.iloc[sel_idx]
+    sel_ts = sel["as_of"]
+
+    # Vertical dashed guide line spanning all subplots
+    fig.add_vline(
+        x=sel_ts,
+        line_dash="dot",
+        line_color="rgba(255,255,255,0.35)",
+        line_width=1.5,
+    )
+
+    # Highlighted marker — growth score (row 1)
+    g_val = sel.get("growth_score")
+    if g_val is not None and not pd.isna(g_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[g_val],
+                mode="markers",
+                marker={"size": 11, "color": _COLORS[0],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=1, col=1,
+        )
+
+    # Highlighted marker — inflation score (row 2)
+    i_val = sel.get("inflation_score")
+    if i_val is not None and not pd.isna(i_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[i_val],
+                mode="markers",
+                marker={"size": 11, "color": _COLORS[2],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=2, col=1,
+        )
+
+    # Highlighted marker — quadrant row (row 3), open circle in quadrant colour
+    q_val = q_numeric.iloc[sel_idx] if sel_idx < len(q_numeric) else None
+    q_label = sel.get("quadrant")
+    if q_val is not None and not pd.isna(q_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[q_val],
+                mode="markers",
+                marker={
+                    "size": 14, "symbol": "circle-open",
+                    "color": _QUADRANT_COLOR.get(q_label, "#888"),
+                    "line": {"width": 2.5},
+                },
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=3, col=1,
+        )
+
     return fig
 
 
