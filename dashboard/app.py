@@ -400,7 +400,7 @@ def render_hud(
     g_mom_color  = _mom_color(g_delta)
     i_mom_color  = _mom_color(i_delta)
 
-    st.markdown(
+    st.html(
         f"""
         <div style="
             background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);
@@ -463,9 +463,7 @@ def render_hud(
 
           </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """)
 
 
 def render_quadrant_scatter(comp_df: pd.DataFrame) -> go.Figure:
@@ -621,14 +619,13 @@ def render_what_changed(change_df: pd.DataFrame) -> None:
         arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
         color = "#ff8888" if delta > 0.3 else ("#88aaff" if delta < -0.3 else "#aaa")
         prior_date = row.get("prior_as_of", "")
-        st.markdown(
+        st.html(
             f'<div style="padding:4px 0;border-bottom:1px solid #222;font-size:0.88em;">'
             f'<span style="color:#aaa;">{row["force"]}</span> · '
             f'<b>{label}</b> '
             f'<span style="color:{color};font-size:1.1em;">{arrow} {d_str}</span> '
             f'<span style="color:#666;font-size:0.8em;">Δ Z-score vs {prior_date}</span>'
-            f"</div>",
-            unsafe_allow_html=True,
+            f"</div>"
         )
 
 
@@ -681,17 +678,16 @@ def render_conflict_panel(latest_signals: pd.DataFrame) -> None:
         for c in conflicts:
             st.markdown(c)
     else:
-        st.markdown('<span style="color:#888;font-size:0.88em;">No significant conflicts detected.</span>', unsafe_allow_html=True)
+        st.html('<span style="color:#888;font-size:0.88em;">No significant conflicts detected.</span>')
 
 
 def render_gpr_overlay() -> None:
     st.markdown("#### Geopolitical-Risk Overlay")
-    st.markdown(
+    st.html(
         '<div style="color:#666;font-size:0.85em;padding:8px 0;">'
         "WGI governance scores deferred (WB v2 API unavailable as of 2026-06-18). "
         "See session-checklist G-03 for resolution path."
-        "</div>",
-        unsafe_allow_html=True,
+        "</div>"
     )
 
 
@@ -923,10 +919,9 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
     prev_comp: pd.Series = comp_history.iloc[-2] if len(comp_history) >= 2 else pd.Series()
 
     # ── Page header ──────────────────────────────────────────────────────────────
-    st.markdown(
+    st.html(
         '<h1 style="font-size:1.6em;margin-bottom:4px;">📊 Indicators Machine</h1>'
-        '<p style="color:#666;font-size:0.85em;margin-top:0;">US Macro-Regime Diagnostic Terminal · Ray Dalio Economic Machine framework</p>',
-        unsafe_allow_html=True,
+        '<p style="color:#666;font-size:0.85em;margin-top:0;">US Macro-Regime Diagnostic Terminal · Ray Dalio Economic Machine framework</p>'
     )
 
     # ── HUD ──────────────────────────────────────────────────────────────────────
@@ -952,14 +947,7 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
 
     # ── Row 3: Accordion drill-downs ─────────────────────────────────────────────
     st.markdown("### Signal Drill-Downs")
-    st.caption(
-        "Percentile badge: "
-        '<span style="background:#9b1c1c;color:#eee;padding:1px 5px;border-radius:3px;font-size:0.8em;">85%+</span> '
-        'elevated &nbsp; '
-        '<span style="background:#1a3a6e;color:#eee;padding:1px 5px;border-radius:3px;font-size:0.8em;">15%-</span> '
-        'depressed · Hover indicator name for causal linkage.',
-        unsafe_allow_html=True,
-    )
+    st.caption("Percentile badge: 85%+ elevated (dark red) · 15%- depressed (dark blue) · neutral grey · Hover indicator name for causal linkage.")
 
     for lens_label, forces in LENS_GROUPS:
         lens_df = latest_signals[latest_signals["force"].isin(forces)].copy()
@@ -972,19 +960,18 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
 
         with st.expander(f"{lens_label}  {badges if not n_stale else ''}", expanded=(lens_label == "A · Growth Force")):
             if n_stale:
-                st.markdown(badges, unsafe_allow_html=True)
+                st.html(badges)
             about = LENS_ABOUT.get(lens_label)
             if about:
-                st.markdown(
+                st.html(
                     f'<div style="font-size:0.83em;color:#888;padding:4px 0 10px 0;'
-                    f'border-bottom:1px solid #222;margin-bottom:10px;">{about}</div>',
-                    unsafe_allow_html=True,
+                    f'border-bottom:1px solid #222;margin-bottom:10px;">{about}</div>'
                 )
             if n_sigs == 0:
                 st.caption("No data for this lens (deferred or not yet ingested).")
             else:
                 table_html = _build_lens_table(lens_df, histories_by_id)
-                st.markdown(table_html, unsafe_allow_html=True)
+                st.html(table_html)
 
     st.divider()
 
@@ -996,13 +983,12 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
     n_signals = len(latest_signals)
     n_composites = len(comp_history)
     latest_as_of = latest_signals["as_of"].max() if not latest_signals.empty else "—"
-    st.markdown(
+    st.html(
         f'<div style="text-align:center;color:#444;font-size:0.78em;margin-top:24px;">'
         f"{n_signals} signals · {n_composites} composite snapshots · "
         f"Latest signal: {latest_as_of} · "
         f"DB: {DB_PATH.name}"
-        f"</div>",
-        unsafe_allow_html=True,
+        f"</div>"
     )
 
 
