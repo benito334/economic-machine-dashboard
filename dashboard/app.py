@@ -349,6 +349,7 @@ def _zscore_color(z: Optional[float]) -> str:
 def render_hud(
     latest_composite: pd.Series,
     prev_composite: Optional[pd.Series] = None,
+    step: int = 0,
 ) -> None:
     q = latest_composite.get("quadrant") or "—"
     conf = latest_composite.get("confidence")
@@ -400,6 +401,17 @@ def render_hud(
     g_mom_color  = _mom_color(g_delta)
     i_mom_color  = _mom_color(i_delta)
 
+    past_warning_html = ""
+    if step > 0:
+        try:
+            _warn_date = pd.Timestamp(as_of).strftime("%b %Y")
+        except Exception:
+            _warn_date = str(as_of)
+        past_warning_html = (
+            f'<div style="position:absolute;bottom:10px;right:14px;'
+            f'font-size:0.83em;color:#F4C842;font-weight:700;">⚠ {_warn_date}</div>'
+        )
+
     st.html(
         f"""
         <div style="
@@ -408,6 +420,7 @@ def render_hud(
             border-radius:10px;
             padding:20px 28px;
             margin-bottom:16px;
+            position:relative;
         ">
           <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap;">
 
@@ -462,11 +475,12 @@ def render_hud(
             </div>
 
           </div>
+          {past_warning_html}
         </div>
         """)
 
 
-def render_quadrant_scatter(comp_df: pd.DataFrame) -> go.Figure:
+def render_quadrant_scatter(comp_df: pd.DataFrame, step: int = 0) -> go.Figure:
     fig = go.Figure()
 
     # Quadrant background shading
@@ -495,9 +509,12 @@ def render_quadrant_scatter(comp_df: pd.DataFrame) -> go.Figure:
     fig.add_hline(y=0, line_color="#555", line_width=1)
     fig.add_vline(x=0, line_color="#555", line_width=1)
 
-    # 12-month trail
+    # 12-month trail ending at the selected step
     if not comp_df.empty:
-        trail = comp_df.tail(13).copy()
+        n_total = len(comp_df)
+        selected_idx = max(0, min(n_total - 1 - step, n_total - 1))
+        trail_start = max(0, selected_idx - 12)
+        trail = comp_df.iloc[trail_start:selected_idx + 1].copy()
         n = len(trail)
         for i in range(1, n):
             opacity = 0.15 + 0.70 * (i / (n - 1))
@@ -514,8 +531,8 @@ def render_quadrant_scatter(comp_df: pd.DataFrame) -> go.Figure:
             )
 
         # Historical scatter (older points in grey)
-        if len(comp_df) > 13:
-            hist = comp_df.iloc[:-13]
+        if trail_start > 0:
+            hist = comp_df.iloc[:trail_start]
             fig.add_trace(
                 go.Scatter(
                     x=hist["growth_score"],
@@ -556,17 +573,21 @@ def render_quadrant_scatter(comp_df: pd.DataFrame) -> go.Figure:
                 )
             )
 
-        # Current month — large marker
-        cur = comp_df.iloc[-1]
+        # Selected month — large marker (NOW when current, date label when past)
+        cur = comp_df.iloc[selected_idx]
         q_cur = cur.get("quadrant") or "Expansion"
         c_cur = QUADRANT_META.get(q_cur, {}).get("color", "#fff")
+        try:
+            _cur_label = "NOW" if step == 0 else pd.Timestamp(cur["as_of"]).strftime("%b %Y")
+        except Exception:
+            _cur_label = "NOW" if step == 0 else str(cur["as_of"])[:7]
         fig.add_trace(
             go.Scatter(
                 x=[cur["growth_score"]],
                 y=[cur["inflation_score"]],
                 mode="markers+text",
                 marker=dict(size=16, color=c_cur, line=dict(color="white", width=2)),
-                text=["NOW"],
+                text=[_cur_label],
                 textposition="top center",
                 textfont=dict(size=10, color=c_cur),
                 showlegend=False,
@@ -791,6 +812,9 @@ def render_data_quality_log(latest_signals: pd.DataFrame) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
+    if "regime_step" not in st.session_state:
+        st.session_state["regime_step"] = 0
+
     # ── Sidebar ─────────────────────────────────────────────────────────────────
     with st.sidebar:
         st.markdown("### Indicators Machine")
@@ -914,9 +938,13 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
         for sid, grp in all_histories.groupby("id"):
             histories_by_id[str(sid)] = grp.sort_values("as_of")["value"].tolist()
 
-    # Current and previous month composites (for momentum calculation)
-    cur_comp:  pd.Series = comp_history.iloc[-1] if len(comp_history) >= 1 else pd.Series()
-    prev_comp: pd.Series = comp_history.iloc[-2] if len(comp_history) >= 2 else pd.Series()
+    # Step-based composite selection (step=0 → latest, step=N → N months back)
+    n_comp = len(comp_history)
+    max_step = max(0, n_comp - 1)
+    step = min(st.session_state.get("regime_step", 0), max_step)
+    selected_idx = max(0, n_comp - 1 - step) if n_comp > 0 else 0
+    cur_comp:  pd.Series = comp_history.iloc[selected_idx] if n_comp > 0 else pd.Series()
+    prev_comp: pd.Series = comp_history.iloc[selected_idx - 1] if selected_idx > 0 else pd.Series()
 
     # ── Page header ──────────────────────────────────────────────────────────────
     st.html(
@@ -926,12 +954,32 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
 
     # ── HUD ──────────────────────────────────────────────────────────────────────
     if not cur_comp.empty:
-        render_hud(cur_comp, prev_comp if not prev_comp.empty else None)
+        render_hud(cur_comp, prev_comp if not prev_comp.empty else None, step=step)
+
+    # ── Regime stepper ──────────────────────────────────────────────────────────
+    _sc1, _sc2, _sc3 = st.columns([1, 6, 1])
+    with _sc1:
+        if st.button("← Prev", key="regime_prev", disabled=(step >= max_step), use_container_width=True):
+            st.session_state["regime_step"] = min(step + 1, max_step)
+            st.rerun()
+    with _sc2:
+        if not cur_comp.empty:
+            _ao = str(cur_comp.get("as_of", ""))
+            try:
+                _ao_fmt = pd.Timestamp(_ao).strftime("%b %Y")
+            except Exception:
+                _ao_fmt = _ao[:7]
+            _lbl = "● Current" if step == 0 else f"◀ {_ao_fmt}  ({step} month{'s' if step > 1 else ''} back)"
+            st.html(f'<div style="text-align:center;color:#888;font-size:0.85em;padding-top:6px;">{_lbl}</div>')
+    with _sc3:
+        if st.button("Next →", key="regime_next", disabled=(step <= 0), use_container_width=True):
+            st.session_state["regime_step"] = max(step - 1, 0)
+            st.rerun()
 
     # ── Row 1: 4-Quadrant Scatter ────────────────────────────────────────────────
     st.markdown("### Macro Regime Map")
-    st.caption("12-month trail shown. X = Growth Score · Y = Inflation Score (Z-scores). NOW marker = current reading.")
-    fig = render_quadrant_scatter(comp_history)
+    st.caption("12-month trail shown. X = Growth Score · Y = Inflation Score (Z-scores). NOW / date marker = selected reading.")
+    fig = render_quadrant_scatter(comp_history, step=step)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # ── Row 2: What Changed · Conflict · GPR ────────────────────────────────────

@@ -140,6 +140,40 @@ def _theme_picker() -> dbc.RadioItems:
     )
 
 
+# Upcoming data release schedule — update when new releases are known.
+_UPCOMING_RELEASES: list[tuple[datetime.date, str]] = [
+    (datetime.date(2026, 6, 26), "BEA Q1 2026 current account / NIIP"),
+    (datetime.date(2026, 7, 3),  "BLS June jobs report"),
+    (datetime.date(2026, 7, 30), "BEA Q2 2026 GDP advance"),
+    (datetime.date(2026, 8, 5),  "BLS July jobs report"),
+]
+
+
+def _sync_banner() -> dbc.Col:
+    """Return a header Col showing the next scheduled data sync date, or an overdue warning."""
+    today = datetime.date.today()
+    overdue = [(d, lbl) for d, lbl in _UPCOMING_RELEASES if d <= today]
+    future  = [(d, lbl) for d, lbl in _UPCOMING_RELEASES if d > today]
+
+    if overdue:
+        _, lbl = overdue[0]
+        content = html.Span(
+            f"⚠  Update data now  ·  {lbl}",
+            style={"color": "#F4C842", "fontSize": "0.82rem", "fontWeight": "600", "whiteSpace": "nowrap"},
+        )
+    elif future:
+        next_date, lbl = future[0]
+        days_left = (next_date - today).days
+        content = html.Span(
+            f"Next sync: {next_date.strftime('%b %d, %Y')}  ·  {lbl}  ({days_left}d)",
+            style={"color": "#888", "fontSize": "0.82rem", "whiteSpace": "nowrap"},
+        )
+    else:
+        return dbc.Col(width=0)
+
+    return dbc.Col(content, width="auto", className="ms-3 align-self-center")
+
+
 app.layout = dbc.Container(
     fluid=True,
     children=[
@@ -153,6 +187,7 @@ app.layout = dbc.Container(
         # Header
         dbc.Row([
             dbc.Col(html.H4("Indicators Machine — Charting", className="mb-0 py-2"), width="auto"),
+            _sync_banner(),
             dbc.Col(_theme_picker(), width="auto", className="ms-auto"),
             dbc.Col(
                 dbc.Button("← Regime Dashboard", href="http://localhost:8501",
