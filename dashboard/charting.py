@@ -32,7 +32,7 @@ from dashboard.charting_data import (
     load_signal_history,
     load_yield_curve_term_structure,
 )
-from dashboard.themes import THEME_CSS_VARS, THEMES, figure_layout
+from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import explorer as _explorer
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ def _theme_picker() -> dbc.RadioItems:
     return dbc.RadioItems(
         id="theme-picker",
         options=[{"label": t["name"], "value": k} for k, t in THEMES.items()],
-        value="midnight",
+        value=DEFAULT_THEME,
         inline=True,
         className="small py-2",
         inputStyle={"marginRight": "4px"},
@@ -146,7 +146,7 @@ app.layout = dbc.Container(
         # Hidden stores and theme helpers
         dcc.Store(id="selected-series", data=[]),
         dcc.Store(id="date-range", data={"start": None, "end": None}),
-        dcc.Store(id="theme-store", data="midnight"),
+        dcc.Store(id="theme-store", data=DEFAULT_THEME),
         html.Div(id="theme-dummy", style={"display": "none"}),
 
         # Header
@@ -252,7 +252,7 @@ app.layout = dbc.Container(
     Input("theme-picker", "value"),
 )
 def update_theme_store(theme_name: str) -> str:
-    return theme_name or "midnight"
+    return theme_name or DEFAULT_THEME
 
 
 # Clientside: update CSS custom properties on documentElement when theme changes.
@@ -345,9 +345,9 @@ def update_date_range(
 def update_overlay_chart(
     selected_ids: list[str],
     date_range: dict,
-    theme_name: str = "midnight",
+    theme_name: str = DEFAULT_THEME,
 ) -> go.Figure:
-    t = THEMES.get(theme_name, THEMES["midnight"])
+    t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     if not selected_ids:
         fig = go.Figure()
         fig.update_layout(**figure_layout(theme_name, "Select series from the left sidebar"))
@@ -450,7 +450,7 @@ def populate_yc_dates(active_tab: str) -> tuple[list[dict], str, list[dict]]:
 def update_yield_curve(
     date_primary: str,
     date_compare: str,
-    theme_name: str = "midnight",
+    theme_name: str = DEFAULT_THEME,
 ) -> go.Figure:
     if not date_primary:
         fig = go.Figure()
@@ -556,7 +556,7 @@ def update_yield_curve(
 def update_regime_chart(
     active_tab: str,
     date_range: dict,
-    theme_name: str = "midnight",
+    theme_name: str = DEFAULT_THEME,
 ) -> go.Figure:
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
@@ -639,7 +639,7 @@ def update_regime_chart(
 # ── Layout helper (kept for backward compatibility with tests) ─────────────────
 
 def _dark_layout(title: str = "") -> dict:
-    return figure_layout("midnight", title)
+    return figure_layout(DEFAULT_THEME, title)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

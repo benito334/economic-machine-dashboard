@@ -7,14 +7,15 @@
 */
 
 :root {
-    --page-bg:     #1a1a2e;
-    --card-bg:     #16213e;
-    --font-color:  #e0e0e0;
-    --border-color:#2a2a4e;
-    --muted-color: #7a8a9a;
-    --header-bg:   #0f1020;
-    --cell-bg:     #1a1a2e;
-    --grid-color:  #1e2a3a;
+    --page-bg:             #1c1c1c;
+    --card-bg:             #262626;
+    --font-color:          #e8e8e8;
+    --border-color:        #3a3a3a;
+    --muted-color:         #888888;
+    --header-bg:           #141414;
+    --cell-bg:             #1c1c1c;
+    --grid-color:          #2d2d2d;
+    --series-label-color:  #aaaaaa;
 }
 
 /* Page background — Bootstrap sets body bg via --bs-body-bg; we also set it
@@ -73,7 +74,10 @@ hr {
     border-color: var(--border-color) !important;
 }
 
-/* Sidebar / series selector scroll area */
+/* Sidebar / series selector — Dash checklist labels don't inherit body colour */
+#series-selector-body label {
+    color: var(--series-label-color) !important;
+}
 #series-selector-body .small {
     color: var(--muted-color) !important;
 }

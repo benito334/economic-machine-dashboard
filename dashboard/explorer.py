@@ -24,7 +24,7 @@ from dashboard.explorer_data import (
     load_signal_detail,
     load_signal_overview,
 )
-from dashboard.themes import THEMES, figure_layout
+from dashboard.themes import DEFAULT_THEME, THEMES, figure_layout
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -430,7 +430,7 @@ def register_callbacks(app: dash.Dash) -> None:
         [Input("exp-selected-signal", "data"),
          Input("theme-store", "data")],
     )
-    def update_ts(signal_id: Optional[str], theme_name: str = "midnight") -> tuple:
+    def update_ts(signal_id: Optional[str], theme_name: str = DEFAULT_THEME) -> tuple:
         fl = {**figure_layout(theme_name), "margin": {"l": 55, "r": 20, "t": 35, "b": 30}}
         empty_fig = go.Figure()
         empty_fig.update_layout(**fl, title={"text": "Select a signal", "x": 0.5})
@@ -450,7 +450,7 @@ def register_callbacks(app: dash.Dash) -> None:
         units = r["units"].iloc[0] if not r.empty else ""
         force = r["force"].iloc[0] if not r.empty else "growth"
         color = _FORCE_COLORS.get(force, "#4C9BE8")
-        t = THEMES.get(theme_name, THEMES["midnight"])
+        t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
 
         fig = make_subplots(
             rows=2, cols=1,

@@ -126,12 +126,18 @@ def test_theme_css_vars_structure():
         assert "--page-bg" in THEME_CSS_VARS[name]
         assert "--font-color" in THEME_CSS_VARS[name]
         assert "--bs-body-bg" in THEME_CSS_VARS[name]
+        assert "--series-label-color" in THEME_CSS_VARS[name]
+
+
+def test_midnight_theme_removed():
+    from dashboard.themes import THEMES, DEFAULT_THEME
+    assert "midnight" not in THEMES
+    assert DEFAULT_THEME == "carbon"
 
 
 def test_dawn_theme_is_light():
     from dashboard.themes import THEMES
     dawn = THEMES["dawn"]
-    # Dawn should have light backgrounds (high R,G,B values)
     assert dawn["page_bg"].startswith("#f")
     assert dawn["font_color"] == "#212529"
 
