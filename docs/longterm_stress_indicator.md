@@ -99,3 +99,21 @@ Before using these bands for decisions, backtest the indicator against known tig
 - Cross-source annual fiscal series may use different accounting conventions and revision schedules.
 - Rolling Z-scores describe deviation from recent history, not absolute sustainability.
 - The initial weights are transparent priors. They require robustness testing before production use.
+
+## Dealing with Stale Data Sources
+
+When a data source becomes stale, the system should treat it as a signal that its reliability has been compromised. In a principled, cycle‑aware framework, you don’t simply drop the series outright; you first assess how long the lag is and what impact it would have on the overall picture.
+
+    Detect the staleness – Compare the timestamp of the latest observation to the expected release schedule. If the gap exceeds a pre‑defined threshold (for example, one quarter for quarterly series or one year for annual series), flag the value as “stale.”
+
+    Quantify the uncertainty – Assign a higher variance or lower weight to any stale observation. The longer the lag, the larger the weight reduction. This reflects the idea that recent information carries more causal relevance in the short‑term debt cycle, while older data still informs the long‑term trend but with diminished precision.
+
+    Apply a fallback rule – Use the most recent valid observation and carry it forward only up to a limited horizon (e.g., one period). Beyond that, replace the stale point with a model‑based estimate—such as a simple linear trend extrapolation, a rolling average, or a Bayesian update based on the distribution of past revisions. This keeps the calculation continuous without letting a single out‑of‑date entry dominate.
+
+    Re‑balance the weights – When a series is flagged as stale, let its weight shrink proportionally to the uncertainty you just quantified. If multiple series become stale simultaneously, redistribute the total weight among the remaining reliable inputs so that the sum stays at 100 %. In extreme cases where all inputs are stale, the system can fall back to a baseline scenario derived from the last fully updated snapshot.
+
+    Signal the condition – Log an alert that the gauge is operating under reduced data fidelity. Down‑stream decision rules can then incorporate a “data‑quality filter”: for instance, avoid making aggressive tactical shifts when the gauge’s confidence level falls below a preset threshold, and instead rely on a more defensive, diversified stance.
+
+    Review and refresh – Schedule a routine audit to verify whether the stale source will be updated soon (e.g., a new release date is imminent) and to decide whether the temporary adjustment needs to be lifted once fresh data arrives.
+
+By treating staleness as a systematic, quantifiable risk rather than an automatic exclusion, the machine preserves the integrity of its cause‑effect mapping across cycles while maintaining robustness. This approach aligns with the principle that a well‑diversified, principle‑driven system should be resilient to imperfect information, adjusting incentives and feedback loops dynamically as the quality of inputs evolves.

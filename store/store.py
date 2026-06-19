@@ -63,11 +63,17 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
     conn.execute(_CREATE_COMPOSITES)
     conn.execute(_CREATE_DEBT_STRESS)
-    # Migration: add stale_components column if the table pre-dates this field
-    try:
-        conn.execute("ALTER TABLE debt_stress_snapshots ADD COLUMN stale_components VARCHAR DEFAULT ''")
-    except Exception:
-        pass  # column already exists
+    # Migration: add columns that pre-date the current schema
+    for _col, _default in [
+        ("stale_components",      "''"),
+        ("extrapolated_components", "''"),
+    ]:
+        try:
+            conn.execute(
+                f"ALTER TABLE debt_stress_snapshots ADD COLUMN {_col} VARCHAR DEFAULT {_default}"
+            )
+        except Exception:
+            pass  # column already exists
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -261,6 +267,7 @@ CREATE TABLE IF NOT EXISTS debt_stress_snapshots (
     val_primary_balance_gdp        DOUBLE,
     val_structural_balance         DOUBLE,
     val_govt_revenue_gdp           DOUBLE,
+    extrapolated_components        VARCHAR   DEFAULT '',
     created_at                     TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -275,6 +282,7 @@ _DEBT_STRESS_COLUMNS = [
     "val_gov_household_debt_gdp", "val_corporate_debt_gdp", "val_household_debt_service",
     "val_federal_interest_gdp", "val_primary_balance_gdp", "val_structural_balance",
     "val_govt_revenue_gdp",
+    "extrapolated_components",
     "created_at",
 ]
 
@@ -291,8 +299,9 @@ def upsert_debt_stress(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
             continue
         row["as_of"] = row["as_of"].isoformat()
         row["created_at"] = now
-        # Serialise list → comma-separated string for VARCHAR storage
+        # Serialise lists → comma-separated strings for VARCHAR storage
         row["stale_components"] = ",".join(row.get("stale_components") or [])
+        row["extrapolated_components"] = ",".join(row.get("extrapolated_components") or [])
         rows.append(row)
 
     if not rows:

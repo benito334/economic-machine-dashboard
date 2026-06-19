@@ -368,6 +368,21 @@ def _stress_band_color(band_label: str) -> str:
     }.get(band_label, "#888")
 
 
+def _parse_stale_components(raw: str) -> dict[str, int]:
+    """Parse 'cid:lag_q,cid2:lag_q2' → {cid: lag_q}. Handles plain 'cid' (lag=1) for back-compat."""
+    result: dict[str, int] = {}
+    for item in str(raw or "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            cid, lag = item.split(":", 1)
+            result[cid.strip()] = int(lag)
+        else:
+            result[item] = 1
+    return result
+
+
 def _render_hud_debt_stress(ds: Optional[pd.Series]) -> str:
     """Return the inline HTML block for the Debt Stress HUD cell, or empty string if no data."""
     if ds is None or ds.empty:
@@ -376,8 +391,10 @@ def _render_hud_debt_stress(ds: Optional[pd.Series]) -> str:
     score = ds.get("stress_score")
     n_comp = ds.get("n_components", 0)
     low_cov = ds.get("low_coverage", False)
-    stale_raw = ds.get("stale_components", "")
-    n_stale = len([s for s in str(stale_raw).split(",") if s.strip()]) if stale_raw else 0
+    stale_dict = _parse_stale_components(ds.get("stale_components", ""))
+    extrap_dict = _parse_stale_components(ds.get("extrapolated_components", ""))
+    n_stale = len(stale_dict)
+    n_extrap = len(extrap_dict)
 
     if score is None or (isinstance(score, float) and math.isnan(score)):
         score_str = "—"
@@ -407,6 +424,11 @@ def _render_hud_debt_stress(ds: Optional[pd.Series]) -> str:
         f'border-radius:3px;font-size:0.65em;">{n_stale} stale</span>'
         if n_stale else ""
     )
+    extrap_badge = (
+        f'&nbsp;<span style="background:#2a3a5a;color:#88aadd;padding:1px 4px;'
+        f'border-radius:3px;font-size:0.65em;">{n_extrap} extrap</span>'
+        if n_extrap else ""
+    )
 
     return (
         f'<div style="border-left:1px solid #333;padding-left:28px;" '
@@ -414,7 +436,7 @@ def _render_hud_debt_stress(ds: Optional[pd.Series]) -> str:
         f'<div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">Debt Stress</div>'
         f'<div style="font-size:1.8em;font-weight:600;color:{band_color};">{score_str}</div>'
         f'<div style="font-size:0.7em;color:{band_color};opacity:0.85;">{band_label}</div>'
-        f'<div style="font-size:0.65em;color:#555;margin-top:1px;">{int(n_comp)}/7 components{stale_badge}</div>'
+        f'<div style="font-size:0.65em;color:#555;margin-top:1px;">{int(n_comp)}/7 components{stale_badge}{extrap_badge}</div>'
         f'</div>'
     )
 

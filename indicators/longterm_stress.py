@@ -4,8 +4,9 @@ Long-Term Debt Stress Indicator computation.
 Entry point: compute_debt_stress_history(conn, country, config, data_dir)
              → list[DebtStressSnapshot], ready for store.upsert_debt_stress().
 
-All tunable parameters (weights, windows, coverage threshold, bands) live in
-config/longterm_stress.yaml. Change them there; do not hardcode values here.
+All tunable parameters (weights, windows, coverage threshold, bands, staleness
+decay) live in config/longterm_stress.yaml. Change them there; do not hardcode
+values here.
 
 Design choices and their TUNABLE parameters are annotated inline.
 """
@@ -24,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).parents[1]
 _CONFIG_DIR = _PROJECT_ROOT / "config"
+
+# Expected publication lag per native frequency (in quarters).
+# A component is NOT considered stale until it exceeds this lag.
+# TUNABLE: these reflect standard provider release schedules.
+_EXPECTED_LAG_BY_FREQ: dict[str, int] = {
+    "Q": 1,   # quarterly series — one quarter publication lag is normal
+    "A": 4,   # annual series — up to four quarters (one year) is normal
+}
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
@@ -83,7 +92,7 @@ def _extend_to_current_quarter(s: pd.Series, limit: int) -> pd.Series:
     as NaN rows, so a plain ffill() on the resampled series cannot reach the
     current quarter. This helper extends the index explicitly before filling.
 
-    TUNABLE: `limit` (passed from config ffill_limit_quarterly) controls how far
+    TUNABLE: `limit` (from config staleness.max_carry_quarters) controls how far
     a stale observation is carried forward. Too large → stale data silently ages;
     too small → the indicator produces NaN unnecessarily.
     """
@@ -96,14 +105,71 @@ def _extend_to_current_quarter(s: pd.Series, limit: int) -> pd.Series:
     return s.reindex(extended_idx).ffill(limit=limit).dropna()
 
 
+def _staleness_lag_q(
+    last_obs: Optional[pd.Timestamp],
+    qt: pd.Timestamp,
+    frequency: str = "Q",
+) -> int:
+    """Excess quarters of lag beyond the expected publication window.
+
+    Returns 0 when the component is within its normal release schedule.
+    Returns >0 when it is genuinely behind — this is the input to weight decay.
+
+    Examples (with expected_lag Q=1, A=4):
+      Q component, last_obs=Q4-2025, qt=Q1-2026 → total=1, expected=1, excess=0
+      Q component, last_obs=Q3-2025, qt=Q1-2026 → total=2, expected=1, excess=1
+      A component, last_obs=Dec-2024, qt=Q3-2025 → total=3, expected=4, excess=0
+      A component, last_obs=Dec-2023, qt=Q3-2025 → total=7, expected=4, excess=3
+    """
+    if last_obs is None:
+        return 999
+    total_lag = max(0, qt.to_period("Q").ordinal - last_obs.to_period("Q").ordinal)
+    expected = _EXPECTED_LAG_BY_FREQ.get(frequency, 1)
+    return max(0, total_lag - expected)
+
+
+def _extrapolate_z_score(
+    z_series: pd.Series,
+    qt: pd.Timestamp,
+    method: str,
+    window: int,
+) -> Optional[float]:
+    """Estimate a missing Z-score at qt from the component's own historical Z-series.
+
+    Used when a component is beyond its carry-forward horizon and extrapolation
+    is enabled in config. The result is flagged in extrapolated_components.
+
+    ⚠ Extrapolation introduces model risk. Keep disabled until back-tested.
+    TUNABLE: method and window from config staleness.extrapolation.*
+    """
+    available = z_series[z_series.index < qt].dropna()
+    if len(available) < 3:
+        return None
+    recent = available.tail(window)
+
+    if method == "rolling_mean":
+        return float(recent.mean())
+    if method == "linear_trend":
+        x = np.arange(len(recent), dtype=float)
+        coeffs = np.polyfit(x, recent.values.astype(float), 1)
+        # Extrapolate one step ahead from the fitted line
+        return float(np.polyval(coeffs, len(recent)))
+    return None
+
+
 # ── Derived ratio construction ────────────────────────────────────────────────
 
-def _build_gov_household_debt_gdp(conn, country_prefix: str) -> pd.Series:
+def _build_gov_household_debt_gdp(
+    conn,
+    country_prefix: str,
+    ffill_limit: int = 6,
+) -> pd.Series:
     """Sum government debt/GDP and household debt/GDP at quarterly frequency.
 
-    Forward-fills each component up to 6 quarters (≈ 18 months) before summing.
-    This matches the typical BIS household-debt publication lag (~3–4 quarters)
-    while still using the latest available data rather than producing NaN.
+    Forward-fills each component up to ffill_limit quarters (from config
+    staleness.max_carry_quarters) before summing. This matches the typical BIS
+    household-debt publication lag (~3–4 quarters) while still using the latest
+    available data rather than producing NaN.
     The caller should check _component_last_dates to flag which components are stale.
     """
     gov = _load_signal_values(conn, f"{country_prefix}.credit.gov_debt_gdp")
@@ -112,11 +178,11 @@ def _build_gov_household_debt_gdp(conn, country_prefix: str) -> pd.Series:
         return pd.Series(dtype=float)
     # Extend each sub-series to the current quarter before merging, so the
     # combined series covers the current quarter even when one sub-series lags.
-    gov = _extend_to_current_quarter(gov.resample("QE").last(), limit=6)
-    hh  = _extend_to_current_quarter(hh.resample("QE").last(),  limit=6)
+    gov = _extend_to_current_quarter(gov.resample("QE").last(), limit=ffill_limit)
+    hh  = _extend_to_current_quarter(hh.resample("QE").last(),  limit=ffill_limit)
     idx = gov.index.union(hh.index)
-    gov_q = gov.reindex(idx).ffill(limit=6)
-    hh_q  = hh.reindex(idx).ffill(limit=6)
+    gov_q = gov.reindex(idx).ffill(limit=ffill_limit)
+    hh_q  = hh.reindex(idx).ffill(limit=ffill_limit)
     combined = gov_q.add(hh_q).dropna()
     return combined.resample("QE").last().dropna()
 
@@ -134,22 +200,20 @@ def _build_corporate_debt_gdp(data_dir: Path) -> pd.Series:
     return ratio
 
 
-def _build_federal_interest_gdp(data_dir: Path) -> pd.Series:
+def _build_federal_interest_gdp(data_dir: Path, ffill_limit: int = 4) -> pd.Series:
     """Construct federal interest outlays / GDP ratio.
 
     FYOINT: Federal interest outlays, millions $, annual (US fiscal year Oct–Sept).
     GDP: Nominal GDP, billions $, quarterly (annualised rate).
 
     Unit conversion: FYOINT millions → billions (÷ 1000).
-    Frequency alignment: forward-fill the annual FYOINT to quarterly grid before dividing.
+    Frequency alignment: forward-fill the annual FYOINT to quarterly grid, up to
+    ffill_limit quarters (from config staleness.max_carry_quarters).
     Z-score is computed AFTER this function returns, at annual frequency — see
     _rolling_z_annual_then_ffill().
 
-    TUNABLE: the forward-fill aligns the fiscal-year total against the quarterly annualised
-    GDP rate. This is a ratio of annual-period spending to an annual-rate denominator, so
-    the units are compatible. If the fiscal year ends in September, the September quarter
-    GDP is the natural matching denominator; forward-fill carries it through subsequent
-    quarters until the next fiscal year.
+    TUNABLE: the forward-fill aligns the fiscal-year total against the quarterly
+    annualised GDP rate. The units are compatible (both annual-rate basis).
     """
     fyoint = _load_raw_fred("FYOINT", data_dir)
     gdp = _load_raw_fred("GDP", data_dir).resample("QE").last().dropna()
@@ -159,7 +223,7 @@ def _build_federal_interest_gdp(data_dir: Path) -> pd.Series:
 
     # Resample to annual (last observation per calendar year), then forward-fill quarterly
     fyoint_annual = fyoint_bn.resample("YE").last().dropna()
-    fyoint_q = fyoint_annual.reindex(gdp.index, method="ffill")
+    fyoint_q = fyoint_annual.reindex(gdp.index, method="ffill", limit=ffill_limit)
 
     ratio = fyoint_q.divide(gdp).dropna()
     return ratio
@@ -195,15 +259,17 @@ def _rolling_z_annual_then_ffill(
     min_periods: int,
     shift: int = 1,
     quarterly_index: pd.DatetimeIndex | None = None,
+    ffill_limit: int | None = None,
 ) -> pd.Series:
     """Rolling Z-score for an annual series, computed at annual frequency, then forward-filled.
 
     TUNABLE: window and min_periods come from config z_score.window_annual /
              min_periods_annual. shift comes from config z_score.look_back_shift.
+             ffill_limit comes from config staleness.max_carry_quarters.
 
-    Carrying forward a single annual Z-score for 4 quarters avoids the look-ahead
-    and multiple-counting problem that would arise from Z-scoring the quarterly
-    forward-filled series directly.
+    Carrying forward a single annual Z-score for up to ffill_limit quarters avoids
+    the look-ahead and multiple-counting problem that would arise from Z-scoring
+    the quarterly forward-filled series directly.
     """
     annual = series.resample("YE").last().dropna()
     prior = annual.shift(shift)
@@ -214,8 +280,9 @@ def _rolling_z_annual_then_ffill(
     if quarterly_index is None:
         return z_annual
 
-    # Forward-fill the annual Z-score into the quarterly grid
-    z_q = z_annual.reindex(quarterly_index, method="ffill")
+    # Forward-fill the annual Z-score into the quarterly grid, limited to
+    # max_carry_quarters so stale annual Z-scores age out properly.
+    z_q = z_annual.reindex(quarterly_index, method="ffill", limit=ffill_limit)
     return z_q
 
 
@@ -239,6 +306,7 @@ def compute_debt_stress_history(
     country_prefix = country.lower()
     z_cfg = config.get("z_score", {})
     cov_cfg = config.get("coverage", {})
+    stale_cfg = config.get("staleness", {})
     components_cfg = config.get("components", [])
 
     win_q = z_cfg.get("window_quarters", 40)
@@ -248,12 +316,23 @@ def compute_debt_stress_history(
     shift = z_cfg.get("look_back_shift", 1)
     min_weight = cov_cfg.get("min_retained_weight", 0.60)
 
+    # Staleness parameters (Gap 1 + Gap 2). Default to no-decay when section absent
+    # (preserves backward compatibility with configs that predate this section).
+    stale_halflife: Optional[float] = stale_cfg.get("stale_weight_halflife", None)
+    stale_min_frac: float = stale_cfg.get("stale_min_weight_fraction", 0.0)
+    max_carry_q: int = stale_cfg.get("max_carry_quarters", 6)
+
+    extrap_cfg = stale_cfg.get("extrapolation", {})
+    extrap_enabled: bool = extrap_cfg.get("enabled", False)
+    extrap_method: str = extrap_cfg.get("method", "rolling_mean")
+    extrap_window: int = extrap_cfg.get("window_quarters", 8)
+
     comp_map = {c["id"]: c for c in components_cfg}
 
     # ── Build raw level series for each component ─────────────────────────────
 
     raw_series: dict[str, pd.Series] = {}
-    # Last observed date per component — used to flag stale carry-forward
+    # Last observed date per component — used to compute staleness lag
     last_obs_dates: dict[str, Optional[pd.Timestamp]] = {}
 
     def _record_last(cid: str, s: pd.Series) -> None:
@@ -264,14 +343,16 @@ def compute_debt_stress_history(
         # Capture sub-component last dates before the merge so staleness is visible
         gov_raw = _load_signal_values(conn, f"{country_prefix}.credit.gov_debt_gdp")
         hh_raw  = _load_signal_values(conn, f"{country_prefix}.credit.household_debt_gdp")
-        # Use the earlier of the two sub-components as the "last obs" for the combined series
         gov_last = gov_raw.index[-1] if not gov_raw.empty else None
         hh_last  = hh_raw.index[-1]  if not hh_raw.empty  else None
+        # Use the earlier of the two sub-components as the governing last-obs
         if gov_last and hh_last:
             last_obs_dates["gov_household_debt_gdp"] = min(gov_last, hh_last)
         else:
             last_obs_dates["gov_household_debt_gdp"] = gov_last or hh_last
-        raw_series["gov_household_debt_gdp"] = _build_gov_household_debt_gdp(conn, country_prefix)
+        raw_series["gov_household_debt_gdp"] = _build_gov_household_debt_gdp(
+            conn, country_prefix, ffill_limit=max_carry_q
+        )
     except Exception as exc:
         logger.warning("gov_household_debt_gdp: %s", exc)
         raw_series["gov_household_debt_gdp"] = pd.Series(dtype=float)
@@ -286,21 +367,21 @@ def compute_debt_stress_history(
         raw_series["corporate_debt_gdp"] = pd.Series(dtype=float)
         last_obs_dates["corporate_debt_gdp"] = None
 
-    # Quarterly signal — forward-fill up to 4 quarters to bridge publication lag
+    # Quarterly signal — forward-fill up to max_carry_q quarters
     try:
         s = _load_signal_values(conn, f"{country_prefix}.credit.debt_service_ratio")
         _record_last("household_debt_service", s)
         raw_series["household_debt_service"] = _extend_to_current_quarter(
-            s.resample("QE").last(), limit=4
+            s.resample("QE").last(), limit=max_carry_q
         )
     except Exception as exc:
         logger.warning("household_debt_service: %s", exc)
         raw_series["household_debt_service"] = pd.Series(dtype=float)
         last_obs_dates["household_debt_service"] = None
 
-    # Annual derived (forward-fill to quarterly handled in Z step)
+    # Annual derived (Z-score forward-fill to quarterly handled in Z step)
     try:
-        s = _build_federal_interest_gdp(data_dir)
+        s = _build_federal_interest_gdp(data_dir, ffill_limit=max_carry_q)
         raw_series["federal_interest_gdp"] = s
         _record_last("federal_interest_gdp", s)
     except Exception as exc:
@@ -354,8 +435,11 @@ def compute_debt_stress_history(
             z_series[cid] = _rolling_z_quarterly(raw, win_q, min_q, shift)
         else:
             # Annual: Z-score on annual series, then ffill to quarterly grid
+            # Limited to max_carry_q so annual Z-scores don't carry indefinitely.
             z_series[cid] = _rolling_z_annual_then_ffill(
-                raw, win_a, min_a, shift, quarterly_index=q_index
+                raw, win_a, min_a, shift,
+                quarterly_index=q_index,
+                ffill_limit=max_carry_q,
             )
 
     # ── Assemble per-quarter snapshots ────────────────────────────────────────
@@ -366,6 +450,7 @@ def compute_debt_stress_history(
         if qt.date() > date.today():
             continue
 
+        # ── Gather raw Z and value for each component ─────────────────────────
         component_z: dict[str, Optional[float]] = {}
         component_val: dict[str, Optional[float]] = {}
 
@@ -381,7 +466,6 @@ def compute_debt_stress_history(
 
             raw_val = None
             if not raw_s.empty:
-                # For the raw value: use the most recent observation at or before qt
                 raw_idx = raw_s.index[raw_s.index <= qt]
                 if len(raw_idx) > 0:
                     v = raw_s[raw_idx[-1]]
@@ -390,17 +474,58 @@ def compute_debt_stress_history(
             component_z[cid] = z_val
             component_val[cid] = raw_val
 
-        # Coverage check and weight renormalisation
+        # ── Gap 2: extrapolation beyond carry horizon (when enabled) ──────────
+        extrapolated_comps: list[str] = []
+        if extrap_enabled:
+            for comp in components_cfg:
+                cid = comp["id"]
+                if component_z.get(cid) is not None:
+                    continue  # already has a real value
+                freq = comp.get("frequency", "Q")
+                last = last_obs_dates.get(cid)
+                excess = _staleness_lag_q(last, qt, freq) if last else 999
+                if excess > max_carry_q:
+                    z_extrap = _extrapolate_z_score(
+                        z_series.get(cid, pd.Series(dtype=float)),
+                        qt, extrap_method, extrap_window,
+                    )
+                    if z_extrap is not None:
+                        component_z[cid] = z_extrap
+                        extrapolated_comps.append(f"{cid}:{excess}")
+
+        # ── Gap 1: weight decay proportional to staleness lag ─────────────────
+        effective_weights: dict[str, float] = {}
         total_config_weight = sum(c["weight"] for c in components_cfg)
-        active_weight = sum(
-            c["weight"] for c in components_cfg
-            if component_z.get(c["id"]) is not None
-        )
-        n_active = sum(1 for c in components_cfg if component_z.get(c["id"]) is not None)
+
+        for comp in components_cfg:
+            cid = comp["id"]
+            if component_z.get(cid) is None:
+                effective_weights[cid] = 0.0
+                continue
+
+            freq = comp.get("frequency", "Q")
+            last = last_obs_dates.get(cid)
+            excess = _staleness_lag_q(last, qt, freq)
+
+            if stale_halflife is not None and stale_halflife > 0:
+                decay = max(0.0, 1.0 - excess / stale_halflife)
+                eff_w = comp["weight"] * decay
+                # Drop if effective weight falls below the minimum fraction
+                if eff_w < stale_min_frac * comp["weight"] and comp["weight"] > 0:
+                    component_z[cid] = None
+                    eff_w = 0.0
+            else:
+                # No decay configured — binary present/missing
+                eff_w = comp["weight"]
+
+            effective_weights[cid] = eff_w
+
+        active_weight = sum(effective_weights.values())
+        n_active = sum(1 for w in effective_weights.values() if w > 0)
         retained = active_weight / total_config_weight if total_config_weight > 0 else 0.0
         low_cov = retained < min_weight
 
-        # Aggregate stress score (renormalise active weights to 1.0)
+        # ── Aggregate stress score (renormalise effective weights to 1.0) ──────
         stress = None
         if not low_cov and active_weight > 0:
             weighted_sum = 0.0
@@ -411,20 +536,24 @@ def compute_debt_stress_history(
                     continue
                 direction = comp.get("stress_direction", "positive")
                 signed_z = -z_val if direction == "negative" else z_val
-                # Renormalise: each active component's effective weight = config_weight / active_weight
-                weighted_sum += signed_z * (comp["weight"] / active_weight)
+                # Renormalise: each component's share = eff_weight / active_weight
+                weighted_sum += signed_z * (effective_weights[cid] / active_weight)
             stress = round(weighted_sum, 4)
 
-        # Detect which active components are carrying forward stale data
+        # ── Gap 3: structured stale strings ("cid:lag_q") ────────────────────
+        # Only components still active (weight > 0) with excess lag > 0 are stale.
         stale_comps: list[str] = []
-        qt_period_start = qt - pd.offsets.QuarterBegin(startingMonth=1)
         for comp in components_cfg:
             cid = comp["id"]
-            if component_z.get(cid) is None:
-                continue  # already excluded from active set
+            if effective_weights.get(cid, 0.0) <= 0:
+                continue  # excluded from score — not flagged as stale
+            if cid in {e.split(":")[0] for e in extrapolated_comps}:
+                continue  # extrapolated — flagged separately
+            freq = comp.get("frequency", "Q")
             last = last_obs_dates.get(cid)
-            if last is not None and last < qt_period_start:
-                stale_comps.append(cid)
+            excess = _staleness_lag_q(last, qt, freq)
+            if excess > 0:
+                stale_comps.append(f"{cid}:{excess}")
 
         snapshots.append(DebtStressSnapshot(
             country=country,
@@ -434,6 +563,7 @@ def compute_debt_stress_history(
             retained_weight=round(retained, 4),
             low_coverage=low_cov,
             stale_components=stale_comps,
+            extrapolated_components=extrapolated_comps,
             z_gov_household_debt_gdp=_r(component_z.get("gov_household_debt_gdp")),
             z_corporate_debt_gdp=_r(component_z.get("corporate_debt_gdp")),
             z_household_debt_service=_r(component_z.get("household_debt_service")),

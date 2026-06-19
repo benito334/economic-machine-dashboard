@@ -105,6 +105,12 @@ class DebtStressSnapshot(BaseModel):
     val_govt_revenue_gdp: Optional[float] = None
 
     # Components whose last raw observation predates the snapshot quarter.
-    # These are included in the stress score (with their last known value carried
-    # forward) but should be flagged as stale in any display layer.
+    # Stored as "cid:excess_lag_q" (e.g. "gov_household_debt_gdp:2") so the
+    # display layer can show both the component name and the lag in quarters.
+    # These are included in the score (with decayed weight) but flagged in UI.
     stale_components: list[str] = []
+
+    # Components whose Z-score was model-estimated (rolling mean or linear trend)
+    # because the raw value was older than max_carry_quarters.
+    # Stored as "cid:excess_lag_q". Only populated when extrapolation is enabled.
+    extrapolated_components: list[str] = []

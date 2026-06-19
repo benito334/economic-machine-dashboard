@@ -53,6 +53,55 @@ coverage:
   #          Raise to 0.75 for a stricter policy; lower to 0.50 for more coverage.
   min_retained_weight: 0.60
 
+staleness:
+  # ── Weight decay for stale components ──────────────────────────────────────
+  # When a component's last observation predates its expected release window,
+  # its effective weight decays linearly so stale data exerts less influence.
+  #
+  #   excess_lag_q = total_quarters_behind − expected_lag_for_frequency
+  #   decay        = max(0, 1 − excess_lag_q / stale_weight_halflife)
+  #   eff_weight   = original_weight × decay
+  #
+  # expected_lag_for_frequency: Q = 1 quarter, A = 4 quarters (these are the
+  # normal publication delays and do NOT count as staleness).
+  #
+  # TUNABLE: 4 quarters → weight decays to 0 after 4 excess quarters.
+  #          Tighten (e.g. 2) for faster decay; loosen (e.g. 8) for slower.
+  stale_weight_halflife: 4       # TUNABLE
+
+  # Minimum effective weight as a fraction of the original weight, below which
+  # the component is dropped entirely from the score (treated as missing).
+  # Prevents near-zero contributions that add noise without signal.
+  # TUNABLE: 0.20 = drop when effective weight < 20% of its nominal value.
+  stale_min_weight_fraction: 0.20  # TUNABLE
+
+  # ── Carry-forward horizon ──────────────────────────────────────────────────
+  # Maximum number of quarters a raw value may be carried forward after its
+  # last observation before the component is treated as missing (weight → 0),
+  # unless extrapolation is enabled (see below).
+  #
+  # This replaces the previous hardcoded ffill limits in the builder functions.
+  # Annual Z-scores are also forward-filled only up to this many quarters.
+  #
+  # TUNABLE: 4 = one full year carry-forward. BIS quarterly data typically
+  #          arrives with a 3–4 quarter publication lag, so 4 is the minimum
+  #          practical value for the combined debt components.
+  max_carry_quarters: 4          # TUNABLE
+
+  # ── Optional model-based extrapolation beyond the carry horizon ───────────
+  # When enabled, components whose raw value is more than max_carry_quarters
+  # quarters stale are not dropped; instead their Z-score is replaced by a
+  # model-based estimate derived from the component's own historical Z-series.
+  # The extrapolated component is flagged in the extrapolated_components field
+  # (distinct from stale_components) and its weight still decays.
+  #
+  # Keep disabled until extrapolation has been back-tested against known
+  # fiscal-stress episodes (1994 bond rout, 2008 GFC, 2022 tightening).
+  extrapolation:
+    enabled: false               # TUNABLE — off by default
+    method: rolling_mean         # TUNABLE — "rolling_mean" | "linear_trend"
+    window_quarters: 8           # TUNABLE — lookback for mean / trend fit
+
 bands:
   # ── Interpretation bands ────────────────────────────────────────────────────
   # ⚠  NOT VALIDATED RISK THRESHOLDS. See docs/longterm_stress_indicator.md §Interpretation.

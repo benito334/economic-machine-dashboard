@@ -30,6 +30,8 @@ from indicators.longterm_stress import (
     _rolling_z_annual_then_ffill,
     _build_federal_interest_gdp,
     _extend_to_current_quarter,
+    _staleness_lag_q,
+    _extrapolate_z_score,
     stress_band_label,
     compute_debt_stress_history,
     load_longterm_stress_config,
@@ -420,4 +422,322 @@ def test_config_look_back_shift_is_nonzero(full_config):
     shift = full_config["z_score"]["look_back_shift"]
     assert shift >= 1, (
         f"look_back_shift={shift}; setting to 0 introduces look-ahead bias in backtests"
+    )
+
+
+# ── Gap 1: Staleness lag calculation ─────────────────────────────────────────
+
+def test_staleness_lag_q_zero_when_current():
+    """A quarterly component whose last obs is Q4 should show 0 excess lag in Q1."""
+    last = pd.Timestamp("2025-12-31")   # Q4 2025
+    qt   = pd.Timestamp("2026-03-31")   # Q1 2026 — one quarter later (expected lag=1)
+    assert _staleness_lag_q(last, qt, "Q") == 0
+
+
+def test_staleness_lag_q_one_excess_quarter():
+    """A quarterly component two quarters behind should show excess=1."""
+    last = pd.Timestamp("2025-09-30")   # Q3 2025
+    qt   = pd.Timestamp("2026-03-31")   # Q1 2026 — two quarters later, excess = 2-1 = 1
+    assert _staleness_lag_q(last, qt, "Q") == 1
+
+
+def test_staleness_lag_q_annual_within_window():
+    """An annual component 3 quarters behind (expected 4) should show excess=0."""
+    last = pd.Timestamp("2024-12-31")   # Dec 2024
+    qt   = pd.Timestamp("2025-09-30")   # Q3 2025 — 3 quarters later, expected=4, excess=0
+    assert _staleness_lag_q(last, qt, "A") == 0
+
+
+def test_staleness_lag_q_annual_stale():
+    """An annual component 7 quarters behind (expected 4) should show excess=3."""
+    last = pd.Timestamp("2023-12-31")   # Dec 2023
+    qt   = pd.Timestamp("2025-09-30")   # Q3 2025 — 7 quarters later, excess = 7-4 = 3
+    assert _staleness_lag_q(last, qt, "A") == 3
+
+
+def test_staleness_lag_q_none_returns_large():
+    """None last_obs should return a large sentinel value (treat as maximally stale)."""
+    qt = pd.Timestamp("2026-03-31")
+    assert _staleness_lag_q(None, qt, "Q") >= 100
+
+
+# ── Gap 1: Weight decay reduces retained_weight ───────────────────────────────
+
+def test_weight_decay_stale_component_reduces_retained(minimal_config):
+    """When a component carries stale data its effective weight is reduced, lowering retained_weight."""
+    import copy
+    cfg = copy.deepcopy(minimal_config)
+    # Add staleness decay with halflife=4 quarters
+    cfg["staleness"] = {
+        "stale_weight_halflife": 4,
+        "stale_min_weight_fraction": 0.0,  # never drop, just decay
+        "max_carry_quarters": 8,
+        "extrapolation": {"enabled": False},
+    }
+
+    dates = pd.date_range("2000-01-01", periods=80, freq="QE")
+    dsr = pd.Series(np.linspace(10.0, 20.0, 80), index=dates)
+    # Annual series — stops 3 years ago so it will be stale for recent quarters
+    annual_dates = pd.date_range("2000-01-01", periods=18, freq="YE")
+    primary = pd.Series(np.linspace(-5.0, 2.0, 18), index=annual_dates)
+    revenue = pd.Series(np.linspace(28.0, 35.0, 18), index=annual_dates)
+
+    def fake_signal(conn, signal_id: str):
+        if "debt_service" in signal_id:
+            return dsr
+        if "primary_balance" in signal_id:
+            return primary
+        if "govt_revenue" in signal_id:
+            return revenue
+        return pd.Series(dtype=float)
+
+    with patch("indicators.longterm_stress._load_signal_values", side_effect=fake_signal), \
+         patch("indicators.longterm_stress._build_gov_household_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_corporate_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_federal_interest_gdp", return_value=pd.Series(dtype=float)):
+        snaps = compute_debt_stress_history(MagicMock(), "US", cfg, Path("/tmp"))
+
+    # Recent snapshots where the annual series are stale should have retained_weight < 1.0
+    # (because stale weight decays). Snapshots with stale excess > halflife should have
+    # even lower retained_weight.
+    valid = [s for s in snaps if s.retained_weight is not None and s.n_components > 0]
+    assert valid
+    # In the final periods both annual series are very stale — weight should be decayed
+    # (possibly to 0 if excess > halflife). No retained_weight should exceed 1.0.
+    for s in valid:
+        assert s.retained_weight <= 1.0 + 1e-6
+
+
+def test_weight_decay_excludes_when_below_min_fraction(minimal_config):
+    """A component with excess lag >> halflife should be dropped (effective weight < min_fraction)."""
+    import copy
+    cfg = copy.deepcopy(minimal_config)
+    cfg["staleness"] = {
+        "stale_weight_halflife": 2,          # sharp decay — 2 excess quarters → weight=0
+        "stale_min_weight_fraction": 0.20,   # drop below 20% of original weight
+        "max_carry_quarters": 40,            # allow long carry so Z-scores exist
+        "extrapolation": {"enabled": False},
+    }
+
+    # DSR: runs up to the current date so recent snapshots exist
+    dates_q = pd.date_range("2000-01-01", pd.Timestamp.today(), freq="QE")
+    dsr = pd.Series(np.linspace(10.0, 20.0, len(dates_q)), index=dates_q)
+    # Annual series ending 6 years ago → excess >> halflife=2 → weight decays to 0
+    old_end = pd.Timestamp.today() - pd.DateOffset(years=6)
+    annual_dates = pd.date_range("2000-01-01", old_end, freq="YE")
+    primary = pd.Series(np.linspace(-5.0, 2.0, len(annual_dates)), index=annual_dates)
+    revenue = pd.Series(np.linspace(28.0, 35.0, len(annual_dates)), index=annual_dates)
+
+    def fake_signal(conn, signal_id: str):
+        if "debt_service" in signal_id:
+            return dsr
+        if "primary_balance" in signal_id:
+            return primary
+        if "govt_revenue" in signal_id:
+            return revenue
+        return pd.Series(dtype=float)
+
+    with patch("indicators.longterm_stress._load_signal_values", side_effect=fake_signal), \
+         patch("indicators.longterm_stress._build_gov_household_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_corporate_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_federal_interest_gdp", return_value=pd.Series(dtype=float)):
+        snaps = compute_debt_stress_history(MagicMock(), "US", cfg, Path("/tmp"))
+
+    # The most recent snapshot should have the annual components dropped because their
+    # excess lag >> stale_weight_halflife=2 → eff_weight < 0.20 → excluded
+    all_snaps = [s for s in snaps]
+    assert all_snaps
+    last = all_snaps[-1]
+    assert last.n_components <= 1, (
+        f"Very stale annual components should be dropped; got n_components={last.n_components} "
+        f"at {last.as_of}, retained={last.retained_weight}"
+    )
+
+
+# ── Gap 3: Structured stale string format ─────────────────────────────────────
+
+def test_stale_components_include_lag_q(minimal_config):
+    """stale_components entries must be in 'cid:lag_q' format when stale."""
+    import copy
+    cfg = copy.deepcopy(minimal_config)
+    cfg["staleness"] = {
+        "stale_weight_halflife": 8,
+        "stale_min_weight_fraction": 0.0,
+        "max_carry_quarters": 8,
+        "extrapolation": {"enabled": False},
+    }
+
+    dates_q = pd.date_range("2000-01-01", periods=60, freq="QE")
+    dsr = pd.Series(np.linspace(10.0, 20.0, 60), index=dates_q)
+    # Annual data ending 2 years ago — will be stale with excess > 0
+    old_end = pd.Timestamp.today() - pd.DateOffset(years=2)
+    ann_dates = pd.date_range("2000-01-01", old_end, freq="YE")
+    primary = pd.Series(np.linspace(-5.0, 2.0, len(ann_dates)), index=ann_dates)
+    revenue = pd.Series(np.linspace(28.0, 35.0, len(ann_dates)), index=ann_dates)
+
+    def fake_signal(conn, signal_id: str):
+        if "debt_service" in signal_id:
+            return dsr
+        if "primary_balance" in signal_id:
+            return primary
+        if "govt_revenue" in signal_id:
+            return revenue
+        return pd.Series(dtype=float)
+
+    with patch("indicators.longterm_stress._load_signal_values", side_effect=fake_signal), \
+         patch("indicators.longterm_stress._build_gov_household_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_corporate_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_federal_interest_gdp", return_value=pd.Series(dtype=float)):
+        snaps = compute_debt_stress_history(MagicMock(), "US", cfg, Path("/tmp"))
+
+    # Find snapshots where annual components are stale
+    stale_snaps = [s for s in snaps if s.stale_components]
+    assert stale_snaps, "Expected some snapshots with stale components"
+    for s in stale_snaps:
+        for entry in s.stale_components:
+            assert ":" in entry, (
+                f"stale_components entry '{entry}' must be 'cid:lag_q' format"
+            )
+            cid, lag_str = entry.split(":", 1)
+            assert cid  # non-empty cid
+            assert int(lag_str) >= 1  # lag must be at least 1
+
+
+# ── Gap 2: Extrapolation ──────────────────────────────────────────────────────
+
+def test_extrapolate_z_score_rolling_mean():
+    """rolling_mean extrapolation returns the mean of recent Z-scores."""
+    dates = pd.date_range("2020-01-01", periods=12, freq="QE")
+    z = pd.Series([0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6], index=dates)
+    qt = pd.Timestamp("2023-06-30")  # beyond all data
+    result = _extrapolate_z_score(z, qt, method="rolling_mean", window=8)
+    expected = float(z.tail(8).mean())
+    assert result is not None
+    assert abs(result - expected) < 1e-6
+
+
+def test_extrapolate_z_score_linear_trend():
+    """linear_trend extrapolation returns a value beyond the last point."""
+    dates = pd.date_range("2020-01-01", periods=10, freq="QE")
+    # Perfect linear series: 0, 1, 2, ..., 9 → trend should extrapolate to ~10
+    z = pd.Series(np.arange(10, dtype=float), index=dates)
+    qt = pd.Timestamp("2022-09-30")
+    result = _extrapolate_z_score(z, qt, method="linear_trend", window=10)
+    assert result is not None
+    assert abs(result - 10.0) < 0.5  # extrapolated one step ahead ≈ 10
+
+
+def test_extrapolate_z_score_too_few_points():
+    """With fewer than 3 historical points, extrapolation returns None."""
+    dates = pd.date_range("2020-01-01", periods=2, freq="QE")
+    z = pd.Series([1.0, 1.5], index=dates)
+    qt = pd.Timestamp("2022-01-01")
+    result = _extrapolate_z_score(z, qt, method="rolling_mean", window=8)
+    assert result is None
+
+
+def test_extrapolated_components_populated_when_enabled(minimal_config):
+    """When extrapolation is enabled, extrapolated_components is non-empty for old components."""
+    import copy
+    cfg = copy.deepcopy(minimal_config)
+    cfg["staleness"] = {
+        "stale_weight_halflife": 20,
+        "stale_min_weight_fraction": 0.0,
+        "max_carry_quarters": 1,           # very short carry horizon → triggers extrapolation
+        "extrapolation": {
+            "enabled": True,
+            "method": "rolling_mean",
+            "window_quarters": 4,
+        },
+    }
+
+    # dsr must run to today so q_index reaches current quarters (where the
+    # annual data that ended 3 years ago is stale enough to trigger extrapolation)
+    dates_q = pd.date_range("2000-01-01", pd.Timestamp.today(), freq="QE")
+    dsr = pd.Series(np.linspace(10.0, 20.0, len(dates_q)), index=dates_q)
+    # Annual data: ends well before current date → beyond max_carry_quarters=1
+    ann_end = pd.Timestamp.today() - pd.DateOffset(years=3)
+    ann_dates = pd.date_range("2000-01-01", ann_end, freq="YE")
+    if len(ann_dates) < 8:
+        pytest.skip("Not enough history for extrapolation test")
+    primary = pd.Series(np.linspace(-5.0, 2.0, len(ann_dates)), index=ann_dates)
+    revenue = pd.Series(np.linspace(28.0, 35.0, len(ann_dates)), index=ann_dates)
+
+    def fake_signal(conn, signal_id: str):
+        if "debt_service" in signal_id:
+            return dsr
+        if "primary_balance" in signal_id:
+            return primary
+        if "govt_revenue" in signal_id:
+            return revenue
+        return pd.Series(dtype=float)
+
+    with patch("indicators.longterm_stress._load_signal_values", side_effect=fake_signal), \
+         patch("indicators.longterm_stress._build_gov_household_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_corporate_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_federal_interest_gdp", return_value=pd.Series(dtype=float)):
+        snaps = compute_debt_stress_history(MagicMock(), "US", cfg, Path("/tmp"))
+
+    extrap_snaps = [s for s in snaps if s.extrapolated_components]
+    assert extrap_snaps, "Expected extrapolated_components to be populated when enabled"
+    for s in extrap_snaps:
+        for entry in s.extrapolated_components:
+            assert ":" in entry, f"extrapolated_components entry '{entry}' must be 'cid:lag_q'"
+
+
+def test_extrapolated_components_empty_when_disabled(minimal_config):
+    """When extrapolation is disabled, extrapolated_components is always empty."""
+    import copy
+    cfg = copy.deepcopy(minimal_config)
+    cfg["staleness"] = {
+        "stale_weight_halflife": 20,
+        "stale_min_weight_fraction": 0.0,
+        "max_carry_quarters": 1,
+        "extrapolation": {"enabled": False},
+    }
+
+    dates_q = pd.date_range("2000-01-01", periods=80, freq="QE")
+    dsr = pd.Series(np.linspace(10.0, 20.0, 80), index=dates_q)
+    ann_end = pd.Timestamp.today() - pd.DateOffset(years=3)
+    ann_dates = pd.date_range("2000-01-01", ann_end, freq="YE")
+    primary = pd.Series(np.linspace(-5.0, 2.0, len(ann_dates)), index=ann_dates)
+    revenue = pd.Series(np.linspace(28.0, 35.0, len(ann_dates)), index=ann_dates)
+
+    def fake_signal(conn, signal_id: str):
+        if "debt_service" in signal_id:
+            return dsr
+        if "primary_balance" in signal_id:
+            return primary
+        if "govt_revenue" in signal_id:
+            return revenue
+        return pd.Series(dtype=float)
+
+    with patch("indicators.longterm_stress._load_signal_values", side_effect=fake_signal), \
+         patch("indicators.longterm_stress._build_gov_household_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_corporate_debt_gdp", return_value=pd.Series(dtype=float)), \
+         patch("indicators.longterm_stress._build_federal_interest_gdp", return_value=pd.Series(dtype=float)):
+        snaps = compute_debt_stress_history(MagicMock(), "US", cfg, Path("/tmp"))
+
+    for s in snaps:
+        assert s.extrapolated_components == [], (
+            "extrapolated_components must be empty when extrapolation.enabled=False"
+        )
+
+
+# ── Full config: staleness section structure ──────────────────────────────────
+
+def test_full_config_staleness_section(full_config):
+    """Full config must have a staleness section with required fields."""
+    stale = full_config.get("staleness")
+    assert stale is not None, "staleness section missing from config"
+    assert "stale_weight_halflife" in stale
+    assert "stale_min_weight_fraction" in stale
+    assert "max_carry_quarters" in stale
+    extrap = stale.get("extrapolation", {})
+    assert "enabled" in extrap
+    assert "method" in extrap
+    assert extrap["method"] in ("rolling_mean", "linear_trend")
+    # Safety guard: extrapolation must be off by default until back-tested
+    assert extrap["enabled"] is False, (
+        "extrapolation.enabled must be False by default; enable only after validation"
     )

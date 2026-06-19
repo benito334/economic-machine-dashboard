@@ -961,6 +961,21 @@ def _stress_band(score: float) -> tuple[str, str]:
     return label, _STRESS_BAND_COLORS.get(label, "#888")
 
 
+def _parse_stress_components(raw: str) -> dict[str, int]:
+    """Parse 'cid:lag_q,cid2:lag_q2' → {cid: lag_q}. Back-compat with plain 'cid' (lag=1)."""
+    result: dict[str, int] = {}
+    for item in str(raw or "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            cid, lag = item.split(":", 1)
+            result[cid.strip()] = int(lag)
+        else:
+            result[item] = 1
+    return result
+
+
 def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> list:
     """Build the left-panel children for the Debt Stress tab."""
     muted   = {"color": "var(--muted-color)"}
@@ -977,8 +992,8 @@ def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> lis
     score    = ds_latest.get("stress_score")
     n_comp   = int(ds_latest.get("n_components", 0))
     low_cov  = bool(ds_latest.get("low_coverage", False))
-    stale_raw = str(ds_latest.get("stale_components") or "")
-    stale_set = {s.strip() for s in stale_raw.split(",") if s.strip()}
+    stale_dict  = _parse_stress_components(ds_latest.get("stale_components") or "")
+    extrap_dict = _parse_stress_components(ds_latest.get("extrapolated_components") or "")
     as_of_ts  = ds_latest.get("as_of")
     try:
         as_of_str = pd.Timestamp(as_of_ts).strftime("%b %Y")
@@ -1024,7 +1039,9 @@ def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> lis
     # Per-component Z-score bars
     for col, label, direction in _DEBT_STRESS_COMPONENTS:
         z = ds_latest.get(col)
-        is_stale = col.replace("z_", "") in stale_set
+        cid = col.replace("z_", "")
+        lag_q   = stale_dict.get(cid, 0)
+        extrap_q = extrap_dict.get(cid, 0)
         bar_color = "#E8734C" if direction == "positive" else "#4C9BE8"
 
         if z is None or (isinstance(z, float) and pd.isna(z)):
@@ -1045,17 +1062,28 @@ def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> lis
                 ],
             )
 
-        stale_badge = html.Span(
-            " stale", style={
-                "background": "#7a4a00", "color": "#ffcc80",
-                "padding": "0 3px", "borderRadius": "3px",
-                "fontSize": "0.65rem", "marginLeft": "4px",
-            }
-        ) if is_stale else None
+        if lag_q > 0:
+            badge_node = html.Span(
+                f" stale {lag_q}q", style={
+                    "background": "#7a4a00", "color": "#ffcc80",
+                    "padding": "0 3px", "borderRadius": "3px",
+                    "fontSize": "0.65rem", "marginLeft": "4px",
+                }
+            )
+        elif extrap_q > 0:
+            badge_node = html.Span(
+                f" extrap {extrap_q}q", style={
+                    "background": "#2a3a5a", "color": "#88aadd",
+                    "padding": "0 3px", "borderRadius": "3px",
+                    "fontSize": "0.65rem", "marginLeft": "4px",
+                }
+            )
+        else:
+            badge_node = None
 
         label_children: list = [html.Span(label, style=muted)]
-        if stale_badge:
-            label_children.append(stale_badge)
+        if badge_node:
+            label_children.append(badge_node)
 
         children.append(
             html.Div([
