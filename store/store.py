@@ -61,6 +61,7 @@ def get_connection(db_path: Path = DB_PATH) -> duckdb.DuckDBPyConnection:
 
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
+    conn.execute(_CREATE_COMPOSITES)
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -123,6 +124,86 @@ def query_latest(conn: duckdb.DuckDBPyConnection, country: str = "US") -> pd.Dat
         )
         ORDER BY force, lead_lag, id
     """, [country]).df()
+
+
+_CREATE_COMPOSITES = """
+CREATE TABLE IF NOT EXISTS composites (
+    country              VARCHAR   NOT NULL,
+    as_of                DATE      NOT NULL,
+    growth_score         DOUBLE,
+    inflation_score      DOUBLE,
+    quadrant             VARCHAR,
+    confidence           DOUBLE,
+    disequilibrium_score DOUBLE,
+    n_growth_signals     INTEGER   DEFAULT 0,
+    n_inflation_signals  INTEGER   DEFAULT 0,
+    n_forces             INTEGER   DEFAULT 0,
+    low_coverage         BOOLEAN   DEFAULT FALSE,
+    created_at           TIMESTAMP NOT NULL,
+    PRIMARY KEY (country, as_of)
+)
+"""
+
+_COMPOSITE_COLUMNS = [
+    "country", "as_of", "growth_score", "inflation_score", "quadrant",
+    "confidence", "disequilibrium_score", "n_growth_signals",
+    "n_inflation_signals", "n_forces", "low_coverage", "created_at",
+]
+
+
+def init_composites_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(_CREATE_COMPOSITES)
+
+
+def upsert_composites(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
+    if not snapshots:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for s in snapshots:
+        row = s.model_dump()
+        row["as_of"] = row["as_of"].isoformat()
+        row["created_at"] = now
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    conn.register("_composite_staging", df)
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute("""
+            DELETE FROM composites
+            WHERE EXISTS (
+                SELECT 1 FROM _composite_staging
+                WHERE _composite_staging.country = composites.country
+                  AND _composite_staging.as_of::DATE = composites.as_of
+            )
+        """)
+        cols = ", ".join(_COMPOSITE_COLUMNS)
+        conn.execute(f"INSERT INTO composites ({cols}) SELECT {cols} FROM _composite_staging")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.unregister("_composite_staging")
+
+    return len(df)
+
+
+def query_composite_history(
+    conn: duckdb.DuckDBPyConnection,
+    country: str,
+    start: str | None = None,
+) -> pd.DataFrame:
+    if start:
+        return conn.execute(
+            "SELECT * FROM composites WHERE country = ? AND as_of >= ? ORDER BY as_of",
+            [country, start],
+        ).df()
+    return conn.execute(
+        "SELECT * FROM composites WHERE country = ? ORDER BY as_of", [country]
+    ).df()
 
 
 def query_series(

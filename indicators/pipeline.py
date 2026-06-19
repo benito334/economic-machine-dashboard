@@ -17,11 +17,15 @@ from typing import Optional
 import pandas as pd
 import yaml
 
+from indicators.composites import compute_composite_history, load_composites_config
 from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
-from store.store import delete_future_signals, get_connection, init_schema, upsert_signals, query_latest
+from store.store import (
+    delete_future_signals, get_connection, init_schema,
+    upsert_signals, upsert_composites, query_latest,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -333,6 +337,30 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         except Exception as exc:
             logger.exception("[ERROR] %s (derived): %s", binding.id, exc)
             results["error"] += 1
+
+    # ── Pass 5: Composites ─────────────────────────────────────────────────
+    print("\n─── Pass 5: Composites engine ─────────────────────────────────────")
+    try:
+        comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
+        snapshots   = compute_composite_history(conn, "US", comp_config)
+        n_comp      = upsert_composites(conn, snapshots)
+        latest_snap = snapshots[-1] if snapshots else None
+        if latest_snap:
+            q  = latest_snap.quadrant or "?"
+            gs = f"{latest_snap.growth_score:+.3f}" if latest_snap.growth_score is not None else "?"
+            is_ = f"{latest_snap.inflation_score:+.3f}" if latest_snap.inflation_score is not None else "?"
+            cf = f"{latest_snap.confidence:.0%}" if latest_snap.confidence is not None else "?"
+            ds = f"{latest_snap.disequilibrium_score:.3f}" if latest_snap.disequilibrium_score is not None else "?"
+            print(f"  Snapshots stored : {n_comp}")
+            print(f"  Latest ({latest_snap.as_of}): {q}")
+            print(f"    Growth={gs}  Inflation={is_}  Confidence={cf}  Diseq={ds}")
+            print(f"    G-signals={latest_snap.n_growth_signals}  I-signals={latest_snap.n_inflation_signals}  Forces={latest_snap.n_forces}  LowCov={latest_snap.low_coverage}")
+        else:
+            print("  [WARN] No composite snapshots produced")
+            results["error"] += 1
+    except Exception as exc:
+        logger.exception("[ERROR] Composites pass: %s", exc)
+        results["error"] += 1
 
     # ── Summary ────────────────────────────────────────────────────────────
     print()

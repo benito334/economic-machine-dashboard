@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class CountryBinding(BaseModel):
@@ -58,3 +58,19 @@ class Signal(BaseModel):
     vintage_available: bool = False
     linkage: str = ""
     source: str = ""  # e.g. "FRED:PAYEMS"
+
+
+class CompositeSnapshot(BaseModel):
+    """One composite reading for a country at a given month-end date."""
+
+    country: str
+    as_of: date
+    growth_score: Optional[float] = None
+    inflation_score: Optional[float] = None
+    quadrant: Optional[str] = None        # Expansion | Inflationary Boom | Stagflation | Disinflationary Slowdown
+    confidence: Optional[float] = None   # 0–1: fraction of signals whose direction agrees with quadrant
+    disequilibrium_score: Optional[float] = None
+    n_growth_signals: int = 0
+    n_inflation_signals: int = 0
+    n_forces: int = 0
+    low_coverage: bool = False
