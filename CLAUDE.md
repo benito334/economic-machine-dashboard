@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D complete and verified.
+**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E complete and verified.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -94,11 +94,11 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
 | 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel, methodology sidebar; 131 tests pass; uses `st.html()` throughout (Streamlit 1.39+) |
 | 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; 50-series selector, Chart Overlay + Yield Curve + Regime History tabs; 156 tests pass |
-| 1E Data Explorer | ⬜ **Next** | Raw signal verification tool — browse, compare vs. public sources, flag anomalies |
-| 2 Country rollout | ⬜ Pending | Eurozone first |
+| 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check; 187 tests pass |
+| 2 Country rollout | ⬜ **Next** | Eurozone first — pending user sign-off on US data quality via Explorer |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current, then build Phase 1E (Data Explorer) for signal verification before Phase 2 country rollout.
+**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current, then begin Phase 2 Eurozone rollout (first non-US country binding).
 
 ---
 
@@ -153,9 +153,15 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - `dashboard/charting_lc/`: Option B skeleton (FastAPI + TradingView Lightweight Charts) committed, deferred
 - 156/156 tests passing; Docker acceptance gate `:8502` HTTP 200
 
-### Phase 1E — Data Explorer ⬜ NEXT SESSION
-User wants to drill into raw signal data to verify accuracy before Phase 2 country rollout.
-Plan TBD at next session start. Likely: signal browser (filter by force/id), raw value vs. source comparison, anomaly detection view, staleness/quality audit.
+### Phase 1E — Data Explorer ✅ COMPLETE (2026-06-19)
+- `dashboard/explorer_data.py`: signal overview query (59 signals, latest snapshot + obs count + freq label + quality flags), full history loader, gap detector (flags gaps >2× expected release cycle), raw-cache vs processed comparator (parquet → DB delta), anomaly flag (|Z|>3), descriptive stats per signal
+- `dashboard/explorer.py`: layout + 8 callbacks; signal browser DataTable (filter by force/flags, sortable); 4-subtab detail panel:
+  - **Time Series**: dual-pane chart (raw value + Z-score), equilibrium reference line, stale-point markers, ±2/3σ bands, 6 stat cards, reference spot-check input (enter value from provider → shows DB delta + %)
+  - **Observations**: full paginated table with anomaly/stale row highlighting, CSV download
+  - **Quality & Gaps**: metadata card, quality flag badges (green/red), gap detection table
+  - **Raw vs Processed**: parquet cache value vs DB processed value side by side; delta/% columns; rows with |Δ%|>5% highlighted
+- Wired as "🔬 Data Explorer" tab in `dashboard/charting.py`
+- 31 new tests; 187/187 total passing; Docker :8502 healthy
 
 ### Phase 2 — Country Rollout (one at a time)
 Order: Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.

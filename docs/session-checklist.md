@@ -149,12 +149,14 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 - [x] Time-horizon presets (1Y/3Y/5Y/10Y/MAX) + range slider both work
 - [x] `dashboard/charting_lc/` skeleton committed (Option B deferred path)
 
-### Phase 1E gate (Data Explorer)
-- [ ] Can browse all 59 signals by force/lens
-- [ ] Raw values shown alongside Z-score, percentile, direction
-- [ ] Can compare a signal's latest value against a manually entered reference (e.g., FRED website value)
-- [ ] Anomaly / outlier flagging visible (values outside expected range)
-- [ ] Staleness and quality badges surfaced
+### Phase 1E gate ✅ PASSED (2026-06-19)
+- [x] Can browse all 59 signals by force/lens (filterable DataTable)
+- [x] Raw values shown alongside Z-score, percentile, direction, 1M/3M/12M changes
+- [x] Reference spot-check: enter value from provider → DB delta + % shown instantly
+- [x] Anomaly / outlier flagging: |Z|>3 rows highlighted in observations table
+- [x] Staleness and quality badges surfaced in both browser and Quality & Gaps tab
+- [x] Gap detection: gaps >2× expected release cycle flagged per signal
+- [x] Raw vs Processed tab: parquet cache vs DB delta to verify transforms
 
 ### Phase 2 gate (per country)
 - [ ] All bindings verified against provider
