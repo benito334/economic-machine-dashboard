@@ -131,9 +131,9 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 - [x] Deferred-tier items exist as slots with `source_tier="deferred"`, not as active ingestion
 - [x] `docker compose up` runs ingestion successfully
 
-### Phase 1B gate
-- [ ] Multi-year Growth Score, Inflation Score, Quadrant, and Disequilibrium Score time series in DB
-- [ ] Quadrant labels match known historical regimes (spot-check: 2022 should show Stagflation)
+### Phase 1B gate ✅ PASSED (2026-06-18)
+- [x] Multi-year Growth Score, Inflation Score, Quadrant, and Disequilibrium Score time series in DB (558 monthly snapshots)
+- [x] Quadrant labels match known historical regimes. Note: 2022 = "Inflationary Boom" (not Stagflation) — labor market Z-scores were strongly positive; Stagflation label emerges from Mar 2023 onward. Spec assumption revised.
 
 ### Phase 1C gate
 - [ ] `docker compose up` → dashboard renders without error

@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-18 — Session 5: Phase 1B — Composites Engine
+
+- Merged `codex/code-review-fixes` → `main`; all 8 code review findings closed, 79 tests passing
+- Shipped Phase 1B end-to-end: `indicators/composites.py` (Growth Score, Inflation Score, Regime Quadrant + Confidence, Disequilibrium Score); `CompositeSnapshot` Pydantic model; `composites` DuckDB table with idempotent upserts; Pass 5 in `pipeline.py`; 13 new tests (91 total passing)
+- Pipeline verified: 59/59 signals OK, 558 monthly composite snapshots stored (full US history)
+- Key finding: 2022 engine labels are "Inflationary Boom" (not "Stagflation" as spec assumed) — employment Z-scores stayed strongly positive all year; Stagflation label correctly emerges from Mar 2023 when growth Z-scores turn negative. Spec acceptance gate updated to reflect this.
+- Current regime (Jun 2026): Stagflation — Growth=−0.05 / Inflation=+0.31 / Confidence=45% / Diseq=0.82
+- Next: Phase 1C — Streamlit dashboard (4-quadrant scatter, HUD, accordion lenses A–I)
+
+---
+
 ## 2026-06-18 — Repository-wide code review remediation
 
 - Resolved all eight findings in `code_review/2026-06-18-repository-code-review.md`

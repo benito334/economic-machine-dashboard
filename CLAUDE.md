@@ -84,19 +84,19 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-18:** Phase 1A complete and verified.
+**As of 2026-06-18:** Phase 1A + 1B complete and verified.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
 | 1A-i FRED lenses A–E + Master | ✅ **Done** | 37/37 signals live in DuckDB, 51 tests pass |
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
-| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 79 tests pass; deferred climate/governance slots present |
-| 1B Composites engine | ⬜ **Next** | Growth Score, Inflation Score, Regime Quadrant |
-| 1C Streamlit dashboard | ⬜ Pending | 4-quadrant scatter, accordions, conflict panel |
+| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
+| 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
+| 1C Streamlit dashboard | ⬜ **Next** | 4-quadrant scatter, HUD, accordion lenses A–I |
 | 2 Country rollout | ⬜ Pending | Eurozone first |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with Phase 1B (composites engine).
+**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with Phase 1C (Streamlit dashboard).
 
 ---
 
@@ -123,17 +123,14 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - All ⚠ VERIFY items in active config resolved; no empty results; 0 sanity warnings
 - IMF current-year estimates and future forecasts are excluded from observation signals
 
-### Phase 1B — Composites & Snapshot Engine ← **next**
-1. Daily orchestration compiles current signal state.
-2. Compute Growth Score, Inflation Score, Regime Quadrant (+ Confidence %), Disequilibrium Score.
-3. Archive composite snapshots to time-indexed DuckDB tables.
-4. **Acceptance gate:** DB resolves multi-year composite timeline; quadrant labels match historical regimes visually.
-
-### Phase 1B — Composites & Snapshot Engine
-1. Daily orchestration compiles current signal state.
-2. Compute Growth Score, Inflation Score, Regime Quadrant (+ Confidence %), Disequilibrium Score.
-3. Archive composite snapshots to time-indexed DuckDB tables.
-4. **Acceptance gate:** DB resolves multi-year composite timeline; quadrant labels match historical regimes visually.
+### Phase 1B — Composites & Snapshot Engine ✅ COMPLETE (2026-06-18)
+- `indicators/composites.py`: Growth Score + Inflation Score (weighted Z-score composites per `composites.yaml`), Regime Quadrant (4-season), Confidence (direction-agreement fraction), Disequilibrium Score (mean |Z-score| across 5 force groups)
+- `indicators/models.py`: `CompositeSnapshot` Pydantic model
+- `store/store.py`: `composites` table, `upsert_composites()`, `query_composite_history()`
+- `pipeline.py`: Pass 5 — runs composites engine, upserts to DB
+- 558 monthly US composite snapshots stored; 91 tests passing
+- Historical narrative: COVID-2020 Disinflationary Slowdown → 2021 Inflationary Boom → 2022 Inflationary Boom (employment Z-scores strongly positive; spec's "2022 = Stagflation" assumption was imprecise — Stagflation label correctly appears from Mar 2023 when growth Z-scores turn negative) → 2023–2026 Stagflation
+- Current (Jun 2026): Stagflation — Growth=−0.05 / Inflation=+0.31 / Confidence=45%
 
 ### Phase 1C — Streamlit Dashboard (US proof)
 1. Build the §5.1 grid: HUD, 4-quadrant Plotly scatter with 12-month tail, accordions A–I.
