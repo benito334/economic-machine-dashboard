@@ -24,12 +24,12 @@
 ### G-01: Composite weights not specified in the plan
 **Problem:** The spec defines Growth Score and Inflation Score as "weighted indexes" but never states the weights. Without weights the composites cannot be computed.
 **Resolution:** ADR-005 — see `docs/decisions/ADR-005-composite-weights.md`.
-**Status:** Decided (equal weights, overridable in config). Close when `composites.yaml` is written.
+**Status:** Closed — equal weights are defined in `config/composites.yaml`.
 
 ### G-02: PMI proxy definition
 **Problem:** `growth.pmi_proxy` uses Philly Fed Manufacturing Survey (`GACDISA066MSFRBPHI`) — a regional US series, not a national PMI.
 **Resolution:** ADR-004 — use Philly Fed with `is_proxy=true`; add ISM Manufacturing (`MANEMP` → actually `NAPM`, verify) as a cross-check in Phase 1A.
-**Status:** Decided. Close when binding is confirmed and `is_proxy=true` is set.
+**Status:** Closed — binding is verified, `is_proxy=true`, and neutral equilibrium is correctly set to 0.
 
 ### G-03: WGI governance data lag + API unavailability
 **Problem:** World Bank WGI scores (.EST series) are: (a) released with ~1-year lag; and
@@ -46,7 +46,7 @@ PV.EST, CC.EST, GE.EST, RL.EST, RQ.EST.
 ### G-04: Climate lens (Lens I) slot-only
 **Problem:** EM-DAT requires manual registration and provides no clean API. The spec says to "build the slot and leave the binding as manual."
 **Resolution:** Create the `IndicatorConcept` record with `source_tier="deferred"` and `provider="manual"` from Day 1. Do not let it block anything.
-**Status:** Open — close when slot is created in `us_bindings.yaml`.
+**Status:** Closed — deferred `climate.disaster_loss` manual slot exists in `us_bindings.yaml`.
 
 ### G-05: Russia and China coverage gaps
 **Problem:** Rosstat/CBR and NBS China are unreliable for automated pulls. WB/IMF harmonized series have gaps, especially post-2022 for Russia.
@@ -65,7 +65,7 @@ PV.EST, CC.EST, GE.EST, RL.EST, RQ.EST.
 - Data-validation tests: after each ingestion run, assert `len(df) > 0`, value in expected range, no all-NaN columns
 - Integration smoke test: `pytest tests/` must pass in the Docker container before Phase 1A acceptance
 Use `pytest` + `pytest-cov`. Keep tests under `tests/`. Do not mock the database — use a test DuckDB file in `/tmp`.
-**Status:** Open — add `tests/` scaffold at Phase 1A kickoff.
+**Status:** Closed — unit, loader, normalization, and DuckDB integration coverage is active (79 tests).
 
 ### G-09: Phase 1A scope risk
 **Problem:** Lenses A–I plus fiscal and demographics = ~45–50 US indicators across 5+ different data providers (FRED, World Bank, IMF, OECD, EIA). Attempting all of them in a single Phase 1A pass is high-risk — one bad provider integration can stall everything.
@@ -75,7 +75,7 @@ Use `pytest` + `pytest-cov`. Keep tests under `tests/`. Do not mock the database
 3. **1A-iii:** IMF/OECD lenses (fiscal primary/structural balance)
 4. **1A-iv:** Deferred slots (Climate Lens I, deferred-tier items)
 Each sub-phase gets its own acceptance check before moving to the next provider. The Phase 1A gate is not passed until all sub-phases are done.
-**Status:** Open — enforce sub-order at Phase 1A kickoff.
+**Status:** Closed — Phase 1A provider sub-phases and deferred slots are complete.
 
 ### G-07: `⚠ VERIFY` series IDs must be confirmed before ingestion
 
@@ -124,12 +124,12 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 ## Acceptance Gates (do not advance phase without passing)
 
 ### Phase 1A gate
-- [ ] All `⚠ VERIFY` IDs confirmed; no unresolved `⚠` in active config
-- [ ] No active series returns empty / all-null data
-- [ ] Every series passes sanity range check (or is human-reviewed and logged)
-- [ ] `vintage_available` is set truthfully for every series
-- [ ] Deferred-tier items exist as slots with `source_tier="deferred"`, not as active ingestion
-- [ ] `docker compose up` runs ingestion successfully
+- [x] All `⚠ VERIFY` IDs confirmed; no unresolved `⚠` in active config
+- [x] No active series returns empty / all-null data
+- [x] Every series passes sanity range check (or is human-reviewed and logged)
+- [x] `vintage_available` is set truthfully for every series
+- [x] Deferred-tier items exist as slots with `source_tier="deferred"`, not as active ingestion
+- [x] `docker compose up` runs ingestion successfully
 
 ### Phase 1B gate
 - [ ] Multi-year Growth Score, Inflation Score, Quadrant, and Disequilibrium Score time series in DB

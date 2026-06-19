@@ -84,13 +84,13 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-18:** Phase 1A-ii complete and verified.
+**As of 2026-06-18:** Phase 1A complete and verified.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
 | 1A-i FRED lenses A–E + Master | ✅ **Done** | 37/37 signals live in DuckDB, 51 tests pass |
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
-| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 73 tests pass; no unresolved ⚠ in active config |
+| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 79 tests pass; deferred climate/governance slots present |
 | 1B Composites engine | ⬜ **Next** | Growth Score, Inflation Score, Regime Quadrant |
 | 1C Streamlit dashboard | ⬜ Pending | 4-quadrant scatter, accordions, conflict panel |
 | 2 Country rollout | ⬜ Pending | Eurozone first |
@@ -118,10 +118,10 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ### Phase 1A-iii — IMF/OECD fiscal lenses ✅ COMPLETE (2026-06-18)
 - `fetch_imf_series()` added to `loader.py` using IMF Datamapper REST API (no auth, ISO-3 country codes, forecast-year filter)
-- 9 new bindings: TFP (RTFPNAUSA632NRUG), PPI broad (PPIACO), household debt/GDP (HDTGPDUSQ163N), corporate debt (BCNSDODNS), federal deficit (FYFSD), interest payments (FYOINT), govt revenue % GDP (WB), IMF primary balance (`pb`), IMF structural balance (`GGCB_G01_PGDP_PT`)
-- Pass 3 (IMF) + Pass 4 (derived) in pipeline; 73/73 tests; 59/59 signals live
+- 9 new active bindings: TFP (RTFPNAUSA632NRUG), PPI broad (PPIACO), household debt/GDP (HDTGPDUSQ163N), corporate debt (BCNSDODNS), federal deficit (FYFSD), interest payments (FYOINT), govt revenue % GDP (WB), IMF primary balance (`pb`), IMF structural balance (`GGCB_G01_PGDP_PT`); deferred climate slot added
+- Pass 3 (IMF) + Pass 4 (derived) in pipeline; 79/79 tests; 59/59 signals live
 - All ⚠ VERIFY items in active config resolved; no empty results; 0 sanity warnings
-- Note: `fiscal.structural_balance` last obs is 2026-12-31 (IMF in-year WEO projection) — flagged in `notes`
+- IMF current-year estimates and future forecasts are excluded from observation signals
 
 ### Phase 1B — Composites & Snapshot Engine ← **next**
 1. Daily orchestration compiles current signal state.

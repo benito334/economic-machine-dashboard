@@ -128,6 +128,36 @@ class TestBuildSignals:
         sigs = build_signals(s, b)
         assert all(sig.id == "us.growth.payrolls" for sig in sigs)
 
+    def test_signal_id_uses_binding_country(self):
+        s = _monthly_series(12)
+        b = _binding(country="JP")
+        sigs = build_signals(s, b)
+        assert all(sig.id == "jp.growth.payrolls" for sig in sigs)
+
+    def test_source_uses_binding_provider(self):
+        s = _monthly_series(12)
+        b = _binding(provider="WorldBank", series_id="TEST.ID")
+        sigs = build_signals(s, b)
+        assert all(sig.source == "WorldBank:TEST.ID" for sig in sigs)
+
+    def test_non_finite_values_are_excluded(self):
+        s = _monthly_series(20)
+        s.iloc[5] = np.inf
+        s.iloc[8] = -np.inf
+        sigs = build_signals(s, _binding())
+        assert len(sigs) == 18
+        assert all(np.isfinite(sig.value) for sig in sigs)
+
+    def test_future_dated_values_are_excluded(self):
+        today = pd.Timestamp(date.today())
+        s = pd.Series(
+            [1.0, 2.0],
+            index=[today - pd.Timedelta(days=1), today + pd.Timedelta(days=1)],
+        )
+        sigs = build_signals(s, _binding())
+        assert len(sigs) == 1
+        assert sigs[0].as_of < date.today()
+
     def test_zscore_and_percentile_populated(self):
         s = _monthly_series(30)
         b = _binding()

@@ -224,6 +224,12 @@ def _imf_cache_path(indicator: str, country_iso2: str) -> Path:
     return RAW_CACHE_DIR / f"imf_{country_iso2}_{safe}.parquet"
 
 
+def _completed_imf_years(series: pd.Series) -> pd.Series:
+    """Exclude Datamapper estimates for the current year and later."""
+    last_completed_year = datetime.date.today().year - 1
+    return series[series.index.year <= last_completed_year]
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=2, min=4, max=30),
@@ -248,11 +254,13 @@ def _fetch_imf_from_api(indicator: str, country_iso3: str) -> pd.Series:
             f"Top-level keys: {list(payload.keys())}"
         )
 
-    current_year = datetime.date.today().year
+    # Datamapper's current-year annual values are WEO estimates, not completed
+    # observations. Keep only completed calendar years in the signal store.
+    last_completed_year = datetime.date.today().year - 1
     records = [
         (int(yr), float(v))
         for yr, v in vals.items()
-        if v is not None and int(yr) <= current_year
+        if v is not None and int(yr) <= last_completed_year
     ]
     if not records:
         raise ValueError(f"All values null or future-only for {indicator}/{country_iso3}")
@@ -274,7 +282,7 @@ def fetch_imf_series(
     Return a pandas Series for the given IMF Datamapper indicator.
 
     Calls https://www.imf.org/external/datamapper/api/v1/{indicator}/{iso3}.
-    Forecast years (year > current calendar year) are filtered out.
+    Current-year estimates and future forecast years are filtered out.
     Annual data index is converted to year-end timestamps.
     Caches to parquet; TTL same as annual series (300 days).
     Returns None and logs a warning if the result is empty.
@@ -285,7 +293,7 @@ def fetch_imf_series(
     if not force_refresh and _is_fresh(cache, frequency):
         logger.debug("[cache hit] IMF %s/%s", country_iso2, indicator)
         df = pd.read_parquet(cache)
-        return df["value"]
+        return _completed_imf_years(df["value"])
 
     country_iso3 = _IMF_COUNTRY_MAP.get(country_iso2)
     if not country_iso3:
@@ -301,7 +309,7 @@ def fetch_imf_series(
         if cache.exists():
             logger.warning("[cache fallback] Using stale cache for IMF %s/%s", country_iso2, indicator)
             df = pd.read_parquet(cache)
-            return df["value"]
+            return _completed_imf_years(df["value"])
         return None
 
     series.to_frame().to_parquet(cache)

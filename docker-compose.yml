@@ -1,5 +1,3 @@
-version: "3.9"
-
 x-common: &common
   build: .
   env_file: .env
