@@ -4,6 +4,16 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-18 — Session 8: Dashboard rendering fix + session close
+
+- Fixed critical rendering bug: Streamlit 1.39+ silently ignores `unsafe_allow_html=True` in `st.markdown()`; replaced all 10 affected call sites with `st.html()` — HUD, What Changed rows, conflict panel, GPR overlay, lens "About" boxes, signal tables, page header, and footer now render correctly
+- Confirmed Docker dashboard healthy after rebuild on port :8501
+- All project docs, CLAUDE.md, session-checklist, ADR-007, and memory updated
+- 131/131 tests passing throughout
+- Next: Phase 1D — Plotly Dash charting view (`:8502`)
+
+---
+
 ## 2026-06-18 — Session 7: Dashboard tweaks + Phase 1D planning
 
 - Fixed HUD "Momentum Vectors" mislabeling: renamed to **Force Scores** (current composite Z-score level that determines the regime quadrant) + added separate **Momentum** metric (month-over-month Δ in composite score — true rate of change)

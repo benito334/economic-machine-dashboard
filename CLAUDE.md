@@ -92,7 +92,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
 | 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
-| 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 131 tests pass |
+| 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel, methodology sidebar; 131 tests pass; uses `st.html()` throughout (Streamlit 1.39+) |
 | 1D Dash charting view | ⬜ **Next** | Plotly Dash on :8502; multi-pane overlay builder, yield curve drill-down; Option B (Lightweight Charts) skeleton committed |
 | 2 Country rollout | ⬜ Pending | Eurozone first |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
@@ -140,6 +140,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - `INDICATORS_TESTING=1` env guard prevents `main()` from executing on import in tests
 - Docker acceptance gate: `docker compose up dashboard` → port :8501 serves HTML; pipeline exits 0
 - Geopolitical-Risk Overlay (WGI / Lens H): shows deferred placeholder with link to G-03 resolution path
+- **All HTML rendering uses `st.html()`** — Streamlit 1.39+ silently ignores `unsafe_allow_html=True` in `st.markdown()`; `st.html()` is the correct API for raw HTML blocks in any future dashboard work
 
 ### Phase 1D — Dash Charting View ⬜ NEXT SESSION
 See `docs/decisions/ADR-007-charting-architecture.md` for full spec. Summary:
