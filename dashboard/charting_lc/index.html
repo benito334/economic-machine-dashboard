@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+  Option B skeleton — TradingView Lightweight Charts v4 frontend.
+  Deferred per ADR-007. Served by nginx on port :8503.
+  Replace the placeholder createChart() call with real API fetches.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Indicators Machine — Charts (Option B)</title>
+  <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body { background: #1a1a2e; color: #e0e0e0; font-family: sans-serif; margin: 0; }
+    h1   { padding: 12px 20px; font-size: 1.1rem; border-bottom: 1px solid #333; }
+    #chart-container { width: 100vw; height: calc(100vh - 60px); }
+  </style>
+</head>
+<body>
+  <h1>Indicators Machine — TradingView Charts (Option B skeleton)</h1>
+  <div id="chart-container"></div>
+
+  <script>
+    // ── Skeleton: wire up Lightweight Charts v4 ───────────────────────────
+    const API_BASE = "http://localhost:8000";  // FastAPI from main.py
+
+    const chart = LightweightCharts.createChart(
+      document.getElementById("chart-container"),
+      {
+        layout:     { background: { color: "#16213e" }, textColor: "#e0e0e0" },
+        grid:       { vertLines: { color: "#333" }, horzLines: { color: "#333" } },
+        crosshair:  { mode: LightweightCharts.CrosshairMode.Normal },
+        timeScale:  { borderColor: "#333" },
+        width:  window.innerWidth,
+        height: window.innerHeight - 60,
+      }
+    );
+
+    window.addEventListener("resize", () => {
+      chart.resize(window.innerWidth, window.innerHeight - 60);
+    });
+
+    // ── Placeholder: fetch one series and render ──────────────────────────
+    // Replace "us.policy.yield_10y" with dynamic series selection.
+    async function loadSeries(signalId, color = "#4C9BE8") {
+      const res = await fetch(`${API_BASE}/series/${encodeURIComponent(signalId)}`);
+      const data = await res.json();  // [{time, value}, ...]
+      const series = chart.addLineSeries({ color, lineWidth: 1.5 });
+      series.setData(data);
+      chart.timeScale().fitContent();
+    }
+
+    loadSeries("us.policy.yield_10y", "#4C9BE8");
+  </script>
+</body>
+</html>

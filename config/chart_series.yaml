@@ -1,0 +1,449 @@
+# Chart Series Catalog — Phase 1D
+#
+# Each entry maps a signal ID from the signals table to display metadata.
+# Fields:
+#   label      — human-readable name shown in the series selector and chart legend
+#   signal_id  — matches signals.id in DuckDB (country.force.concept)
+#   units      — display string for Y-axis label
+#   value_col  — which column to plot: "value" (raw level) or "zscore"
+#   default_pane — suggested pane grouping; series in the same pane share a Y-axis
+#   group      — selector group header (mirrors lens name)
+#   description — one-line tooltip in the series picker
+
+# ── Master / GDP ──────────────────────────────────────────────────────────────
+- label: "Real GDP Growth"
+  signal_id: "us.master.gdp_real"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "GDP & Activity"
+  description: "Real GDP, year-over-year % change"
+
+- label: "Nominal GDP Growth"
+  signal_id: "us.master.gdp_nominal"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "GDP & Activity"
+  description: "Nominal GDP, year-over-year % change"
+
+- label: "GDP Deflator"
+  signal_id: "us.master.gdp_deflator"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "GDP & Activity"
+  description: "GDP deflator (implicit price level), YoY %"
+
+- label: "NGDP vs 10Y Spread"
+  signal_id: "us.master.ngdp_minus_yield"
+  units: "YoY % spread"
+  value_col: value
+  default_pane: policy
+  group: "GDP & Activity"
+  description: "Nominal GDP growth minus 10-year Treasury yield — positive = growth favours equities"
+
+# ── Growth / Employment ───────────────────────────────────────────────────────
+- label: "Payrolls (YoY)"
+  signal_id: "us.growth.payrolls"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Non-farm payrolls, year-over-year % change"
+
+- label: "Unemployment Rate"
+  signal_id: "us.growth.unemployment"
+  units: "% level"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "U-3 unemployment rate (inverted in composite — lower = stronger growth)"
+
+- label: "Industrial Production"
+  signal_id: "us.growth.industrial_prod"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Industrial production index, year-over-year % change"
+
+- label: "Retail Sales (Real)"
+  signal_id: "us.growth.retail_sales"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Real retail and food services sales, YoY %"
+
+- label: "Real PCE"
+  signal_id: "us.growth.real_pce"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Real personal consumption expenditures, YoY %"
+
+- label: "Capacity Utilisation"
+  signal_id: "us.growth.capacity_util"
+  units: "% level"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Total industry capacity utilisation rate"
+
+- label: "PMI (Philly Fed proxy)"
+  signal_id: "us.growth.pmi_proxy"
+  units: "diffusion index"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Philly Fed business conditions diffusion index (PMI proxy; >0 = expansion)"
+
+- label: "Job Openings"
+  signal_id: "us.growth.job_openings"
+  units: "thousands"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "JOLTS total job openings (level)"
+
+- label: "Labor Force Participation"
+  signal_id: "us.growth.labor_force_part"
+  units: "% level"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Civilian labor force participation rate"
+
+- label: "Productivity (YoY)"
+  signal_id: "us.growth.productivity"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Non-farm business labour productivity, YoY %"
+
+- label: "TFP Growth"
+  signal_id: "us.growth.tfp"
+  units: "YoY %"
+  value_col: value
+  default_pane: growth
+  group: "Growth & Employment"
+  description: "Total factor productivity (PWT), YoY % — annual frequency"
+
+# ── Inflation ─────────────────────────────────────────────────────────────────
+- label: "Core PCE"
+  signal_id: "us.inflation.pce_core"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "Core PCE price index (Fed's preferred measure), YoY %"
+
+- label: "Core CPI"
+  signal_id: "us.inflation.cpi_core"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "Core CPI (ex-food & energy), YoY %"
+
+- label: "Headline CPI"
+  signal_id: "us.inflation.cpi_headline"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "CPI all items, YoY %"
+
+- label: "Wages (YoY)"
+  signal_id: "us.inflation.wages"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "Average hourly earnings, YoY % — wage-push inflation pressure"
+
+- label: "PPI (Broad)"
+  signal_id: "us.inflation.ppi_broad"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "PPI all commodities, YoY % — pipeline inflation pressure"
+
+- label: "Crude Oil (YoY)"
+  signal_id: "us.inflation.crude_oil"
+  units: "YoY %"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "WTI crude oil price, YoY %"
+
+- label: "10Y Breakeven Inflation"
+  signal_id: "us.inflation.breakeven_10y"
+  units: "% level"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "10-year TIPS breakeven inflation expectation"
+
+- label: "5Y Breakeven Inflation"
+  signal_id: "us.inflation.breakeven_5y"
+  units: "% level"
+  value_col: value
+  default_pane: inflation
+  group: "Inflation"
+  description: "5-year TIPS breakeven inflation expectation"
+
+# ── Interest Rates / Policy ───────────────────────────────────────────────────
+- label: "Fed Funds Rate"
+  signal_id: "us.policy.fed_funds"
+  units: "% level"
+  value_col: value
+  default_pane: rates
+  group: "Interest Rates & Policy"
+  description: "Effective federal funds rate (overnight)"
+
+- label: "Real Fed Funds Rate"
+  signal_id: "us.policy.real_fed_funds"
+  units: "% level"
+  value_col: value
+  default_pane: rates
+  group: "Interest Rates & Policy"
+  description: "Fed funds rate minus core PCE inflation — negative = accommodative"
+
+- label: "2Y Treasury Yield"
+  signal_id: "us.policy.yield_2y"
+  units: "% level"
+  value_col: value
+  default_pane: rates
+  group: "Interest Rates & Policy"
+  description: "2-year Treasury constant maturity yield"
+
+- label: "10Y Treasury Yield"
+  signal_id: "us.policy.yield_10y"
+  units: "% level"
+  value_col: value
+  default_pane: rates
+  group: "Interest Rates & Policy"
+  description: "10-year Treasury constant maturity yield — global risk-free benchmark"
+
+- label: "10Y Real Yield (TIPS)"
+  signal_id: "us.policy.real_yield_10y"
+  units: "% level"
+  value_col: value
+  default_pane: rates
+  group: "Interest Rates & Policy"
+  description: "10-year TIPS real yield — positive tightens financial conditions"
+
+- label: "Fed Balance Sheet (YoY)"
+  signal_id: "us.policy.fed_balance_sheet"
+  units: "YoY %"
+  value_col: value
+  default_pane: rates
+  group: "Interest Rates & Policy"
+  description: "Fed total assets, YoY % — QE (positive) vs QT (negative)"
+
+# ── Yield Curve / Credit Spreads ──────────────────────────────────────────────
+- label: "Yield Curve 10Y-2Y"
+  signal_id: "us.premium.yield_curve_10y2y"
+  units: "% spread"
+  value_col: value
+  default_pane: spreads
+  group: "Yield Curve & Spreads"
+  description: "10Y minus 2Y Treasury spread — inversion historically precedes recession"
+
+- label: "Yield Curve 10Y-3M"
+  signal_id: "us.premium.yield_curve_10y3m"
+  units: "% spread"
+  value_col: value
+  default_pane: spreads
+  group: "Yield Curve & Spreads"
+  description: "10Y minus 3-month Treasury spread — Fed's preferred recession indicator"
+
+- label: "Corp Credit Spread (Baa-10Y)"
+  signal_id: "us.premium.credit_spread_corp"
+  units: "% spread"
+  value_col: value
+  default_pane: spreads
+  group: "Yield Curve & Spreads"
+  description: "Moody's Baa corporate vs 10Y Treasury — risk appetite indicator"
+
+- label: "HY Spread"
+  signal_id: "us.premium.high_yield_spread"
+  units: "% spread"
+  value_col: value
+  default_pane: spreads
+  group: "Yield Curve & Spreads"
+  description: "ICE BofA HY option-adjusted spread (data from 2023 on FRED)"
+
+# ── Credit / Debt ─────────────────────────────────────────────────────────────
+- label: "Govt Debt / GDP"
+  signal_id: "us.credit.gov_debt_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: fiscal
+  group: "Credit & Debt"
+  description: "Federal debt held by public as % of GDP"
+
+- label: "Household Debt / GDP"
+  signal_id: "us.credit.household_debt_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: fiscal
+  group: "Credit & Debt"
+  description: "Household debt as % of GDP (BIS, quarterly)"
+
+- label: "Corporate Debt (YoY)"
+  signal_id: "us.credit.corporate_debt"
+  units: "YoY %"
+  value_col: value
+  default_pane: fiscal
+  group: "Credit & Debt"
+  description: "Nonfinancial corporate debt, YoY %"
+
+- label: "Bank Lending (YoY)"
+  signal_id: "us.credit.bank_loans"
+  units: "YoY %"
+  value_col: value
+  default_pane: fiscal
+  group: "Credit & Debt"
+  description: "Commercial bank loans and leases, YoY %"
+
+- label: "Debt Service Ratio"
+  signal_id: "us.credit.debt_service_ratio"
+  units: "% disposable income"
+  value_col: value
+  default_pane: fiscal
+  group: "Credit & Debt"
+  description: "Household debt service payments as % of disposable income"
+
+- label: "Lending Standards (net %)"
+  signal_id: "us.credit.lending_standards"
+  units: "net %"
+  value_col: value
+  default_pane: fiscal
+  group: "Credit & Debt"
+  description: "Senior loan officers tightening standards — positive = tighter credit"
+
+# ── Fiscal ────────────────────────────────────────────────────────────────────
+- label: "Federal Deficit"
+  signal_id: "us.fiscal.federal_deficit"
+  units: "$ millions"
+  value_col: value
+  default_pane: fiscal
+  group: "Fiscal"
+  description: "Federal budget surplus/deficit (negative = deficit), annual"
+
+- label: "Interest Payments"
+  signal_id: "us.fiscal.interest_payments"
+  units: "$ millions"
+  value_col: value
+  default_pane: fiscal
+  group: "Fiscal"
+  description: "Federal government net interest outlays, annual"
+
+- label: "Govt Revenue / GDP"
+  signal_id: "us.fiscal.govt_revenue_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: fiscal
+  group: "Fiscal"
+  description: "General government revenue excluding grants, % of GDP (World Bank)"
+
+- label: "Primary Balance / GDP"
+  signal_id: "us.fiscal.primary_balance_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: fiscal
+  group: "Fiscal"
+  description: "IMF primary balance % GDP (excl. interest; positive = surplus)"
+
+- label: "Structural Balance"
+  signal_id: "us.fiscal.structural_balance"
+  units: "% potential GDP"
+  value_col: value
+  default_pane: fiscal
+  group: "Fiscal"
+  description: "IMF cyclically-adjusted structural balance % potential GDP"
+
+# ── External / Trade ──────────────────────────────────────────────────────────
+- label: "Current Account / GDP"
+  signal_id: "us.external.current_account_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: external
+  group: "External & Trade"
+  description: "Current account balance as % of GDP"
+
+- label: "Exports / GDP"
+  signal_id: "us.external.exports_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: external
+  group: "External & Trade"
+  description: "Exports of goods and services as % of GDP"
+
+- label: "Imports / GDP"
+  signal_id: "us.external.imports_gdp"
+  units: "% GDP"
+  value_col: value
+  default_pane: external
+  group: "External & Trade"
+  description: "Imports of goods and services as % of GDP"
+
+- label: "NIIP"
+  signal_id: "us.external.niip"
+  units: "$ millions"
+  value_col: value
+  default_pane: external
+  group: "External & Trade"
+  description: "Net international investment position (negative = net debtor)"
+
+# ── Currency ──────────────────────────────────────────────────────────────────
+- label: "REER (BIS)"
+  signal_id: "us.currency.reer_xcountry"
+  units: "index (2010=100)"
+  value_col: value
+  default_pane: external
+  group: "Currency"
+  description: "Real effective exchange rate, BIS broad index (2010=100)"
+
+- label: "REER (World Bank)"
+  signal_id: "us.currency.reer"
+  units: "index (2020=100)"
+  value_col: value
+  default_pane: external
+  group: "Currency"
+  description: "Real effective exchange rate, World Bank (2020=100)"
+
+# ── Yield Curve — term structure series (fetched by charting_data.py) ─────────
+# These are NOT in the signals table; they are fetched directly from FRED cache.
+# signal_id here is the FRED series ID, not a DuckDB signal ID.
+# The charting app handles these via load_yield_curve_term_structure().
+yield_curve_maturities:
+  - label: "3-Month"
+    fred_id: "DGS3MO"
+    maturity_years: 0.25
+
+  - label: "1-Year"
+    fred_id: "DGS1"
+    maturity_years: 1.0
+
+  - label: "2-Year"
+    fred_id: "DGS2"
+    maturity_years: 2.0
+
+  - label: "5-Year"
+    fred_id: "DGS5"
+    maturity_years: 5.0
+
+  - label: "10-Year"
+    fred_id: "DGS10"
+    maturity_years: 10.0
+
+  - label: "30-Year"
+    fred_id: "DGS30"
+    maturity_years: 30.0
