@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-18:** Phases 1A + 1B + 1C complete and verified.
+**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D complete and verified.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -93,11 +93,12 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
 | 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel, methodology sidebar; 131 tests pass; uses `st.html()` throughout (Streamlit 1.39+) |
-| 1D Dash charting view | ⬜ **Next** | Plotly Dash on :8502; multi-pane overlay builder, yield curve drill-down; Option B (Lightweight Charts) skeleton committed |
+| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; 50-series selector, Chart Overlay + Yield Curve + Regime History tabs; 156 tests pass |
+| 1E Data Explorer | ⬜ **Next** | Raw signal verification tool — browse, compare vs. public sources, flag anomalies |
 | 2 Country rollout | ⬜ Pending | Eurozone first |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current, then build Phase 1D (Dash charting view). See `docs/decisions/ADR-007-charting-architecture.md` for the full implementation plan.
+**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current, then build Phase 1E (Data Explorer) for signal verification before Phase 2 country rollout.
 
 ---
 
@@ -142,17 +143,19 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - Geopolitical-Risk Overlay (WGI / Lens H): shows deferred placeholder with link to G-03 resolution path
 - **All HTML rendering uses `st.html()`** — Streamlit 1.39+ silently ignores `unsafe_allow_html=True` in `st.markdown()`; `st.html()` is the correct API for raw HTML blocks in any future dashboard work
 
-### Phase 1D — Dash Charting View ⬜ NEXT SESSION
-See `docs/decisions/ADR-007-charting-architecture.md` for full spec. Summary:
-- `dashboard/charting.py`: Plotly Dash app on port :8502 (separate Docker service)
-- `dashboard/charting_data.py`: DuckDB query helpers for time-series data
-- `config/chart_series.yaml`: human-readable series catalog (label, signal ID, units, default pane)
-- Series selector sidebar (`dcc.Checklist` grouped by lens); multi-pane figure builder with shared X-axis and independent Y-axes
-- Time-horizon controls: preset buttons (1Y 3Y 5Y 10Y MAX) + custom range slider
-- Yield curve pane: term-structure plot at selectable date with animation slider
-- `hovermode="x unified"` for linked crosshair across all panes
-- `dashboard/charting_lc/` skeleton for Option B (FastAPI + TradingView Lightweight Charts) — deferred but committed
-- `requirements.txt` additions: `dash`, `dash-bootstrap-components`, `diskcache`
+### Phase 1D — Dash Charting View ✅ COMPLETE (2026-06-19)
+- `dashboard/charting.py`: Plotly Dash app on port :8502; 3-tab layout (Chart Overlay, Yield Curve, Regime History)
+- `dashboard/charting_data.py`: DuckDB query helpers; parquet cache-first for FRED yield maturities
+- `config/chart_series.yaml`: 50-series catalog (9 groups) + 6 yield curve maturities (3M/1Y/2Y/5Y/10Y/30Y)
+- Series selector sidebar (`dcc.Checklist` grouped by lens); multi-pane subplot builder; shared X-axis; independent Y-axes; `hovermode="x unified"`
+- Time-horizon presets (1Y/3Y/5Y/10Y/MAX) + range slider shared above all tabs
+- Yield Curve tab: full term structure at selectable date + optional comparison date + historical 10Y-2Y spread bar chart
+- `dashboard/charting_lc/`: Option B skeleton (FastAPI + TradingView Lightweight Charts) committed, deferred
+- 156/156 tests passing; Docker acceptance gate `:8502` HTTP 200
+
+### Phase 1E — Data Explorer ⬜ NEXT SESSION
+User wants to drill into raw signal data to verify accuracy before Phase 2 country rollout.
+Plan TBD at next session start. Likely: signal browser (filter by force/id), raw value vs. source comparison, anomaly detection view, staleness/quality audit.
 
 ### Phase 2 — Country Rollout (one at a time)
 Order: Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.

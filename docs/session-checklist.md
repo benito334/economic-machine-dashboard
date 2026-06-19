@@ -141,13 +141,20 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 - [x] Data-quality badges (`is_proxy`, `is_stale`, `vintage_available=false`, `low_history`) rendered per signal row
 - [x] Manual refresh button in sidebar clears cache and reruns; 131/131 tests passing
 
-### Phase 1D gate
-- [ ] `docker compose up charting` → Dash app renders on :8502
-- [ ] Series selector adds/removes series from chart in real-time (no page reload)
-- [ ] Multi-pane layout: independent Y-axes, shared X-axis, linked hover crosshair
-- [ ] Yield curve pane renders term structure with date slider
-- [ ] Time-horizon presets (1Y/3Y/5Y/10Y/MAX) + range slider both work
-- [ ] `dashboard/charting_lc/` skeleton committed (Option B deferred path)
+### Phase 1D gate ✅ PASSED (2026-06-19)
+- [x] `docker compose up charting` → Dash app renders on :8502 (HTTP 200)
+- [x] Series selector adds/removes series from chart in real-time (no page reload)
+- [x] Multi-pane layout: independent Y-axes, shared X-axis, linked hover crosshair
+- [x] Yield curve pane renders term structure (3M/1Y/2Y/5Y/10Y/30Y) with comparison date
+- [x] Time-horizon presets (1Y/3Y/5Y/10Y/MAX) + range slider both work
+- [x] `dashboard/charting_lc/` skeleton committed (Option B deferred path)
+
+### Phase 1E gate (Data Explorer)
+- [ ] Can browse all 59 signals by force/lens
+- [ ] Raw values shown alongside Z-score, percentile, direction
+- [ ] Can compare a signal's latest value against a manually entered reference (e.g., FRED website value)
+- [ ] Anomaly / outlier flagging visible (values outside expected range)
+- [ ] Staleness and quality badges surfaced
 
 ### Phase 2 gate (per country)
 - [ ] All bindings verified against provider
