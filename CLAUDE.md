@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E complete and verified. Theme switcher + staleness fix + Regime History nav controls shipped. Methodology and data release calendar docs added. Regime stepper added to :8501; sync banner added to :8502. Long-Term Stress Indicator spec in `docs/longterm_stress_indicator.md` — next feature to implement.
+**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E + Long-Term Debt Stress Indicator complete and verified. 225 tests pass. HUD gauge + Dash "📉 Debt Stress" tab shipped.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -92,13 +92,14 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
 | 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
-| 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel, methodology sidebar; 131 tests pass; uses `st.html()` throughout (Streamlit 1.39+) |
-| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; 50-series selector, Chart Overlay + Yield Curve + Regime History tabs; 156 tests pass |
-| 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check; repository suite 203 tests pass |
+| 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 225 tests pass |
+| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; Chart Overlay + Yield Curve + Regime History + 📉 Debt Stress + 🔬 Data Explorer tabs |
+| 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
+| 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab; 225 tests pass |
 | 2 Country rollout | ⬜ **Next** | Eurozone first — pending user sign-off on US data quality via Explorer |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Read `docs/longterm_stress_indicator.md` and implement the Long-Term Debt Stress Gauge feature (Short-Term Health + Long-Term Stress composites, new DB table, new panel in the Dash and/or Streamlit dashboard). Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (current account / NIIP / debt service ratio — will clear 3 of 6 stale signals). Phase 2 Eurozone rollout follows.
+**To start the next session:** Phase 2 Eurozone rollout (see `config/countries/` for template). Run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (current account / NIIP / debt service ratio — will clear stale signals and update Debt Stress snapshots).
 
 ---
 
@@ -162,6 +163,17 @@ Currently: US series via FRED API only. All other countries use latest-revised d
   - **Raw vs Processed**: parquet cache value vs DB processed value side by side; delta/% columns; rows with |Δ%|>5% highlighted
 - Wired as "🔬 Data Explorer" tab in `dashboard/charting.py`
 - 31 original feature tests; 203/203 repository tests passing after code-review regressions; Docker :8502 healthy
+
+### Phase 1F — Long-Term Debt Stress Indicator ✅ COMPLETE (2026-06-19)
+- `config/longterm_stress.yaml`: all tunable parameters (weights, rolling windows, coverage threshold, bands) annotated with `# TUNABLE` comments and rationale — no values buried in code
+- `indicators/longterm_stress.py`: 7-component weighted Z-score composite; rolling Z at quarterly (window=40) or annual (window=10) native frequency; shift(1) look-ahead protection; `_extend_to_current_quarter()` for publication-lag forward-fill; weight renormalisation + `low_coverage` flag when retained < 60%; stale-component tracking
+- `indicators/models.py`: `DebtStressSnapshot` Pydantic model with all 7 z_* and val_* fields + `stale_components`
+- `store/store.py`: `debt_stress_snapshots` table + `upsert_debt_stress()` + `query_debt_stress_history()`; `init_schema` migration handles column additions
+- `indicators/pipeline.py`: Pass 6 — runs stress computation and upserts; 185 quarterly snapshots stored; latest (2026-Q1): stress=+0.447, 7/7 components, retained=100%
+- `dashboard/charting_data.py`: `load_debt_stress_history()` query helper
+- `dashboard/app.py`: `load_debt_stress_latest()` + `_render_hud_debt_stress()` — HUD now shows Debt Stress cell after Disequilibrium (score, band label, N/7, stale badge)
+- `dashboard/charting.py`: "📉 Debt Stress" tab — left card with per-component Z bars + stale badges; right chart with composite score time series (band shading) + component Z-scores subplot; two callbacks
+- `tests/test_longterm_stress.py`: 22 tests (look-ahead, sign convention, coverage, unit conversion, band labels, config integrity); 225/225 repository tests passing
 
 ### Phase 2 — Country Rollout (one at a time)
 Order: Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.

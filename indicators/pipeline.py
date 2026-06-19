@@ -19,12 +19,13 @@ import yaml
 
 from indicators.composites import compute_composite_history, load_composites_config
 from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series
+from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
 from store.store import (
     delete_future_signals, get_connection, init_schema,
-    upsert_signals, upsert_composites, query_latest,
+    upsert_signals, upsert_composites, upsert_debt_stress, query_latest,
 )
 
 logging.basicConfig(
@@ -360,6 +361,26 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             results["error"] += 1
     except Exception as exc:
         logger.exception("[ERROR] Composites pass: %s", exc)
+        results["error"] += 1
+
+    # ── Pass 6: Long-Term Debt Stress Indicator ────────────────────────────
+    print("\n─── Pass 6: Long-Term Debt Stress Indicator ───────────────────────")
+    try:
+        stress_config = load_longterm_stress_config(_CONFIG_DIR / "longterm_stress.yaml")
+        stress_snaps  = compute_debt_stress_history(conn, "US", stress_config, DATA_DIR)
+        n_stress      = upsert_debt_stress(conn, stress_snaps)
+        latest_stress = stress_snaps[-1] if stress_snaps else None
+        if latest_stress:
+            sc = f"{latest_stress.stress_score:+.3f}" if latest_stress.stress_score is not None else "null"
+            rw = f"{latest_stress.retained_weight:.0%}" if latest_stress.retained_weight is not None else "?"
+            print(f"  Snapshots stored : {n_stress}")
+            print(f"  Latest ({latest_stress.as_of}): stress={sc}  components={latest_stress.n_components}/7"
+                  f"  retained_weight={rw}  low_coverage={latest_stress.low_coverage}")
+        else:
+            print("  [WARN] No debt stress snapshots produced")
+            results["error"] += 1
+    except Exception as exc:
+        logger.exception("[ERROR] Debt stress pass: %s", exc)
         results["error"] += 1
 
     # ── Summary ────────────────────────────────────────────────────────────

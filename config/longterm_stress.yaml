@@ -1,0 +1,188 @@
+# Long-Term Debt Stress Indicator — configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# All parameters that affect the indicator's output are in this file.
+# Change them here without touching code; re-run the pipeline to apply.
+#
+# Parameters marked # TUNABLE have no single correct value — they encode
+# modelling judgements that should be tested against historical episodes
+# (1970s stagflation, 1994 bond rout, 2008 GFC, 2020 COVID, 2022 tightening)
+# before being used for decisions.
+#
+# See docs/longterm_stress_indicator.md for the full specification.
+# ─────────────────────────────────────────────────────────────────────────────
+
+z_score:
+  # ── Quarterly rolling window ────────────────────────────────────────────────
+  # Quarterly components are Z-scored at quarterly frequency.
+  # 40 quarters = 10 years, spanning roughly one full business cycle.
+  # TUNABLE: decrease (e.g. 20) → more reactive to recent regime shifts but noisier;
+  #          increase (e.g. 60) → smoother but slow to recognise structural breaks.
+  window_quarters: 40
+
+  # Minimum non-null observations required before a quarterly Z-score is emitted.
+  # Below this, the component is treated as missing for coverage purposes.
+  # TUNABLE: lower bound is ~0.5 × window_quarters; raising it reduces early-history noise.
+  min_periods_quarters: 20
+
+  # ── Annual rolling window ───────────────────────────────────────────────────
+  # Annual components (fiscal/IMF/World Bank series) are Z-scored at their
+  # native annual frequency, then the Z-scores are forward-filled quarterly.
+  # Repeating an annual value 4 times must not count as 4 independent observations,
+  # so the rolling window operates on the annual series before forward-filling.
+  # TUNABLE: 10 years is the spec default. Fewer years → noisier Z-scores but
+  #          more history covered; more → smoother but requires longer series.
+  window_annual: 10
+
+  # Minimum annual observations required before an annual Z-score is valid.
+  # TUNABLE: spec minimum is 5. Raising it discards more early history.
+  min_periods_annual: 5
+
+  # Look-back shift applied before computing rolling statistics.
+  # series.shift(look_back_shift) means the Z-score for period t uses only
+  # information from t-1 and earlier, preventing any look-ahead bias.
+  # MUST remain ≥ 1; setting to 0 introduces look-ahead and invalidates backtests.
+  look_back_shift: 1
+
+coverage:
+  # ── Minimum retained weight ─────────────────────────────────────────────────
+  # If the sum of weights for available (non-stale, non-missing) components
+  # falls below this threshold, the stress score is returned as null and
+  # low_coverage is set to True. The retained weights are renormalised to 1.0
+  # among the available components when the threshold is met.
+  # TUNABLE: 0.60 = at least 60% of the weight basket must be intact.
+  #          Raise to 0.75 for a stricter policy; lower to 0.50 for more coverage.
+  min_retained_weight: 0.60
+
+bands:
+  # ── Interpretation bands ────────────────────────────────────────────────────
+  # ⚠  NOT VALIDATED RISK THRESHOLDS. See docs/longterm_stress_indicator.md §Interpretation.
+  # These are exploratory display bands only. Before using them operationally,
+  # backtest against known tightening, recession, and fiscal-stress episodes
+  # and verify sensitivity to window length and weight choices.
+  # TUNABLE: adjust thresholds after historical review.
+  #
+  #   score < below_normal_upper   → "Below-normal stress"
+  #   below_normal_upper ≤ score < elevated_lower  → "Near historical norm"
+  #   elevated_lower ≤ score < high_lower          → "Elevated stress"
+  #   score ≥ high_lower                           → "High relative stress"
+  below_normal_upper: -0.5
+  elevated_lower: 0.5
+  high_lower: 1.0
+
+components:
+  # ── Component definitions ───────────────────────────────────────────────────
+  # weights: must sum to 1.00. Adjust freely; rerun historical validation after.
+  # stress_direction:
+  #   "positive" → higher value = more stress (Z-score used as-is)
+  #   "negative" → higher value = less stress (Z-score is negated before aggregation)
+  # frequency: native frequency of the source data (Q = quarterly, A = annual)
+  # construction: "signal" = read value column from signals table;
+  #               "derived" = constructed from raw FRED parquet (see notes)
+
+  - id: gov_household_debt_gdp
+    label: "Govt + Household debt / GDP"
+    weight: 0.25            # TUNABLE — largest slot: combined public + household balance-sheet burden
+    stress_direction: positive
+    frequency: Q
+    construction: derived
+    sources:
+      - signal: us.credit.gov_debt_gdp        # GFDEGDQ188S — federal debt % GDP (quarterly, level)
+      - signal: us.credit.household_debt_gdp  # HDTGPDUSQ163N — household debt % GDP (quarterly, level)
+    notes: >
+      Government and household debt are summed before Z-scoring so they share one weight
+      slot and the combined level is what drives the Z-score. Corporate leverage is kept
+      separate (next component) so its distinct contribution is visible.
+      TUNABLE rationale: 0.25 reflects the view that aggregate non-corporate balance-sheet
+      burden is the primary slow-moving stress driver.
+
+  - id: corporate_debt_gdp
+    label: "Corporate debt / GDP"
+    weight: 0.15            # TUNABLE
+    stress_direction: positive
+    frequency: Q
+    construction: derived
+    sources:
+      - raw_fred: BCNSDODNS   # Nonfinancial corporate debt, billions $, quarterly
+      - raw_fred: GDP         # Nominal GDP, billions $, quarterly (annualised rate)
+    notes: >
+      Constructed by dividing raw BCNSDODNS by raw GDP at quarterly frequency.
+      The processed signal us.credit.corporate_debt is YoY growth and cannot serve
+      as the numerator — do not substitute it.
+
+  - id: household_debt_service
+    label: "Household debt-service ratio"
+    weight: 0.20            # TUNABLE — measures current cash-flow pressure, not balance sheet
+    stress_direction: positive
+    frequency: Q
+    construction: signal
+    sources:
+      - signal: us.credit.debt_service_ratio  # TDSP — required payments % disposable income
+    notes: >
+      TDSP directly measures current cash-flow pressure. Its signal is already quarterly
+      and in units of % of disposable income.
+      TUNABLE rationale: 0.20 reflects the view that cash-flow pressure is a more
+      immediate stress indicator than balance-sheet ratios, but is bounded by income
+      and less likely to spike sharply.
+
+  - id: federal_interest_gdp
+    label: "Federal interest outlays / GDP"
+    weight: 0.15            # TUNABLE
+    stress_direction: positive
+    frequency: A            # annual fiscal year — forward-filled to quarterly after Z-scoring
+    construction: derived
+    sources:
+      - raw_fred: FYOINT   # Federal interest outlays, millions $, annual (fiscal year Oct–Sept)
+      - raw_fred: GDP      # Nominal GDP, billions $ annualised rate, quarterly
+    notes: >
+      Unit conversion required: FYOINT is in millions of $ (divide by 1000 for billions).
+      The annual fiscal-year value is forward-filled to all four calendar quarters until
+      the next fiscal year observation arrives. Z-score is computed at annual frequency
+      on the native annual series before forward-filling.
+      TUNABLE rationale: 0.15 reflects that interest outlays respond slowly to market
+      rates (debt reprices over time) so it is informative but less timely than the DSR.
+
+  - id: primary_balance_gdp
+    label: "Primary fiscal balance / GDP"
+    weight: 0.10            # TUNABLE
+    stress_direction: negative   # surplus (positive value) reduces stress → Z-score negated
+    frequency: A
+    construction: signal
+    sources:
+      - signal: us.fiscal.primary_balance_gdp  # IMF Datamapper `pb`, annual, % GDP
+    notes: >
+      Primary balance = revenue minus non-interest expenditure. A surplus (positive)
+      means the government is generating enough revenue to cover non-interest spending,
+      reducing the net debt burden. The Z-score is negated so a larger surplus lowers
+      the stress contribution.
+      TUNABLE rationale: 0.10; lower than interest outlays because the primary balance
+      is an accounting flow that may not reflect sustainability when existing debt is large.
+
+  - id: structural_balance
+    label: "Structural balance / potential GDP"
+    weight: 0.05            # TUNABLE — lowest weight: slow-moving cyclical adjustment
+    stress_direction: negative
+    frequency: A
+    construction: signal
+    sources:
+      - signal: us.fiscal.structural_balance   # IMF GGCB_G01_PGDP_PT, annual, % potential GDP
+    notes: >
+      Cyclically-adjusted balance strips out the automatic stabiliser response to the
+      business cycle. It shows whether fiscal policy is structurally expansionary or
+      contractionary. Negated for the same reason as primary_balance_gdp.
+      TUNABLE rationale: 0.05 because this series is a model-derived estimate with
+      material revision risk and uses a different denominator (potential GDP) from
+      the other components.
+
+  - id: govt_revenue_gdp
+    label: "Government revenue / GDP"
+    weight: 0.10            # TUNABLE
+    stress_direction: negative   # higher revenue capacity → less stress → Z-score negated
+    frequency: A
+    construction: signal
+    sources:
+      - signal: us.fiscal.govt_revenue_gdp   # World Bank GC.REV.XGRT.GD.ZS, annual, % GDP
+    notes: >
+      A higher revenue-to-GDP ratio means the government has more capacity to service
+      its debt. Negated so higher revenue reduces the stress score.
+      TUNABLE rationale: 0.10; annual and subject to tax-policy changes that can make
+      the ratio shift discontinuously.

@@ -187,6 +187,19 @@ def load_all_signal_histories(country: str, n_months: int = 36) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
+def load_debt_stress_latest(country: str) -> pd.Series:
+    """Return the most recent DebtStressSnapshot as a Series, or empty Series if none."""
+    with _conn() as conn:
+        df = conn.execute(
+            "SELECT * FROM debt_stress_snapshots WHERE country = ? ORDER BY as_of DESC LIMIT 1",
+            [country],
+        ).df()
+    if df.empty:
+        return pd.Series(dtype=object)
+    return df.iloc[0]
+
+
+@st.cache_data(ttl=300, show_spinner=False)
 def load_change_feed(country: str) -> pd.DataFrame:
     cutoff = (date.today() - timedelta(days=120)).isoformat()
     with _conn() as conn:
@@ -346,10 +359,71 @@ def _zscore_color(z: Optional[float]) -> str:
 # Component builders
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _stress_band_color(band_label: str) -> str:
+    return {
+        "Below-normal stress":    "#4C9BE8",
+        "Near historical norm":   "#aaaaaa",
+        "Elevated stress":        "#F4C842",
+        "High relative stress":   "#E8734C",
+    }.get(band_label, "#888")
+
+
+def _render_hud_debt_stress(ds: Optional[pd.Series]) -> str:
+    """Return the inline HTML block for the Debt Stress HUD cell, or empty string if no data."""
+    if ds is None or ds.empty:
+        return ""
+
+    score = ds.get("stress_score")
+    n_comp = ds.get("n_components", 0)
+    low_cov = ds.get("low_coverage", False)
+    stale_raw = ds.get("stale_components", "")
+    n_stale = len([s for s in str(stale_raw).split(",") if s.strip()]) if stale_raw else 0
+
+    if score is None or (isinstance(score, float) and math.isnan(score)):
+        score_str = "—"
+        band_label = "⚠ low coverage" if low_cov else "No data"
+        band_color = "#888"
+    else:
+        # Band thresholds are read from config; fallback to hardcoded spec defaults
+        # if the import fails (display layer only — not a computation dependency).
+        try:
+            from indicators.longterm_stress import load_longterm_stress_config, stress_band_label
+            _cfg = load_longterm_stress_config()
+            band_label = stress_band_label(score, _cfg["bands"])
+        except Exception:
+            if score < -0.5:
+                band_label = "Below-normal stress"
+            elif score < 0.5:
+                band_label = "Near historical norm"
+            elif score < 1.0:
+                band_label = "Elevated stress"
+            else:
+                band_label = "High relative stress"
+        score_str = f"{score:+.2f}"
+        band_color = _stress_band_color(band_label)
+
+    stale_badge = (
+        f'&nbsp;<span style="background:#7a4a00;color:#ffcc80;padding:1px 4px;'
+        f'border-radius:3px;font-size:0.65em;">{n_stale} stale</span>'
+        if n_stale else ""
+    )
+
+    return (
+        f'<div style="border-left:1px solid #333;padding-left:28px;" '
+        f'title="Long-Term Debt Stress Indicator — ⚠ bands NOT validated risk thresholds; see docs/longterm_stress_indicator.md">'
+        f'<div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">Debt Stress</div>'
+        f'<div style="font-size:1.8em;font-weight:600;color:{band_color};">{score_str}</div>'
+        f'<div style="font-size:0.7em;color:{band_color};opacity:0.85;">{band_label}</div>'
+        f'<div style="font-size:0.65em;color:#555;margin-top:1px;">{int(n_comp)}/7 components{stale_badge}</div>'
+        f'</div>'
+    )
+
+
 def render_hud(
     latest_composite: pd.Series,
     prev_composite: Optional[pd.Series] = None,
     step: int = 0,
+    debt_stress: Optional[pd.Series] = None,
 ) -> None:
     q = latest_composite.get("quadrant") or "—"
     conf = latest_composite.get("confidence")
@@ -473,6 +547,8 @@ def render_hud(
               <div style="font-size:1.8em;font-weight:600;color:{'#ff8888' if (dis or 0) > 1.0 else '#eee'};">{dis_val}</div>
               <div style="font-size:0.7em;color:#555;">{"⚠ low coverage" if low_cov else "mean |Z| structural"}</div>
             </div>
+
+            {_render_hud_debt_stress(debt_stress)}
 
           </div>
           {past_warning_html}
@@ -927,6 +1003,7 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
         comp_history   = load_composite_history("US", n_months=60)
         all_histories  = load_all_signal_histories("US", n_months=36)
         change_feed    = load_change_feed("US")
+        debt_stress    = load_debt_stress_latest("US")
 
     if latest_signals.empty:
         st.warning("No signals in DB. Run the pipeline first.")
@@ -954,7 +1031,7 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
 
     # ── HUD ──────────────────────────────────────────────────────────────────────
     if not cur_comp.empty:
-        render_hud(cur_comp, prev_comp if not prev_comp.empty else None, step=step)
+        render_hud(cur_comp, prev_comp if not prev_comp.empty else None, step=step, debt_stress=debt_stress)
 
     # ── Regime stepper ──────────────────────────────────────────────────────────
     _sc1, _sc2, _sc3 = st.columns([1, 6, 1])

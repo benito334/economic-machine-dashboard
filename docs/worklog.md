@@ -4,6 +4,34 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Session 15: Long-Term Debt Stress Indicator (UI layer)
+
+- Fixed invalid Z-scores in prior session's pipeline output: root causes were `ffill(limit=1)` not covering BIS publication lag + `resample("QE").last()` not extending past last data point; added `_extend_to_current_quarter()` helper; all 7/7 components now active at 2026-Q1 (stress=+0.447, retained_weight=100%); stale component tracking introduced (`stale_components` field)
+- `dashboard/charting_data.py`: added `load_debt_stress_history(country, start_date, end_date)` query helper
+- `dashboard/app.py`: added `load_debt_stress_latest()` cached loader; added `_render_hud_debt_stress()` HTML helper; added `debt_stress` parameter to `render_hud()`; HUD now shows Debt Stress gauge after Disequilibrium with score, band label (color-coded), component count (N/7), and stale badge
+- `dashboard/charting.py`: added "📉 Debt Stress" tab with 2-row layout (left info card + right chart); info card shows score, band, per-component Z-score bars with stale badges; chart shows composite score time series (row 1, band shading) + all 7 component Z-scores as lines (row 2, shown as stress-direction contribution i.e. negative-direction components are negated); `load_debt_stress_history` imported; two callbacks wired
+- 225/225 tests pass; both dashboards unchanged for existing tabs
+- Next: Phase 2 Eurozone rollout (pending user sign-off on US data); pipeline re-run after June 26 BEA release to clear 3 stale signals; consider adding band-change alerts to change feed
+- Blockers: None
+
+---
+
+## 2026-06-19 — Session 14: Long-Term Debt Stress Indicator (computation layer)
+
+- Implemented the Long-Term Debt Stress Indicator per `docs/longterm_stress_indicator.md`
+- `config/longterm_stress.yaml`: all tunable parameters (weights, rolling windows, coverage threshold, interpretation bands) explicitly annotated with `# TUNABLE` comments and rationale; no tunable values buried in code
+- `indicators/models.py`: added `DebtStressSnapshot` Pydantic model with per-component Z-scores and raw values for full auditability
+- `indicators/longterm_stress.py`: computation module; load_longterm_stress_config, rolling Z-score with shift(1) look-ahead protection at quarterly (window=40) and annual (window=10) frequency, weight renormalisation under missing components, low_coverage flag when retained_weight < 0.60
+- `store/store.py`: `debt_stress_snapshots` table + `upsert_debt_stress` + `query_debt_stress_history`; wired into `init_schema`
+- `indicators/pipeline.py` Pass 6: runs stress computation, upserts, prints latest reading
+- `tests/test_longterm_stress.py`: 19 tests covering unit conversion (FYOINT millions→billions), look-ahead prevention (shift=1 vs shift=0), sign convention (negative-direction components lower score), missing-component renormalisation, coverage threshold, no future-dated snapshots, band labels, config-driven weight change, model defaults, and config structural integrity
+- Pipeline verified: 222/222 tests pass; 185 debt stress snapshots stored; latest (2026-03-31): stress=null, 5/7 components active, retained_weight=55% (< 60% threshold) → low_coverage=True (correct — TDSP and one other stale at current date)
+- Key design: all tunable parameters in YAML with rationale; no hardcoded values; component Z-scores + raw values stored for dashboard decomposition later
+- Next: Phase 2 Eurozone rollout; pipeline re-run after June 26 BEA release; dashboard panel for debt stress (after historical output review)
+- Blockers: None
+
+---
+
 ## 2026-06-19 — Repository-wide code review remediation
 
 - Fixed all nine findings from the review of changes since the prior repository audit

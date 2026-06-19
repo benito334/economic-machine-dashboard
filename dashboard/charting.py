@@ -28,6 +28,7 @@ from plotly.subplots import make_subplots
 from dashboard.charting_data import (
     available_dates_for_yield_curve,
     load_composite_history,
+    load_debt_stress_history,
     load_series_catalog,
     load_signal_history,
     load_yield_curve_term_structure,
@@ -306,6 +307,26 @@ app.layout = dbc.Container(
                                 width=9,
                             ),
                         ]),
+                    ]),
+
+                    dbc.Tab(label="📉 Debt Stress", tab_id="tab-debt-stress", children=[
+                        dbc.Row([
+                            dbc.Col(
+                                dbc.Card(dbc.CardBody(
+                                    html.Div(id="debt-stress-info-box"),
+                                    style={"padding": "12px"},
+                                ), style={"position": "relative"}),
+                                width=3,
+                            ),
+                            dbc.Col(
+                                dcc.Graph(
+                                    id="debt-stress-chart",
+                                    config={"displayModeBar": True},
+                                    style={"height": "70vh"},
+                                ),
+                                width=9,
+                            ),
+                        ], className="pt-2"),
                     ]),
 
                     dbc.Tab(label="🔬 Data Explorer", tab_id="tab-explorer", children=[
@@ -899,6 +920,266 @@ def update_regime_chart(
             row=3, col=1,
         )
 
+    return fig
+
+
+# ── Debt Stress — helpers + callbacks ────────────────────────────────────────
+
+_DEBT_STRESS_COMPONENTS = [
+    ("z_gov_household_debt_gdp",   "Govt+HH Debt/GDP",      "positive"),
+    ("z_corporate_debt_gdp",       "Corporate Debt/GDP",    "positive"),
+    ("z_household_debt_service",   "HH Debt-Service Ratio", "positive"),
+    ("z_federal_interest_gdp",     "Fed Interest/GDP",      "positive"),
+    ("z_primary_balance_gdp",      "Primary Balance/GDP",   "negative"),
+    ("z_structural_balance",       "Structural Balance",    "negative"),
+    ("z_govt_revenue_gdp",         "Govt Revenue/GDP",      "negative"),
+]
+
+_STRESS_BAND_COLORS = {
+    "Below-normal stress":  "#4C9BE8",
+    "Near historical norm": "#aaaaaa",
+    "Elevated stress":      "#F4C842",
+    "High relative stress": "#E8734C",
+}
+
+
+def _stress_band(score: float) -> tuple[str, str]:
+    """Return (label, color) for a stress score using spec-default thresholds."""
+    try:
+        from indicators.longterm_stress import load_longterm_stress_config, stress_band_label
+        _cfg = load_longterm_stress_config()
+        label = stress_band_label(score, _cfg["bands"])
+    except Exception:
+        if score < -0.5:
+            label = "Below-normal stress"
+        elif score < 0.5:
+            label = "Near historical norm"
+        elif score < 1.0:
+            label = "Elevated stress"
+        else:
+            label = "High relative stress"
+    return label, _STRESS_BAND_COLORS.get(label, "#888")
+
+
+def _build_debt_stress_info(ds_latest: pd.Series | None, theme_name: str) -> list:
+    """Build the left-panel children for the Debt Stress tab."""
+    muted   = {"color": "var(--muted-color)"}
+    val_s   = {"color": "var(--font-color)", "fontWeight": "500"}
+    row_sty = {
+        "display": "flex", "justifyContent": "space-between", "alignItems": "center",
+        "padding": "5px 0", "borderBottom": "1px solid var(--border-color)",
+        "fontSize": "0.83rem",
+    }
+
+    if ds_latest is None or ds_latest.empty:
+        return [html.Div("No debt stress data — run pipeline.", style=muted)]
+
+    score    = ds_latest.get("stress_score")
+    n_comp   = int(ds_latest.get("n_components", 0))
+    low_cov  = bool(ds_latest.get("low_coverage", False))
+    stale_raw = str(ds_latest.get("stale_components") or "")
+    stale_set = {s.strip() for s in stale_raw.split(",") if s.strip()}
+    as_of_ts  = ds_latest.get("as_of")
+    try:
+        as_of_str = pd.Timestamp(as_of_ts).strftime("%b %Y")
+    except Exception:
+        as_of_str = str(as_of_ts)[:7]
+
+    def _fmt(v: Any) -> str:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return "—"
+        return f"{v:+.2f}"
+
+    if score is not None and not (isinstance(score, float) and pd.isna(score)):
+        band_label, band_color = _stress_band(float(score))
+        score_display = f"{score:+.2f}"
+    else:
+        band_label, band_color = ("⚠ low coverage" if low_cov else "No data"), "#888"
+        score_display = "—"
+
+    children: list = [
+        html.Div(
+            f"Debt Stress  ·  {as_of_str}",
+            style={"fontSize": "0.72rem", "color": "var(--muted-color)",
+                   "textTransform": "uppercase", "letterSpacing": "0.08em",
+                   "marginBottom": "6px"},
+        ),
+        html.Div(
+            score_display,
+            style={"fontSize": "2.0rem", "fontWeight": "700", "color": band_color,
+                   "fontFamily": "monospace", "lineHeight": "1.1"},
+        ),
+        html.Div(
+            band_label,
+            style={"fontSize": "0.82rem", "color": band_color, "opacity": "0.85",
+                   "marginBottom": "8px"},
+        ),
+        html.Div(
+            f"{n_comp}/7 components" + (" · ⚠ low coverage" if low_cov else ""),
+            style={"fontSize": "0.7rem", "color": "#888", "marginBottom": "12px"},
+        ),
+        html.Hr(style={"margin": "6px 0", "borderColor": "var(--border-color)"}),
+    ]
+
+    # Per-component Z-score bars
+    for col, label, direction in _DEBT_STRESS_COMPONENTS:
+        z = ds_latest.get(col)
+        is_stale = col.replace("z_", "") in stale_set
+        bar_color = "#E8734C" if direction == "positive" else "#4C9BE8"
+
+        if z is None or (isinstance(z, float) and pd.isna(z)):
+            bar_html = html.Span("—", style={"color": "#555", "fontSize": "0.78rem"})
+        else:
+            bar_w = min(abs(float(z)) / 2.0 * 100, 100)
+            bar_html = html.Div(
+                style={"display": "flex", "alignItems": "center", "gap": "4px"},
+                children=[
+                    html.Div(style={
+                        "width": f"{bar_w:.0f}%", "maxWidth": "70px", "height": "6px",
+                        "backgroundColor": bar_color, "borderRadius": "2px",
+                        "opacity": "0.7",
+                    }),
+                    html.Span(f"{z:+.2f}", style={"fontSize": "0.78rem",
+                                                   "color": bar_color,
+                                                   "fontFamily": "monospace"}),
+                ],
+            )
+
+        stale_badge = html.Span(
+            " stale", style={
+                "background": "#7a4a00", "color": "#ffcc80",
+                "padding": "0 3px", "borderRadius": "3px",
+                "fontSize": "0.65rem", "marginLeft": "4px",
+            }
+        ) if is_stale else None
+
+        label_children: list = [html.Span(label, style=muted)]
+        if stale_badge:
+            label_children.append(stale_badge)
+
+        children.append(
+            html.Div([
+                html.Div(label_children, style={"display": "flex", "alignItems": "center"}),
+                bar_html,
+            ], style=row_sty)
+        )
+
+    children.append(html.Div(
+        "⚠ Bands are NOT validated risk thresholds",
+        style={"fontSize": "0.65rem", "color": "#555", "marginTop": "8px"},
+    ))
+    return children
+
+
+@callback(
+    Output("debt-stress-info-box", "children"),
+    [Input("main-tabs", "active_tab"),
+     Input("date-range", "data"),
+     Input("theme-store", "data")],
+    prevent_initial_call=False,
+)
+def update_debt_stress_info(active_tab: str, date_range: dict, theme_name: str) -> list:
+    end = (date_range or {}).get("end")
+    df = load_debt_stress_history(country="US", end_date=end)
+    latest = df.iloc[-1] if not df.empty else None
+    return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME)
+
+
+@callback(
+    Output("debt-stress-chart", "figure"),
+    [Input("main-tabs", "active_tab"),
+     Input("date-range", "data"),
+     Input("theme-store", "data")],
+    prevent_initial_call=False,
+)
+def update_debt_stress_chart(
+    active_tab: str,
+    date_range: dict,
+    theme_name: str = DEFAULT_THEME,
+) -> go.Figure:
+    start = (date_range or {}).get("start")
+    end   = (date_range or {}).get("end")
+    df = load_debt_stress_history(country="US", start_date=start, end_date=end)
+
+    theme_name = theme_name or DEFAULT_THEME
+
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "No debt stress data"))
+        return fig
+
+    comp_labels = [lbl for _, lbl, _ in _DEBT_STRESS_COMPONENTS]
+    comp_cols   = [col for col, _, _ in _DEBT_STRESS_COMPONENTS]
+    comp_dirs   = [d   for _, _, d   in _DEBT_STRESS_COMPONENTS]
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        row_heights=[0.45, 0.55],
+        subplot_titles=["Composite Stress Score", "Component Z-Scores"],
+    )
+
+    # ── Row 1: composite score + band shading ────────────────────────────────
+    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=1, col=1)
+    fig.add_hrect(y0=0.5,  y1=3.5,  fillcolor="rgba(232,115,76,0.07)",  line_width=0, row=1, col=1)
+    fig.add_hrect(y0=1.0,  y1=3.5,  fillcolor="rgba(232,115,76,0.07)",  line_width=0, row=1, col=1)
+    fig.add_hrect(y0=-3.5, y1=-0.5, fillcolor="rgba(76,155,232,0.07)",  line_width=0, row=1, col=1)
+
+    # Mask low-coverage points
+    score_col = df["stress_score"].where(~df["low_coverage"].fillna(False))
+    fig.add_trace(
+        go.Scatter(
+            x=df["as_of"], y=score_col,
+            name="Stress Score",
+            line={"color": "#E8734C", "width": 2},
+            fill="tozeroy",
+            fillcolor="rgba(232,115,76,0.12)",
+            hovertemplate="%{x|%Y-Q%q}<br>Score: %{y:.2f}<extra></extra>",
+        ),
+        row=1, col=1,
+    )
+
+    # Low-coverage gaps as grey dots
+    low_cov = df[df["low_coverage"].fillna(False)]
+    if not low_cov.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=low_cov["as_of"], y=[0] * len(low_cov),
+                mode="markers",
+                marker={"color": "#555", "size": 5, "symbol": "x"},
+                name="Low coverage",
+                hovertemplate="%{x|%Y-Q%q}<br>Low coverage<extra></extra>",
+            ),
+            row=1, col=1,
+        )
+
+    # ── Row 2: per-component Z-scores ────────────────────────────────────────
+    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
+    for i, (col, label, direction) in enumerate(zip(comp_cols, comp_labels, comp_dirs)):
+        if col not in df.columns:
+            continue
+        color = _COLORS[i % len(_COLORS)]
+        # Negate negative-direction components for visual: displayed as "stress contribution"
+        z_series = df[col] if direction == "positive" else -df[col]
+        fig.add_trace(
+            go.Scatter(
+                x=df["as_of"], y=z_series,
+                name=label,
+                line={"color": color, "width": 1.2},
+                hovertemplate=f"%{{x|%Y-Q%q}}<br>{label}: %{{y:.2f}}<extra></extra>",
+            ),
+            row=2, col=1,
+        )
+
+    fig.update_yaxes(title_text="Z-Score", row=1, col=1)
+    fig.update_yaxes(title_text="Z-Score (stress dir.)", row=2, col=1)
+    fig.update_layout(
+        **figure_layout(theme_name),
+        hovermode="x unified",
+        height=700,
+        legend={"orientation": "h", "y": -0.12, "x": 0},
+    )
     return fig
 
 

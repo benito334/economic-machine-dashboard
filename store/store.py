@@ -62,6 +62,12 @@ def get_connection(db_path: Path = DB_PATH) -> duckdb.DuckDBPyConnection:
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
     conn.execute(_CREATE_COMPOSITES)
+    conn.execute(_CREATE_DEBT_STRESS)
+    # Migration: add stale_components column if the table pre-dates this field
+    try:
+        conn.execute("ALTER TABLE debt_stress_snapshots ADD COLUMN stale_components VARCHAR DEFAULT ''")
+    except Exception:
+        pass  # column already exists
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -227,4 +233,107 @@ def query_series(
         ).df()
     return conn.execute(
         "SELECT * FROM signals WHERE id = ? ORDER BY as_of", [signal_id]
+    ).df()
+
+
+# ─── Long-Term Debt Stress table ─────────────────────────────────────────────
+
+_CREATE_DEBT_STRESS = """
+CREATE TABLE IF NOT EXISTS debt_stress_snapshots (
+    country                        VARCHAR   NOT NULL,
+    as_of                          DATE      NOT NULL,
+    stress_score                   DOUBLE,
+    n_components                   INTEGER   DEFAULT 0,
+    retained_weight                DOUBLE,
+    low_coverage                   BOOLEAN   DEFAULT FALSE,
+    stale_components               VARCHAR   DEFAULT '',
+    z_gov_household_debt_gdp       DOUBLE,
+    z_corporate_debt_gdp           DOUBLE,
+    z_household_debt_service       DOUBLE,
+    z_federal_interest_gdp         DOUBLE,
+    z_primary_balance_gdp          DOUBLE,
+    z_structural_balance           DOUBLE,
+    z_govt_revenue_gdp             DOUBLE,
+    val_gov_household_debt_gdp     DOUBLE,
+    val_corporate_debt_gdp         DOUBLE,
+    val_household_debt_service     DOUBLE,
+    val_federal_interest_gdp       DOUBLE,
+    val_primary_balance_gdp        DOUBLE,
+    val_structural_balance         DOUBLE,
+    val_govt_revenue_gdp           DOUBLE,
+    created_at                     TIMESTAMP NOT NULL,
+    PRIMARY KEY (country, as_of)
+)
+"""
+
+_DEBT_STRESS_COLUMNS = [
+    "country", "as_of", "stress_score", "n_components", "retained_weight",
+    "low_coverage", "stale_components",
+    "z_gov_household_debt_gdp", "z_corporate_debt_gdp", "z_household_debt_service",
+    "z_federal_interest_gdp", "z_primary_balance_gdp", "z_structural_balance",
+    "z_govt_revenue_gdp",
+    "val_gov_household_debt_gdp", "val_corporate_debt_gdp", "val_household_debt_service",
+    "val_federal_interest_gdp", "val_primary_balance_gdp", "val_structural_balance",
+    "val_govt_revenue_gdp",
+    "created_at",
+]
+
+
+def upsert_debt_stress(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
+    if not snapshots:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for s in snapshots:
+        row = s.model_dump()
+        if row["as_of"] > date.today():
+            continue
+        row["as_of"] = row["as_of"].isoformat()
+        row["created_at"] = now
+        # Serialise list → comma-separated string for VARCHAR storage
+        row["stale_components"] = ",".join(row.get("stale_components") or [])
+        rows.append(row)
+
+    if not rows:
+        return 0
+
+    df = pd.DataFrame(rows)
+    conn.register("_debt_stress_staging", df)
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute("""
+            DELETE FROM debt_stress_snapshots
+            WHERE EXISTS (
+                SELECT 1 FROM _debt_stress_staging
+                WHERE _debt_stress_staging.country = debt_stress_snapshots.country
+                  AND _debt_stress_staging.as_of::DATE = debt_stress_snapshots.as_of
+            )
+        """)
+        cols = ", ".join(_DEBT_STRESS_COLUMNS)
+        conn.execute(
+            f"INSERT INTO debt_stress_snapshots ({cols}) SELECT {cols} FROM _debt_stress_staging"
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.unregister("_debt_stress_staging")
+
+    return len(df)
+
+
+def query_debt_stress_history(
+    conn: duckdb.DuckDBPyConnection,
+    country: str,
+    start: str | None = None,
+) -> pd.DataFrame:
+    if start:
+        return conn.execute(
+            "SELECT * FROM debt_stress_snapshots WHERE country = ? AND as_of >= ? ORDER BY as_of",
+            [country, start],
+        ).df()
+    return conn.execute(
+        "SELECT * FROM debt_stress_snapshots WHERE country = ? ORDER BY as_of", [country]
     ).df()

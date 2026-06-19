@@ -195,3 +195,33 @@ def available_dates_for_yield_curve() -> list[str]:
     if s is None or s.empty:
         return []
     return [d.strftime("%Y-%m-%d") for d in sorted(s.dropna().index)]
+
+
+# ── Long-Term Debt Stress ─────────────────────────────────────────────────────
+
+def load_debt_stress_history(
+    country: str = "US",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return all debt_stress_snapshots for one country within the optional date window."""
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        clauses = ["country = ?"]
+        params: list = [country]
+        if start_date:
+            clauses.append("as_of >= ?")
+            params.append(start_date)
+        if end_date:
+            clauses.append("as_of <= ?")
+            params.append(end_date)
+        where = " AND ".join(clauses)
+        df = con.execute(
+            f"SELECT * FROM debt_stress_snapshots WHERE {where} ORDER BY as_of",
+            params,
+        ).df()
+    finally:
+        con.close()
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    return df

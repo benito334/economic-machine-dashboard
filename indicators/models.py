@@ -74,3 +74,37 @@ class CompositeSnapshot(BaseModel):
     n_inflation_signals: int = 0
     n_forces: int = 0
     low_coverage: bool = False
+
+
+class DebtStressSnapshot(BaseModel):
+    """One Long-Term Debt Stress reading for a country at a quarter-end date."""
+
+    country: str
+    as_of: date                           # quarter-end date
+    stress_score: Optional[float] = None  # weighted Z-score composite (tunable weights in longterm_stress.yaml)
+    n_components: int = 0                 # number of active (non-missing, non-stale) components
+    retained_weight: Optional[float] = None  # fraction of total weight that is active (0–1)
+    low_coverage: bool = False            # True when retained_weight < config coverage.min_retained_weight
+
+    # Per-component Z-scores (stored for auditability and dashboard decomposition)
+    z_gov_household_debt_gdp: Optional[float] = None
+    z_corporate_debt_gdp: Optional[float] = None
+    z_household_debt_service: Optional[float] = None
+    z_federal_interest_gdp: Optional[float] = None
+    z_primary_balance_gdp: Optional[float] = None
+    z_structural_balance: Optional[float] = None
+    z_govt_revenue_gdp: Optional[float] = None
+
+    # Per-component raw level values (stored for auditability)
+    val_gov_household_debt_gdp: Optional[float] = None
+    val_corporate_debt_gdp: Optional[float] = None
+    val_household_debt_service: Optional[float] = None
+    val_federal_interest_gdp: Optional[float] = None
+    val_primary_balance_gdp: Optional[float] = None
+    val_structural_balance: Optional[float] = None
+    val_govt_revenue_gdp: Optional[float] = None
+
+    # Components whose last raw observation predates the snapshot quarter.
+    # These are included in the stress score (with their last known value carried
+    # forward) but should be flagged as stale in any display layer.
+    stale_components: list[str] = []
