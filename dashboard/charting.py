@@ -30,6 +30,7 @@ from dashboard.charting_data import (
     load_signal_history,
     load_yield_curve_term_structure,
 )
+from dashboard import explorer as _explorer
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
 )
 server = app.server  # expose Flask for Gunicorn / production
+_explorer.register_callbacks(app)  # Phase 1E Data Explorer callbacks
 
 # ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -213,6 +215,10 @@ app.layout = dbc.Container(
                             config={"displayModeBar": True},
                             style={"height": "65vh"},
                         ),
+                    ]),
+
+                    dbc.Tab(label="🔬 Data Explorer", tab_id="tab-explorer", children=[
+                        _explorer.get_layout(),
                     ]),
                 ]),
             ]),
