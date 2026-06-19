@@ -109,6 +109,33 @@ def test_dark_layout_with_title():
     assert layout["title"]["text"] == "Test title"
 
 
+def test_figure_layout_all_themes():
+    from dashboard.themes import figure_layout, THEMES
+    for name in THEMES:
+        layout = figure_layout(name)
+        assert isinstance(layout, dict)
+        assert "paper_bgcolor" in layout
+        assert "plot_bgcolor" in layout
+        assert layout["paper_bgcolor"] == THEMES[name]["paper_bgcolor"]
+
+
+def test_theme_css_vars_structure():
+    from dashboard.themes import THEME_CSS_VARS, THEMES
+    for name in THEMES:
+        assert name in THEME_CSS_VARS
+        assert "--page-bg" in THEME_CSS_VARS[name]
+        assert "--font-color" in THEME_CSS_VARS[name]
+        assert "--bs-body-bg" in THEME_CSS_VARS[name]
+
+
+def test_dawn_theme_is_light():
+    from dashboard.themes import THEMES
+    dawn = THEMES["dawn"]
+    # Dawn should have light backgrounds (high R,G,B values)
+    assert dawn["page_bg"].startswith("#f")
+    assert dawn["font_color"] == "#212529"
+
+
 # ── Integration tests — require real DuckDB ───────────────────────────────────
 
 DB = os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")

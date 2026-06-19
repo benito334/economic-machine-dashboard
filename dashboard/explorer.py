@@ -24,6 +24,7 @@ from dashboard.explorer_data import (
     load_signal_detail,
     load_signal_overview,
 )
+from dashboard.themes import THEMES, figure_layout
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,23 @@ _DARK = {
     "plot_bgcolor": "#16213e",
     "font": {"color": "#e0e0e0", "size": 12},
     "margin": {"l": 55, "r": 20, "t": 35, "b": 30},
+}
+
+# Shared DataTable style dicts — use CSS custom properties so they update
+# automatically when the clientside theme callback changes the CSS vars.
+_TABLE_HEADER = {
+    "backgroundColor": "var(--header-bg)",
+    "color": "var(--muted-color)",
+    "fontWeight": "bold",
+    "border": "1px solid var(--border-color)",
+    "padding": "4px 6px",
+}
+_TABLE_CELL = {
+    "backgroundColor": "var(--cell-bg)",
+    "color": "var(--font-color)",
+    "border": "1px solid var(--border-color)",
+    "padding": "4px 6px",
+    "whiteSpace": "nowrap",
 }
 
 
@@ -171,19 +189,9 @@ def get_layout() -> html.Div:
                     page_action="native",
                     page_size=20,
                     style_table={"overflowX": "auto", "fontSize": "0.78rem"},
-                    style_header={
-                        "backgroundColor": "#16213e",
-                        "color": "#aaa",
-                        "fontWeight": "bold",
-                        "border": "1px solid #333",
-                        "padding": "4px 6px",
-                    },
+                    style_header={**_TABLE_HEADER},
                     style_cell={
-                        "backgroundColor": "#1a1a2e",
-                        "color": "#e0e0e0",
-                        "border": "1px solid #2a2a4e",
-                        "padding": "4px 6px",
-                        "whiteSpace": "nowrap",
+                        **_TABLE_CELL,
                         "maxWidth": "180px",
                         "overflow": "hidden",
                         "textOverflow": "ellipsis",
@@ -225,7 +233,7 @@ def get_layout() -> html.Div:
                                            size="sm", n_clicks=0),
                             ], className="mt-1", size="sm"),
                             html.Div(id="exp-ref-result", className="mt-1 small"),
-                        ]), className="mt-2", style={"backgroundColor": "#16213e"}),
+                        ]), className="mt-2", style={"backgroundColor": "var(--card-bg)"}),
                     ]),
 
                     dbc.Tab(label="📋 Observations", tab_id="exp-tab-obs", children=[
@@ -262,16 +270,8 @@ def get_layout() -> html.Div:
                                 page_action="native",
                                 page_size=25,
                                 style_table={"overflowX": "auto", "fontSize": "0.8rem"},
-                                style_header={
-                                    "backgroundColor": "#16213e", "color": "#aaa",
-                                    "fontWeight": "bold", "border": "1px solid #333",
-                                    "padding": "4px 8px",
-                                },
-                                style_cell={
-                                    "backgroundColor": "#1a1a2e", "color": "#e0e0e0",
-                                    "border": "1px solid #2a2a4e", "padding": "4px 8px",
-                                    "whiteSpace": "nowrap",
-                                },
+                                style_header={**_TABLE_HEADER, "padding": "4px 8px"},
+                                style_cell={**_TABLE_CELL, "padding": "4px 8px"},
                                 style_data_conditional=[
                                     # Outlier rows (|Z| > 3)
                                     {"if": {"filter_query": "{anomaly} = 1"},
@@ -298,7 +298,7 @@ def get_layout() -> html.Div:
                                 html.Div(id="exp-flags-card"),
                             ], width=6),
                         ]),
-                        html.Hr(style={"borderColor": "#333"}),
+                        html.Hr(style={"borderColor": "var(--border-color)"}),
                         html.H6("Time Gaps (> 2× expected release cycle)",
                                 className="text-muted small mb-2"),
                         html.Div(id="exp-gaps-content"),
@@ -333,7 +333,7 @@ def _stat_card(card_id: str, label: str, value: str) -> dbc.Card:
             html.P(label, className="text-muted mb-0", style={"fontSize": "0.7rem"}),
             html.H6(value, id=card_id, className="mb-0", style={"fontSize": "0.85rem"}),
         ], className="p-2"),
-        style={"backgroundColor": "#16213e"},
+        style={"backgroundColor": "var(--card-bg)"},
     )
 
 
@@ -427,11 +427,13 @@ def register_callbacks(app: dash.Dash) -> None:
          Output("exp-stat-max", "children"),
          Output("exp-stat-std", "children"),
          Output("exp-stat-obs", "children")],
-        Input("exp-selected-signal", "data"),
+        [Input("exp-selected-signal", "data"),
+         Input("theme-store", "data")],
     )
-    def update_ts(signal_id: Optional[str]) -> tuple:
+    def update_ts(signal_id: Optional[str], theme_name: str = "midnight") -> tuple:
+        fl = {**figure_layout(theme_name), "margin": {"l": 55, "r": 20, "t": 35, "b": 30}}
         empty_fig = go.Figure()
-        empty_fig.update_layout(**_DARK, title={"text": "Select a signal", "x": 0.5})
+        empty_fig.update_layout(**fl, title={"text": "Select a signal", "x": 0.5})
         blank = ("—",) * 6
         if not signal_id:
             return (empty_fig,) + blank
@@ -448,6 +450,7 @@ def register_callbacks(app: dash.Dash) -> None:
         units = r["units"].iloc[0] if not r.empty else ""
         force = r["force"].iloc[0] if not r.empty else "growth"
         color = _FORCE_COLORS.get(force, "#4C9BE8")
+        t = THEMES.get(theme_name, THEMES["midnight"])
 
         fig = make_subplots(
             rows=2, cols=1,
@@ -512,7 +515,7 @@ def register_callbacks(app: dash.Dash) -> None:
 
         fig.update_yaxes(title_text=units, row=1, col=1)
         fig.update_yaxes(title_text="σ", row=2, col=1)
-        fig.update_layout(**_DARK, hovermode="x unified", showlegend=False)
+        fig.update_layout(**fl, hovermode="x unified", showlegend=False)
 
         # Summary stats
         def _fmt(v: Any, pct: bool = False) -> str:
@@ -673,10 +676,8 @@ def register_callbacks(app: dash.Dash) -> None:
                         {"name": "Expected (days)", "id": "expected_days"},
                     ],
                     style_table={"fontSize": "0.78rem"},
-                    style_header={"backgroundColor": "#16213e", "color": "#aaa",
-                                  "border": "1px solid #333", "padding": "3px 6px"},
-                    style_cell={"backgroundColor": "#1a1a2e", "color": "#e0e0e0",
-                                "border": "1px solid #2a2a4e", "padding": "3px 6px"},
+                    style_header={**_TABLE_HEADER, "padding": "3px 6px"},
+                    style_cell={**_TABLE_CELL, "padding": "3px 6px"},
                     style_data_conditional=[
                         {"if": {"filter_query": "{gap_days} > 500"},
                          "backgroundColor": "rgba(232, 115, 76, 0.15)"},
@@ -748,10 +749,8 @@ def register_callbacks(app: dash.Dash) -> None:
                 page_action="native",
                 page_size=20,
                 style_table={"fontSize": "0.8rem"},
-                style_header={"backgroundColor": "#16213e", "color": "#aaa",
-                              "border": "1px solid #333", "padding": "4px 8px"},
-                style_cell={"backgroundColor": "#1a1a2e", "color": "#e0e0e0",
-                             "border": "1px solid #2a2a4e", "padding": "4px 8px"},
+                style_header={**_TABLE_HEADER, "padding": "4px 8px"},
+                style_cell={**_TABLE_CELL, "padding": "4px 8px"},
                 style_data_conditional=[
                     {"if": {"filter_query": "{pct_delta} > 5 or {pct_delta} < -5"},
                      "backgroundColor": "rgba(232, 115, 76, 0.15)", "color": "#E8734C"},
@@ -787,7 +786,7 @@ def register_callbacks(app: dash.Dash) -> None:
 
 def _meta_item(label: str, value: str) -> dbc.ListGroupItem:
     return dbc.ListGroupItem(
-        [html.Strong(label + ": ", style={"color": "#888"}), html.Span(value)],
+        [html.Strong(label + ": ", style={"color": "var(--muted-color)"}), html.Span(value)],
         style={"backgroundColor": "transparent", "border": "none",
-               "borderBottom": "1px solid #2a2a4e", "padding": "3px 0"},
+               "borderBottom": "1px solid var(--border-color)", "padding": "3px 0"},
     )

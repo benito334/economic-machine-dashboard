@@ -1,0 +1,103 @@
+/*
+  Theme CSS custom properties — default values match the Midnight theme.
+  Overridden at runtime by the clientside theme-switching callback.
+
+  These vars drive page background, cards, DataTable cells, and borders
+  without needing Python callbacks to update static component styles.
+*/
+
+:root {
+    --page-bg:     #1a1a2e;
+    --card-bg:     #16213e;
+    --font-color:  #e0e0e0;
+    --border-color:#2a2a4e;
+    --muted-color: #7a8a9a;
+    --header-bg:   #0f1020;
+    --cell-bg:     #1a1a2e;
+    --grid-color:  #1e2a3a;
+}
+
+/* Page background — Bootstrap sets body bg via --bs-body-bg; we also set it
+   explicitly so it applies even before the clientside callback fires. */
+body {
+    background-color: var(--page-bg) !important;
+    color: var(--font-color) !important;
+}
+
+/* Cards */
+.card {
+    background-color: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+}
+.card-body {
+    background-color: var(--card-bg) !important;
+}
+
+/* Dash Bootstrap tab panels */
+.tab-content {
+    background-color: var(--page-bg) !important;
+}
+.nav-tabs .nav-link {
+    color: var(--muted-color) !important;
+}
+.nav-tabs .nav-link.active {
+    background-color: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--font-color) !important;
+}
+.nav-tabs {
+    border-bottom-color: var(--border-color) !important;
+}
+
+/* Headings / labels */
+h4, h5, h6 {
+    color: var(--font-color) !important;
+}
+.text-muted {
+    color: var(--muted-color) !important;
+}
+
+/* Borders */
+.border-bottom {
+    border-color: var(--border-color) !important;
+}
+hr {
+    border-color: var(--border-color) !important;
+    opacity: 0.4;
+}
+
+/* List group (used in metadata panel) */
+.list-group-item {
+    background-color: transparent !important;
+    color: var(--font-color) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* Sidebar / series selector scroll area */
+#series-selector-body .small {
+    color: var(--muted-color) !important;
+}
+
+/* DataTable cells — CSS vars work in inline styles so these propagate
+   automatically when the vars are updated by the clientside callback. */
+.dash-table-container .dash-spreadsheet td {
+    background-color: var(--cell-bg) !important;
+    color: var(--font-color) !important;
+    border-color: var(--border-color) !important;
+}
+.dash-table-container .dash-spreadsheet th {
+    background-color: var(--header-bg) !important;
+    color: var(--muted-color) !important;
+    border-color: var(--border-color) !important;
+}
+
+/* DataTable filter/pagination inputs */
+.dash-table-container .dash-filter input,
+.dash-table-container .previous-page,
+.dash-table-container .next-page,
+.dash-table-container .last-page,
+.dash-table-container .first-page {
+    background-color: var(--card-bg) !important;
+    color: var(--font-color) !important;
+    border-color: var(--border-color) !important;
+}

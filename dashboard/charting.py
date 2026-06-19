@@ -8,10 +8,12 @@ Features:
     independent Y-axis; shared X-axis; hovermode="x unified"
   - Time-horizon presets (1Y / 3Y / 5Y / 10Y / MAX) + RangeSlider
   - Yield curve tab: term-structure at a selected date + historical spreads
+  - Theme switcher: Midnight / Carbon / Slate / Dawn
 """
 from __future__ import annotations
 
 import datetime
+import json
 import os
 from collections import defaultdict
 from typing import Any
@@ -30,6 +32,7 @@ from dashboard.charting_data import (
     load_signal_history,
     load_yield_curve_term_structure,
 )
+from dashboard.themes import THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import explorer as _explorer
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -125,22 +128,37 @@ def _time_controls() -> html.Div:
     ], className="d-flex align-items-center mb-2")
 
 
+def _theme_picker() -> dbc.RadioItems:
+    return dbc.RadioItems(
+        id="theme-picker",
+        options=[{"label": t["name"], "value": k} for k, t in THEMES.items()],
+        value="midnight",
+        inline=True,
+        className="small py-2",
+        inputStyle={"marginRight": "4px"},
+        labelStyle={"marginRight": "12px", "fontSize": "0.82rem"},
+    )
+
+
 app.layout = dbc.Container(
     fluid=True,
     children=[
-        # Hidden stores
+        # Hidden stores and theme helpers
         dcc.Store(id="selected-series", data=[]),
         dcc.Store(id="date-range", data={"start": None, "end": None}),
+        dcc.Store(id="theme-store", data="midnight"),
+        html.Div(id="theme-dummy", style={"display": "none"}),
 
         # Header
         dbc.Row([
             dbc.Col(html.H4("Indicators Machine — Charting", className="mb-0 py-2"), width="auto"),
+            dbc.Col(_theme_picker(), width="auto", className="ms-auto"),
             dbc.Col(
                 dbc.Button("← Regime Dashboard", href="http://localhost:8501",
                            external_link=True, color="secondary", size="sm", outline=True,
                            className="mt-1"),
                 width="auto",
-                className="ms-auto",
+                className="ms-2",
             ),
         ], className="border-bottom mb-3"),
 
@@ -224,7 +242,35 @@ app.layout = dbc.Container(
             ]),
         ]),
     ],
-    style={"backgroundColor": "#1a1a2e", "minHeight": "100vh"},
+    style={"backgroundColor": "var(--page-bg)", "minHeight": "100vh"},
+)
+
+# ── Theme callbacks ───────────────────────────────────────────────────────────
+
+@callback(
+    Output("theme-store", "data"),
+    Input("theme-picker", "value"),
+)
+def update_theme_store(theme_name: str) -> str:
+    return theme_name or "midnight"
+
+
+# Clientside: update CSS custom properties on documentElement when theme changes.
+# Embeds the full THEME_CSS_VARS dict as JSON so all logic stays in Python.
+app.clientside_callback(
+    f"""
+    function(theme) {{
+        var themes = {json.dumps(THEME_CSS_VARS)};
+        var t = themes[theme] || themes['midnight'];
+        var r = document.documentElement;
+        Object.entries(t).forEach(function(pair) {{
+            r.style.setProperty(pair[0], pair[1]);
+        }});
+        return theme;
+    }}
+    """,
+    Output("theme-dummy", "children"),
+    Input("theme-store", "data"),
 )
 
 # ── Callbacks — aggregate selected series ─────────────────────────────────────
@@ -292,13 +338,19 @@ def update_date_range(
 @callback(
     Output("overlay-chart", "figure"),
     [Input("selected-series", "data"),
-     Input("date-range", "data")],
+     Input("date-range", "data"),
+     Input("theme-store", "data")],
     prevent_initial_call=False,
 )
-def update_overlay_chart(selected_ids: list[str], date_range: dict) -> go.Figure:
+def update_overlay_chart(
+    selected_ids: list[str],
+    date_range: dict,
+    theme_name: str = "midnight",
+) -> go.Figure:
+    t = THEMES.get(theme_name, THEMES["midnight"])
     if not selected_ids:
         fig = go.Figure()
-        fig.update_layout(**_dark_layout("Select series from the left sidebar"))
+        fig.update_layout(**figure_layout(theme_name, "Select series from the left sidebar"))
         return fig
 
     start = (date_range or {}).get("start")
@@ -353,12 +405,12 @@ def update_overlay_chart(selected_ids: list[str], date_range: dict) -> go.Figure
         fig.update_yaxes(title_text=y_title, row=row_idx, col=1)
 
     fig.update_layout(
-        **_dark_layout(),
+        **figure_layout(theme_name),
         hovermode="x unified",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "left", "x": 0},
         height=max(300 * n_panes, 400),
     )
-    fig.update_xaxes(showgrid=True, gridcolor="#333", row=n_panes, col=1)
+    fig.update_xaxes(showgrid=True, gridcolor=t["grid_color"], row=n_panes, col=1)
     return fig
 
 
@@ -391,13 +443,18 @@ def populate_yc_dates(active_tab: str) -> tuple[list[dict], str, list[dict]]:
 @callback(
     Output("yield-curve-chart", "figure"),
     [Input("yc-date-picker", "value"),
-     Input("yc-date-compare", "value")],
+     Input("yc-date-compare", "value"),
+     Input("theme-store", "data")],
     prevent_initial_call=False,
 )
-def update_yield_curve(date_primary: str, date_compare: str) -> go.Figure:
+def update_yield_curve(
+    date_primary: str,
+    date_compare: str,
+    theme_name: str = "midnight",
+) -> go.Figure:
     if not date_primary:
         fig = go.Figure()
-        fig.update_layout(**_dark_layout("Select a date"))
+        fig.update_layout(**figure_layout(theme_name, "Select a date"))
         return fig
 
     fig = make_subplots(
@@ -463,7 +520,6 @@ def update_yield_curve(date_primary: str, date_compare: str) -> go.Figure:
             selected_ts = pd.Timestamp(date_primary)
             nearby = spread_df[spread_df["as_of"] <= selected_ts]
             if not nearby.empty:
-                last_row = nearby.iloc[-1]
                 fig.add_vline(
                     x=selected_ts,
                     line_dash="dot",
@@ -484,7 +540,7 @@ def update_yield_curve(date_primary: str, date_compare: str) -> go.Figure:
     fig.update_yaxes(title_text="Spread (%)", row=2, col=1)
     fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
 
-    fig.update_layout(**_dark_layout(), height=650)
+    fig.update_layout(**figure_layout(theme_name), height=650)
     return fig
 
 
@@ -493,17 +549,22 @@ def update_yield_curve(date_primary: str, date_compare: str) -> go.Figure:
 @callback(
     Output("regime-chart", "figure"),
     [Input("main-tabs", "active_tab"),
-     Input("date-range", "data")],
+     Input("date-range", "data"),
+     Input("theme-store", "data")],
     prevent_initial_call=False,
 )
-def update_regime_chart(active_tab: str, date_range: dict) -> go.Figure:
+def update_regime_chart(
+    active_tab: str,
+    date_range: dict,
+    theme_name: str = "midnight",
+) -> go.Figure:
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
 
     comp = load_composite_history(start_date=start, end_date=end)
     if comp.empty:
         fig = go.Figure()
-        fig.update_layout(**_dark_layout("No composite data"))
+        fig.update_layout(**figure_layout(theme_name, "No composite data"))
         return fig
 
     fig = make_subplots(
@@ -571,22 +632,14 @@ def update_regime_chart(active_tab: str, date_range: dict) -> go.Figure:
         row=3, col=1,
     )
 
-    fig.update_layout(**_dark_layout(), hovermode="x unified", height=700)
+    fig.update_layout(**figure_layout(theme_name), hovermode="x unified", height=700)
     return fig
 
 
-# ── Dark theme helper ─────────────────────────────────────────────────────────
+# ── Layout helper (kept for backward compatibility with tests) ─────────────────
 
 def _dark_layout(title: str = "") -> dict:
-    return {
-        "paper_bgcolor": "#1a1a2e",
-        "plot_bgcolor": "#16213e",
-        "font": {"color": "#e0e0e0", "size": 12},
-        "xaxis": {"gridcolor": "#333", "showgrid": True},
-        "yaxis": {"gridcolor": "#333", "showgrid": True},
-        "margin": {"l": 55, "r": 20, "t": 40, "b": 30},
-        "title": {"text": title, "font": {"size": 13}, "x": 0.5} if title else {},
-    }
+    return figure_layout("midnight", title)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
