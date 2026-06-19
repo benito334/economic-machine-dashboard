@@ -32,11 +32,16 @@
 | H2 | Inflation composite | Apply 7-day SMA to daily crude oil before monthly aggregation | Add `daily_to_monthly_sma()` in `transform.py`; wire into oil signal loader | Low | 🔵 Planned | Clean, low-risk change; keeps oil at 0.5 weight |
 | I1 | Composite construction | OLS-based weight calibration against macro outcomes (incremental explanatory power) | Research task; regression of composite vs. actual GDP / CPI; adjust weights modestly (±20%) | High | ⬜ Deferred | Risk of overfitting; Phase 3 — do after expanding-window Z-scores |
 | I2 | Composite construction | PCA orthogonalisation as diagnostic for signal independence | Analysis task: run PCA on 9 growth signals and 8 inflation signals | Low | 🔵 Planned | Good companion to A2; no code change needed |
-| J1 | Staleness — debt stress | Linear weight decay for stale components | Implemented in `indicators/longterm_stress.py` | — | ✅ Done | halflife=4q, min_frac=0.20 |
-| J2 | Staleness — debt stress | Carry-forward cap | Implemented in all builder functions | — | ✅ Done | max_carry_quarters=4 |
-| J3 | Staleness — debt stress | Model-based extrapolation gate | Implemented; `enabled: false` by default | — | ✅ Done | rolling_mean or linear_trend |
-| J4 | Staleness — debt stress | Structured stale strings ("cid:lag_q") and audit trail | `stale_components` + `extrapolated_components` in DB | — | ✅ Done | Dashboard shows badges |
-| J5 | Staleness — debt stress | Dashboard display of blank component reasons | Full-width component table with BLANK / STALE / ACTIVE badges | — | ✅ Done | Deployed on :8502 |
+| J1 | Staleness — **debt stress only** | Linear weight decay for stale components | Implemented in `indicators/longterm_stress.py` | — | ✅ Done (debt stress) | halflife=4q, min_frac=0.20 — **NOT applied to regime composite** |
+| J2 | Staleness — **debt stress only** | Carry-forward cap | Implemented in all builder functions | — | ✅ Done (debt stress) | max_carry_quarters=4 — **NOT applied to regime composite** |
+| J3 | Staleness — **debt stress only** | Model-based extrapolation gate | Implemented; `enabled: false` by default | — | ✅ Done (debt stress) | rolling_mean or linear_trend — **NOT applied to regime composite** |
+| J4 | Staleness — **debt stress only** | Structured stale strings ("cid:lag_q") and audit trail | `stale_components` + `extrapolated_components` in DB | — | ✅ Done (debt stress) | Dashboard shows badges — **NOT applied to regime composite** |
+| J5 | Staleness — **debt stress only** | Dashboard display of blank component reasons | Full-width component table with BLANK / STALE / ACTIVE badges | — | ✅ Done (debt stress) | Deployed on :8502 — **NOT applied to regime composite** |
+| L1 | Staleness — **regime composite** | Forward-fill weight decay in `_load_wide()` | Add 0.9^k (or linear) decay multiplier per month of fill; config-gated in composites.yaml | Medium | 🔵 Planned | Regime equivalent of J1; currently 13-month hard cut with no decay — see also F1 |
+| L2 | Staleness — **regime composite** | Explicit carry cap per signal (replace hard ffill_limit with per-frequency cap) | Mirror max_carry_quarters logic from debt stress; Q signals cap at ~3 months, A at ~15 | Medium | 🔵 Planned | Regime equivalent of J2; 13m blanket limit ignores signal frequency |
+| L3 | Staleness — **regime composite** | Per-signal staleness tracking in CompositeSnapshot | Store which signals were decayed/dropped at each snapshot month in a structured field | Medium | 🔵 Planned | Regime equivalent of J4; needed for audit trail and dashboard |
+| L4 | Staleness — **regime composite** | Dashboard staleness lag detail in Regime History component table | Show "stale Nq" badge with lag count per signal (component table already has STALE badge but no lag) | Low | 🔵 Planned | Regime equivalent of J5; UI already half-done |
+| L5 | Staleness — **regime composite** | Extrapolation gate for long-stale regime signals | Config-gated; likely low value for monthly signals that refresh frequently | Low | ⬜ Deferred | Regime equivalent of J3; monthly series rarely gap >3 months |
 | K1 | General | Back-test each modification on rolling window; compare out-of-sample performance to baseline | Phase 3 infrastructure; requires expanding-window Z-scores (C4) | High | ⬜ Deferred | Phase 3 |
 | K2 | General | Continuous feedback loop: compare regime prediction to actual monthly macro outcomes | Post-Phase 3; automated monthly audit | High | ⬜ Deferred | Phase 3+ |
 
@@ -72,7 +77,10 @@ The feedback proposes explicit group multipliers: labour-market signals collecti
 PCA analysis (I2) is a low-cost diagnostic that can reveal whether the current 9-signal growth composite is dominated by 2–3 underlying factors. This is analysis, not a code change, and can be run in a notebook. OLS weight calibration (I1) is intentionally deferred — the existing equal-weight prior is a deliberate choice to avoid overfitting to the relatively short post-1980 US macro history. Revisit after Phase 3 expanding windows are in place.
 
 ### Staleness — Debt Stress (J1–J5)
-**All five items are complete.** The three-gap staleness implementation (weight decay, carry cap, extrapolation gate) is live in `indicators/longterm_stress.py`. Dashboard displays STALE / BLANK / EXTRAPOLATED badges with full audit detail.
+**All five items are complete for the Long-Term Debt Stress Indicator only.** The three-gap staleness implementation (weight decay, carry cap, extrapolation gate) is live in `indicators/longterm_stress.py`. Dashboard displays STALE / BLANK / EXTRAPOLATED badges with full audit detail. None of this has been applied to the macro regime composite — see L1–L5 below.
+
+### Staleness — Regime Composite (L1–L5)
+**None of these items have been applied yet.** The macro regime composite currently uses a hard 13-month `ffill` with no decay, no carry cap, and no per-signal staleness tracking. The debt stress implementation provides the exact pattern to follow. **L1 (weight decay) and L2 (carry cap) are the highest-value near-term items** — they mirror F1 and the debt stress J1/J2 respectively. L3 (structured per-signal tracking in CompositeSnapshot) enables audit trail and feeds L4 (dashboard badges with lag count). L5 (extrapolation gate) is deferred because monthly signals rarely gap long enough to warrant model-based filling.
 
 ### General / Phase 3 (K1–K2)
 Both items depend on the Phase 3 back-test infrastructure (expanding-window Z-scores, rolling-window performance measurement). Tracked here for completeness.
@@ -90,9 +98,11 @@ Items recommended for the next working session, roughly in order:
 | 3 | G1 | Labour-market signals → 0.75 weight; output/demand → 1.00 | YAML change; brings composite in line with economic logic |
 | 4 | C1 | Winsorise at ±4σ in `_zscore_series()` | Protects all historical Z-scores from COVID/GFC outlier distortion |
 | 5 | E1 | Variance-based direction threshold (replace 1e-9) | Improves Confidence Score quality; small normalise.py change |
-| 6 | F1 | Exponential decay for forward-filled regime signals | Carries debt-stress staleness pattern into regime composite |
-| 7 | A2 / I2 | Correlation matrix + PCA on composite signals | Analysis task; informs whether further weight changes are warranted |
-| 8 | B1 | Audit calendar-adjusted N in transformation | Quick verification; add test |
+| 6 | F1 / L1 | Exponential decay for forward-filled regime signals | Core staleness fix for regime composite; mirrors debt stress J1 |
+| 7 | L2 | Per-frequency carry cap in regime composite `_load_wide()` | Q signals cap at ~3 months, A signals at ~15; mirrors debt stress J2 |
+| 8 | L3 | Per-signal staleness tracking in CompositeSnapshot | Enables audit trail and feeds L4 dashboard badges |
+| 9 | A2 / I2 | Correlation matrix + PCA on composite signals | Analysis task; informs whether further weight changes are warranted |
+| 10 | B1 | Audit calendar-adjusted N in transformation | Quick verification; add test |
 
 ---
 
