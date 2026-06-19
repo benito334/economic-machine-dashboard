@@ -135,11 +135,11 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 - [x] Multi-year Growth Score, Inflation Score, Quadrant, and Disequilibrium Score time series in DB (558 monthly snapshots)
 - [x] Quadrant labels match known historical regimes. Note: 2022 = "Inflationary Boom" (not Stagflation) — labor market Z-scores were strongly positive; Stagflation label emerges from Mar 2023 onward. Spec assumption revised.
 
-### Phase 1C gate
-- [ ] `docker compose up` → dashboard renders without error
-- [ ] Heat colors are driven by percentile, not raw values
-- [ ] Data-quality badges (`is_proxy`, `is_stale`, `vintage_available=false`, `low_history`) visible
-- [ ] Manual refresh runs without crashing
+### Phase 1C gate ✅ PASSED (2026-06-18)
+- [x] `docker compose up` → dashboard renders without error (port :8501 health check passed)
+- [x] Heat colors are driven by percentile: deep red >85%, dark blue <15%, neutral grey 15–85%
+- [x] Data-quality badges (`is_proxy`, `is_stale`, `vintage_available=false`, `low_history`) rendered per signal row
+- [x] Manual refresh button in sidebar clears cache and reruns; 131/131 tests passing
 
 ### Phase 2 gate (per country)
 - [ ] All bindings verified against provider

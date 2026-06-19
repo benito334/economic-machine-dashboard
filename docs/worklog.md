@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-18 — Session 6: Phase 1C — Streamlit Dashboard
+
+- Wired Telegram `Stop` hook into `~/.claude/settings.json` (bot already authorized; Telegram was the existing notification mechanism, not Signal)
+- Shipped Phase 1C end-to-end: full `dashboard/app.py` rewrite (~380 lines) with HUD, 4-quadrant Plotly scatter + 12-month trail, What Changed feed, Cross-Signal Conflict panel, Geopolitical-Risk Overlay placeholder (WGI deferred per G-03), accordion drill-downs for all 10 lens groups, per-signal sparklines (SVG), percentile color badges, quality badges (proxy/stale/no-vintage/low-hist), causal linkage tooltips (via HTML `title` attribute), data-quality log
+- Added `tests/test_dashboard.py`: 39 tests (35 unit + 4 integration) — all passing; total suite 131 tests
+- Docker acceptance gate passed: `docker compose up dashboard` serves on :8501; health endpoint returns HTML
+- Current regime: Stagflation — Growth=−0.05 / Inflation=+0.31 / Confidence=45%
+- Next: Phase 2 — Eurozone rollout (first non-US country binding)
+
+---
+
 ## 2026-06-18 — Session 5: Phase 1B — Composites Engine
 
 - Merged `codex/code-review-fixes` → `main`; all 8 code review findings closed, 79 tests passing
