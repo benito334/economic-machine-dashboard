@@ -93,10 +93,11 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
 | 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 131 tests pass |
-| 2 Country rollout | ⬜ **Next** | Eurozone first |
+| 1D Dash charting view | ⬜ **Next** | Plotly Dash on :8502; multi-pane overlay builder, yield curve drill-down; Option B (Lightweight Charts) skeleton committed |
+| 2 Country rollout | ⬜ Pending | Eurozone first |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** `python3 -m indicators.pipeline --latest` to inspect current signals, then proceed with Phase 2 (Eurozone country rollout).
+**To start the next session:** `python3 -m indicators.pipeline --latest` to confirm DB is current, then build Phase 1D (Dash charting view). See `docs/decisions/ADR-007-charting-architecture.md` for the full implementation plan.
 
 ---
 
@@ -139,6 +140,18 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - `INDICATORS_TESTING=1` env guard prevents `main()` from executing on import in tests
 - Docker acceptance gate: `docker compose up dashboard` → port :8501 serves HTML; pipeline exits 0
 - Geopolitical-Risk Overlay (WGI / Lens H): shows deferred placeholder with link to G-03 resolution path
+
+### Phase 1D — Dash Charting View ⬜ NEXT SESSION
+See `docs/decisions/ADR-007-charting-architecture.md` for full spec. Summary:
+- `dashboard/charting.py`: Plotly Dash app on port :8502 (separate Docker service)
+- `dashboard/charting_data.py`: DuckDB query helpers for time-series data
+- `config/chart_series.yaml`: human-readable series catalog (label, signal ID, units, default pane)
+- Series selector sidebar (`dcc.Checklist` grouped by lens); multi-pane figure builder with shared X-axis and independent Y-axes
+- Time-horizon controls: preset buttons (1Y 3Y 5Y 10Y MAX) + custom range slider
+- Yield curve pane: term-structure plot at selectable date with animation slider
+- `hovermode="x unified"` for linked crosshair across all panes
+- `dashboard/charting_lc/` skeleton for Option B (FastAPI + TradingView Lightweight Charts) — deferred but committed
+- `requirements.txt` additions: `dash`, `dash-bootstrap-components`, `diskcache`
 
 ### Phase 2 — Country Rollout (one at a time)
 Order: Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.

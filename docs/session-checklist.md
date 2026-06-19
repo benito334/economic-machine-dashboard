@@ -141,6 +141,14 @@ Each sub-phase gets its own acceptance check before moving to the next provider.
 - [x] Data-quality badges (`is_proxy`, `is_stale`, `vintage_available=false`, `low_history`) rendered per signal row
 - [x] Manual refresh button in sidebar clears cache and reruns; 131/131 tests passing
 
+### Phase 1D gate
+- [ ] `docker compose up charting` → Dash app renders on :8502
+- [ ] Series selector adds/removes series from chart in real-time (no page reload)
+- [ ] Multi-pane layout: independent Y-axes, shared X-axis, linked hover crosshair
+- [ ] Yield curve pane renders term structure with date slider
+- [ ] Time-horizon presets (1Y/3Y/5Y/10Y/MAX) + range slider both work
+- [ ] `dashboard/charting_lc/` skeleton committed (Option B deferred path)
+
 ### Phase 2 gate (per country)
 - [ ] All bindings verified against provider
 - [ ] 3–5 recent values spot-checked vs. public reference

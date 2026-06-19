@@ -74,6 +74,61 @@ LENS_GROUPS: list[tuple[str, list[str]]] = [
 
 DIR_ARROW: dict[str, str] = {"rising": "↑", "falling": "↓", "flat": "→"}
 
+# Brief description shown inside each lens accordion (educational layer)
+LENS_ABOUT: dict[str, str] = {
+    "Nominal Spending Master Indicators": (
+        "Top-level view of nominal economic activity. GDP (real, nominal, deflator) and "
+        "derived spreads that summarise the pace of money flowing through the economy. "
+        "These are **lagging** — they confirm what already happened."
+    ),
+    "A · Growth Force": (
+        "Real economic output and labour-market strength. The **Growth Score** composite "
+        "is an equal-weight mean Z-score across 9 of these signals "
+        "(Unemployment is *inverted* — lower unemployment = stronger growth). "
+        "A positive score means the US economy is running above its long-run average."
+    ),
+    "B · Inflation Force": (
+        "Price pressures across consumers, producers, and financial markets. The **Inflation Score** "
+        "uses full weight (1×) for core measures (PCE, CPI, Wages, Breakevens) and half weight (0.5×) "
+        "for commodity/headline items (Crude Oil, Headline CPI) to reduce short-term noise."
+    ),
+    "C · Monetary Policy & Rates": (
+        "The price and quantity of money set by the Federal Reserve. "
+        "Fed Funds and real yields tell you how tight or loose policy is; "
+        "the balance sheet reflects QE/QT. These shape borrowing costs across the whole economy."
+    ),
+    "D · Credit, Debt & Fiscal": (
+        "Leverage, debt sustainability, and the government's fiscal position. "
+        "High debt/GDP or a widening deficit increases fragility; "
+        "tightening lending standards are a leading warning of credit stress."
+    ),
+    "E · Risk Premiums": (
+        "The extra return investors demand for holding risky or longer-duration assets. "
+        "The yield curve (10Y−2Y, 10Y−3M) is a leading recession indicator — inversion has "
+        "preceded every US recession since 1970. Credit spreads widen when default risk rises."
+    ),
+    "F · External & Trade": (
+        "How the US economy relates to the rest of the world via trade flows. "
+        "The current account deficit means the US imports more than it exports and must "
+        "attract foreign capital to balance. Net IIP shows cumulative foreign ownership of US assets."
+    ),
+    "G · Capital Flows & Currency": (
+        "Cross-border investment and the value of the dollar. "
+        "FDI inflows signal long-term foreign confidence; the Real Effective Exchange Rate (REER) "
+        "shows competitiveness — a stronger dollar makes exports pricier and imports cheaper."
+    ),
+    "H · Governance & Political Risk": (
+        "Institutional quality, rule of law, and political stability (World Bank WGI scores). "
+        "These structural indicators move slowly but matter for long-run capital allocation. "
+        "⚠ Deferred — WB API unavailable; see G-03."
+    ),
+    "I · Demographics & Structural": (
+        "Slow-moving forces that set the economy's long-run speed limit: population growth, "
+        "urbanisation, labour force participation, and age dependency. "
+        "These are **structural** — they update annually and change over decades, not months."
+    ),
+}
+
 st.set_page_config(
     page_title="Indicators Machine",
     page_icon="📊",
@@ -291,7 +346,10 @@ def _zscore_color(z: Optional[float]) -> str:
 # Component builders
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def render_hud(latest_composite: pd.Series) -> None:
+def render_hud(
+    latest_composite: pd.Series,
+    prev_composite: Optional[pd.Series] = None,
+) -> None:
     q = latest_composite.get("quadrant") or "—"
     conf = latest_composite.get("confidence")
     gs = latest_composite.get("growth_score")
@@ -305,13 +363,42 @@ def render_hud(latest_composite: pd.Series) -> None:
     symbol = meta["symbol"]
     desc = meta["desc"]
 
-    g_arrow = "↑" if (gs or 0) > 0 else "↓"
-    i_arrow = "↑" if (inf or 0) > 0 else "↓"
-
     conf_pct = f"{conf:.1%}" if conf is not None else "—"
     dis_val  = f"{dis:.2f}" if dis is not None else "—"
     gs_val   = f"{gs:+.3f}" if gs is not None else "—"
     inf_val  = f"{inf:+.3f}" if inf is not None else "—"
+
+    # Force score level: sign determines the regime quadrant
+    g_lvl_color = "#2ca02c" if (gs or 0) > 0 else "#d62728"
+    i_lvl_color = "#e67e00" if (inf or 0) > 0 else "#1f77b4"
+
+    # True momentum: month-over-month change in composite score
+    g_delta: Optional[float] = None
+    i_delta: Optional[float] = None
+    if prev_composite is not None and not prev_composite.empty:
+        prev_gs  = prev_composite.get("growth_score")
+        prev_inf = prev_composite.get("inflation_score")
+        if gs is not None and prev_gs is not None:
+            g_delta = gs - prev_gs
+        if inf is not None and prev_inf is not None:
+            i_delta = inf - prev_inf
+
+    def _mom_arrow(d: Optional[float]) -> str:
+        if d is None:
+            return "→"
+        return "↑" if d > 0.01 else ("↓" if d < -0.01 else "→")
+
+    def _mom_color(d: Optional[float]) -> str:
+        if d is None:
+            return "#888"
+        return "#7ecf7e" if d > 0.01 else ("#cf7e7e" if d < -0.01 else "#aaa")
+
+    g_mom = f"{g_delta:+.3f}" if g_delta is not None else "—"
+    i_mom = f"{i_delta:+.3f}" if i_delta is not None else "—"
+    g_mom_arrow  = _mom_arrow(g_delta)
+    i_mom_arrow  = _mom_arrow(i_delta)
+    g_mom_color  = _mom_color(g_delta)
+    i_mom_color  = _mom_color(i_delta)
 
     st.markdown(
         f"""
@@ -323,6 +410,7 @@ def render_hud(latest_composite: pd.Series) -> None:
             margin-bottom:16px;
         ">
           <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap;">
+
             <div>
               <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">
                 Macro Regime &nbsp;<span style="color:#555;">as of {as_of}</span>
@@ -332,25 +420,47 @@ def render_hud(latest_composite: pd.Series) -> None:
               </div>
               <div style="font-size:0.82em;color:#aaa;margin-top:2px;">{desc}</div>
             </div>
+
             <div style="border-left:1px solid #333;padding-left:28px;">
               <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">Confidence</div>
               <div style="font-size:1.8em;font-weight:600;color:#eee;">{conf_pct}</div>
+              <div style="font-size:0.7em;color:#555;">signal agreement</div>
             </div>
+
             <div style="border-left:1px solid #333;padding-left:28px;">
-              <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">Momentum Vectors</div>
-              <div style="font-size:1.4em;margin-top:4px;">
-                <span style="color:#aaa;font-size:0.7em;">Growth&nbsp;</span>
-                <span style="color:{'#2ca02c' if (gs or 0) > 0 else '#d62728'};font-weight:700;">{g_arrow} {gs_val}</span>
-                &nbsp;&nbsp;
-                <span style="color:#aaa;font-size:0.7em;">Inflation&nbsp;</span>
-                <span style="color:{'#e67e00' if (inf or 0) > 0 else '#1f77b4'};font-weight:700;">{i_arrow} {inf_val}</span>
+              <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">
+                Force Scores
+                <span style="font-size:0.85em;font-weight:normal;text-transform:none;"> — where each force sits vs. history (Z-score)</span>
+              </div>
+              <div style="font-size:1.2em;margin-top:6px;">
+                <span style="color:#888;font-size:0.78em;">Growth&nbsp;</span>
+                <span style="color:{g_lvl_color};font-weight:700;font-family:monospace;">{gs_val}</span>
+                &nbsp;&nbsp;&nbsp;
+                <span style="color:#888;font-size:0.78em;">Inflation&nbsp;</span>
+                <span style="color:{i_lvl_color};font-weight:700;font-family:monospace;">{inf_val}</span>
               </div>
             </div>
+
             <div style="border-left:1px solid #333;padding-left:28px;">
-              <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">Disequilibrium Score</div>
-              <div style="font-size:1.8em;font-weight:600;color:{'#ff8888' if (dis or 0) > 1.0 else '#eee'};">{dis_val}</div>
-              {"<div style='font-size:0.72em;color:#888;'>⚠ low coverage</div>" if low_cov else ""}
+              <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">
+                Momentum
+                <span style="font-size:0.85em;font-weight:normal;text-transform:none;"> — month-over-month change in score</span>
+              </div>
+              <div style="font-size:1.2em;margin-top:6px;">
+                <span style="color:#888;font-size:0.78em;">Growth&nbsp;</span>
+                <span style="color:{g_mom_color};font-weight:700;font-family:monospace;">{g_mom_arrow} {g_mom}</span>
+                &nbsp;&nbsp;&nbsp;
+                <span style="color:#888;font-size:0.78em;">Inflation&nbsp;</span>
+                <span style="color:{i_mom_color};font-weight:700;font-family:monospace;">{i_mom_arrow} {i_mom}</span>
+              </div>
             </div>
+
+            <div style="border-left:1px solid #333;padding-left:28px;">
+              <div style="font-size:0.72em;color:#888;text-transform:uppercase;letter-spacing:1px;">Disequilibrium</div>
+              <div style="font-size:1.8em;font-weight:600;color:{'#ff8888' if (dis or 0) > 1.0 else '#eee'};">{dis_val}</div>
+              <div style="font-size:0.7em;color:#555;">{"⚠ low coverage" if low_cov else "mean |Z| structural"}</div>
+            </div>
+
           </div>
         </div>
         """,
@@ -695,6 +805,95 @@ def main() -> None:
             st.cache_data.clear()
             st.rerun()
         st.divider()
+
+        with st.expander("📚 Methodology Guide", expanded=False):
+            st.markdown("""
+#### Core Concepts
+
+**Z-Score**
+How many standard deviations above or below the long-run historical average the current reading is.
+`Z = (current − mean) ÷ std_dev`
+- Z = +1.0 → roughly top 16% of all historical readings
+- Z = −2.0 → bottom 2% (very depressed)
+- Lets you compare completely different indicators (e.g. unemployment vs. PCE inflation) on one common scale.
+
+**Percentile**
+Rank of the current value within its own history. 85th percentile = higher than 85 % of all observations on record. Bounded 0–100 %; less sensitive to extreme outliers than Z-scores.
+
+**Direction (↑ ↓ →)**
+Derived from the 3-month change in value. A small dead-band prevents noise from flipping the arrow.
+            """)
+
+            st.markdown("""
+#### Composite Scores
+
+**Growth Score**
+Equal-weight mean Z-score across 9 signals. Unemployment is *inverted* (lower unemployment = stronger growth).
+
+| Signal | Type |
+|---|---|
+| Payrolls (YoY %) | coincident |
+| Industrial Production (YoY %) | coincident |
+| Retail Sales (YoY %) | coincident |
+| Real PCE (YoY %) | coincident |
+| Capacity Utilization (%) | coincident |
+| Job Openings (thousands) | leading |
+| PMI Proxy — Philly Fed ⚠ proxy | leading |
+| Labor Force Participation (%) | coincident |
+| Unemployment Rate (%) **inverted** | lagging |
+
+Positive score → economy running above its historical average.
+
+**Inflation Score**
+Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline items carry 0.5× to reduce short-term noise.
+
+| Signal | Weight | Type |
+|---|---|---|
+| Core PCE (YoY %) | 1.0× | coincident |
+| Core CPI (YoY %) | 1.0× | coincident |
+| Wages (YoY %) | 1.0× | lagging |
+| 5Y Breakeven (%) | 1.0× | leading |
+| 10Y Breakeven (%) | 1.0× | leading |
+| Headline CPI (YoY %) | 0.5× | coincident |
+| Crude Oil YoY (%) | 0.5× | leading |
+            """)
+
+            st.markdown("""
+#### HUD Metrics
+
+**Force Scores** — the current composite Z-score level. A positive Growth Score means the economy is running above its long-run average; the sign determines which regime quadrant you are in.
+
+**Momentum** — the month-over-month *change* in each composite score. Distinct from the level: the economy can be deep in Stagflation (negative Force Score) but with positive momentum (slowly recovering). This is the true rate-of-change signal.
+
+**Confidence** — fraction of constituent signals whose 3-month direction agrees with the assigned quadrant label. In Stagflation (Growth−, Inflation+) we expect growth signals falling and inflation signals rising. 100 % = all signals agree; 0 % = complete disagreement.
+
+**Disequilibrium Score** — mean absolute Z-score across structural force groups (debt, external, technology, governance, climate). High score (>1.5) = system stretched far from long-run equilibrium. Unlike the cyclical quadrant, this captures slow-moving structural risks.
+            """)
+
+            st.markdown("""
+#### Signal Classification
+
+**Lead / Lag**
+- 🟢 *Leading* — forward-looking; move before the economy (job openings, PMI, breakevens, yield curve)
+- 🔵 *Coincident* — reflect current conditions (payrolls, CPI, industrial production)
+- 🔴 *Lagging* — confirm trends after the fact (unemployment, wages, govt debt/GDP)
+- 🟡 *Structural* — slow-moving, multi-year (demographics, TFP, R&D intensity)
+
+**Quality Badges**
+- `proxy` — substitute series, not the primary statistical release
+- `stale` — not updated within its expected release window
+- `no vintage` — only latest-revised data; no point-in-time history available
+- `low hist` — fewer than 15 observations; Z-score should be treated with caution
+
+**Dalio's Four Seasons**
+
+| | Growth + | Growth − |
+|---|---|---|
+| **Inflation +** | 🟠 Inflationary Boom | 🔴 Stagflation |
+| **Inflation −** | 🟢 Expansion | 🔵 Disinflationary Slowdown |
+            """)
+
+        st.divider()
         st.caption(f"DB: `{DB_PATH}`")
 
     # ── Guard: DB exists ─────────────────────────────────────────────────────────
@@ -719,8 +918,9 @@ def main() -> None:
         for sid, grp in all_histories.groupby("id"):
             histories_by_id[str(sid)] = grp.sort_values("as_of")["value"].tolist()
 
-    # Current composite
-    cur_comp: pd.Series = comp_history.iloc[-1] if not comp_history.empty else pd.Series()
+    # Current and previous month composites (for momentum calculation)
+    cur_comp:  pd.Series = comp_history.iloc[-1] if len(comp_history) >= 1 else pd.Series()
+    prev_comp: pd.Series = comp_history.iloc[-2] if len(comp_history) >= 2 else pd.Series()
 
     # ── Page header ──────────────────────────────────────────────────────────────
     st.markdown(
@@ -731,7 +931,7 @@ def main() -> None:
 
     # ── HUD ──────────────────────────────────────────────────────────────────────
     if not cur_comp.empty:
-        render_hud(cur_comp)
+        render_hud(cur_comp, prev_comp if not prev_comp.empty else None)
 
     # ── Row 1: 4-Quadrant Scatter ────────────────────────────────────────────────
     st.markdown("### Macro Regime Map")
@@ -773,6 +973,13 @@ def main() -> None:
         with st.expander(f"{lens_label}  {badges if not n_stale else ''}", expanded=(lens_label == "A · Growth Force")):
             if n_stale:
                 st.markdown(badges, unsafe_allow_html=True)
+            about = LENS_ABOUT.get(lens_label)
+            if about:
+                st.markdown(
+                    f'<div style="font-size:0.83em;color:#888;padding:4px 0 10px 0;'
+                    f'border-bottom:1px solid #222;margin-bottom:10px;">{about}</div>',
+                    unsafe_allow_html=True,
+                )
             if n_sigs == 0:
                 st.caption("No data for this lens (deferred or not yet ingested).")
             else:
