@@ -197,6 +197,98 @@ def available_dates_for_yield_curve() -> list[str]:
     return [d.strftime("%Y-%m-%d") for d in sorted(s.dropna().index)]
 
 
+# ── Regime Composites — component status ──────────────────────────────────────
+
+_COMPOSITES_YAML = Path(__file__).parent.parent / "config" / "composites.yaml"
+
+# Human-readable labels for composite constituent signal concept IDs
+_COMPOSITE_SIGNAL_LABELS: dict[str, str] = {
+    "growth.payrolls":          "Payrolls",
+    "growth.industrial_prod":   "Industrial Production",
+    "growth.retail_sales":      "Retail Sales",
+    "growth.real_pce":          "Real PCE",
+    "growth.capacity_util":     "Capacity Utilisation",
+    "growth.job_openings":      "Job Openings (JOLTS)",
+    "growth.pmi_proxy":         "PMI Proxy",
+    "growth.labor_force_part":  "Labor Force Participation",
+    "growth.unemployment":      "Unemployment",
+    "inflation.pce_core":       "Core PCE",
+    "inflation.cpi_core":       "Core CPI",
+    "inflation.wages":          "Wages",
+    "inflation.breakeven_5y":   "5Y Breakeven",
+    "inflation.breakeven_10y":  "10Y Breakeven",
+    "inflation.cpi_headline":   "CPI Headline",
+    "inflation.crude_oil":      "Crude Oil",
+    "inflation.ppi_broad":      "PPI Broad",
+}
+
+
+def load_composite_component_status(country: str = "US") -> pd.DataFrame:
+    """Return latest signal snapshot for every growth and inflation composite component.
+
+    Columns returned: composite, concept_id, signal_id, label, weight, invert,
+    zscore, direction, change_3m, as_of, is_stale, low_history.
+    """
+    cfg = yaml.safe_load(_COMPOSITES_YAML.read_text()) or {}
+    country_prefix = country.lower()
+
+    rows_meta: list[dict] = []
+    for comp_name in ("growth_score", "inflation_score"):
+        force = comp_name.split("_")[0]  # "growth" or "inflation"
+        for ind in cfg.get(comp_name, {}).get("indicators", []):
+            concept_id = ind["id"]
+            rows_meta.append({
+                "composite":  force,
+                "concept_id": concept_id,
+                "signal_id":  f"{country_prefix}.{concept_id}",
+                "label":      _COMPOSITE_SIGNAL_LABELS.get(concept_id, concept_id.split(".")[-1].replace("_", " ").title()),
+                "weight":     float(ind.get("weight", 1.0)),
+                "invert":     bool(ind.get("invert", False)),
+            })
+
+    if not rows_meta:
+        return pd.DataFrame()
+
+    signal_ids = [r["signal_id"] for r in rows_meta]
+    placeholders = ",".join("?" * len(signal_ids))
+
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            f"""
+            SELECT id, as_of, zscore, direction, change_3m, is_stale, low_history
+            FROM signals
+            WHERE id IN ({placeholders})
+              AND (id, as_of) IN (
+                  SELECT id, MAX(as_of) FROM signals
+                  WHERE id IN ({placeholders})
+                  GROUP BY id
+              )
+            """,
+            signal_ids * 2,
+        ).df()
+    finally:
+        con.close()
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    sig_map = df.set_index("id").to_dict("index")
+
+    result_rows = []
+    for meta in rows_meta:
+        sig = sig_map.get(meta["signal_id"], {})
+        result_rows.append({
+            **meta,
+            "zscore":      sig.get("zscore"),
+            "direction":   sig.get("direction"),
+            "change_3m":   sig.get("change_3m"),
+            "as_of":       sig.get("as_of"),
+            "is_stale":    bool(sig.get("is_stale", False)),
+            "low_history": bool(sig.get("low_history", False)),
+        })
+
+    return pd.DataFrame(result_rows)
+
+
 # ── Long-Term Debt Stress ─────────────────────────────────────────────────────
 
 # Maps each component ID to the underlying signal IDs in the signals table.

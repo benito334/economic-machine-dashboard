@@ -304,6 +304,19 @@ def test_regime_chart_highlight_at_step():
 
 
 @pytest.mark.integration
+def _collect_texts(node) -> list[str]:
+    """Recursively collect all string leaf values from a Dash component tree."""
+    results = []
+    if isinstance(node, str):
+        results.append(node)
+    elif isinstance(node, list):
+        for item in node:
+            results.extend(_collect_texts(item))
+    elif hasattr(node, "children"):
+        results.extend(_collect_texts(node.children))
+    return results
+
+
 def test_regime_info_box_current():
     from dashboard.charting import update_regime_info
     children, date_display = update_regime_info(0, {"start": None, "end": None})
@@ -311,8 +324,8 @@ def test_regime_info_box_current():
     assert isinstance(children, list)
     assert len(children) > 0
     # "Past Data" warning must NOT appear when step == 0
-    texts = [c.children if hasattr(c, "children") and isinstance(c.children, str) else "" for c in children]
-    assert "⚠ Past Data" not in texts
+    all_texts = _collect_texts(children)
+    assert not any("PAST DATA" in t.upper() for t in all_texts)
 
 
 @pytest.mark.integration
@@ -320,9 +333,9 @@ def test_regime_info_box_past():
     from dashboard.charting import update_regime_info
     children, date_display = update_regime_info(12, {"start": None, "end": None})
     assert "ago" in date_display
-    # "Past Data" warning must appear
-    texts = [c.children if hasattr(c, "children") and isinstance(c.children, str) else "" for c in children]
-    assert "⚠ Past Data" in texts
+    # "Past Data" warning must appear somewhere in the nested component tree
+    all_texts = _collect_texts(children)
+    assert any("PAST DATA" in t.upper() for t in all_texts)
 
 
 @pytest.mark.integration

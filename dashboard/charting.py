@@ -27,6 +27,7 @@ from plotly.subplots import make_subplots
 
 from dashboard.charting_data import (
     available_dates_for_yield_curve,
+    load_composite_component_status,
     load_composite_history,
     load_debt_stress_component_dates,
     load_debt_stress_history,
@@ -287,25 +288,25 @@ app.layout = dbc.Container(
                                 ),
                             ], className="d-flex align-items-center pt-2 pb-1"),
                         ]),
-                        # Info box (left) + chart (right)
+                        # Full-width info + component table
                         dbc.Row([
                             dbc.Col(
-                                dbc.Card(
-                                    dbc.CardBody(
-                                        html.Div(id="regime-info-box"),
-                                        style={"padding": "12px"},
-                                    ),
-                                    style={"position": "relative"},
-                                ),
-                                width=3,
+                                dbc.Card(dbc.CardBody(
+                                    html.Div(id="regime-info-box"),
+                                    style={"padding": "16px"},
+                                )),
+                                width=12,
                             ),
+                        ], className="pb-2"),
+                        # Full-width chart below
+                        dbc.Row([
                             dbc.Col(
                                 dcc.Graph(
                                     id="regime-chart",
                                     config={"displayModeBar": True},
-                                    style={"height": "70vh"},
+                                    style={"height": "65vh"},
                                 ),
-                                width=9,
+                                width=12,
                             ),
                         ]),
                     ]),
@@ -643,75 +644,317 @@ def update_yield_curve(
 
 # ── Regime History — helpers + callbacks ─────────────────────────────────────
 
-def _regime_info_children(row: dict, is_current: bool) -> list:
-    """Build children for the regime-info-box Div from one CompositeSnapshot row."""
-    quadrant = row.get("quadrant") or "—"
-    g_score = row.get("growth_score")
-    i_score = row.get("inflation_score")
+_GROWTH_COLOR    = "#4C9BE8"
+_INFLATION_COLOR = "#E8734C"
+
+
+def _regime_info_children(
+    row: dict,
+    is_current: bool,
+    comp_df: "pd.DataFrame | None" = None,
+) -> list:
+    """Build the full-width regime info card: summary strip + component table."""
+    quadrant   = row.get("quadrant") or "—"
+    g_score    = row.get("growth_score")
+    i_score    = row.get("inflation_score")
     confidence = row.get("confidence")
-    diseq = row.get("disequilibrium_score")
+    diseq      = row.get("disequilibrium_score")
+    n_g        = int(row.get("n_growth_signals", 0) or 0)
+    n_i        = int(row.get("n_inflation_signals", 0) or 0)
+    q_color    = _QUADRANT_COLOR.get(quadrant, "#888")
+    muted      = {"color": "var(--muted-color)"}
 
-    q_color = _QUADRANT_COLOR.get(quadrant, "#888")
-
-    row_style = {
-        "display": "flex", "justifyContent": "space-between", "alignItems": "center",
-        "padding": "5px 0", "borderBottom": "1px solid var(--border-color)",
-        "fontSize": "0.83rem",
-    }
-    muted = {"color": "var(--muted-color)"}
-    val_s = {"color": "var(--font-color)", "fontWeight": "500"}
-
-    def _arrow(v: Any) -> str:
-        return "↑" if (v is not None and not pd.isna(v) and v >= 0) else "↓"
-
-    def _fmt(v: Any, prec: int = 3) -> str:
+    def _fmt(v: Any, prec: int = 2) -> str:
         if v is None or (isinstance(v, float) and pd.isna(v)):
             return "—"
         return f"{v:+.{prec}f}"
 
-    children: list = [
-        html.Div(
-            quadrant,
-            style={
-                "backgroundColor": q_color, "color": "#111",
-                "textAlign": "center", "fontWeight": "bold",
-                "fontSize": "0.9rem", "padding": "8px 4px",
-                "borderRadius": "4px", "marginBottom": "10px",
-            },
-        ),
-        html.Div([
-            html.Span("Growth", style=muted),
-            html.Span(f"{_arrow(g_score)} {_fmt(g_score)}", style=val_s),
-        ], style=row_style),
-        html.Div([
-            html.Span("Inflation", style=muted),
-            html.Span(f"{_arrow(i_score)} {_fmt(i_score)}", style=val_s),
-        ], style=row_style),
-        html.Div([
-            html.Span("Confidence", style=muted),
-            html.Span(
-                f"{int(confidence * 100)}%" if (confidence is not None and not pd.isna(confidence)) else "—",
-                style=val_s,
-            ),
-        ], style=row_style),
-        html.Div([
-            html.Span("Disequilibrium", style=muted),
-            html.Span(_fmt(diseq), style=val_s),
-        ], style={**row_style, "borderBottom": "none"}),
-    ]
+    def _arrow(v: Any) -> str:
+        return "↑" if (v is not None and not pd.isna(v) and float(v) >= 0) else "↓"
 
-    if not is_current:
-        children.append(
-            html.Div(
-                "⚠ Past Data",
-                style={
-                    "position": "absolute", "bottom": "8px", "right": "10px",
-                    "fontSize": "0.72rem", "color": "#F4C842", "fontWeight": "500",
-                },
+    # ── Momentum fractions from current signal directions ─────────────────────
+    g_mom_str = i_mom_str = "—"
+    if comp_df is not None and not comp_df.empty:
+        g_df = comp_df[comp_df["composite"] == "growth"]
+        i_df = comp_df[comp_df["composite"] == "inflation"]
+
+        def _mom_str(df: "pd.DataFrame", positive_dir: str, negative_dir: str) -> str:
+            total = df[df["direction"].notna()]
+            if total.empty:
+                return "—"
+            # For inverted signals (unemployment), falling = growth-positive
+            positive_count = sum(
+                1 for _, sr in total.iterrows()
+                if (sr["direction"] == (negative_dir if sr["invert"] else positive_dir))
             )
+            return f"{positive_count}/{len(total)}"
+
+        g_mom_str = _mom_str(g_df, "rising", "falling")
+        i_mom_str = _mom_str(i_df, "rising", "falling")
+
+    # ── Summary strip ─────────────────────────────────────────────────────────
+    def _score_block(label: str, score: Any, n_active: int, n_total: int,
+                     mom_str: str, color: str) -> html.Div:
+        score_txt = f"{float(score):+.3f}" if score is not None and not (isinstance(score, float) and pd.isna(score)) else "—"
+        score_color = color if score is not None else "#555"
+        return html.Div(
+            style={
+                "borderLeft": f"3px solid {color}",
+                "paddingLeft": "10px", "minWidth": "160px",
+            },
+            children=[
+                html.Div(label,
+                         style={"fontSize": "0.65rem", "textTransform": "uppercase",
+                                "letterSpacing": "0.07em", "color": "var(--muted-color)"}),
+                html.Div(
+                    [html.Span(_arrow(score) + " ", style={"fontSize": "1.0rem", "color": score_color}),
+                     html.Span(score_txt, style={"fontSize": "1.6rem", "fontWeight": "700",
+                                                  "color": score_color, "fontFamily": "monospace"})],
+                    style={"lineHeight": "1.1", "marginBottom": "2px"},
+                ),
+                html.Div(
+                    f"{n_active}/{n_total} signals · {mom_str} momentum-positive",
+                    style={"fontSize": "0.68rem", "color": "var(--muted-color)"},
+                ),
+            ],
         )
 
-    return children
+    past_badge = (
+        html.Span(" ⚠ PAST DATA",
+                  style={"fontSize": "0.68rem", "color": "#F4C842", "marginLeft": "8px"})
+        if not is_current else None
+    )
+
+    summary_strip = html.Div(
+        style={
+            "display": "flex", "alignItems": "flex-start",
+            "gap": "24px", "flexWrap": "wrap", "marginBottom": "16px",
+        },
+        children=[
+            # Quadrant badge
+            html.Div(
+                style={"display": "flex", "flexDirection": "column", "justifyContent": "center",
+                       "minWidth": "160px"},
+                children=[
+                    html.Div(
+                        [html.Span(quadrant), *([] if past_badge is None else [past_badge])],
+                        style={"backgroundColor": q_color, "color": "#111",
+                               "textAlign": "center", "fontWeight": "bold",
+                               "fontSize": "0.88rem", "padding": "8px 10px",
+                               "borderRadius": "4px", "marginBottom": "6px"},
+                    ),
+                    html.Div(
+                        [
+                            html.Span("Confidence: ",
+                                      style={"fontSize": "0.7rem", "color": "var(--muted-color)"}),
+                            html.Span(
+                                f"{int(confidence * 100)}%" if (confidence is not None and not pd.isna(confidence)) else "—",
+                                style={"fontSize": "0.7rem", "color": "var(--font-color)", "fontWeight": "600"},
+                            ),
+                        ],
+                    ),
+                    html.Div(
+                        [
+                            html.Span("Disequilibrium: ",
+                                      style={"fontSize": "0.7rem", "color": "var(--muted-color)"}),
+                            html.Span(
+                                _fmt(diseq),
+                                style={"fontSize": "0.7rem", "color": "var(--font-color)", "fontWeight": "600"},
+                            ),
+                        ],
+                    ),
+                ],
+            ),
+            # Separator
+            html.Div(style={"width": "1px", "background": "var(--border-color)",
+                            "alignSelf": "stretch", "margin": "0 4px"}),
+            _score_block(
+                "Growth Force Z-Score", g_score, n_g, 9, g_mom_str, _GROWTH_COLOR,
+            ),
+            _score_block(
+                "Inflation Force Z-Score", i_score, n_i, 8, i_mom_str, _INFLATION_COLOR,
+            ),
+            html.Div(
+                style={"fontSize": "0.65rem", "color": "#555", "alignSelf": "flex-end",
+                       "marginLeft": "auto"},
+                children=[
+                    html.Div("Force Z-Score = weighted average of signal Z-scores"),
+                    html.Div("Momentum = fraction of signals with growth/inflation-positive direction"),
+                    html.Div("Confidence = direction-agreement fraction vs. expected for quadrant"),
+                ],
+            ),
+        ],
+    )
+
+    # ── Component breakdown table ─────────────────────────────────────────────
+    if comp_df is None or comp_df.empty:
+        table_section = html.Div("Component data unavailable — run pipeline.", style=muted)
+    else:
+        th_sty = {
+            "textAlign": "left", "padding": "5px 10px",
+            "fontSize": "0.68rem", "textTransform": "uppercase",
+            "letterSpacing": "0.06em", "color": "var(--muted-color)",
+            "borderBottom": "1px solid var(--border-color)",
+            "whiteSpace": "nowrap",
+        }
+        td_sty = {
+            "padding": "5px 10px", "fontSize": "0.82rem",
+            "borderBottom": "1px solid var(--border-color)",
+            "color": "var(--font-color)", "verticalAlign": "middle",
+        }
+        td_mono = {**td_sty, "fontFamily": "monospace"}
+
+        def _section(force: str, total: int, color: str) -> list:
+            df_f = comp_df[comp_df["composite"] == force].copy()
+            n_active = int((df_f["zscore"].notna() & ~df_f["is_stale"] & ~df_f["low_history"]).sum())
+            section_header = html.Tr([
+                html.Td(
+                    html.Span(
+                        f"{force.upper()} FORCE INPUTS  ·  {n_active}/{len(df_f)} active",
+                        style={"color": color, "fontWeight": "700",
+                               "fontSize": "0.72rem", "textTransform": "uppercase",
+                               "letterSpacing": "0.07em"},
+                    ),
+                    colSpan=7,
+                    style={"padding": "8px 10px",
+                           "backgroundColor": "rgba(0,0,0,0.25)",
+                           "borderBottom": f"1px solid {color}"},
+                ),
+            ])
+            rows = [section_header]
+            for _, sr in df_f.iterrows():
+                z = sr.get("zscore")
+                direction = sr.get("direction") or ""
+                change3m  = sr.get("change_3m")
+                invert    = bool(sr.get("invert", False))
+                is_stale  = bool(sr.get("is_stale", False))
+                low_hist  = bool(sr.get("low_history", False))
+                as_of     = sr.get("as_of")
+                weight    = float(sr.get("weight", 1.0))
+                z_missing = z is None or (isinstance(z, float) and pd.isna(z))
+
+                # Last data
+                if as_of is not None and not pd.isna(as_of):
+                    last_str = pd.Timestamp(as_of).strftime("%b %Y")
+                else:
+                    last_str = "—"
+
+                # Weight display
+                max_w = float(df_f["weight"].max())
+                wt_str = "½" if weight < max_w else "1"
+
+                # Z-score bar cell
+                if z_missing:
+                    z_cell = html.Td("—", style={**td_mono, "color": "#555", "textAlign": "right"})
+                else:
+                    bar_w = min(abs(float(z)) / 2.5 * 80, 80)
+                    z_cell = html.Td(
+                        html.Div(
+                            style={"display": "flex", "alignItems": "center",
+                                   "justifyContent": "flex-end", "gap": "6px"},
+                            children=[
+                                html.Div(style={
+                                    "width": f"{bar_w:.0f}px", "height": "6px",
+                                    "backgroundColor": color, "borderRadius": "2px",
+                                    "opacity": "0.6", "flexShrink": "0",
+                                }),
+                                html.Span(f"{float(z):+.2f}",
+                                          style={"color": color, "fontFamily": "monospace",
+                                                 "fontSize": "0.82rem"}),
+                            ],
+                        ),
+                        style={**td_sty, "textAlign": "right"},
+                    )
+
+                # Direction / momentum cell
+                if not direction:
+                    dir_cell_content = html.Span("—", style={"color": "#555"})
+                else:
+                    # Growth-positive: rising (or falling if inverted). Inflation-positive: rising.
+                    positive_dir = "falling" if (force == "growth" and invert) else "rising"
+                    is_positive = (direction == positive_dir)
+                    arrow = "↑" if direction == "rising" else "↓"
+                    dir_color = color if is_positive else "#666"
+                    invert_note = " (inv)" if invert else ""
+                    dir_cell_content = html.Span(
+                        f"{arrow} {direction}{invert_note}",
+                        style={"color": dir_color, "fontSize": "0.80rem"},
+                    )
+                    if change3m is not None and not (isinstance(change3m, float) and pd.isna(change3m)):
+                        dir_cell_content = html.Span([
+                            html.Span(f"{arrow} {direction}{invert_note}   ",
+                                      style={"color": dir_color}),
+                            html.Span(f"{float(change3m):+.3f} 3m",
+                                      style={"color": "var(--muted-color)",
+                                             "fontSize": "0.72rem", "fontFamily": "monospace"}),
+                        ])
+
+                # Status cell
+                if is_stale:
+                    status = html.Span("STALE",
+                                       style={"background": "#7a4a00", "color": "#ffcc80",
+                                              "padding": "1px 5px", "borderRadius": "3px",
+                                              "fontSize": "0.70rem"})
+                elif low_hist:
+                    status = html.Span("LOW HISTORY",
+                                       style={"background": "#3a3a00", "color": "#cccc88",
+                                              "padding": "1px 5px", "borderRadius": "3px",
+                                              "fontSize": "0.70rem"})
+                elif z_missing:
+                    status = html.Span("MISSING",
+                                       style={"background": "#3a2020", "color": "#cc7777",
+                                              "padding": "1px 5px", "borderRadius": "3px",
+                                              "fontSize": "0.70rem"})
+                else:
+                    status = html.Span("ACTIVE",
+                                       style={"background": "#1a3a1a", "color": "#88cc88",
+                                              "padding": "1px 5px", "borderRadius": "3px",
+                                              "fontSize": "0.70rem"})
+
+                row_bg = "rgba(60,20,20,0.12)" if z_missing or is_stale or low_hist else "transparent"
+                rows.append(html.Tr(
+                    style={"backgroundColor": row_bg},
+                    children=[
+                        html.Td(sr["label"], style=td_sty),
+                        html.Td(wt_str, style={**td_mono, "textAlign": "center",
+                                               "color": "var(--muted-color)"}),
+                        html.Td(last_str, style={**td_mono, "textAlign": "center",
+                                                  "color": "var(--muted-color)",
+                                                  "fontSize": "0.75rem"}),
+                        z_cell,
+                        html.Td(dir_cell_content, style=td_sty),
+                        html.Td(status, style=td_sty),
+                    ],
+                ))
+            return rows
+
+        header_row = html.Tr([
+            html.Th("Signal",     style=th_sty),
+            html.Th("Wt",         style={**th_sty, "textAlign": "center"}),
+            html.Th("Last Data",  style={**th_sty, "textAlign": "center"}),
+            html.Th("Force Z",    style={**th_sty, "textAlign": "right"}),
+            html.Th("Momentum",   style=th_sty),
+            html.Th("Status",     style=th_sty),
+        ])
+
+        all_rows = (
+            _section("growth",    9, _GROWTH_COLOR) +
+            [html.Tr(html.Td(style={"height": "8px"}, colSpan=6))] +
+            _section("inflation", 8, _INFLATION_COLOR)
+        )
+
+        table_section = html.Table(
+            [html.Thead(header_row), html.Tbody(all_rows)],
+            style={"width": "100%", "borderCollapse": "collapse", "marginTop": "4px"},
+        )
+
+    footer = html.Div(
+        "Force Z-Score = standardised distance from historical mean · "
+        "Momentum direction uses change_3m · Stale/low-history signals excluded from composite",
+        style={"fontSize": "0.65rem", "color": "#555", "marginTop": "10px"},
+    )
+
+    return [summary_strip, table_section, footer]
 
 
 @callback(
@@ -769,7 +1012,8 @@ def update_regime_info(step: int, date_range: dict) -> tuple:
     date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
     date_display = f"{date_str} · current" if is_current else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
 
-    return _regime_info_children(selected, is_current), date_display
+    comp_df = load_composite_component_status(country="US")
+    return _regime_info_children(selected, is_current, comp_df), date_display
 
 
 @callback(
@@ -799,7 +1043,7 @@ def update_regime_chart(
         rows=3, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.06,
-        subplot_titles=["Growth Score (Z)", "Inflation Score (Z)", "Regime Quadrant"],
+        subplot_titles=["Growth Force Z-Score (composite)", "Inflation Force Z-Score (composite)", "Regime Quadrant"],
     )
 
     # Growth score
@@ -808,7 +1052,7 @@ def update_regime_chart(
             x=comp["as_of"], y=comp["growth_score"],
             name="Growth Score",
             line={"color": _COLORS[0], "width": 1.5},
-            hovertemplate="%{x|%Y-%m-%d}<br>Growth Z: %{y:.2f}<extra></extra>",
+            hovertemplate="%{x|%Y-%m-%d}<br>Growth Force Z: %{y:.2f}<extra></extra>",
             fill="tozeroy",
             fillcolor="rgba(76, 155, 232, 0.15)",
         ),
@@ -822,7 +1066,7 @@ def update_regime_chart(
             x=comp["as_of"], y=comp["inflation_score"],
             name="Inflation Score",
             line={"color": _COLORS[2], "width": 1.5},
-            hovertemplate="%{x|%Y-%m-%d}<br>Inflation Z: %{y:.2f}<extra></extra>",
+            hovertemplate="%{x|%Y-%m-%d}<br>Inflation Force Z: %{y:.2f}<extra></extra>",
             fill="tozeroy",
             fillcolor="rgba(228, 115, 76, 0.15)",
         ),
