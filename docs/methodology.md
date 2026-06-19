@@ -136,10 +136,10 @@ This direction flag is used in the **Confidence Score** calculation (Section 6).
 
 ### 3.6 Forward-Fill Policy
 
-Raw series arrive at different frequencies (daily, weekly, monthly, quarterly, annual). To build a consistent monthly composite history, all signals are resampled to month-end and **forward-filled up to 13 months**. This means:
+Raw series arrive at different frequencies (daily, weekly, monthly, quarterly, annual). To build a consistent monthly composite history, reliable signals are resampled to month-end and **forward-filled up to 13 months**. This means:
 
 - A quarterly GDP figure (e.g., dated 2026-01-01 for Q1 2026) will be carried forward for up to 13 monthly composite snapshots, until a newer observation replaces it.
-- The `is_stale` flag on the underlying Signal record tracks whether the series has gone beyond its expected release window — but forward-fill still occurs regardless of staleness (the staleness flag is informational, not exclusionary).
+- Signals flagged `low_history` are excluded. A signal flagged `is_stale` stops contributing from the month of its latest stale observation, so an old release cannot silently drive the current composite.
 
 **Code:** `indicators/composites.py` → `_load_wide()` with `ffill_limit=13`
 
@@ -190,7 +190,7 @@ Signals with NaN Z-scores (no data available yet) are excluded and their weight 
 
 ### 5.1 Indicator Selection
 
-The Inflation Score uses **7 active signals** from Lens B (Inflation force). Two signals receive half-weight to reduce the influence of volatile commodity prices:
+The Inflation Score uses **8 active signals** from Lens B (Inflation force). Three signals receive half-weight to reduce the influence of volatile input prices:
 
 | Signal ID | Description | Frequency | Weight | Rationale |
 |:----------|:------------|:----------|-------:|:----------|
@@ -201,8 +201,7 @@ The Inflation Score uses **7 active signals** from Lens B (Inflation force). Two
 | `inflation.breakeven_10y` | 10Y TIPS breakeven (level) | Daily | 1.0 | Long-run inflation anchoring signal |
 | `inflation.cpi_headline` | Headline CPI YoY% | Monthly | **0.5** | Correlated with core but adds commodity noise |
 | `inflation.crude_oil` | WTI crude oil YoY% | Daily | **0.5** | Leading indicator but highly volatile |
-
-> **Note:** `inflation.commodity_index` appears in the config as a 0.5-weight slot but is not currently bound to a series — it will activate when a commodity index binding is added in a future phase.
+| `inflation.ppi_broad` | Producer Price Index YoY% | Monthly | **0.5** | Broad upstream price pressure |
 
 ### 5.2 Calculation Formula
 
@@ -298,7 +297,7 @@ The growth and inflation fractions are averaged with equal weight, so neither fo
 | 0.25–0.50 | Weak — signals are mixed; regime transition may be underway |
 | < 0.25 | Very weak — signals actively contradict the label |
 
-At the current reading (June 2026): **45%** — the Stagflation label is assigned but just over half the signals are pointing in the "wrong" direction, consistent with the Growth Score being only marginally negative (−0.048).
+At the current reading (June 2026): **48%** — the Stagflation label is assigned but the directional signals remain mixed, consistent with the Growth Score being only marginally negative (−0.048).
 
 ---
 
@@ -306,7 +305,7 @@ At the current reading (June 2026): **45%** — the Stagflation label is assigne
 
 ### 8.1 What It Measures
 
-The Disequilibrium Score answers: *"Across all economic forces, how far is this economy from its own historical norms?"*
+The Disequilibrium Score answers: *"Across all economic forces, how far is this economy from its declared equilibrium levels?"*
 
 Unlike the regime quadrant (which only cares about direction), disequilibrium is a magnitude signal. It tells you whether the economy is in a state of extremes — either very good or very bad — across multiple dimensions simultaneously. A high disequilibrium score increases the probability of a regime transition because extreme readings tend to mean-revert.
 
@@ -332,16 +331,16 @@ For each monthly snapshot:
 
 1. For each force group with at least one non-NaN signal:
    ```
-   group_score = mean( |Z_i| ) for all signals i in the group with a valid Z-score
+   group_score = mean( |standardized_equilibrium_distance_i| )
    ```
-   Taking the **absolute value** of Z-scores means both high and low extremes count equally.
+   Each raw `distance_from_equilibrium` is divided by that signal's historical standard deviation. Taking its **absolute value** means displacement on either side of equilibrium counts equally.
 
 2. The disequilibrium score is the mean across all contributing group scores:
    ```
    Disequilibrium = mean( group_score_1, group_score_2, ... )
    ```
 
-> **Important nuance:** The Z-scores used here are the signal Z-scores (how far the signal is from its historical mean), *not* the `distance_from_equilibrium` field stored in the Signal record. The `distance_from_equilibrium` is the raw-value distance from a manually-declared theoretical equilibrium (e.g., "the equilibrium unemployment rate is 4%"). The disequilibrium score uses the Z-score, which is a purely empirical measure of "how unusual is this reading relative to its own history."
+> **Important nuance:** Declared equilibria are model assumptions (for example, a 4% unemployment rate), not observed constants. Standardization makes heterogeneous raw distances comparable but does not eliminate uncertainty in those assumptions.
 
 **Code:** `indicators/composites.py` → `compute_composite_history()`, lines 234–245
 
@@ -402,13 +401,13 @@ All growth indicators carry weight 1.0. This is the simplest defensible prior wh
 Z-scores are computed against the full available history, including future data relative to any historical snapshot. This means a 1995 Z-score "knows" what 2008 or 2020 looked like. For the display/diagnostic purpose of Phase 1, this is acceptable. Phase 3 will implement expanding-window Z-scores for proper backtesting.
 
 ### 10.4 Forward-Fill Policy
-Quarterly signals (GDP, productivity, credit metrics) are carried forward into monthly composites for up to 13 months. In practice this means the regime quadrant can be driven by a GDP observation that is up to 3 quarters old. During the 13-month window the signal is treated as if it holds its last value — a common convention in macroeconomic nowcasting but one that can lag true turning points.
+Quarterly signals (GDP, productivity, credit metrics) are carried forward into monthly composites for up to 13 months. This convention can lag turning points, so `low_history` signals are excluded and stale signals stop contributing from their flagged month.
 
 ### 10.5 Confidence Can Mislead Near Boundaries
 When the Growth or Inflation Score is very close to zero (e.g., −0.05), the assigned quadrant label is sensitive to small data revisions. A confidence reading below 50% in this situation is the natural signal — the label is technically correct but fragile. Users should interpret the composite score value alongside the quadrant label.
 
-### 10.6 Disequilibrium Uses Value Z-Scores, Not Declared Equilibrium Distances
-The disequilibrium score measures "how unusual is this reading relative to its own history?" Each signal's `equilibrium_estimate` (a manually-declared theoretical neutral, e.g., 4% unemployment) is stored and displayed but is **not** used in disequilibrium scoring. This avoids sensitivity to the accuracy of the declared equilibria, at the cost of losing information about *directional* displacement from a theoretical long-run neutral.
+### 10.6 Disequilibrium Uses Standardized Equilibrium Distances
+The disequilibrium score uses each signal's `distance_from_equilibrium`, standardized by its own historical variability. This honors the declared theoretical neutral while allowing values in different units to be combined. Results remain sensitive to the quality of those declared equilibria.
 
 ### 10.7 Coverage Gaps
 Five governance signals (World Bank WGI) are currently deferred — the WGI `.EST` API endpoint was removed from the World Bank v2 API. This means `internal_order` contributes no data to the disequilibrium score. The `low_coverage` flag fires if fewer than 3 of 5 force groups contribute data.
@@ -421,18 +420,18 @@ Five governance signals (World Bank WGI) are currently deferred — the WGI `.ES
 |:-------|:------|:---------------|
 | **Regime** | Stagflation | Growth below norm, inflation above norm |
 | **Growth Score** | −0.048 | Barely below historical average; near the boundary |
-| **Inflation Score** | +0.305 | Meaningfully above historical average |
-| **Confidence** | 45% | Weak — signals are mixed, especially on growth side |
-| **Disequilibrium** | 0.82 | Moderate; driven by historic interest payments and debt levels |
+| **Inflation Score** | +0.428 | Meaningfully above historical average |
+| **Confidence** | 48% | Weak — signals are mixed, especially on growth side |
+| **Disequilibrium** | 0.702 | Moderate displacement from declared equilibria |
 | Growth signals active | 9 of 9 | Full coverage |
-| Inflation signals active | 7 of 8 | `commodity_index` slot not yet bound |
+| Inflation signals active | 8 of 8 | Full configured coverage |
 | Force groups (Diseq.) | 3 of 5 | `governance` and `climate` deferred |
 
 ### Narrative
 
-The US is technically in Stagflation — growth Z-scores are slightly negative while inflation Z-scores are positive. However the borderline Growth Score (−0.048) means this is a weak classification, and the 45% confidence confirms that nearly half the growth signals are still trending in the "wrong" direction for Stagflation (i.e., still rising). The economy has been in the Stagflation quadrant since March 2023, preceded by an Inflationary Boom period from mid-2021 through early 2023.
+The US is technically in Stagflation — growth Z-scores are slightly negative while inflation Z-scores are positive. However the borderline Growth Score (−0.048) means this is a weak classification, and the 48% confidence confirms that directional signals remain mixed. The economy has been in the Stagflation quadrant since March 2023, preceded by an Inflationary Boom period from mid-2021 through early 2023.
 
-The moderate disequilibrium score of 0.82 is worth noting: the main outliers are `fiscal.interest_payments` (Z=+4.0, 99th percentile — a historic high) and `credit.gov_debt_gdp` (Z=+1.78, 98th percentile). These are structural imbalances that do not immediately change the regime quadrant but increase the probability of a non-linear adjustment at some point.
+The disequilibrium reading reflects standardized displacement from each signal's declared equilibrium. Component contributions should be inspected before attributing the aggregate to particular forces.
 
 ---
 

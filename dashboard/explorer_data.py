@@ -11,16 +11,6 @@ import pandas as pd
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
 
-# Days since last update that constitutes staleness, by inferred frequency
-_STALE_THRESHOLDS = {
-    "daily": 5,
-    "weekly": 14,
-    "monthly": 50,
-    "quarterly": 120,
-    "annual": 400,
-}
-
-
 # ── Signal overview (all 59 signals, one row each) ────────────────────────────
 
 def load_signal_overview() -> pd.DataFrame:
@@ -111,7 +101,7 @@ def _infer_freq_label(signal_id: str) -> str:
     force = signal_id.split(".")[1] if signal_id.count(".") >= 1 else ""
     if force in daily_forces and "balance_sheet" not in signal_id and "monetary_base" not in signal_id:
         return "daily"
-    if "breakeven" in signal_id or "bank_loans" in signal_id:
+    if "breakeven" in signal_id:
         return "daily"
     # Weekly
     if "bank_loans" in signal_id or "balance_sheet" in signal_id:

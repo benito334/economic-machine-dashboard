@@ -18,59 +18,25 @@ _CHART_SERIES_YAML = Path(__file__).parent.parent / "config" / "chart_series.yam
 
 def load_catalog() -> tuple[list[dict], list[dict]]:
     """Return (series_list, yield_curve_maturities) from chart_series.yaml."""
-    raw = yaml.safe_load(_CHART_SERIES_YAML.read_text())
-    maturities = raw.pop("yield_curve_maturities", [])
-    series = [item for item in raw.values() if isinstance(item, list)]
-    # yaml.safe_load with a list-of-dicts at root returns them flattened
-    # Re-load cleanly: the yaml is a list of dicts + one mapping key
-    raw2 = yaml.safe_load(_CHART_SERIES_YAML.read_text())
-    maturities2 = raw2.pop("yield_curve_maturities", [])
-    flat = []
-    for v in raw2.values():
-        if isinstance(v, list):
-            flat.extend(v)
-    return flat, maturities2
+    doc = yaml.safe_load(_CHART_SERIES_YAML.read_text()) or {}
+    if not isinstance(doc, dict):
+        raise ValueError("chart_series.yaml must contain a top-level mapping")
+    return doc.get("series", []), doc.get("yield_curve_maturities", [])
 
 
 def _load_catalog_raw() -> tuple[list[dict], list[dict]]:
     """Parse chart_series.yaml into (series_entries, maturity_entries)."""
-    text = _CHART_SERIES_YAML.read_text()
-    # Split at the yield_curve_maturities key — parse the whole doc as YAML
-    # and separate the special key from the series list
-    doc = yaml.safe_load(text)
-    if isinstance(doc, list):
-        # No yield_curve_maturities key in this version — shouldn't happen
-        return doc, []
-    if isinstance(doc, dict):
-        maturities = doc.pop("yield_curve_maturities", [])
-        series = list(doc.values())
-        if series and isinstance(series[0], list):
-            series = series[0]
-        return series, maturities
-    return [], []
+    return load_catalog()
 
 
 def load_series_catalog() -> list[dict]:
     """Return the flat list of chartable series from chart_series.yaml."""
-    text = _CHART_SERIES_YAML.read_text()
-    # The yaml file is a list of series dicts followed by a mapping key.
-    # We use a two-pass parse: collect list items then the mapping.
-    import re
-    # Strip the yield_curve_maturities block before parsing as a list
-    clean = re.sub(r"\nyield_curve_maturities:.*", "", text, flags=re.DOTALL)
-    return yaml.safe_load(clean) or []
+    return load_catalog()[0]
 
 
 def load_yield_curve_maturities() -> list[dict]:
     """Return the yield_curve_maturities list from chart_series.yaml."""
-    text = _CHART_SERIES_YAML.read_text()
-    import re
-    m = re.search(r"\nyield_curve_maturities:(.*)", text, flags=re.DOTALL)
-    if not m:
-        return []
-    block = "yield_curve_maturities:" + m.group(1)
-    result = yaml.safe_load(block)
-    return result.get("yield_curve_maturities", []) if result else []
+    return load_catalog()[1]
 
 
 # ── Signal history ────────────────────────────────────────────────────────────

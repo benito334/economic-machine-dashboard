@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -163,20 +163,28 @@ def upsert_composites(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
     rows = []
     for s in snapshots:
         row = s.model_dump()
+        if row["as_of"] > date.today():
+            continue
         row["as_of"] = row["as_of"].isoformat()
         row["created_at"] = now
         rows.append(row)
+
+    if not rows:
+        conn.execute("DELETE FROM composites WHERE as_of > CURRENT_DATE")
+        return 0
 
     df = pd.DataFrame(rows)
     conn.register("_composite_staging", df)
     try:
         conn.execute("BEGIN TRANSACTION")
+        conn.execute("DELETE FROM composites WHERE as_of > CURRENT_DATE")
         conn.execute("""
             DELETE FROM composites
             WHERE EXISTS (
                 SELECT 1 FROM _composite_staging
                 WHERE _composite_staging.country = composites.country
-                  AND _composite_staging.as_of::DATE = composites.as_of
+                  AND DATE_TRUNC('month', _composite_staging.as_of::DATE)
+                      = DATE_TRUNC('month', composites.as_of)
             )
         """)
         cols = ", ".join(_COMPOSITE_COLUMNS)

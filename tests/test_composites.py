@@ -53,8 +53,9 @@ def _insert_signals(conn, rows: list[dict]) -> None:
             r.get("lead_lag", "coincident"), r["as_of"], r.get("value", 1.0),
             r.get("units", "pct"), r.get("level_percentile", 0.5),
             r.get("zscore", 0.0), None, None, None,
-            r.get("direction", "rising"), None, None,
-            None, False, False, False, False,
+            r.get("direction", "rising"), r.get("equilibrium_estimate"),
+            r.get("distance_from_equilibrium", r.get("zscore", 0.0)),
+            None, False, False, r.get("is_stale", False), r.get("low_history", False),
             "FRED", "free", True, "", r.get("source", "FRED:TEST"), now,
         ])
 
@@ -115,6 +116,25 @@ def test_load_wide_forward_fills(mem_conn):
     assert len(non_null_tfp) >= 12
 
 
+def test_load_wide_excludes_unreliable_latest_signals(mem_conn):
+    _insert_signals(mem_conn, [
+        {"id": "us.growth.stale", "as_of": "2023-01-31", "zscore": 1.0},
+        {"id": "us.growth.stale", "as_of": "2023-02-28", "zscore": 2.0,
+         "is_stale": True},
+        {"id": "us.growth.short", "as_of": "2023-01-31", "zscore": 3.0,
+         "low_history": True},
+    ])
+    wide = _load_wide(
+        mem_conn,
+        ["us.growth.stale", "us.growth.short"],
+        "zscore",
+        exclude_unreliable=True,
+    )
+    assert pd.notna(wide.loc[pd.Timestamp("2023-01-31"), "us.growth.stale"])
+    assert pd.isna(wide.loc[pd.Timestamp("2023-02-28"), "us.growth.stale"])
+    assert wide["us.growth.short"].isna().all()
+
+
 # ── CompositeSnapshot model ───────────────────────────────────────────────────
 
 def test_composite_snapshot_defaults():
@@ -162,6 +182,22 @@ def test_upsert_composites_is_idempotent(mem_conn):
     df = query_composite_history(mem_conn, "US")
     assert len(df) == 1
     assert abs(df.iloc[0]["growth_score"] - 0.6) < 1e-6
+
+
+def test_upsert_replaces_same_month_and_removes_future_rows(mem_conn):
+    this_month = date.today().replace(day=1)
+    future = date(date.today().year + 1, 1, 31)
+    upsert_composites(mem_conn, [
+        CompositeSnapshot(country="US", as_of=this_month, growth_score=0.1),
+    ])
+    upsert_composites(mem_conn, [
+        CompositeSnapshot(country="US", as_of=future, growth_score=9.0),
+        CompositeSnapshot(country="US", as_of=date.today(), growth_score=0.2),
+    ])
+    df = query_composite_history(mem_conn, "US")
+    assert len(df) == 1
+    assert df.iloc[0]["as_of"].date() <= date.today()
+    assert df.iloc[0]["growth_score"] == pytest.approx(0.2)
 
 
 # ── compute_composite_history (unit-level with seeded data) ───────────────────
@@ -263,6 +299,23 @@ def test_below_min_signals_no_quadrant(mem_conn):
     cfg = _minimal_config()
     snapshots = compute_composite_history(mem_conn, "US", cfg)
     assert all(s.quadrant is None for s in snapshots)
+
+
+def test_current_partial_month_is_not_future_dated(mem_conn):
+    _insert_signals(mem_conn, [
+        {"id": "us.growth.payrolls", "as_of": date.today(), "zscore": 1.0},
+    ])
+    snapshots = compute_composite_history(mem_conn, "US", _minimal_config())
+    assert snapshots
+    assert max(s.as_of for s in snapshots) <= date.today()
+
+
+def test_inflation_config_uses_bound_ppi_signal():
+    ids = {
+        item["id"] for item in load_composites_config()["inflation_score"]["indicators"]
+    }
+    assert "inflation.ppi_broad" in ids
+    assert "inflation.commodity_index" not in ids
 
 
 # ── Integration test against real DB ─────────────────────────────────────────

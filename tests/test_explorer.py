@@ -23,6 +23,12 @@ def test_infer_freq_label_daily():
     assert _infer_freq_label("us.premium.yield_curve_10y2y") == "daily"
 
 
+def test_infer_freq_label_weekly():
+    from dashboard.explorer_data import _infer_freq_label
+    assert _infer_freq_label("us.credit.bank_loans") == "weekly"
+    assert _infer_freq_label("us.policy.balance_sheet") == "weekly"
+
+
 def test_infer_freq_label_monthly():
     from dashboard.explorer_data import _infer_freq_label
     assert _infer_freq_label("us.growth.payrolls") == "monthly"
@@ -130,6 +136,12 @@ def test_charting_imports_explorer():
     # Confirm server is still Flask (app didn't break)
     import flask
     assert isinstance(charting.server, flask.Flask)
+
+
+def test_latest_card_has_one_callback_owner():
+    from dashboard.charting import app
+    owners = [key for key in app.callback_map if "exp-stat-latest.children" in key]
+    assert len(owners) == 1
 
 
 def test_overview_columns_structure():

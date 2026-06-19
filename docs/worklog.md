@@ -4,6 +4,21 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Repository-wide code review remediation
+
+- Fixed all nine findings from the review of changes since the prior repository audit
+- Prevented future-dated composite snapshots and made current-month upserts replace the provisional row atomically
+- Activated the bound PPI inflation input; excluded stale and low-history signals from composite scoring; aligned disequilibrium with standardized declared-equilibrium distances
+- Removed the duplicate Dash callback for the Explorer Latest card; corrected weekly bank-loan gap detection and the swapped BIS/World Bank REER catalog entries
+- Converted `chart_series.yaml` to valid YAML and replaced the regex/duplicate catalog parsers with one canonical loader
+- Rewrote the Long-Term Debt Stress Indicator specification to correct units, frequencies, component signs, debt-service definitions, and weights
+- Added regression coverage and registered the integration marker; full suite passes: 203 tests, with only Dash's upstream DataTable deprecation warnings
+- Live pipeline verified: 59/59 signals, 558 snapshots, latest date 2026-06-19, 8/8 inflation inputs, no future composite rows; Growth=−0.048, Inflation=+0.428, Confidence=48%, Disequilibrium=0.702
+- Next: implement the corrected Long-Term Debt Stress Indicator specification
+- Blockers: None
+
+---
+
 ## 2026-06-19 — Session 13: Regime stepper (:8501) + Sync banner (:8502)
 
 - Added `← Prev` / `Next →` stepper to Streamlit :8501 — controls both the Macro Regime HUD and the 4-quadrant scatter map; when stepping back, the HUD shows a gold `⚠ Jun 2024` warning in the bottom-right of the regime box; scatter trail and selected marker shift to the chosen date; step clamped to available history and persisted via `st.session_state["regime_step"]`

@@ -94,7 +94,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
 | 1C Streamlit dashboard | ✅ **Done** | HUD, 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel, methodology sidebar; 131 tests pass; uses `st.html()` throughout (Streamlit 1.39+) |
 | 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; 50-series selector, Chart Overlay + Yield Curve + Regime History tabs; 156 tests pass |
-| 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check; 187 tests pass |
+| 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check; repository suite 203 tests pass |
 | 2 Country rollout | ⬜ **Next** | Eurozone first — pending user sign-off on US data quality via Explorer |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
@@ -126,13 +126,13 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - IMF current-year estimates and future forecasts are excluded from observation signals
 
 ### Phase 1B — Composites & Snapshot Engine ✅ COMPLETE (2026-06-18)
-- `indicators/composites.py`: Growth Score + Inflation Score (weighted Z-score composites per `composites.yaml`), Regime Quadrant (4-season), Confidence (direction-agreement fraction), Disequilibrium Score (mean |Z-score| across 5 force groups)
+- `indicators/composites.py`: Growth Score + Inflation Score (weighted Z-score composites per `composites.yaml`), Regime Quadrant (4-season), Confidence (direction-agreement fraction), Disequilibrium Score (mean absolute standardized distance from declared equilibrium across 5 force groups)
 - `indicators/models.py`: `CompositeSnapshot` Pydantic model
 - `store/store.py`: `composites` table, `upsert_composites()`, `query_composite_history()`
 - `pipeline.py`: Pass 5 — runs composites engine, upserts to DB
 - 558 monthly US composite snapshots stored; 91 tests passing
 - Historical narrative: COVID-2020 Disinflationary Slowdown → 2021 Inflationary Boom → 2022 Inflationary Boom (employment Z-scores strongly positive; spec's "2022 = Stagflation" assumption was imprecise — Stagflation label correctly appears from Mar 2023 when growth Z-scores turn negative) → 2023–2026 Stagflation
-- Current (Jun 2026): Stagflation — Growth=−0.05 / Inflation=+0.31 / Confidence=45%
+- Current (Jun 2026): Stagflation — Growth=−0.048 / Inflation=+0.428 / Confidence=48% / Disequilibrium=0.702; 8/8 inflation signals active
 
 ### Phase 1C — Streamlit Dashboard (US proof) ✅ COMPLETE (2026-06-18)
 - `dashboard/app.py` full rewrite: HUD (Regime Quadrant · Confidence · Momentum arrows · Disequilibrium), 4-quadrant Plotly scatter with 12-month connected trail, What Changed feed (top-8 Z-score movers), Cross-Signal Conflict Panel, Geopolitical-Risk Overlay placeholder (WGI deferred)
@@ -161,7 +161,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
   - **Quality & Gaps**: metadata card, quality flag badges (green/red), gap detection table
   - **Raw vs Processed**: parquet cache value vs DB processed value side by side; delta/% columns; rows with |Δ%|>5% highlighted
 - Wired as "🔬 Data Explorer" tab in `dashboard/charting.py`
-- 31 new tests; 187/187 total passing; Docker :8502 healthy
+- 31 original feature tests; 203/203 repository tests passing after code-review regressions; Docker :8502 healthy
 
 ### Phase 2 — Country Rollout (one at a time)
 Order: Eurozone → Japan → UK → South Korea → China → India → Brazil → Saudi Arabia → Russia.

@@ -47,7 +47,13 @@ def load_composites_config(path: Path | None = None) -> dict:
 
 # ── Data loading ─────────────────────────────────────────────────────────────
 
-def _load_wide(conn, signal_ids: list[str], value_col: str, ffill_limit: int = 13) -> pd.DataFrame:
+def _load_wide(
+    conn,
+    signal_ids: list[str],
+    value_col: str,
+    ffill_limit: int = 13,
+    exclude_unreliable: bool = False,
+) -> pd.DataFrame:
     """
     Load signal history for given IDs, pivot to a wide monthly DataFrame.
     index: month-end DatetimeIndex  |  columns: signal IDs  |  values: value_col.
@@ -58,7 +64,8 @@ def _load_wide(conn, signal_ids: list[str], value_col: str, ffill_limit: int = 1
 
     placeholders = ", ".join(["?"] * len(signal_ids))
     df = conn.execute(
-        f"SELECT id, as_of, {value_col} FROM signals WHERE id IN ({placeholders}) ORDER BY id, as_of",
+        f"SELECT id, as_of, {value_col}, is_stale, low_history "
+        f"FROM signals WHERE id IN ({placeholders}) ORDER BY id, as_of",
         signal_ids,
     ).df()
 
@@ -73,6 +80,15 @@ def _load_wide(conn, signal_ids: list[str], value_col: str, ffill_limit: int = 1
 
     monthly = pivot.resample("ME").last()
     monthly = monthly.ffill(limit=ffill_limit)
+
+    if exclude_unreliable:
+        latest_quality = df.sort_values("as_of").groupby("id", as_index=False).tail(1)
+        for row in latest_quality.itertuples(index=False):
+            if bool(row.low_history):
+                monthly[row.id] = np.nan
+            elif bool(row.is_stale):
+                stale_from = pd.Timestamp(row.as_of).to_period("M").to_timestamp("M")
+                monthly.loc[monthly.index >= stale_from, row.id] = np.nan
 
     return monthly
 
@@ -134,9 +150,27 @@ def compute_composite_history(
     diseq_ids    = list(dict.fromkeys(sid for ids in force_groups.values() for sid in ids))
 
     # ── Load wide DataFrames once ─────────────────────────────────────────────
-    z_comp  = _load_wide(conn, composite_ids, "zscore")
-    d_comp  = _load_wide(conn, composite_ids, "direction")
-    z_diseq = _load_wide(conn, diseq_ids, "zscore") if diseq_ids else pd.DataFrame()
+    z_comp  = _load_wide(conn, composite_ids, "zscore", exclude_unreliable=True)
+    d_comp  = _load_wide(conn, composite_ids, "direction", exclude_unreliable=True)
+
+    # Express declared equilibrium distance in each signal's own historical
+    # standard-deviation units before combining heterogeneous force groups.
+    z_diseq = pd.DataFrame()
+    if diseq_ids:
+        dist = _load_wide(
+            conn,
+            diseq_ids,
+            "distance_from_equilibrium",
+            exclude_unreliable=True,
+        )
+        placeholders = ", ".join(["?"] * len(diseq_ids))
+        scales = conn.execute(
+            f"SELECT id, STDDEV_SAMP(distance_from_equilibrium) AS scale "
+            f"FROM signals WHERE id IN ({placeholders}) GROUP BY id",
+            diseq_ids,
+        ).df()
+        scale_by_id = scales.set_index("id")["scale"].replace(0, np.nan)
+        z_diseq = dist.divide(scale_by_id, axis="columns")
 
     if z_comp.empty:
         logger.warning("No composite signal data found for country=%s", country)
@@ -248,7 +282,9 @@ def compute_composite_history(
         snapshots.append(
             CompositeSnapshot(
                 country=country,
-                as_of=dt.date(),
+                # The current partial month must not masquerade as a future
+                # month-end observation.
+                as_of=min(dt.date(), date.today()),
                 growth_score    =round(growth_score,    4) if growth_score    is not None else None,
                 inflation_score =round(inflation_score, 4) if inflation_score is not None else None,
                 quadrant=quadrant,

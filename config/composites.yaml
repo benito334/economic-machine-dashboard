@@ -44,7 +44,7 @@ inflation_score:
       weight: 0.5           # half-weight: correlated with core, adds commodity noise
     - id: inflation.crude_oil
       weight: 0.5           # half-weight: leading but volatile
-    - id: inflation.commodity_index
+    - id: inflation.ppi_broad
       weight: 0.5           # half-weight (included when available)
 
 # Regime quadrant confidence: fraction of contributing signals whose

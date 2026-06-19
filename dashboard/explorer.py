@@ -527,28 +527,13 @@ def register_callbacks(app: dash.Dash) -> None:
 
         return (
             fig,
-            _fmt(stats.get("obs_count")),  # latest → show obs count in "Latest" card
+            _fmt(detail["value"].iloc[-1]),
             _fmt(stats.get("mean_val")),
             _fmt(stats.get("min_val")),
             _fmt(stats.get("max_val")),
             _fmt(stats.get("std_val")),
             str(int(stats.get("obs_count", 0))),
         )
-
-    # 4b. Latest stat card should show latest value, not obs count
-    @app.callback(
-        Output("exp-stat-latest", "children"),
-        Input("exp-selected-signal", "data"),
-        prevent_initial_call=True,
-    )
-    def update_latest_card(signal_id: Optional[str]) -> str:
-        if not signal_id:
-            return "—"
-        detail = load_signal_detail(signal_id, limit=1)
-        if detail.empty:
-            return "—"
-        v = detail["value"].iloc[0]
-        return f"{v:.4f}" if pd.notna(v) else "—"
 
     # 5. Observations table
     @app.callback(

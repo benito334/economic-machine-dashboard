@@ -19,6 +19,20 @@ def test_load_series_catalog_returns_list():
     assert len(cat) > 0
 
 
+def test_load_catalog_parses_complete_yaml():
+    from dashboard.charting_data import load_catalog
+    series, maturities = load_catalog()
+    assert len(series) > 0
+    assert len(maturities) == 6
+
+
+def test_reer_catalog_sources_are_not_swapped():
+    from dashboard.charting_data import load_series_catalog
+    by_label = {item["label"]: item for item in load_series_catalog()}
+    assert by_label["REER (BIS)"]["signal_id"] == "us.currency.reer"
+    assert by_label["REER (World Bank)"]["signal_id"] == "us.currency.reer_xcountry"
+
+
 def test_catalog_entries_have_required_keys():
     from dashboard.charting_data import load_series_catalog
     required = {"label", "signal_id", "units", "value_col", "default_pane", "group"}
