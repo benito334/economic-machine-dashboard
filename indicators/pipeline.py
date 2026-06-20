@@ -188,7 +188,13 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
             raw_store[binding.series_id] = raw
 
-            transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+            # H2: optional pre-smoothing before transformation (e.g. 7-day SMA for crude oil)
+            raw_for_transform = (
+                raw.rolling(binding.pre_smooth_window, min_periods=1).mean()
+                if binding.pre_smooth_window
+                else raw
+            )
+            transformed = apply_transformation(raw_for_transform, binding.transformation, binding.frequency)
             transformed = transformed.dropna()
 
             if transformed.empty:
@@ -198,7 +204,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
             transformed_store[binding.id] = transformed
 
-            signals = build_signals(transformed, binding, raw)
+            signals = build_signals(transformed, binding, raw_for_transform)
             latest = signals[-1] if signals else None
 
             if latest:

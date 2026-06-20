@@ -4,6 +4,23 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Feedback tracker remediation: C1, E1, F1/L1, G1, H1, H2
+
+Implemented six items from `docs/feedback_tracker.md` — all 269 tests pass:
+
+- **H1**: Both TIPS breakeven weights halved to 0.5 in `composites.yaml`; combined contribution stays 1.0
+- **G1**: Labour-market signals (payrolls, unemployment, job_openings, labor_force_part) → 0.75 weight; capacity_util → 1.05; output/demand stays 1.00
+- **C1**: `_zscore_series()` now caps Z-scores at ±4σ; prevents COVID/GFC spikes from distorting all other historical Z-scores
+- **E1**: `_direction(change_3m, series_std)` uses `series_std × 10%` as the significance threshold; `series_std` computed in `build_signals()` and passed through; eliminates false directional calls on low-volatility flat series
+- **F1/L1**: `_compute_fill_age()` tracks months since last observation; in `compute_composite_history()` each signal's effective weight is `base_weight × decay_factor^fill_age`; config-gated via `staleness_decay.enabled/decay_factor` in `composites.yaml` (default: enabled, factor=0.9)
+- **H2**: `CountryBinding.pre_smooth_window` optional field; `pre_smooth_window: 7` in crude_oil binding; Pass 1 of pipeline applies 7-day rolling mean to raw prices before YoY transformation
+
+20 new tests added across `test_normalize.py` and `test_composites.py`.
+Tracker updated: H1, H2, G1, C1, E1, F1, L1 all marked ✅ Done.
+Next: pipeline re-run to regenerate signals/composites with new weights + decay; Phase 2 Eurozone rollout; L2 per-frequency carry cap.
+
+---
+
 ## 2026-06-19 — Post-Phase-1F code review remediation
 
 - Reviewed all changes from the Long-Term Debt Stress implementation, staleness work, Debt Stress UI, Regime History component table, and methodology-feedback documentation

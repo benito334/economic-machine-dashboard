@@ -28,6 +28,7 @@ class CountryBinding(BaseModel):
     sanity_min: Optional[float] = None
     sanity_max: Optional[float] = None
     notes: str = ""
+    pre_smooth_window: Optional[int] = None  # H2: rolling-mean window applied to raw series before transformation
 
 
 class Signal(BaseModel):

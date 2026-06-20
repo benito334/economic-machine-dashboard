@@ -47,13 +47,33 @@ def load_composites_config(path: Path | None = None) -> dict:
 
 # ── Data loading ─────────────────────────────────────────────────────────────
 
+def _compute_fill_age(monthly_raw: pd.DataFrame) -> pd.DataFrame:
+    """For each cell return the number of months since the last non-NaN observation.
+
+    Fresh observations have fill_age == 0.  A cell that has been forward-filled
+    for k months has fill_age == k.  Used by the staleness-decay logic (F1/L1).
+    """
+    fill_age = pd.DataFrame(0.0, index=monthly_raw.index, columns=monthly_raw.columns)
+    for col in monthly_raw.columns:
+        s = monthly_raw[col]
+        count = 0
+        for idx in s.index:
+            if pd.notna(s.loc[idx]):
+                count = 0
+            else:
+                count += 1
+            fill_age.loc[idx, col] = float(count)
+    return fill_age
+
+
 def _load_wide(
     conn,
     signal_ids: list[str],
     value_col: str,
     ffill_limit: int = 13,
     exclude_unreliable: bool = False,
-) -> pd.DataFrame:
+    return_fill_age: bool = False,
+) -> "pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]":
     """
     Load signal history for given IDs, pivot to a wide monthly DataFrame.
     index: month-end DatetimeIndex  |  columns: signal IDs  |  values: value_col.
@@ -78,8 +98,9 @@ def _load_wide(
     pivot = df.pivot(index="as_of", columns="id", values=value_col)
     pivot = pivot.reindex(columns=signal_ids)
 
-    monthly = pivot.resample("ME").last()
-    monthly = monthly.ffill(limit=ffill_limit)
+    monthly_raw = pivot.resample("ME").last()
+    fill_age = _compute_fill_age(monthly_raw) if return_fill_age else None
+    monthly = monthly_raw.ffill(limit=ffill_limit)
 
     if exclude_unreliable:
         latest_quality = df.sort_values("as_of").groupby("id", as_index=False).tail(1)
@@ -90,6 +111,8 @@ def _load_wide(
                 stale_from = pd.Timestamp(row.as_of).to_period("M").to_timestamp("M")
                 monthly.loc[monthly.index >= stale_from, row.id] = np.nan
 
+    if return_fill_age:
+        return monthly, fill_age
     return monthly
 
 
@@ -149,8 +172,19 @@ def compute_composite_history(
     force_groups = _build_force_groups(conn, country, config)
     diseq_ids    = list(dict.fromkeys(sid for ids in force_groups.values() for sid in ids))
 
+    # ── Staleness-decay config (F1/L1) ────────────────────────────────────────
+    decay_cfg     = config.get("staleness_decay", {})
+    decay_enabled = bool(decay_cfg.get("enabled", False))
+    decay_factor  = float(decay_cfg.get("decay_factor", 0.9))
+
     # ── Load wide DataFrames once ─────────────────────────────────────────────
-    z_comp  = _load_wide(conn, composite_ids, "zscore", exclude_unreliable=True)
+    if decay_enabled:
+        z_comp, fill_age_comp = _load_wide(
+            conn, composite_ids, "zscore", exclude_unreliable=True, return_fill_age=True
+        )
+    else:
+        z_comp = _load_wide(conn, composite_ids, "zscore", exclude_unreliable=True)
+        fill_age_comp = None
     d_comp  = _load_wide(conn, composite_ids, "direction", exclude_unreliable=True)
 
     # Express declared equilibrium distance in each signal's own historical
@@ -178,9 +212,10 @@ def compute_composite_history(
 
     if start_date:
         ts = pd.Timestamp(start_date)
-        z_comp  = z_comp[z_comp.index >= ts]
-        d_comp  = d_comp[d_comp.index >= ts]   if not d_comp.empty  else d_comp
-        z_diseq = z_diseq[z_diseq.index >= ts] if not z_diseq.empty else z_diseq
+        z_comp      = z_comp[z_comp.index >= ts]
+        d_comp      = d_comp[d_comp.index >= ts]            if not d_comp.empty       else d_comp
+        z_diseq     = z_diseq[z_diseq.index >= ts]          if not z_diseq.empty      else z_diseq
+        fill_age_comp = fill_age_comp[fill_age_comp.index >= ts] if fill_age_comp is not None and not fill_age_comp.empty else fill_age_comp
 
     snapshots: list[CompositeSnapshot] = []
 
@@ -199,6 +234,9 @@ def compute_composite_history(
             if z is None or (isinstance(z, float) and np.isnan(z)):
                 continue
             w   = ind.get("weight", 1.0)
+            if decay_enabled and fill_age_comp is not None and sid in fill_age_comp.columns:
+                age = fill_age_comp.loc[dt, sid] if dt in fill_age_comp.index else 0.0
+                w *= decay_factor ** (float(age) if pd.notna(age) else 0.0)
             adj = -float(z) if ind.get("invert", False) else float(z)
             g_sum += adj * w
             g_w   += w
@@ -217,6 +255,9 @@ def compute_composite_history(
             if z is None or (isinstance(z, float) and np.isnan(z)):
                 continue
             w = ind.get("weight", 1.0)
+            if decay_enabled and fill_age_comp is not None and sid in fill_age_comp.columns:
+                age = fill_age_comp.loc[dt, sid] if dt in fill_age_comp.index else 0.0
+                w *= decay_factor ** (float(age) if pd.notna(age) else 0.0)
             i_sum += float(z) * w
             i_w   += w
             i_ids_contrib.append(sid)

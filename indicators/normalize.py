@@ -28,14 +28,22 @@ _STALE_THRESHOLDS: dict[str, timedelta] = {
     "A": timedelta(days=600),
 }
 
-_DIRECTION_THRESHOLD = 1e-9  # treat anything smaller as flat
+_DIRECTION_THRESHOLD = 1e-9       # fallback when series_std is unavailable
+_DIRECTION_STD_FRACTION = 0.10    # C1: change must exceed 10% of 1σ to be directional
+_WINSORISE_SIGMA = 4.0            # C1: clip outliers beyond ±4σ before Z-scoring
 
 
 def _zscore_series(s: pd.Series) -> pd.Series:
+    """Z-score capped at ±4σ to prevent outlier distortion (C1).
+
+    Computing mean/std first, then capping the resulting Z-score, guarantees the
+    output is always in [-4, 4] regardless of the raw distribution shape.
+    """
     mu, std = s.mean(), s.std(ddof=1)
     if std == 0 or np.isnan(std):
         return pd.Series(0.0, index=s.index)
-    return (s - mu) / std
+    z = (s - mu) / std
+    return z.clip(lower=-_WINSORISE_SIGMA, upper=_WINSORISE_SIGMA)
 
 
 def _percentile_series(s: pd.Series) -> pd.Series:
@@ -43,12 +51,24 @@ def _percentile_series(s: pd.Series) -> pd.Series:
     return s.rank(pct=True, method="average") - (0.5 / len(s))
 
 
-def _direction(change_3m: Optional[float]) -> str:
+def _direction(change_3m: Optional[float], series_std: Optional[float] = None) -> str:
+    """Direction flag with variance-based significance threshold (E1).
+
+    When series_std is provided, the 3-month change must exceed 10% of one
+    historical standard deviation to be called rising/falling.  This avoids
+    labelling near-zero drift on low-volatility series as directional.
+    Falls back to the fixed 1e-9 epsilon when series_std is unavailable.
+    """
     if change_3m is None or np.isnan(change_3m):
         return "flat"
-    if change_3m > _DIRECTION_THRESHOLD:
+    threshold = (
+        series_std * _DIRECTION_STD_FRACTION
+        if series_std is not None and series_std > 0
+        else _DIRECTION_THRESHOLD
+    )
+    if change_3m > threshold:
         return "rising"
-    if change_3m < -_DIRECTION_THRESHOLD:
+    if change_3m < -threshold:
         return "falling"
     return "flat"
 
@@ -84,6 +104,7 @@ def build_signals(
     zscores = _zscore_series(clean)
     percentiles = _percentile_series(clean)
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
+    series_std = float(clean.std(ddof=1)) if n > 1 else None
 
     country_namespace = binding.country.lower()
     signal_id = f"{country_namespace}.{binding.id}"
@@ -127,7 +148,7 @@ def build_signals(
                 change_1m=_f(c1m.iloc[i]),
                 change_3m=c3m_float,
                 change_12m=_f(c12m.iloc[i]),
-                direction=_direction(c3m_float),
+                direction=_direction(c3m_float, series_std),
                 equilibrium_estimate=binding.equilibrium,
                 distance_from_equilibrium=dist,
                 is_proxy=binding.is_proxy,

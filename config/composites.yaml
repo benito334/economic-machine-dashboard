@@ -4,31 +4,34 @@
 # invert: true  → multiply Z-score by -1 before averaging (lower raw = better)
 
 growth_score:
-  description: "Equal-weight Z-score composite of growth-force coincident/leading signals"
+  description: "Group-weighted Z-score composite of growth-force coincident/leading signals"
+  # G1: labour-market signals ×0.75 (reduce redundancy across 4 correlated series),
+  #     output/demand ×1.00 (leading information on real activity),
+  #     capacity ×1.05 (structural signal, rarely revised).
   indicators:
     - id: growth.payrolls
-      weight: 1.0
+      weight: 0.75          # labour-market group
     - id: growth.industrial_prod
-      weight: 1.0
+      weight: 1.0           # output/demand group
     - id: growth.retail_sales
-      weight: 1.0
+      weight: 1.0           # output/demand group
     - id: growth.real_pce
-      weight: 1.0
+      weight: 1.0           # output/demand group
     - id: growth.capacity_util
-      weight: 1.0
+      weight: 1.05          # structural/capacity group
     - id: growth.job_openings
-      weight: 1.0
+      weight: 0.75          # labour-market group
     - id: growth.pmi_proxy
-      weight: 1.0
+      weight: 1.0           # output/demand group
     - id: growth.labor_force_part
-      weight: 1.0
+      weight: 0.75          # labour-market group
     - id: growth.unemployment
-      weight: 1.0
+      weight: 0.75          # labour-market group
       invert: true          # lower unemployment = better growth
   # Excluded from composite (structural frequency): growth.productivity, growth.tfp, growth.rnd_intensity
 
 inflation_score:
-  description: "Equal-weight Z-score composite of inflation-force signals"
+  description: "Weighted Z-score composite of inflation-force signals"
   indicators:
     - id: inflation.pce_core
       weight: 1.0
@@ -37,15 +40,24 @@ inflation_score:
     - id: inflation.wages
       weight: 1.0
     - id: inflation.breakeven_5y
-      weight: 1.0
+      weight: 0.5           # H1: halved — 5Y and 10Y are >0.95 correlated; combined contribution stays 1.0
     - id: inflation.breakeven_10y
-      weight: 1.0
+      weight: 0.5           # H1: halved — avoids double-counting market inflation expectations
     - id: inflation.cpi_headline
       weight: 0.5           # half-weight: correlated with core, adds commodity noise
     - id: inflation.crude_oil
-      weight: 0.5           # half-weight: leading but volatile
+      weight: 0.5           # half-weight: leading but volatile; 7-day SMA applied at ingestion
     - id: inflation.ppi_broad
       weight: 0.5           # half-weight (included when available)
+
+# F1/L1: Exponential staleness decay for forward-filled signals in the regime composite.
+# After each month of forward-fill, the signal's effective weight is multiplied by
+# decay_factor^k where k = months since last observation.  Signals that have been
+# recently updated carry full weight; signals near the end of their ffill window
+# carry ~25–30% weight.  Set enabled: false to revert to hard forward-fill.
+staleness_decay:
+  enabled: true
+  decay_factor: 0.9     # 0.9^1=0.90, 0.9^3=0.73, 0.9^6=0.53, 0.9^13=0.25
 
 # Regime quadrant confidence: fraction of contributing signals whose
 # direction vector agrees with the assigned quadrant label.
