@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G complete and verified. **319 tests pass.** Methodology feedback tracker items H1/H2/G1/C1/E1/F1–L4, D1, B1, A2/I2 all implemented.
+**As of 2026-06-20:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **319 tests pass.** Methodology feedback tracker items H1/H2/G1/C1/E1/F1–L4, D1, B1, A2/I2 all implemented.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -97,11 +97,11 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
 | 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
 | 1G Methodology improvements | ✅ **Done** | C1 (±4σ cap), E1 (variance direction), G1 (labour weights), H1/H2 (breakeven/oil), L1–L4 (regime staleness decay + carry caps + stale-lag badges), D1 (momentum percentile), B1 (period audit), A2/I2 (composite PCA); 319 tests pass |
-| 1H TradingView system | ⬜ **Next** | FastAPI :8000 + TradingView Lightweight Charts :8503 (ADR-007 Option B); skeleton at `dashboard/charting_lc/` |
-| 2 Country rollout | ⬜ Planned | Eurozone first — after TradingView shipped |
+| 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
+| 2 Country rollout | ⬜ **Next** | Eurozone first — unblocked |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Build the TradingView Lightweight Charts system (ADR-007 Option B). Skeleton is at `dashboard/charting_lc/main.py`. See `session-checklist.md` for the full task breakdown. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data.
+**To start the next session:** Phase 2 Eurozone rollout. Start with `config/countries/eu_bindings.yaml`. Verify all series IDs before ingesting. Set `vintage_available: false` for all Eurozone series. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data.
 
 ---
 

@@ -4,6 +4,24 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-20 — TradingView Lightweight Charts system (ADR-007 Option B)
+
+Built the full TradingView system. All 319 tests pass; both Docker services healthy.
+
+**Backend** (`dashboard/charting_lc/main.py`): FastAPI on :8004 (Docker: :8000 internal). Five endpoints: `/catalog`, `/series/{signal_id}`, `/composite-history`, `/signals/snapshot`, `/yield-curve/{date}`. CORS enabled; nginx at :8503 reverse-proxies `/api/` so the browser uses one port.
+
+**Frontend** (`dashboard/charting_lc/frontend/index.html`): Single-page app with four tabs:
+- 📈 Charts: TradingView Lightweight Charts multi-pane chart; 50-series sidebar grouped by force; 1Y/3Y/5Y/10Y/MAX horizon; Value/Z-Score toggle; panes time-synchronized; default series: GDP / Core PCE / Fed Funds
+- 📊 Macro Table: all 59 signals; sortable columns (Z-score bar, direction, 1m/3m/12m deltas, momentum percentile); force filter pills; search box
+- 🔄 Regime: 4-pane chart (Growth Score / Growth Momentum / Inflation Score / Inflation Momentum); ⏮ ‹ › ⏭ step controls + Play/Pause + arrow-key navigation; live info strip showing quadrant/scores/confidence per step
+- 📉 Yield Curve: bar chart + table for any selected date
+
+**Docker**: `lc_api` (Python/uvicorn, port 8004→8000) + `lc_frontend` (nginx:alpine, port 8503→80) in docker-compose.yml.
+
+Next: Phase 2 Eurozone rollout (unblocked; see session-checklist.md). BEA refresh after 2026-06-26.
+
+---
+
 ## 2026-06-19 — Session close: TradingView system spec reviewed; docs and memory updated
 
 All 319 tests pass. Reviewed ADR-007 Option B (FastAPI :8000 + TradingView Lightweight Charts :8503) and confirmed the skeleton at `dashboard/charting_lc/main.py`. Next session will implement the full TradingView system per the ADR.
