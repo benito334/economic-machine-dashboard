@@ -652,6 +652,7 @@ def _regime_info_children(
     row: dict,
     is_current: bool,
     comp_df: "pd.DataFrame | None" = None,
+    stale_dict: "dict[str, int] | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table."""
     quadrant   = row.get("quadrant") or "—"
@@ -804,6 +805,8 @@ def _regime_info_children(
         }
         td_mono = {**td_sty, "fontFamily": "monospace"}
 
+        _stale_months = stale_dict or {}
+
         def _section(force: str, total: int, color: str) -> list:
             df_f = comp_df[comp_df["composite"] == force].copy()
             n_active = int((df_f["zscore"].notna() & ~df_f["is_stale"] & ~df_f["low_history"]).sum())
@@ -891,7 +894,10 @@ def _regime_info_children(
 
                 # Status cell
                 if is_stale:
-                    status = html.Span("STALE",
+                    sig_id = sr.get("signal_id", "")
+                    fill_months = _stale_months.get(sig_id, 0)
+                    stale_label = f"STALE · {fill_months}m" if fill_months else "STALE"
+                    status = html.Span(stale_label,
                                        style={"background": "#7a4a00", "color": "#ffcc80",
                                               "padding": "1px 5px", "borderRadius": "3px",
                                               "fontSize": "0.70rem"})
@@ -1019,7 +1025,8 @@ def update_regime_info(step: int, date_range: dict) -> tuple:
     comp_df = load_composite_component_status(
         country="US", as_of=str(selected["as_of"])
     )
-    return _regime_info_children(selected, is_current, comp_df), date_display
+    stale_dict = _parse_stress_components(selected.get("stale_signals") or "")
+    return _regime_info_children(selected, is_current, comp_df, stale_dict), date_display
 
 
 @callback(

@@ -373,3 +373,88 @@ def test_yield_curve_chart_callback():
     assert isinstance(fig, go.Figure)
     # Should have at least a term structure trace and the spread bar chart
     assert len(fig.data) >= 2
+
+
+# ── L4: Stale-lag badges in Regime History component table ───────────────────
+
+class TestRegimeInfoStaleBadge:
+    """L4: STALE badge should show fill-months count when stale_dict provides it."""
+
+    def _make_comp_df(self, signal_ids, is_stale=False):
+        import pandas as pd
+        rows = []
+        for sid in signal_ids:
+            rows.append({
+                "composite": "growth",
+                "concept_id": sid.split(".", 1)[1] if "." in sid else sid,
+                "signal_id": sid,
+                "label": sid.split(".")[-1].replace("_", " ").title(),
+                "weight": 1.0,
+                "invert": False,
+                "zscore": 0.5,
+                "direction": "rising",
+                "change_3m": 0.01,
+                "as_of": pd.Timestamp("2026-05-31"),
+                "is_stale": is_stale,
+                "low_history": False,
+            })
+        return pd.DataFrame(rows)
+
+    def test_stale_badge_shows_months_when_in_dict(self):
+        from dashboard.charting import _regime_info_children
+        comp_df = self._make_comp_df(["us.growth.payrolls"], is_stale=True)
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 0,
+        }
+        stale_dict = {"us.growth.payrolls": 2}
+        children = _regime_info_children(row, False, comp_df, stale_dict)
+        all_texts = _collect_texts(children)
+        assert any("STALE · 2m" in t for t in all_texts), f"Expected 'STALE · 2m' in {all_texts}"
+
+    def test_stale_badge_plain_when_not_in_dict(self):
+        from dashboard.charting import _regime_info_children
+        comp_df = self._make_comp_df(["us.growth.payrolls"], is_stale=True)
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 0,
+        }
+        children = _regime_info_children(row, False, comp_df, {})
+        all_texts = _collect_texts(children)
+        assert any("STALE" in t for t in all_texts)
+        assert not any("·" in t and "STALE" in t for t in all_texts), \
+            "Expected plain STALE (no lag) when signal not in stale_dict"
+
+    def test_active_signal_not_affected_by_stale_dict(self):
+        from dashboard.charting import _regime_info_children
+        comp_df = self._make_comp_df(["us.growth.payrolls"], is_stale=False)
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 0,
+        }
+        stale_dict = {"us.growth.payrolls": 3}
+        children = _regime_info_children(row, False, comp_df, stale_dict)
+        all_texts = _collect_texts(children)
+        assert not any("STALE" in t for t in all_texts)
+        assert any("ACTIVE" in t for t in all_texts)
+
+    @pytest.mark.integration
+    def test_composite_history_includes_stale_signals_column(self):
+        from dashboard.charting_data import load_composite_history
+        df = load_composite_history(start_date="2026-01-01")
+        assert "stale_signals" in df.columns
+
+    @pytest.mark.integration
+    def test_update_regime_info_stale_badges_wired(self):
+        from dashboard.charting import update_regime_info
+        children, date_display = update_regime_info(0, {"start": None, "end": None})
+        assert isinstance(children, list)
+        assert len(children) > 0
+        # If any signal is stale at current snapshot, badge should contain "·"
+        all_texts = _collect_texts(children)
+        stale_texts = [t for t in all_texts if "STALE" in t]
+        for t in stale_texts:
+            assert "·" in t, f"STALE badge missing lag count: {t!r}"

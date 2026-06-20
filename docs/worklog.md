@@ -4,6 +4,13 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Feedback tracker remediation: L4 (regime composite stale-lag badges)
+
+L4 (dashboard stale-lag badges): `load_composite_history()` in `charting_data.py` now includes `stale_signals` in the SELECT. `_regime_info_children()` gains a `stale_dict: dict[str, int]` parameter. `update_regime_info` callback parses the `stale_signals` string (reusing `_parse_stress_components()`) and passes the dict through. In the component table, STALE badges now render as "STALE · Nm" (e.g. "STALE · 2m") for signals with known fill-months — matching the J5 debt stress pattern.
+
+5 new tests (3 unit, 2 integration); 280/280 pass. All L1–L4 staleness items for regime composite are now done. L5 deferred.
+Next: A2/I2 correlation + PCA analysis in Data Explorer, or D1 (percentile-rank momentum).
+
 ## 2026-06-19 — Feedback tracker remediation: L2, L3 (regime composite staleness)
 
 L2 (per-frequency carry cap): `per_frequency_ffill_limit` added to composites.yaml (M:3, Q:9, A:15, D:1); `_load_wide()` accepts `per_signal_limits: dict[str, int]` for per-column ffill; pipeline Pass 5 builds freq_map from verified bindings and passes it to `compute_composite_history()`. Monthly signals are now capped at 3 months fill (was 13 uniformly).

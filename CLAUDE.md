@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E + Long-Term Debt Stress Indicator complete and verified. 249 tests pass. HUD gauge + Dash "📉 Debt Stress" tab shipped.
+**As of 2026-06-19:** Phases 1A + 1B + 1C + 1D + 1E + 1F complete and verified. **280 tests pass.** Methodology feedback tracker items H1/H2/G1/C1/E1/F1–L4 implemented (Z-score capping, variance-based direction, staleness decay + carry caps + stale-lag dashboard badges for regime composite).
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -95,11 +95,12 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 225 tests pass |
 | 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; Chart Overlay + Yield Curve + Regime History + 📉 Debt Stress + 🔬 Data Explorer tabs |
 | 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
-| 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab; 249 tests pass |
-| 2 Country rollout | ⬜ **Next** | Eurozone first — pending user sign-off on US data quality via Explorer |
+| 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
+| 1G Methodology improvements | ✅ **Done** | C1 (±4σ cap), E1 (variance direction), G1 (labour weights), H1/H2 (breakeven/oil), L1–L4 (regime staleness decay + carry caps + stale-lag badges); 280 tests pass |
+| 2 Country rollout | ⬜ **Next** | Eurozone first — unblocked |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Eurozone rollout (see `config/countries/` for template). Run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (current account / NIIP / debt service ratio — will clear stale signals and update Debt Stress snapshots).
+**To start the next session:** Run `python3 -m indicators.pipeline --latest` after June 26 (BEA Q1 2026 data). Then: A2/I2 correlation + PCA analysis, D1 momentum percentile-rank, or Phase 2 Eurozone rollout. See `session-checklist.md` for priority order.
 
 ---
 
