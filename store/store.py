@@ -63,17 +63,15 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
     conn.execute(_CREATE_COMPOSITES)
     conn.execute(_CREATE_DEBT_STRESS)
-    # Migration: add columns that pre-date the current schema
-    for _col, _default in [
-        ("stale_components",      "''"),
-        ("extrapolated_components", "''"),
-    ]:
-        try:
-            conn.execute(
-                f"ALTER TABLE debt_stress_snapshots ADD COLUMN {_col} VARCHAR DEFAULT {_default}"
-            )
-        except Exception:
-            pass  # column already exists
+    # Migrations for databases created by earlier releases.
+    conn.execute(
+        "ALTER TABLE debt_stress_snapshots "
+        "ADD COLUMN IF NOT EXISTS stale_components VARCHAR DEFAULT ''"
+    )
+    conn.execute(
+        "ALTER TABLE debt_stress_snapshots "
+        "ADD COLUMN IF NOT EXISTS extrapolated_components VARCHAR DEFAULT ''"
+    )
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -305,18 +303,21 @@ def upsert_debt_stress(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
         rows.append(row)
 
     if not rows:
+        conn.execute("DELETE FROM debt_stress_snapshots WHERE as_of > CURRENT_DATE")
         return 0
 
     df = pd.DataFrame(rows)
     conn.register("_debt_stress_staging", df)
     try:
         conn.execute("BEGIN TRANSACTION")
+        conn.execute("DELETE FROM debt_stress_snapshots WHERE as_of > CURRENT_DATE")
         conn.execute("""
             DELETE FROM debt_stress_snapshots
             WHERE EXISTS (
                 SELECT 1 FROM _debt_stress_staging
                 WHERE _debt_stress_staging.country = debt_stress_snapshots.country
-                  AND _debt_stress_staging.as_of::DATE = debt_stress_snapshots.as_of
+                  AND DATE_TRUNC('quarter', _debt_stress_staging.as_of::DATE)
+                      = DATE_TRUNC('quarter', debt_stress_snapshots.as_of)
             )
         """)
         cols = ", ".join(_DEBT_STRESS_COLUMNS)

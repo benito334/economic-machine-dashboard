@@ -4,6 +4,22 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Post-Phase-1F code review remediation
+
+- Reviewed all changes from the Long-Term Debt Stress implementation, staleness work, Debt Stress UI, Regime History component table, and methodology-feedback documentation
+- Corrected `BCNSDODNS` from millions to billions before dividing by GDP; latest corporate debt/GDP raw value is now 0.454 rather than 454.2
+- Made staleness point-in-time: historical snapshots now use only source dates available at that quarter, and forward-filled synthetic dates no longer masquerade as observations
+- Replaced the misleading linear “halflife” with true exponential half-life decay; repaired corporate carry-forward and the extrapolation trigger at the carry boundary
+- Fixed both historical UIs: Regime History loads component values as of the selected month, and the Streamlit HUD loads Debt Stress as of the selected regime date
+- Added derived-source dates and consistent effective-weight calculations to the Debt Stress table
+- Hardened storage against future rows and duplicate provisional quarters; added config validation, country-scope guards, safe list defaults, and explicit schema migrations
+- Removed the empty misspelled `docs/macro_methodoloy.md`; retained the correctly named feedback document
+- Full suite: 249 passed; live pipeline: 59/59 signals, 185 debt-stress snapshots, latest stress +0.488 with 5/7 components and 72.7% retained weight; no future rows
+- Next: Phase 2 Eurozone rollout; debt-stress configuration must be country-specific before enabling it outside the US
+- Blockers: real-time publication/vintage metadata remains Phase 3 work; historical stress output is latest-revised, not a real-time backtest
+
+---
+
 ## 2026-06-19 — Session 17: Debt Stress tab — full-width component detail table
 
 - `dashboard/charting_data.py`: added `_COMPONENT_SIGNAL_MAP` + `load_debt_stress_component_dates()` — queries signals table for last `as_of` per underlying signal (min of sub-components for derived series)

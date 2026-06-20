@@ -187,12 +187,15 @@ def load_all_signal_histories(country: str, n_months: int = 36) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_debt_stress_latest(country: str) -> pd.Series:
-    """Return the most recent DebtStressSnapshot as a Series, or empty Series if none."""
+def load_debt_stress_latest(country: str, as_of: Optional[str] = None) -> pd.Series:
+    """Return the latest DebtStressSnapshot available at an optional as-of date."""
     with _conn() as conn:
+        cutoff_clause = "AND as_of <= ?" if as_of else ""
+        params = [country] + ([as_of] if as_of else [])
         df = conn.execute(
-            "SELECT * FROM debt_stress_snapshots WHERE country = ? ORDER BY as_of DESC LIMIT 1",
-            [country],
+            f"SELECT * FROM debt_stress_snapshots WHERE country = ? {cutoff_clause} "
+            "ORDER BY as_of DESC LIMIT 1",
+            params,
         ).df()
     if df.empty:
         return pd.Series(dtype=object)
@@ -1025,7 +1028,6 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
         comp_history   = load_composite_history("US", n_months=60)
         all_histories  = load_all_signal_histories("US", n_months=36)
         change_feed    = load_change_feed("US")
-        debt_stress    = load_debt_stress_latest("US")
 
     if latest_signals.empty:
         st.warning("No signals in DB. Run the pipeline first.")
@@ -1044,6 +1046,9 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
     selected_idx = max(0, n_comp - 1 - step) if n_comp > 0 else 0
     cur_comp:  pd.Series = comp_history.iloc[selected_idx] if n_comp > 0 else pd.Series()
     prev_comp: pd.Series = comp_history.iloc[selected_idx - 1] if selected_idx > 0 else pd.Series()
+    debt_stress = load_debt_stress_latest(
+        "US", str(cur_comp.get("as_of")) if not cur_comp.empty else None
+    )
 
     # ── Page header ──────────────────────────────────────────────────────────────
     st.html(

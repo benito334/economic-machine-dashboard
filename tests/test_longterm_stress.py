@@ -26,12 +26,15 @@ import pytest
 os.environ.setdefault("INDICATORS_TESTING", "1")
 
 from indicators.longterm_stress import (
+    _build_corporate_debt_gdp,
     _rolling_z_quarterly,
     _rolling_z_annual_then_ffill,
     _build_federal_interest_gdp,
     _extend_to_current_quarter,
     _staleness_lag_q,
     _extrapolate_z_score,
+    _latest_observation_date,
+    staleness_weight_fraction,
     stress_band_label,
     compute_debt_stress_history,
     load_longterm_stress_config,
@@ -45,6 +48,7 @@ from indicators.models import DebtStressSnapshot
 def minimal_config():
     """Minimal valid config with 3 quarterly components (total weight 1.0)."""
     return {
+        "country": "US",
         "z_score": {
             "window_quarters": 10,
             "min_periods_quarters": 5,
@@ -142,6 +146,22 @@ def test_fyoint_unit_conversion(tmp_path):
     assert abs(ratio.dropna().iloc[-1] - 0.02) < 1e-6, (
         "FYOINT unit conversion failed: ratio should be ~0.02 (400bn / 20_000bn)"
     )
+
+
+def test_corporate_debt_unit_conversion(tmp_path):
+    """BCNSDODNS is millions while GDP is billions; the ratio must be unitless."""
+    dates = pd.date_range("2020-01-01", periods=8, freq="QE")
+    raw_dir = tmp_path / "raw_cache"
+    raw_dir.mkdir()
+    pd.Series(14_000_000.0, index=dates, name="BCNSDODNS").to_frame().to_parquet(
+        raw_dir / "fred_BCNSDODNS.parquet"
+    )
+    pd.Series(28_000.0, index=dates, name="GDP").to_frame().to_parquet(
+        raw_dir / "fred_GDP.parquet"
+    )
+
+    ratio = _build_corporate_debt_gdp(tmp_path)
+    assert ratio.iloc[-1] == pytest.approx(0.5)
 
 
 # ── Look-ahead prevention ─────────────────────────────────────────────────────
@@ -401,6 +421,7 @@ def test_debt_stress_snapshot_full():
 # ── Full config loads cleanly ─────────────────────────────────────────────────
 
 def test_full_config_structure(full_config):
+    assert full_config["country"] == "US"
     assert "z_score" in full_config
     assert "coverage" in full_config
     assert "bands" in full_config
@@ -423,6 +444,23 @@ def test_config_look_back_shift_is_nonzero(full_config):
     assert shift >= 1, (
         f"look_back_shift={shift}; setting to 0 introduces look-ahead bias in backtests"
     )
+
+
+def test_config_loader_rejects_lookahead(tmp_path, full_config):
+    import copy
+    import yaml
+
+    invalid = copy.deepcopy(full_config)
+    invalid["z_score"]["look_back_shift"] = 0
+    path = tmp_path / "invalid.yaml"
+    path.write_text(yaml.safe_dump(invalid))
+    with pytest.raises(ValueError, match="look_back_shift"):
+        load_longterm_stress_config(path)
+
+
+def test_compute_rejects_country_config_mismatch(minimal_config):
+    with pytest.raises(ValueError, match="not EZ"):
+        compute_debt_stress_history(MagicMock(), "EZ", minimal_config, Path("/tmp"))
 
 
 # ── Gap 1: Staleness lag calculation ─────────────────────────────────────────
@@ -459,6 +497,26 @@ def test_staleness_lag_q_none_returns_large():
     """None last_obs should return a large sentinel value (treat as maximally stale)."""
     qt = pd.Timestamp("2026-03-31")
     assert _staleness_lag_q(None, qt, "Q") >= 100
+
+
+def test_latest_observation_date_is_point_in_time_and_restrictive():
+    source_a = pd.DatetimeIndex(["2024-03-31", "2024-06-30", "2025-03-31"])
+    source_b = pd.DatetimeIndex(["2024-03-31", "2024-09-30"])
+    result = _latest_observation_date([source_a, source_b], pd.Timestamp("2024-12-31"))
+    assert result == pd.Timestamp("2024-06-30")
+
+
+def test_staleness_weight_uses_true_half_life():
+    assert staleness_weight_fraction(0, 4) == 1.0
+    assert staleness_weight_fraction(4, 4) == pytest.approx(0.5)
+    assert staleness_weight_fraction(8, 4) == pytest.approx(0.25)
+
+
+def test_snapshot_list_defaults_are_independent():
+    first = DebtStressSnapshot(country="US", as_of=date(2024, 3, 31))
+    second = DebtStressSnapshot(country="US", as_of=date(2024, 6, 30))
+    first.stale_components.append("test:1")
+    assert second.stale_components == []
 
 
 # ── Gap 1: Weight decay reduces retained_weight ───────────────────────────────
@@ -498,12 +556,11 @@ def test_weight_decay_stale_component_reduces_retained(minimal_config):
         snaps = compute_debt_stress_history(MagicMock(), "US", cfg, Path("/tmp"))
 
     # Recent snapshots where the annual series are stale should have retained_weight < 1.0
-    # (because stale weight decays). Snapshots with stale excess > halflife should have
-    # even lower retained_weight.
+    # (because stale weight decays). Larger excess lags have lower retained weight.
     valid = [s for s in snaps if s.retained_weight is not None and s.n_components > 0]
     assert valid
     # In the final periods both annual series are very stale — weight should be decayed
-    # (possibly to 0 if excess > halflife). No retained_weight should exceed 1.0.
+    # No retained_weight should exceed 1.0.
     for s in valid:
         assert s.retained_weight <= 1.0 + 1e-6
 
@@ -513,7 +570,7 @@ def test_weight_decay_excludes_when_below_min_fraction(minimal_config):
     import copy
     cfg = copy.deepcopy(minimal_config)
     cfg["staleness"] = {
-        "stale_weight_halflife": 2,          # sharp decay — 2 excess quarters → weight=0
+        "stale_weight_halflife": 2,          # sharp decay — weight halves every 2 excess quarters
         "stale_min_weight_fraction": 0.20,   # drop below 20% of original weight
         "max_carry_quarters": 40,            # allow long carry so Z-scores exist
         "extrapolation": {"enabled": False},
@@ -522,7 +579,7 @@ def test_weight_decay_excludes_when_below_min_fraction(minimal_config):
     # DSR: runs up to the current date so recent snapshots exist
     dates_q = pd.date_range("2000-01-01", pd.Timestamp.today(), freq="QE")
     dsr = pd.Series(np.linspace(10.0, 20.0, len(dates_q)), index=dates_q)
-    # Annual series ending 6 years ago → excess >> halflife=2 → weight decays to 0
+    # Annual series ending 6 years ago → excess >> half-life → weight falls below cutoff
     old_end = pd.Timestamp.today() - pd.DateOffset(years=6)
     annual_dates = pd.date_range("2000-01-01", old_end, freq="YE")
     primary = pd.Series(np.linspace(-5.0, 2.0, len(annual_dates)), index=annual_dates)
@@ -730,6 +787,7 @@ def test_full_config_staleness_section(full_config):
     """Full config must have a staleness section with required fields."""
     stale = full_config.get("staleness")
     assert stale is not None, "staleness section missing from config"
+    assert stale["expected_lag_quarters"] == {"Q": 1, "A": 4}
     assert "stale_weight_halflife" in stale
     assert "stale_min_weight_fraction" in stale
     assert "max_carry_quarters" in stale

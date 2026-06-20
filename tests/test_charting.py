@@ -339,6 +339,24 @@ def test_regime_info_box_past():
 
 
 @pytest.mark.integration
+def test_composite_component_status_respects_as_of_date():
+    from dashboard.charting_data import load_composite_component_status
+    cutoff = "2020-06-30"
+    df = load_composite_component_status(country="US", as_of=cutoff)
+    assert not df.empty
+    assert (df["as_of"].dropna() <= pd.Timestamp(cutoff)).all()
+
+
+@pytest.mark.integration
+def test_debt_stress_derived_component_dates_are_available():
+    from dashboard.charting_data import load_debt_stress_component_dates
+    dates = load_debt_stress_component_dates(country="US", as_of="2025-12-31")
+    assert dates["corporate_debt_gdp"] is not None
+    assert dates["federal_interest_gdp"] is not None
+    assert dates["corporate_debt_gdp"] <= pd.Timestamp("2025-12-31")
+
+
+@pytest.mark.integration
 def test_composite_history_has_disequilibrium():
     from dashboard.charting_data import load_composite_history
     df = load_composite_history(start_date="2020-01-01")

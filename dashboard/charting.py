@@ -815,7 +815,7 @@ def _regime_info_children(
                                "fontSize": "0.72rem", "textTransform": "uppercase",
                                "letterSpacing": "0.07em"},
                     ),
-                    colSpan=7,
+                    colSpan=6,
                     style={"padding": "8px 10px",
                            "backgroundColor": "rgba(0,0,0,0.25)",
                            "borderBottom": f"1px solid {color}"},
@@ -1007,12 +1007,18 @@ def update_regime_info(step: int, date_range: dict) -> tuple:
     n = len(comp)
     idx = max(0, min(n - 1 - step, n - 1))
     selected = comp.iloc[idx].to_dict()
-    is_current = (step == 0)
+    all_comp = load_composite_history()
+    is_current = (
+        not all_comp.empty
+        and pd.Timestamp(selected["as_of"]) == pd.Timestamp(all_comp.iloc[-1]["as_of"])
+    )
 
     date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
     date_display = f"{date_str} · current" if is_current else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
 
-    comp_df = load_composite_component_status(country="US")
+    comp_df = load_composite_component_status(
+        country="US", as_of=str(selected["as_of"])
+    )
     return _regime_info_children(selected, is_current, comp_df), date_display
 
 
@@ -1258,9 +1264,10 @@ def _build_debt_stress_info(
         max_carry_q   = int(stale_cfg.get("max_carry_quarters", 4))
         halflife      = stale_cfg.get("stale_weight_halflife")
         min_frac      = float(stale_cfg.get("stale_min_weight_fraction", 0.20))
+        expected_lags = stale_cfg.get("expected_lag_quarters", {"Q": 1, "A": 4})
         extrap_on     = bool(stale_cfg.get("extrapolation", {}).get("enabled", False))
     except Exception:
-        comp_cfg_list, max_carry_q, halflife, min_frac, extrap_on = [], 4, None, 0.20, False
+        comp_cfg_list, max_carry_q, halflife, min_frac, expected_lags, extrap_on = [], 4, None, 0.20, {"Q": 1, "A": 4}, False
 
     comp_cfg_by_id = {c["id"]: c for c in comp_cfg_list}
 
@@ -1316,7 +1323,7 @@ def _build_debt_stress_info(
                 style={"fontSize": "0.88rem", "color": band_color, "opacity": "0.85"},
             ),
             html.Span(
-                f"{n_comp}/7 components active",
+                f"{n_comp}/{len(comp_cfg_list) or len(_DEBT_STRESS_COMPONENTS)} components active",
                 style={"fontSize": "0.75rem", "color": "var(--muted-color)"},
             ),
             html.Span(
@@ -1382,8 +1389,9 @@ def _build_debt_stress_info(
         # ── Effective weight ─────────────────────────────────────────────────
         if z_missing and extrap_q == 0:
             eff_wt = 0.0
-        elif halflife and halflife > 0 and lag_q > 0:
-            decay = max(0.0, 1.0 - lag_q / halflife)
+        elif halflife and halflife > 0 and (lag_q > 0 or extrap_q > 0):
+            from indicators.longterm_stress import staleness_weight_fraction
+            decay = staleness_weight_fraction(max(lag_q, extrap_q), halflife)
             eff_wt = config_wt * decay
             if eff_wt < min_frac * config_wt:
                 eff_wt = 0.0
@@ -1449,7 +1457,7 @@ def _build_debt_stress_info(
             # Blank — explain why
             if last_obs is not None and as_of_ts_p is not None:
                 total_lag = max(0, as_of_ts_p.to_period("Q").ordinal - last_obs.to_period("Q").ordinal)
-                expected  = 4 if freq == "A" else 1
+                expected  = int(expected_lags.get(freq, 1))
                 excess    = max(0, total_lag - expected)
                 carry_end = _carry_expires(last_obs, freq, max_carry_q)
                 reason = (
@@ -1457,7 +1465,7 @@ def _build_debt_stress_info(
                     f"carry cap {max_carry_q}q → covered to {carry_end}"
                 )
                 if extrap_on:
-                    reason += f" · excess lag {excess}q ≤ carry cap (no extrap trigger)"
+                    reason += f" · total lag {total_lag}q ≤ carry cap (no extrap trigger)"
                 else:
                     reason += " · extrapolation disabled"
                 if val is not None and not (isinstance(val, float) and pd.isna(val)):
@@ -1511,7 +1519,7 @@ def _build_debt_stress_info(
     )
 
     footer = html.Div(
-        "⚠ Bands are NOT validated risk thresholds · Eff Wt applies staleness decay (halflife "
+        "⚠ Bands are NOT validated risk thresholds · Eff Wt applies exponential staleness decay (half-life "
         + (f"{int(halflife)}q" if halflife else "off") + f") · carry cap {max_carry_q}q",
         style={"fontSize": "0.65rem", "color": "#555", "marginTop": "10px"},
     )
@@ -1530,7 +1538,9 @@ def update_debt_stress_info(active_tab: str, date_range: dict, theme_name: str) 
     end = (date_range or {}).get("end")
     df = load_debt_stress_history(country="US", end_date=end)
     latest = df.iloc[-1] if not df.empty else None
-    comp_dates = load_debt_stress_component_dates(country="US")
+    comp_dates = load_debt_stress_component_dates(
+        country="US", as_of=str(latest.get("as_of")) if latest is not None else end
+    )
     return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME, comp_dates)
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CountryBinding(BaseModel):
@@ -108,9 +108,9 @@ class DebtStressSnapshot(BaseModel):
     # Stored as "cid:excess_lag_q" (e.g. "gov_household_debt_gdp:2") so the
     # display layer can show both the component name and the lag in quarters.
     # These are included in the score (with decayed weight) but flagged in UI.
-    stale_components: list[str] = []
+    stale_components: list[str] = Field(default_factory=list)
 
     # Components whose Z-score was model-estimated (rolling mean or linear trend)
     # because the raw value was older than max_carry_quarters.
     # Stored as "cid:excess_lag_q". Only populated when extrapolation is enabled.
-    extrapolated_components: list[str] = []
+    extrapolated_components: list[str] = Field(default_factory=list)

@@ -223,8 +223,11 @@ _COMPOSITE_SIGNAL_LABELS: dict[str, str] = {
 }
 
 
-def load_composite_component_status(country: str = "US") -> pd.DataFrame:
-    """Return latest signal snapshot for every growth and inflation composite component.
+def load_composite_component_status(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return the as-of signal snapshot for each regime composite component.
 
     Columns returned: composite, concept_id, signal_id, label, weight, invert,
     zscore, direction, change_3m, as_of, is_stale, low_history.
@@ -252,6 +255,9 @@ def load_composite_component_status(country: str = "US") -> pd.DataFrame:
     signal_ids = [r["signal_id"] for r in rows_meta]
     placeholders = ",".join("?" * len(signal_ids))
 
+    cutoff_clause = "AND as_of <= ?" if as_of else ""
+    inner_params = signal_ids + ([as_of] if as_of else [])
+    outer_params = signal_ids + ([as_of] if as_of else [])
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = con.execute(
@@ -259,13 +265,15 @@ def load_composite_component_status(country: str = "US") -> pd.DataFrame:
             SELECT id, as_of, zscore, direction, change_3m, is_stale, low_history
             FROM signals
             WHERE id IN ({placeholders})
+              {cutoff_clause}
               AND (id, as_of) IN (
                   SELECT id, MAX(as_of) FROM signals
                   WHERE id IN ({placeholders})
+                    {cutoff_clause}
                   GROUP BY id
               )
             """,
-            signal_ids * 2,
+            outer_params + inner_params,
         ).df()
     finally:
         con.close()
@@ -293,34 +301,48 @@ def load_composite_component_status(country: str = "US") -> pd.DataFrame:
 
 # Maps each component ID to the underlying signal IDs in the signals table.
 # Derived components (built from raw FRED parquet) have empty lists.
-_COMPONENT_SIGNAL_MAP: dict[str, list[str]] = {
-    "gov_household_debt_gdp": ["us.credit.gov_debt_gdp", "us.credit.household_debt_gdp"],
+_COMPONENT_SIGNAL_SUFFIXES: dict[str, list[str]] = {
+    "gov_household_debt_gdp": ["credit.gov_debt_gdp", "credit.household_debt_gdp"],
     "corporate_debt_gdp": [],
-    "household_debt_service": ["us.credit.debt_service_ratio"],
+    "household_debt_service": ["credit.debt_service_ratio"],
     "federal_interest_gdp": [],
-    "primary_balance_gdp": ["us.fiscal.primary_balance_gdp"],
-    "structural_balance": ["us.fiscal.structural_balance"],
-    "govt_revenue_gdp": ["us.fiscal.govt_revenue_gdp"],
+    "primary_balance_gdp": ["fiscal.primary_balance_gdp"],
+    "structural_balance": ["fiscal.structural_balance"],
+    "govt_revenue_gdp": ["fiscal.govt_revenue_gdp"],
+}
+
+_COMPONENT_RAW_FRED_MAP: dict[str, list[str]] = {
+    "corporate_debt_gdp": ["BCNSDODNS", "GDP"],
+    "federal_interest_gdp": ["FYOINT", "GDP"],
 }
 
 
-def load_debt_stress_component_dates(country: str = "US") -> dict[str, Optional[pd.Timestamp]]:
+def load_debt_stress_component_dates(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> dict[str, Optional[pd.Timestamp]]:
     """Return the last as_of date per debt-stress component from the signals table.
 
     For components that use multiple underlying signals, the *earliest* (most
     restrictive) last-date is returned. Components derived purely from raw FRED
     parquet (no signal record) return None.
     """
-    all_ids = [sid for sids in _COMPONENT_SIGNAL_MAP.values() for sid in sids]
-    if not all_ids:
-        return {cid: None for cid in _COMPONENT_SIGNAL_MAP}
+    prefix = country.lower()
+    signal_map = {
+        cid: [f"{prefix}.{suffix}" for suffix in suffixes]
+        for cid, suffixes in _COMPONENT_SIGNAL_SUFFIXES.items()
+    }
+    all_ids = [sid for sids in signal_map.values() for sid in sids]
 
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         placeholders = ",".join("?" * len(all_ids))
+        cutoff_clause = "AND as_of <= ?" if as_of else ""
+        params = all_ids + ([as_of] if as_of else [])
         df = con.execute(
-            f"SELECT id, MAX(as_of) AS last_as_of FROM signals WHERE id IN ({placeholders}) GROUP BY id",
-            all_ids,
+            f"SELECT id, MAX(as_of) AS last_as_of FROM signals "
+            f"WHERE id IN ({placeholders}) {cutoff_clause} GROUP BY id",
+            params,
         ).df()
     finally:
         con.close()
@@ -330,9 +352,18 @@ def load_debt_stress_component_dates(country: str = "US") -> dict[str, Optional[
         signal_dates[row["id"]] = pd.Timestamp(row["last_as_of"])
 
     result: dict[str, Optional[pd.Timestamp]] = {}
-    for cid, sids in _COMPONENT_SIGNAL_MAP.items():
+    cutoff = pd.Timestamp(as_of) if as_of else None
+    for cid, sids in signal_map.items():
         if not sids:
-            result[cid] = None
+            raw_dates: list[pd.Timestamp] = []
+            for fred_id in _COMPONENT_RAW_FRED_MAP.get(cid, []):
+                series = _read_fred_parquet(fred_id)
+                if series is None or series.empty:
+                    continue
+                eligible = series.index[series.index <= cutoff] if cutoff is not None else series.index
+                if len(eligible):
+                    raw_dates.append(pd.Timestamp(eligible[-1]))
+            result[cid] = min(raw_dates) if raw_dates else None
         else:
             dates = [signal_dates[sid] for sid in sids if sid in signal_dates]
             result[cid] = min(dates) if dates else None

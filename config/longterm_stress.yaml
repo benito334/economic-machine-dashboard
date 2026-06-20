@@ -11,6 +11,8 @@
 # See docs/longterm_stress_indicator.md for the full specification.
 # ─────────────────────────────────────────────────────────────────────────────
 
+country: US
+
 z_score:
   # ── Quarterly rolling window ────────────────────────────────────────────────
   # Quarterly components are Z-scored at quarterly frequency.
@@ -54,18 +56,24 @@ coverage:
   min_retained_weight: 0.60
 
 staleness:
+  # Normal publication lag by native frequency. Lag within this window does not
+  # reduce effective weight; only excess lag is treated as stale.
+  expected_lag_quarters:          # TUNABLE
+    Q: 1
+    A: 4
+
   # ── Weight decay for stale components ──────────────────────────────────────
   # When a component's last observation predates its expected release window,
-  # its effective weight decays linearly so stale data exerts less influence.
+  # its effective weight decays exponentially so stale data exerts less influence.
   #
   #   excess_lag_q = total_quarters_behind − expected_lag_for_frequency
-  #   decay        = max(0, 1 − excess_lag_q / stale_weight_halflife)
+  #   decay        = 0.5 ^ (excess_lag_q / stale_weight_halflife)
   #   eff_weight   = original_weight × decay
   #
   # expected_lag_for_frequency: Q = 1 quarter, A = 4 quarters (these are the
   # normal publication delays and do NOT count as staleness).
   #
-  # TUNABLE: 4 quarters → weight decays to 0 after 4 excess quarters.
+  # TUNABLE: 4 quarters → weight is halved after 4 excess quarters.
   #          Tighten (e.g. 2) for faster decay; loosen (e.g. 8) for slower.
   stale_weight_halflife: 4       # TUNABLE
 
@@ -151,10 +159,11 @@ components:
     frequency: Q
     construction: derived
     sources:
-      - raw_fred: BCNSDODNS   # Nonfinancial corporate debt, billions $, quarterly
+      - raw_fred: BCNSDODNS   # Nonfinancial corporate debt, millions $, quarterly
       - raw_fred: GDP         # Nominal GDP, billions $, quarterly (annualised rate)
     notes: >
-      Constructed by dividing raw BCNSDODNS by raw GDP at quarterly frequency.
+      Constructed by converting raw BCNSDODNS from millions to billions, then
+      dividing by raw GDP at quarterly frequency.
       The processed signal us.credit.corporate_debt is YoY growth and cannot serve
       as the numerator — do not substitute it.
 

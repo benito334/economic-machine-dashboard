@@ -18,6 +18,7 @@ from dashboard.app import (
     _quality_badges,
     _sparkline_svg,
     _zscore_color,
+    load_debt_stress_latest,
 )
 
 # ── _fmt_value ──────────────────────────────────────────────────────────────
@@ -204,9 +205,18 @@ def test_quality_badges_multiple():
     assert "vintage" in html
 
 
+@pytest.mark.integration
+def test_debt_stress_latest_respects_as_of_date():
+    row = load_debt_stress_latest("US", "2020-06-30")
+    assert not row.empty
+    assert pd.Timestamp(row["as_of"]) <= pd.Timestamp("2020-06-30")
+
+
 # ── Integration: DB query correctness ───────────────────────────────────────
 
-REAL_DB = "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"
+REAL_DB = os.environ.get(
+    "DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"
+)
 
 
 @pytest.mark.integration

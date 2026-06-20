@@ -23,7 +23,7 @@ The first component intentionally covers government and household leverage; corp
 
 ## Important data definitions
 
-- `BCNSDODNS` is a corporate debt **level** in the raw FRED cache. The processed `us.credit.corporate_debt` signal is its year-over-year growth rate, so the ratio must be constructed from the raw level rather than reconstructed by compounding growth.
+- `BCNSDODNS` is a corporate debt **level in millions of dollars** in the raw FRED cache, while `GDP` is in billions. Convert the numerator to billions before division. The processed `us.credit.corporate_debt` signal is its year-over-year growth rate, so the ratio must be constructed from the raw level rather than reconstructed by compounding growth.
 - Raw nominal GDP (`GDP`) is already downloaded. The processed `us.master.gdp_nominal` signal is a year-over-year growth rate and cannot serve as the denominator.
 - `TDSP` directly measures household required debt payments relative to disposable personal income. It should be used directly, not inverted or combined with federal fiscal flows.
 - `FYFSD` is the federal surplus/deficit, a borrowing flow. It is not principal repayment and must not be added to interest outlays as “debt service.”
@@ -36,9 +36,9 @@ The first component intentionally covers government and household leverage; corp
 Use quarter-end dates as the common grid.
 
 - Quarterly series retain their published quarter.
-- Annual fiscal and cross-country series become available only on their actual release date, then carry forward until the next release.
+- Annual fiscal and cross-country series are currently aligned by observation period and then carried forward. Actual publication timestamps are not yet stored, so this history must not be treated as a real-time vintage backtest.
 - Never interpolate annual observations into quarters that predate publication.
-- Preserve source-period and availability-date metadata so historical backtests cannot see revised or unreleased values.
+- Phase 3 must add availability-date and vintage metadata before historical results can be interpreted as information that was genuinely known at the time.
 - Report component coverage and staleness alongside the indicator. Do not silently substitute a stale component.
 
 ## Standardization
@@ -99,21 +99,22 @@ Before using these bands for decisions, backtest the indicator against known tig
 - Cross-source annual fiscal series may use different accounting conventions and revision schedules.
 - Rolling Z-scores describe deviation from recent history, not absolute sustainability.
 - The initial weights are transparent priors. They require robustness testing before production use.
+- Historical inputs are latest-revised and period-dated. The statistical `shift(1)` guard prevents a value from entering its own normalization window, but it does not solve publication-lag or revision look-ahead bias.
 
 ## Dealing with Stale Data Sources
 
 When a data source becomes stale, the system should treat it as a signal that its reliability has been compromised. In a principled, cycle‑aware framework, you don’t simply drop the series outright; you first assess how long the lag is and what impact it would have on the overall picture.
 
-    Detect the staleness – Compare the timestamp of the latest observation to the expected release schedule. If the gap exceeds a pre‑defined threshold (for example, one quarter for quarterly series or one year for annual series), flag the value as “stale.”
+- **Detect staleness:** Compare the latest observation period with the expected release schedule. If the gap exceeds one quarter for quarterly series or one year for annual series, flag the value as stale.
 
-    Quantify the uncertainty – Assign a higher variance or lower weight to any stale observation. The longer the lag, the larger the weight reduction. This reflects the idea that recent information carries more causal relevance in the short‑term debt cycle, while older data still informs the long‑term trend but with diminished precision.
+- **Quantify uncertainty:** Reduce stale-component weights with the configured exponential half-life. Older data still informs the long-term trend, but with diminished influence.
 
-    Apply a fallback rule – Use the most recent valid observation and carry it forward only up to a limited horizon (e.g., one period). Beyond that, replace the stale point with a model‑based estimate—such as a simple linear trend extrapolation, a rolling average, or a Bayesian update based on the distribution of past revisions. This keeps the calculation continuous without letting a single out‑of‑date entry dominate.
+- **Apply a fallback rule:** Carry the latest valid observation only to the configured horizon. Optional rolling-mean or linear-trend extrapolation exists behind a disabled-by-default configuration gate.
 
-    Re‑balance the weights – When a series is flagged as stale, let its weight shrink proportionally to the uncertainty you just quantified. If multiple series become stale simultaneously, redistribute the total weight among the remaining reliable inputs so that the sum stays at 100 %. In extreme cases where all inputs are stale, the system can fall back to a baseline scenario derived from the last fully updated snapshot.
+- **Rebalance weights:** Renormalize active effective weights when minimum coverage is met. Below the coverage threshold, emit a null score rather than a synthetic baseline.
 
-    Signal the condition – Log an alert that the gauge is operating under reduced data fidelity. Down‑stream decision rules can then incorporate a “data‑quality filter”: for instance, avoid making aggressive tactical shifts when the gauge’s confidence level falls below a preset threshold, and instead rely on a more defensive, diversified stance.
+- **Signal the condition:** Store stale and extrapolated component IDs with their lags, and surface low coverage in both dashboards.
 
-    Review and refresh – Schedule a routine audit to verify whether the stale source will be updated soon (e.g., a new release date is imminent) and to decide whether the temporary adjustment needs to be lifted once fresh data arrives.
+- **Review and refresh:** Recompute after each source release and audit the component-level contribution table.
 
 By treating staleness as a systematic, quantifiable risk rather than an automatic exclusion, the machine preserves the integrity of its cause‑effect mapping across cycles while maintaining robustness. This approach aligns with the principle that a well‑diversified, principle‑driven system should be resilient to imperfect information, adjusting incentives and feedback loops dynamically as the quality of inputs evolves.

@@ -374,7 +374,8 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             sc = f"{latest_stress.stress_score:+.3f}" if latest_stress.stress_score is not None else "null"
             rw = f"{latest_stress.retained_weight:.0%}" if latest_stress.retained_weight is not None else "?"
             print(f"  Snapshots stored : {n_stress}")
-            print(f"  Latest ({latest_stress.as_of}): stress={sc}  components={latest_stress.n_components}/7"
+            total_stress_components = len(stress_config.get("components", []))
+            print(f"  Latest ({latest_stress.as_of}): stress={sc}  components={latest_stress.n_components}/{total_stress_components}"
                   f"  retained_weight={rw}  low_coverage={latest_stress.low_coverage}")
         else:
             print("  [WARN] No debt stress snapshots produced")
