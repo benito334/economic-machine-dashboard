@@ -38,9 +38,9 @@
 | J4 | Staleness — **debt stress only** | Structured stale strings ("cid:lag_q") and audit trail | `stale_components` + `extrapolated_components` in DB | — | ✅ Done (debt stress) | Dashboard shows badges — **NOT applied to regime composite** |
 | J5 | Staleness — **debt stress only** | Dashboard display of blank component reasons | Full-width component table with BLANK / STALE / ACTIVE badges | — | ✅ Done (debt stress) | Deployed on :8502 — **NOT applied to regime composite** |
 | L1 | Staleness — **regime composite** | Forward-fill weight decay in `_load_wide()` | Implemented as part of F1 — `_compute_fill_age()` + decay in score loops | Medium | ✅ Done | Covered by F1 implementation in `composites.py` |
-| L2 | Staleness — **regime composite** | Explicit carry cap per signal (replace hard ffill_limit with per-frequency cap) | Mirror max_carry_quarters logic from debt stress; Q signals cap at ~3 months, A at ~15 | Medium | 🔵 Planned | Regime equivalent of J2; 13m blanket limit ignores signal frequency |
-| L3 | Staleness — **regime composite** | Per-signal staleness tracking in CompositeSnapshot | Store which signals were decayed/dropped at each snapshot month in a structured field | Medium | 🔵 Planned | Regime equivalent of J4; needed for audit trail and dashboard |
-| L4 | Staleness — **regime composite** | Dashboard staleness lag detail in Regime History component table | Show "stale Nq" badge with lag count per signal (component table already has STALE badge but no lag) | Low | 🔵 Planned | Regime equivalent of J5; UI already half-done |
+| L2 | Staleness — **regime composite** | Explicit carry cap per signal (replace hard ffill_limit with per-frequency cap) | `per_frequency_ffill_limit` in composites.yaml (M:3, Q:9, A:15); `per_signal_limits` dict in `_load_wide()`; built from freq_map in pipeline Pass 5 | Medium | ✅ Done | M signals cap at 3 months; Q at 9; A at 15 |
+| L3 | Staleness — **regime composite** | Per-signal staleness tracking in CompositeSnapshot | `stale_signals` VARCHAR field in model + DB + store; populated from fill_age in snapshot loop | Medium | ✅ Done | Format: "signal_id:months,..."; DB migrated; 275 tests pass |
+| L4 | Staleness — **regime composite** | Dashboard staleness lag detail in Regime History component table | Show "stale Nq" badge with lag count per signal (component table already has STALE badge but no lag) | Low | 🔵 Planned | Regime equivalent of J5; stale_signals field now available |
 | L5 | Staleness — **regime composite** | Extrapolation gate for long-stale regime signals | Config-gated; likely low value for monthly signals that refresh frequently | Low | ⬜ Deferred | Regime equivalent of J3; monthly series rarely gap >3 months |
 | K1 | General | Back-test each modification on rolling window; compare out-of-sample performance to baseline | Phase 3 infrastructure; requires expanding-window Z-scores (C4) | High | ⬜ Deferred | Phase 3 |
 | K2 | General | Continuous feedback loop: compare regime prediction to actual monthly macro outcomes | Post-Phase 3; automated monthly audit | High | ⬜ Deferred | Phase 3+ |
@@ -80,7 +80,7 @@ PCA analysis (I2) is a low-cost diagnostic that can reveal whether the current 9
 **All five items are complete for the Long-Term Debt Stress Indicator only.** The three-gap staleness implementation (weight decay, carry cap, extrapolation gate) is live in `indicators/longterm_stress.py`. Dashboard displays STALE / BLANK / EXTRAPOLATED badges with full audit detail. None of this has been applied to the macro regime composite — see L1–L5 below.
 
 ### Staleness — Regime Composite (L1–L5)
-**L1 is done (implemented as F1).** The decay is live in `composites.py` via `_compute_fill_age()` + per-signal `0.9^fill_age` multiplier. **L2 (per-frequency carry cap)** is the next item — it requires looking up the frequency of each signal from the binding YAML and passing a `per_signal_limits` dict to `_load_wide()`. **L3 (structured per-signal stale tracking in CompositeSnapshot)** enables the audit trail and feeds the L4 dashboard lag badges. L5 (extrapolation gate) remains deferred — monthly signals rarely gap long enough.
+**L1–L3 are all done.** L1 (decay) via `_compute_fill_age()` + 0.9^k weight multiplier. L2 (per-frequency caps) via `per_frequency_ffill_limit` in composites.yaml; pipeline Pass 5 builds a freq_map from bindings and passes it through. L3 (stale_signals tracking) adds a VARCHAR field to `CompositeSnapshot`, the DB schema, and the snapshot loop — current DB shows 13 signals forward-filled at 2026-06-19, up to 2 months each (correct: monthly data releases are staggered). **L4 (dashboard badges)** is next — the stale_signals field is now available to the Regime History component table. L5 deferred.
 
 ### General / Phase 3 (K1–K2)
 Both items depend on the Phase 3 back-test infrastructure (expanding-window Z-scores, rolling-window performance measurement). Tracked here for completeness.
@@ -99,11 +99,12 @@ Items recommended for the next working session, roughly in order:
 | — | C1 | Z-score cap at ±4σ | ✅ Done this session | ✅ |
 | — | E1 | Variance-based direction threshold | ✅ Done this session | ✅ |
 | — | F1/L1 | Staleness decay in regime composite | ✅ Done this session | ✅ |
-| 1 | L2 | Per-frequency carry cap in `_load_wide()` | Q cap ~3 months, A cap ~15; needs frequency metadata lookup | 🔵 Planned |
-| 2 | L3 | Per-signal staleness tracking in CompositeSnapshot | Structured stale field for regime composite; feeds L4 dashboard | 🔵 Planned |
-| 3 | A2 / I2 | Correlation matrix + PCA on composite signals | Analysis; informs further weight tuning | 🔵 Planned |
-| 4 | D1 | Percentile-rank momentum value | Normalises change_3m across series with different volatilities | 🔵 Planned |
-| 5 | B1 | Audit calendar-adjusted N in transformation | Quick verification; add test | 🟡 In progress |
+| — | L2 | Per-frequency carry cap | ✅ Done this session | ✅ |
+| — | L3 | Per-signal stale tracking in CompositeSnapshot | ✅ Done this session | ✅ |
+| 1 | L4 | Dashboard stale-lag badges in Regime History component table | stale_signals now available; show "stale Nm" tooltip per signal | 🔵 Planned |
+| 2 | A2 / I2 | Correlation matrix + PCA on composite signals | Analysis; informs further weight tuning | 🔵 Planned |
+| 3 | D1 | Percentile-rank momentum value | Normalises change_3m across series with different volatilities | 🔵 Planned |
+| 4 | B1 | Audit calendar-adjusted N in transformation | Quick verification; add test | 🟡 In progress |
 
 ---
 

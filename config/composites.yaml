@@ -50,6 +50,16 @@ inflation_score:
     - id: inflation.ppi_broad
       weight: 0.5           # half-weight (included when available)
 
+# L2: Per-frequency forward-fill caps.  Monthly signals are released every month so 3
+# months of fill is already generous; quarterly at 9 months (3 release cycles); annual
+# at 15 months (≈12 months data lag + 3 months grace).  Daily defaults to 1 month.
+per_frequency_ffill_limit:
+  D: 1
+  M: 3
+  Q: 9
+  A: 15
+  default: 13   # fallback for unknown frequencies
+
 # F1/L1: Exponential staleness decay for forward-filled signals in the regime composite.
 # After each month of forward-fill, the signal's effective weight is multiplied by
 # decay_factor^k where k = months since last observation.  Signals that have been

@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Feedback tracker remediation: L2, L3 (regime composite staleness)
+
+L2 (per-frequency carry cap): `per_frequency_ffill_limit` added to composites.yaml (M:3, Q:9, A:15, D:1); `_load_wide()` accepts `per_signal_limits: dict[str, int]` for per-column ffill; pipeline Pass 5 builds freq_map from verified bindings and passes it to `compute_composite_history()`. Monthly signals are now capped at 3 months fill (was 13 uniformly).
+
+L3 (stale signal tracking): `CompositeSnapshot.stale_signals: Optional[str]` field added; DB schema updated with migration; snapshot loop populates `"signal_id:months,..."` string from fill_age data. Verified: 2026-06-19 shows 13 signals with 1-2 months fill — correct for mid-month before all releases land.
+
+6 new tests; 275/275 pass. Pipeline re-run: 558 composite snapshots, 59/59 signals.
+Next: L4 (dashboard stale-lag badges in Regime History), then A2/I2 PCA analysis.
+
+---
+
 ## 2026-06-19 — Feedback tracker remediation: C1, E1, F1/L1, G1, H1, H2
 
 Implemented six items from `docs/feedback_tracker.md` — all 269 tests pass:

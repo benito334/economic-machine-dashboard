@@ -349,7 +349,13 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     print("\n─── Pass 5: Composites engine ─────────────────────────────────────")
     try:
         comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
-        snapshots   = compute_composite_history(conn, "US", comp_config)
+        # Build signal-id → frequency map for per-frequency carry cap (L2)
+        country_prefix = "us"
+        freq_map = {
+            f"{country_prefix}.{b.id}": b.frequency
+            for b in bindings if b.verified
+        }
+        snapshots = compute_composite_history(conn, "US", comp_config, freq_map=freq_map)
         n_comp      = upsert_composites(conn, snapshots)
         latest_snap = snapshots[-1] if snapshots else None
         if latest_snap:

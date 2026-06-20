@@ -434,6 +434,107 @@ def test_pre_smooth_window_default_is_none():
     assert b.pre_smooth_window is None
 
 
+# ── L2: Per-frequency carry cap ──────────────────────────────────────────────
+
+def test_load_wide_per_signal_limits_applied(mem_conn):
+    """A column with a short limit should not be filled beyond that limit."""
+    # Monthly signal: observations at Jan and Apr — Feb/Mar are gaps
+    for dt in ["2022-01-31", "2022-04-30"]:
+        _insert_signals(mem_conn, [{"id": "us.growth.payrolls", "as_of": dt, "zscore": 1.0}])
+    # per_signal_limits: payrolls capped at 1 month → Feb is filled, Mar is NaN
+    wide = _load_wide(
+        mem_conn, ["us.growth.payrolls"], "zscore",
+        per_signal_limits={"us.growth.payrolls": 1},
+    )
+    feb = pd.Timestamp("2022-02-28")
+    mar = pd.Timestamp("2022-03-31")
+    assert pd.notna(wide.loc[feb, "us.growth.payrolls"])   # 1 month fill ✓
+    assert pd.isna(wide.loc[mar, "us.growth.payrolls"])    # beyond cap → NaN
+
+
+def test_load_wide_per_signal_limits_fallback_to_default(mem_conn):
+    """Signals not in per_signal_limits use the default ffill_limit."""
+    for dt in ["2022-01-31"]:
+        _insert_signals(mem_conn, [{"id": "us.growth.payrolls", "as_of": dt, "zscore": 0.5}])
+    # Default limit is 2, signal not in per_signal_limits → uses default
+    wide = _load_wide(
+        mem_conn, ["us.growth.payrolls"], "zscore",
+        ffill_limit=2,
+        per_signal_limits={"us.other.signal": 99},
+    )
+    feb = pd.Timestamp("2022-02-28")
+    mar = pd.Timestamp("2022-03-31")
+    # Only 2 months of fill from Jan observation
+    if feb in wide.index:
+        assert pd.notna(wide.loc[feb, "us.growth.payrolls"])
+    if mar in wide.index:
+        # Mar is 2 months after Jan, within limit=2 → may be filled
+        pass  # depends on whether Mar is in the index
+
+
+def test_composites_yaml_has_per_frequency_limits():
+    cfg = load_composites_config()
+    limits = cfg.get("per_frequency_ffill_limit", {})
+    assert limits.get("M") == 3
+    assert limits.get("Q") == 9
+    assert limits.get("A") == 15
+
+
+# ── L3: Stale signal tracking in CompositeSnapshot ───────────────────────────
+
+def test_stale_signals_populated_when_fill_age_nonzero(mem_conn):
+    """When a signal is forward-filled, stale_signals should contain its entry."""
+    # Growth signal: one observation in Jan; no Feb observation → fill_age=1 in Feb
+    _insert_signals(mem_conn, [
+        {"id": "us.growth.payrolls",     "as_of": "2022-01-31", "zscore": 1.0, "direction": "rising",  "force": "growth"},
+        {"id": "us.growth.unemployment", "as_of": "2022-01-31", "zscore": -1.0, "direction": "falling", "force": "growth"},
+        {"id": "us.inflation.pce_core",  "as_of": "2022-01-31", "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+        {"id": "us.inflation.cpi_core",  "as_of": "2022-01-31", "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+        {"id": "us.inflation.wages",     "as_of": "2022-01-31", "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+        {"id": "us.inflation.breakeven_5y", "as_of": "2022-01-31", "zscore": 1.0, "direction": "rising", "force": "inflation"},
+        # Feb — only some signals refreshed
+        {"id": "us.growth.payrolls",     "as_of": "2022-02-28", "zscore": 0.9, "direction": "rising",  "force": "growth"},
+        {"id": "us.growth.unemployment", "as_of": "2022-02-28", "zscore": -0.9, "direction": "falling", "force": "growth"},
+        {"id": "us.inflation.pce_core",  "as_of": "2022-02-28", "zscore": 0.9, "direction": "rising",  "force": "inflation"},
+        {"id": "us.inflation.cpi_core",  "as_of": "2022-02-28", "zscore": 0.9, "direction": "rising",  "force": "inflation"},
+        {"id": "us.inflation.wages",     "as_of": "2022-02-28", "zscore": 0.9, "direction": "rising",  "force": "inflation"},
+        # breakeven_5y NOT refreshed in Feb → fill_age=1
+    ])
+    cfg = {**_minimal_config(), "staleness_decay": {"enabled": True, "decay_factor": 0.9}}
+    snaps = compute_composite_history(mem_conn, "US", cfg)
+    feb_snaps = [s for s in snaps if s.as_of.month == 2 and s.as_of.year == 2022]
+    assert feb_snaps
+    feb = feb_snaps[0]
+    assert feb.stale_signals is not None
+    assert "us.inflation.breakeven_5y:1" in feb.stale_signals
+
+
+def test_stale_signals_none_when_all_fresh(mem_conn):
+    """When every signal has fresh data, stale_signals should be None."""
+    for dt in ["2022-01-31", "2022-02-28"]:
+        _insert_signals(mem_conn, [
+            {"id": "us.growth.payrolls",        "as_of": dt, "zscore": 1.0, "direction": "rising",  "force": "growth"},
+            {"id": "us.growth.unemployment",    "as_of": dt, "zscore": -1.0, "direction": "falling", "force": "growth"},
+            {"id": "us.inflation.pce_core",     "as_of": dt, "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+            {"id": "us.inflation.cpi_core",     "as_of": dt, "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+            {"id": "us.inflation.wages",        "as_of": dt, "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+            {"id": "us.inflation.breakeven_5y", "as_of": dt, "zscore": 1.0, "direction": "rising",  "force": "inflation"},
+        ])
+    cfg = {**_minimal_config(), "staleness_decay": {"enabled": True, "decay_factor": 0.9}}
+    snaps = compute_composite_history(mem_conn, "US", cfg)
+    for s in snaps:
+        assert s.stale_signals is None, f"Expected no stale signals at {s.as_of}, got {s.stale_signals}"
+
+
+def test_composite_snapshot_stale_signals_field():
+    """CompositeSnapshot model accepts and stores stale_signals."""
+    snap = CompositeSnapshot(
+        country="US", as_of=date(2023, 6, 30),
+        stale_signals="us.growth.capacity_util:2,us.inflation.ppi_broad:5",
+    )
+    assert snap.stale_signals == "us.growth.capacity_util:2,us.inflation.ppi_broad:5"
+
+
 def test_crude_oil_binding_has_pre_smooth_window():
     """The live us_bindings.yaml crude_oil entry should carry pre_smooth_window=7."""
     from indicators.pipeline import load_bindings

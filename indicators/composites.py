@@ -71,6 +71,7 @@ def _load_wide(
     signal_ids: list[str],
     value_col: str,
     ffill_limit: int = 13,
+    per_signal_limits: Optional[dict[str, int]] = None,
     exclude_unreliable: bool = False,
     return_fill_age: bool = False,
 ) -> "pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]":
@@ -100,7 +101,14 @@ def _load_wide(
 
     monthly_raw = pivot.resample("ME").last()
     fill_age = _compute_fill_age(monthly_raw) if return_fill_age else None
-    monthly = monthly_raw.ffill(limit=ffill_limit)
+
+    if per_signal_limits:
+        monthly = monthly_raw.copy()
+        for col in monthly_raw.columns:
+            limit = per_signal_limits.get(col, ffill_limit)
+            monthly[col] = monthly_raw[col].ffill(limit=limit)
+    else:
+        monthly = monthly_raw.ffill(limit=ffill_limit)
 
     if exclude_unreliable:
         latest_quality = df.sort_values("as_of").groupby("id", as_index=False).tail(1)
@@ -149,6 +157,7 @@ def compute_composite_history(
     country: str,
     config: dict,
     start_date: Optional[date] = None,
+    freq_map: Optional[dict[str, str]] = None,
 ) -> list:
     """
     Compute Growth Score, Inflation Score, Regime Quadrant, Confidence, and
@@ -177,15 +186,31 @@ def compute_composite_history(
     decay_enabled = bool(decay_cfg.get("enabled", False))
     decay_factor  = float(decay_cfg.get("decay_factor", 0.9))
 
+    # ── Per-frequency carry cap (L2) ──────────────────────────────────────────
+    freq_limits_cfg = config.get("per_frequency_ffill_limit", {})
+    default_limit   = int(freq_limits_cfg.get("default", 13))
+    per_signal_limits: Optional[dict[str, int]] = None
+    if freq_map and freq_limits_cfg:
+        per_signal_limits = {
+            sid: int(freq_limits_cfg.get(freq, default_limit))
+            for sid, freq in freq_map.items()
+            if sid in composite_ids
+        }
+
     # ── Load wide DataFrames once ─────────────────────────────────────────────
+    load_kwargs: dict = {
+        "exclude_unreliable": True,
+        "ffill_limit": default_limit,
+        **({"per_signal_limits": per_signal_limits} if per_signal_limits else {}),
+    }
     if decay_enabled:
         z_comp, fill_age_comp = _load_wide(
-            conn, composite_ids, "zscore", exclude_unreliable=True, return_fill_age=True
+            conn, composite_ids, "zscore", **load_kwargs, return_fill_age=True
         )
     else:
-        z_comp = _load_wide(conn, composite_ids, "zscore", exclude_unreliable=True)
+        z_comp = _load_wide(conn, composite_ids, "zscore", **load_kwargs)
         fill_age_comp = None
-    d_comp  = _load_wide(conn, composite_ids, "direction", exclude_unreliable=True)
+    d_comp  = _load_wide(conn, composite_ids, "direction", **load_kwargs)
 
     # Express declared equilibrium distance in each signal's own historical
     # standard-deviation units before combining heterogeneous force groups.
@@ -320,6 +345,17 @@ def compute_composite_history(
         diseq_score = float(np.mean(force_scores)) if force_scores else None
         low_cov     = n_forces < min_forces
 
+        # ── Stale signal audit (L3) ───────────────────────────────────────────
+        stale_signals: Optional[str] = None
+        if fill_age_comp is not None and dt in fill_age_comp.index:
+            parts: list[str] = []
+            for sid in (g_ids_contrib + i_ids_contrib):
+                if sid in fill_age_comp.columns:
+                    age = fill_age_comp.loc[dt, sid]
+                    if pd.notna(age) and float(age) > 0:
+                        parts.append(f"{sid}:{int(age)}")
+            stale_signals = ",".join(parts) if parts else None
+
         snapshots.append(
             CompositeSnapshot(
                 country=country,
@@ -335,6 +371,7 @@ def compute_composite_history(
                 n_inflation_signals=n_inflation,
                 n_forces=n_forces,
                 low_coverage=low_cov,
+                stale_signals=stale_signals,
             )
         )
 
