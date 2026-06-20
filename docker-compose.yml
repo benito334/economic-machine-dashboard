@@ -33,3 +33,19 @@ services:
       CHARTING_PORT: "8502"
       DASH_DEBUG: "0"
     command: python -m dashboard.charting
+
+  # ── TradingView Lightweight Charts system (ADR-007 Option B) ──────────────
+  lc_api:
+    <<: *common
+    ports:
+      - "8004:8000"
+    command: uvicorn dashboard.charting_lc.main:app --host 0.0.0.0 --port 8000
+
+  lc_frontend:
+    build:
+      context: .
+      dockerfile: dashboard/charting_lc/Dockerfile.frontend
+    ports:
+      - "8503:80"
+    depends_on:
+      - lc_api
