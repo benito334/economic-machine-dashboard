@@ -919,9 +919,12 @@ def _regime_info_children(
                         ])
 
                 # Status cell
-                if is_stale:
-                    sig_id = sr.get("signal_id", "")
-                    fill_months = _stale_months.get(sig_id, 0)
+                sig_id = sr.get("signal_id", "")
+                fill_months = _stale_months.get(sig_id, 0)
+                # Composite carry age is point-in-time metadata.  It must drive
+                # the badge even when the source observation's ingestion-time
+                # is_stale flag is false (the usual case for forward fills).
+                if is_stale or fill_months > 0:
                     stale_label = f"STALE · {fill_months}m" if fill_months else "STALE"
                     status = html.Span(stale_label,
                                        style={"background": "#7a4a00", "color": "#ffcc80",
@@ -943,7 +946,11 @@ def _regime_info_children(
                                               "padding": "1px 5px", "borderRadius": "3px",
                                               "fontSize": "0.70rem"})
 
-                row_bg = "rgba(60,20,20,0.12)" if z_missing or is_stale or low_hist else "transparent"
+                row_bg = (
+                    "rgba(60,20,20,0.12)"
+                    if z_missing or is_stale or fill_months > 0 or low_hist
+                    else "transparent"
+                )
                 rows.append(html.Tr(
                     style={"backgroundColor": row_bg},
                     children=[

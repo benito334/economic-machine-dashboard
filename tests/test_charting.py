@@ -427,7 +427,7 @@ class TestRegimeInfoStaleBadge:
         assert not any("·" in t and "STALE" in t for t in all_texts), \
             "Expected plain STALE (no lag) when signal not in stale_dict"
 
-    def test_active_signal_not_affected_by_stale_dict(self):
+    def test_forward_filled_signal_uses_stale_dict_even_if_source_is_fresh(self):
         from dashboard.charting import _regime_info_children
         comp_df = self._make_comp_df(["us.growth.payrolls"], is_stale=False)
         row = {
@@ -438,8 +438,8 @@ class TestRegimeInfoStaleBadge:
         stale_dict = {"us.growth.payrolls": 3}
         children = _regime_info_children(row, False, comp_df, stale_dict)
         all_texts = _collect_texts(children)
-        assert not any("STALE" in t for t in all_texts)
-        assert any("ACTIVE" in t for t in all_texts)
+        assert any("STALE · 3m" in t for t in all_texts)
+        assert not any("ACTIVE" in t for t in all_texts)
 
     @pytest.mark.integration
     def test_composite_history_includes_stale_signals_column(self):

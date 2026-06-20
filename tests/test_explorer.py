@@ -391,6 +391,23 @@ class TestComputePca:
         pca = compute_pca(matrix)
         assert pca["n_obs"] == 100
 
+    def test_all_nan_column_is_retained_with_zero_loading(self):
+        import numpy as np
+        from dashboard.explorer_data import compute_pca
+        matrix = pd.DataFrame({
+            "observed": [1.0, 2.0, 3.0],
+            "missing": [np.nan, np.nan, np.nan],
+        })
+        pca = compute_pca(matrix)
+        assert np.isfinite(pca["explained_variance_ratio"]).all()
+        assert pca["loadings"].shape[1] == 2
+
+    def test_constant_matrix_reports_no_variance(self):
+        from dashboard.explorer_data import compute_pca
+        matrix = pd.DataFrame({"a": [1.0, 1.0], "b": [2.0, 2.0]})
+        with pytest.raises(ValueError, match="no measurable variance"):
+            compute_pca(matrix)
+
     @pytest.mark.integration
     def test_real_data_pc1_explains_most_variance(self):
         """PC1 should capture a meaningful fraction of variance in real composite signals."""

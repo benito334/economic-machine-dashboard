@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-20 — Post-Phase-1H code review remediation
+
+- Fixed Regime History carry-age badges: `stale_signals` point-in-time metadata now marks forward-filled components as `STALE · Nm` even when the source observation's ingestion-time stale flag is false
+- Made the Lightweight Charts frontend runtime self-contained: the pinned v4.1.3 asset is vendored into the nginx image at build time and protected by a SHA-256 check
+- Hardened composite PCA against wholly missing columns, non-finite inputs, undersized matrices, and zero-variance datasets; the dashboard now renders a controlled unavailable state instead of raising
+- Added regression tests; 321 host tests pass and rebuilt charting/API/frontend services return HTTP 200
+- Next: Phase 2 Eurozone rollout; refresh BEA data after 2026-06-26
+- Blockers: `FRED_API_KEY` is not available in the host shell, so no live ingestion refresh was run
+
+---
+
 ## 2026-06-20 — TradingView Lightweight Charts system (ADR-007 Option B)
 
 Built the full TradingView system. All 319 tests pass; both Docker services healthy.

@@ -386,12 +386,27 @@ def compute_pca(matrix: pd.DataFrame) -> dict:
       loadings: array of shape (n_components, n_signals)  — each row is one PC
       n_obs: number of observations used
     """
-    filled = matrix.fillna(matrix.mean())
+    if matrix.empty or matrix.shape[0] < 2 or matrix.shape[1] < 2:
+        raise ValueError("PCA requires at least two observations and two signals")
+
+    # Mean-impute partially missing columns.  A wholly missing column has no
+    # information, but retaining it as zeros preserves the signal/loadings
+    # alignment expected by the chart while giving it a zero loading.
+    filled = matrix.copy()
+    for col in filled.columns:
+        mean = filled[col].mean()
+        filled[col] = filled[col].fillna(0.0 if pd.isna(mean) else mean)
+
     X = filled.values.astype(float)
+    if not np.isfinite(X).all():
+        raise ValueError("PCA input contains non-finite values")
     X_centered = X - X.mean(axis=0)
 
     U, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
-    var_ratio = (S ** 2) / float((S ** 2).sum())
+    total_variance = float((S ** 2).sum())
+    if total_variance <= np.finfo(float).eps:
+        raise ValueError("PCA input has no measurable variance")
+    var_ratio = (S ** 2) / total_variance
 
     return {
         "explained_variance_ratio": var_ratio,

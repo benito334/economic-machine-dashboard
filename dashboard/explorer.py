@@ -835,7 +835,10 @@ def _register_analysis_callbacks(app: dash.Dash) -> None:
         border_colors = [_FORCE_BORDER.get(f, "#888") for f in forces]
 
         # ── Correlation heatmap ───────────────────────────────────────────────
-        filled = matrix.fillna(matrix.mean())
+        filled = matrix.copy()
+        for col in filled.columns:
+            mean = filled[col].mean()
+            filled[col] = filled[col].fillna(0.0 if pd.isna(mean) else mean)
         corr   = filled.corr().values
 
         corr_fig = go.Figure(go.Heatmap(
@@ -868,7 +871,19 @@ def _register_analysis_callbacks(app: dash.Dash) -> None:
         )
 
         # ── PCA ───────────────────────────────────────────────────────────────
-        pca = compute_pca(matrix)
+        try:
+            pca = compute_pca(matrix)
+        except ValueError as exc:
+            pca_fig = go.Figure()
+            pca_fig.update_layout(
+                **figure_layout(theme_name or DEFAULT_THEME, "PCA unavailable"),
+                height=320,
+            )
+            pca_fig.add_annotation(
+                text=str(exc), x=0.5, y=0.5, xref="paper", yref="paper",
+                showarrow=False,
+            )
+            return corr_fig, pca_fig
         var_r   = pca["explained_variance_ratio"]
         loadings = pca["loadings"]
         n_obs   = pca["n_obs"]
