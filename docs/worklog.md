@@ -4,6 +4,14 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Session close: TradingView system spec reviewed; docs and memory updated
+
+All 319 tests pass. Reviewed ADR-007 Option B (FastAPI :8000 + TradingView Lightweight Charts :8503) and confirmed the skeleton at `dashboard/charting_lc/main.py`. Next session will implement the full TradingView system per the ADR.
+
+Next: Build TradingView Lightweight Charts system (Option B, ADR-007). Backend: `api/main.py` FastAPI with DuckDB endpoints. Frontend: nginx-served HTML/JS with Lightweight Charts v4 at :8503. Docker: two new services in docker-compose.yml.
+
+---
+
 ## 2026-06-19 — D1, B1, A2/I2 (momentum percentile, period audit, composite PCA)
 
 **D1** (momentum percentile): `momentum_percentile DOUBLE` added to `Signal` model and DB. In `build_signals()`, `_percentile_series()` is applied to the valid `change_3m` slice — rank of current 3-month change within its own full history. Aligns momentum comparisons across high/low-volatility series. 5 new tests.
