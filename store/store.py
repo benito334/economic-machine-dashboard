@@ -76,6 +76,12 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         "ALTER TABLE composites "
         "ADD COLUMN IF NOT EXISTS stale_signals VARCHAR DEFAULT ''"
     )
+    conn.execute(
+        "ALTER TABLE composites ADD COLUMN IF NOT EXISTS growth_momentum DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE composites ADD COLUMN IF NOT EXISTS inflation_momentum DOUBLE"
+    )
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -154,6 +160,8 @@ CREATE TABLE IF NOT EXISTS composites (
     n_forces             INTEGER   DEFAULT 0,
     low_coverage         BOOLEAN   DEFAULT FALSE,
     stale_signals        VARCHAR   DEFAULT '',
+    growth_momentum      DOUBLE,
+    inflation_momentum   DOUBLE,
     created_at           TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -163,6 +171,7 @@ _COMPOSITE_COLUMNS = [
     "country", "as_of", "growth_score", "inflation_score", "quadrant",
     "confidence", "disequilibrium_score", "n_growth_signals",
     "n_inflation_signals", "n_forces", "low_coverage", "stale_signals",
+    "growth_momentum", "inflation_momentum",
     "created_at",
 ]
 

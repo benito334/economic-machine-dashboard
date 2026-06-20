@@ -304,7 +304,7 @@ app.layout = dbc.Container(
                                 dcc.Graph(
                                     id="regime-chart",
                                     config={"displayModeBar": True},
-                                    style={"height": "65vh"},
+                                    style={"height": "85vh"},
                                 ),
                                 width=12,
                             ),
@@ -695,7 +695,7 @@ def _regime_info_children(
 
     # ── Summary strip ─────────────────────────────────────────────────────────
     def _score_block(label: str, score: Any, n_active: int, n_total: int,
-                     mom_str: str, color: str) -> html.Div:
+                     color: str) -> html.Div:
         score_txt = f"{float(score):+.3f}" if score is not None and not (isinstance(score, float) and pd.isna(score)) else "—"
         score_color = color if score is not None else "#555"
         return html.Div(
@@ -714,7 +714,30 @@ def _regime_info_children(
                     style={"lineHeight": "1.1", "marginBottom": "2px"},
                 ),
                 html.Div(
-                    f"{n_active}/{n_total} signals · {mom_str} momentum-positive",
+                    f"{n_active}/{n_total} signals active",
+                    style={"fontSize": "0.68rem", "color": "var(--muted-color)"},
+                ),
+            ],
+        )
+
+    def _mom_block(label: str, mom_str: str, color: str) -> html.Div:
+        return html.Div(
+            style={
+                "borderLeft": f"3px solid {color}",
+                "paddingLeft": "10px", "minWidth": "130px",
+            },
+            children=[
+                html.Div(label,
+                         style={"fontSize": "0.65rem", "textTransform": "uppercase",
+                                "letterSpacing": "0.07em", "color": "var(--muted-color)"}),
+                html.Div(
+                    mom_str,
+                    style={"fontSize": "1.6rem", "fontWeight": "700",
+                           "color": color, "fontFamily": "monospace",
+                           "lineHeight": "1.1", "marginBottom": "2px"},
+                ),
+                html.Div(
+                    "signals momentum-positive",
                     style={"fontSize": "0.68rem", "color": "var(--muted-color)"},
                 ),
             ],
@@ -769,18 +792,21 @@ def _regime_info_children(
             # Separator
             html.Div(style={"width": "1px", "background": "var(--border-color)",
                             "alignSelf": "stretch", "margin": "0 4px"}),
-            _score_block(
-                "Growth Force Z-Score", g_score, n_g, 9, g_mom_str, _GROWTH_COLOR,
-            ),
-            _score_block(
-                "Inflation Force Z-Score", i_score, n_i, 8, i_mom_str, _INFLATION_COLOR,
-            ),
+            # Force scores
+            _score_block("Growth Force Z-Score", g_score, n_g, 9, _GROWTH_COLOR),
+            _score_block("Inflation Force Z-Score", i_score, n_i, 8, _INFLATION_COLOR),
+            # Separator
+            html.Div(style={"width": "1px", "background": "var(--border-color)",
+                            "alignSelf": "stretch", "margin": "0 4px"}),
+            # Momentum fractions (separate from force scores)
+            _mom_block("Growth Momentum", g_mom_str, _GROWTH_COLOR),
+            _mom_block("Inflation Momentum", i_mom_str, _INFLATION_COLOR),
             html.Div(
                 style={"fontSize": "0.65rem", "color": "#555", "alignSelf": "flex-end",
                        "marginLeft": "auto"},
                 children=[
                     html.Div("Force Z-Score = weighted average of signal Z-scores"),
-                    html.Div("Momentum = fraction of signals with growth/inflation-positive direction"),
+                    html.Div("Momentum = fraction of signals in growth/inflation-positive direction"),
                     html.Div("Confidence = direction-agreement fraction vs. expected for quadrant"),
                 ],
             ),
@@ -943,16 +969,42 @@ def _regime_info_children(
             html.Th("Status",     style=th_sty),
         ])
 
-        all_rows = (
-            _section("growth",    9, _GROWTH_COLOR) +
-            [html.Tr(html.Td(style={"height": "8px"}, colSpan=6))] +
-            _section("inflation", 8, _INFLATION_COLOR)
-        )
+        def _section_table(force: str, n_total: int, color: str) -> html.Details:
+            rows = _section(force, n_total, color)
+            n_active = int(
+                (comp_df[comp_df["composite"] == force]["zscore"].notna()
+                 & ~comp_df[comp_df["composite"] == force]["is_stale"]
+                 & ~comp_df[comp_df["composite"] == force]["low_history"]).sum()
+            )
+            summary_label = f"{force.upper()} FORCE INPUTS  ·  {n_active}/{len(comp_df[comp_df['composite'] == force])} active"
+            return html.Details(
+                open=True,
+                children=[
+                    html.Summary(
+                        summary_label,
+                        style={
+                            "cursor": "pointer",
+                            "padding": "6px 10px",
+                            "fontSize": "0.72rem", "fontWeight": "700",
+                            "textTransform": "uppercase", "letterSpacing": "0.07em",
+                            "color": color,
+                            "backgroundColor": "rgba(0,0,0,0.18)",
+                            "borderBottom": f"1px solid {color}",
+                            "userSelect": "none",
+                        },
+                    ),
+                    html.Table(
+                        [html.Thead(header_row), html.Tbody(rows)],
+                        style={"width": "100%", "borderCollapse": "collapse"},
+                    ),
+                ],
+                style={"marginBottom": "6px"},
+            )
 
-        table_section = html.Table(
-            [html.Thead(header_row), html.Tbody(all_rows)],
-            style={"width": "100%", "borderCollapse": "collapse", "marginTop": "4px"},
-        )
+        table_section = html.Div([
+            _section_table("growth",    9, _GROWTH_COLOR),
+            _section_table("inflation", 8, _INFLATION_COLOR),
+        ])
 
     footer = html.Div(
         "Force Z-Score = standardised distance from historical mean · "
@@ -1053,13 +1105,20 @@ def update_regime_chart(
         return fig
 
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=5, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.06,
-        subplot_titles=["Growth Force Z-Score (composite)", "Inflation Force Z-Score (composite)", "Regime Quadrant"],
+        vertical_spacing=0.04,
+        row_heights=[0.25, 0.15, 0.25, 0.15, 0.20],
+        subplot_titles=[
+            "Growth Force Z-Score (composite)",
+            "Growth Momentum (fraction of signals growth-positive)",
+            "Inflation Force Z-Score (composite)",
+            "Inflation Momentum (fraction of signals inflation-positive)",
+            "Regime Quadrant",
+        ],
     )
 
-    # Growth score
+    # Row 1: Growth score
     fig.add_trace(
         go.Scatter(
             x=comp["as_of"], y=comp["growth_score"],
@@ -1073,7 +1132,23 @@ def update_regime_chart(
     )
     fig.add_hline(y=0, line_dash="dot", line_color="#555", row=1, col=1)
 
-    # Inflation score
+    # Row 2: Growth momentum
+    if "growth_momentum" in comp.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=comp["as_of"], y=comp["growth_momentum"],
+                name="Growth Momentum",
+                line={"color": _COLORS[0], "width": 1.5, "dash": "dot"},
+                hovertemplate="%{x|%Y-%m-%d}<br>Growth Momentum: %{y:.0%}<extra></extra>",
+                fill="tozeroy",
+                fillcolor="rgba(76, 155, 232, 0.10)",
+            ),
+            row=2, col=1,
+        )
+    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=2, col=1)
+    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=2, col=1)
+
+    # Row 3: Inflation score
     fig.add_trace(
         go.Scatter(
             x=comp["as_of"], y=comp["inflation_score"],
@@ -1083,11 +1158,27 @@ def update_regime_chart(
             fill="tozeroy",
             fillcolor="rgba(228, 115, 76, 0.15)",
         ),
-        row=2, col=1,
+        row=3, col=1,
     )
-    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
+    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=3, col=1)
 
-    # Quadrant as numeric bands
+    # Row 4: Inflation momentum
+    if "inflation_momentum" in comp.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=comp["as_of"], y=comp["inflation_momentum"],
+                name="Inflation Momentum",
+                line={"color": _COLORS[2], "width": 1.5, "dash": "dot"},
+                hovertemplate="%{x|%Y-%m-%d}<br>Inflation Momentum: %{y:.0%}<extra></extra>",
+                fill="tozeroy",
+                fillcolor="rgba(228, 115, 76, 0.10)",
+            ),
+            row=4, col=1,
+        )
+    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=4, col=1)
+    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=4, col=1)
+
+    # Row 5: Quadrant as numeric bands
     quadrant_map = {
         "Expansion": 1,
         "Inflationary Boom": 2,
@@ -1109,15 +1200,15 @@ def update_regime_chart(
             customdata=comp["quadrant"],
             showlegend=False,
         ),
-        row=3, col=1,
+        row=5, col=1,
     )
     fig.update_yaxes(
         tickvals=[0, 1, 2, 3],
         ticktext=["Dis.Slow", "Expansion", "Inf.Boom", "Stagflation"],
-        row=3, col=1,
+        row=5, col=1,
     )
 
-    fig.update_layout(**figure_layout(theme_name), hovermode="x unified", height=700)
+    fig.update_layout(**figure_layout(theme_name), hovermode="x unified", height=1050)
 
     # ── Step-selection highlight ──────────────────────────────────────────────
     step = step or 0
@@ -1148,7 +1239,21 @@ def update_regime_chart(
             row=1, col=1,
         )
 
-    # Highlighted marker — inflation score (row 2)
+    # Highlighted marker — growth momentum (row 2)
+    gm_val = sel.get("growth_momentum")
+    if gm_val is not None and not pd.isna(gm_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[gm_val],
+                mode="markers",
+                marker={"size": 9, "color": _COLORS[0],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=2, col=1,
+        )
+
+    # Highlighted marker — inflation score (row 3)
     i_val = sel.get("inflation_score")
     if i_val is not None and not pd.isna(i_val):
         fig.add_trace(
@@ -1159,10 +1264,24 @@ def update_regime_chart(
                         "line": {"width": 2, "color": "#ffffff"}},
                 showlegend=False, hoverinfo="skip",
             ),
-            row=2, col=1,
+            row=3, col=1,
         )
 
-    # Highlighted marker — quadrant row (row 3), open circle in quadrant colour
+    # Highlighted marker — inflation momentum (row 4)
+    im_val = sel.get("inflation_momentum")
+    if im_val is not None and not pd.isna(im_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[im_val],
+                mode="markers",
+                marker={"size": 9, "color": _COLORS[2],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=4, col=1,
+        )
+
+    # Highlighted marker — quadrant row (row 5), open circle in quadrant colour
     q_val = q_numeric.iloc[sel_idx] if sel_idx < len(q_numeric) else None
     q_label = sel.get("quadrant")
     if q_val is not None and not pd.isna(q_val):
@@ -1177,7 +1296,7 @@ def update_regime_chart(
                 },
                 showlegend=False, hoverinfo="skip",
             ),
-            row=3, col=1,
+            row=5, col=1,
         )
 
     return fig

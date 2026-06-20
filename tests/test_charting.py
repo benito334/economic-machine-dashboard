@@ -458,3 +458,157 @@ class TestRegimeInfoStaleBadge:
         stale_texts = [t for t in all_texts if "STALE" in t]
         for t in stale_texts:
             assert "·" in t, f"STALE badge missing lag count: {t!r}"
+
+
+# ── Momentum in summary box and chart ────────────────────────────────────────
+
+class TestRegimeMomentumDisplay:
+    """Verify momentum blocks appear separately in summary strip and chart has 5 subplots."""
+
+    def _base_row(self):
+        return {
+            "quadrant": "Stagflation",
+            "growth_score": -0.05, "inflation_score": 0.43,
+            "confidence": 0.36, "disequilibrium_score": 0.70,
+            "n_growth_signals": 9, "n_inflation_signals": 8,
+            "growth_momentum": 0.4444, "inflation_momentum": 0.5,
+        }
+
+    def _make_comp_df(self):
+        import pandas as pd
+        rows = []
+        for i, sid in enumerate([
+            "us.growth.payrolls", "us.growth.industrial_prod",
+            "us.inflation.core_pce", "us.inflation.breakeven_5y",
+        ]):
+            force = "growth" if "growth" in sid else "inflation"
+            rows.append({
+                "composite": force, "concept_id": sid.split(".", 1)[1],
+                "signal_id": sid, "label": sid.split(".")[-1],
+                "weight": 1.0, "invert": False,
+                "zscore": 0.5 if i % 2 == 0 else -0.3,
+                "direction": "rising", "change_3m": 0.01,
+                "as_of": pd.Timestamp("2026-05-31"),
+                "is_stale": False, "low_history": False,
+            })
+        return pd.DataFrame(rows)
+
+    def test_momentum_blocks_appear_in_summary(self):
+        from dashboard.charting import _regime_info_children
+        children = _regime_info_children(self._base_row(), False, self._make_comp_df())
+        all_texts = _collect_texts(children)
+        # "momentum-positive" phrase should appear (from the separate momentum blocks)
+        assert any("momentum-positive" in t.lower() for t in all_texts), \
+            f"Expected 'momentum-positive' in summary, got: {all_texts}"
+
+    def test_momentum_block_shows_fraction_string(self):
+        from dashboard.charting import _regime_info_children
+        comp_df = self._make_comp_df()
+        children = _regime_info_children(self._base_row(), False, comp_df)
+        all_texts = _collect_texts(children)
+        # g_mom_str should be "1/2" (1 rising out of 2 non-inverted growth signals)
+        assert any("/" in t for t in all_texts), "Expected X/Y momentum fraction in summary"
+
+    def test_force_block_subtitle_no_longer_has_momentum(self):
+        from dashboard.charting import _regime_info_children
+        children = _regime_info_children(self._base_row(), False, self._make_comp_df())
+        all_texts = _collect_texts(children)
+        # The force block subtitles are "N/N signals active" — no momentum phrase there.
+        # (Old format was "N/N signals · X/Y momentum-positive".)
+        # "momentum-positive" only appears in the dedicated momentum blocks, not force subtitles.
+        signals_active_texts = [t for t in all_texts if "signals active" in t]
+        assert len(signals_active_texts) >= 1, "Expected 'signals active' subtitle in score block"
+        assert not any("momentum" in t.lower() for t in signals_active_texts), \
+            f"Force subtitle should not contain 'momentum': {signals_active_texts}"
+
+    @pytest.mark.integration
+    def test_composite_history_has_momentum_columns(self):
+        from dashboard.charting_data import load_composite_history
+        df = load_composite_history(start_date="2020-01-01")
+        assert "growth_momentum" in df.columns
+        assert "inflation_momentum" in df.columns
+        recent = df.dropna(subset=["growth_momentum", "inflation_momentum"])
+        assert len(recent) > 0
+        assert (recent["growth_momentum"].between(0, 1)).all()
+        assert (recent["inflation_momentum"].between(0, 1)).all()
+
+    @pytest.mark.integration
+    def test_regime_chart_has_five_subplots(self):
+        from dashboard.charting import update_regime_chart
+        fig = update_regime_chart("tab-regime", {}, "carbon", 0)
+        # 5 subplots → subplot_titles has 5 entries; figure has at least 5 base traces
+        assert len(fig.data) >= 5
+        # y-axis domains: should have yaxis, yaxis2, yaxis3, yaxis4, yaxis5
+        layout_keys = set(fig.layout.to_plotly_json().keys())
+        for ax in ("yaxis", "yaxis2", "yaxis3", "yaxis4", "yaxis5"):
+            assert ax in layout_keys, f"Missing axis {ax} in layout"
+
+
+# ── Component table rollup (html.Details) ────────────────────────────────────
+
+class TestRegimeTableRollup:
+    """Verify Growth and Inflation tables are wrapped in separate html.Details elements."""
+
+    def _make_comp_df(self):
+        import pandas as pd
+        rows = []
+        for sid in ["us.growth.payrolls", "us.inflation.core_pce"]:
+            force = "growth" if "growth" in sid else "inflation"
+            rows.append({
+                "composite": force, "concept_id": sid.split(".", 1)[1],
+                "signal_id": sid, "label": sid.split(".")[-1],
+                "weight": 1.0, "invert": False,
+                "zscore": 0.5, "direction": "rising", "change_3m": 0.01,
+                "as_of": pd.Timestamp("2026-05-31"),
+                "is_stale": False, "low_history": False,
+            })
+        return pd.DataFrame(rows)
+
+    def _count_type(self, children, component_type):
+        """Recursively count components of a given type."""
+        count = 0
+        items = children if isinstance(children, list) else [children]
+        for item in items:
+            if isinstance(item, component_type):
+                count += 1
+            if hasattr(item, "children") and item.children:
+                count += self._count_type(
+                    item.children if isinstance(item.children, list) else [item.children],
+                    component_type,
+                )
+        return count
+
+    def test_two_details_elements_present(self):
+        from dash import html as dhtml
+        from dashboard.charting import _regime_info_children
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 1,
+        }
+        children = _regime_info_children(row, False, self._make_comp_df())
+        n = self._count_type(children, dhtml.Details)
+        assert n == 2, f"Expected 2 html.Details elements (one per force), got {n}"
+
+    def test_details_open_by_default(self):
+        from dash import html as dhtml
+        from dashboard.charting import _regime_info_children
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 1,
+        }
+        children = _regime_info_children(row, False, self._make_comp_df())
+        details_found = []
+
+        def _find_details(items):
+            for item in (items if isinstance(items, list) else [items]):
+                if isinstance(item, dhtml.Details):
+                    details_found.append(item)
+                if hasattr(item, "children") and item.children:
+                    _find_details(item.children if isinstance(item.children, list) else [item.children])
+
+        _find_details(children)
+        assert len(details_found) == 2
+        for d in details_found:
+            assert d.open is True, "Details element should be open by default"

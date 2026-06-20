@@ -4,6 +4,20 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — Regime History tab UX improvements (momentum display, table rollup, chart subplots)
+
+Three improvements to the Dash :8502 Regime History tab:
+
+1. **Momentum in summary box**: Dedicated `_mom_block` components for Growth Momentum and Inflation Momentum now appear as separate stat blocks (e.g. "4/9") after the force scores, separated by a vertical divider. Force score subtitles simplified to "N/N signals active" only.
+
+2. **Momentum charts**: `update_regime_chart` now uses 5 subplot rows (was 3). New layout: Growth Score → Growth Momentum (%) → Inflation Score → Inflation Momentum (%) → Quadrant. Momentum rows are 15% height; force rows 25%; quadrant 20%. Both momentum rows use 0–100% Y-axis with 50% dotted reference line. Step-selection markers added for all 5 rows. Chart container height raised to 85vh.
+
+3. **Signal table rollup**: Each force section now wrapped in `html.Details`/`html.Summary` for independent collapse/expand (open by default). Each summary shows "GROWTH/INFLATION FORCE INPUTS · N/M active" — same information as before but now clickable headers.
+
+   DB change: `growth_momentum DOUBLE` + `inflation_momentum DOUBLE` columns added to composites table (schema migration + pipeline re-run). 558 snapshots re-generated. 287 tests pass (7 new tests).
+
+Next: A2/I2 correlation matrix + PCA analysis, or D1 momentum percentile-rank.
+
 ## 2026-06-19 — Feedback tracker remediation: L4 (regime composite stale-lag badges)
 
 L4 (dashboard stale-lag badges): `load_composite_history()` in `charting_data.py` now includes `stale_signals` in the SELECT. `_regime_info_children()` gains a `stale_dict: dict[str, int]` parameter. `update_regime_info` callback parses the `stale_signals` string (reusing `_parse_stress_components()`) and passes the dict through. In the component table, STALE badges now render as "STALE · Nm" (e.g. "STALE · 2m") for signals with known fill-months — matching the J5 debt stress pattern.

@@ -121,7 +121,8 @@ def load_composite_history(
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         df = con.execute(
             f"SELECT as_of, growth_score, inflation_score, quadrant, confidence, "
-            f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces, stale_signals "
+            f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces, stale_signals, "
+            f"growth_momentum, inflation_momentum "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()

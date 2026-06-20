@@ -76,6 +76,8 @@ class CompositeSnapshot(BaseModel):
     n_forces: int = 0
     low_coverage: bool = False
     stale_signals: Optional[str] = None  # L3: "signal_id:fill_months,..." for signals with fill_age > 0
+    growth_momentum: Optional[float] = None    # fraction of growth-positive direction signals (0–1)
+    inflation_momentum: Optional[float] = None # fraction of inflation-positive direction signals (0–1)
 
 
 class DebtStressSnapshot(BaseModel):

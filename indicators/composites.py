@@ -345,6 +345,34 @@ def compute_composite_history(
         diseq_score = float(np.mean(force_scores)) if force_scores else None
         low_cov     = n_forces < min_forces
 
+        # ── Momentum fractions ────────────────────────────────────────────────
+        g_mom_pos = g_mom_total = 0
+        for ind in growth_cfg:
+            sid = f"{country_prefix}.{ind['id']}"
+            if sid not in g_ids_contrib:
+                continue
+            d = d_row.get(sid)
+            if not isinstance(d, str) or not d:
+                continue
+            positive_dir = "falling" if ind.get("invert", False) else "rising"
+            if d == positive_dir:
+                g_mom_pos += 1
+            g_mom_total += 1
+        growth_momentum = g_mom_pos / g_mom_total if g_mom_total > 0 else None
+
+        i_mom_pos = i_mom_total = 0
+        for ind in inflation_cfg:
+            sid = f"{country_prefix}.{ind['id']}"
+            if sid not in i_ids_contrib:
+                continue
+            d = d_row.get(sid)
+            if not isinstance(d, str) or not d:
+                continue
+            if d == "rising":
+                i_mom_pos += 1
+            i_mom_total += 1
+        inflation_momentum = i_mom_pos / i_mom_total if i_mom_total > 0 else None
+
         # ── Stale signal audit (L3) ───────────────────────────────────────────
         stale_signals: Optional[str] = None
         if fill_age_comp is not None and dt in fill_age_comp.index:
@@ -372,6 +400,8 @@ def compute_composite_history(
                 n_forces=n_forces,
                 low_coverage=low_cov,
                 stale_signals=stale_signals,
+                growth_momentum   =round(growth_momentum,    4) if growth_momentum    is not None else None,
+                inflation_momentum=round(inflation_momentum, 4) if inflation_momentum is not None else None,
             )
         )
 
