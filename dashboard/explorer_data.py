@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Optional
 
 import duckdb
+import numpy as np
 import pandas as pd
+import yaml
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
@@ -317,3 +319,82 @@ def compute_signal_stats(signal_id: str) -> dict:
     keys = ["obs_count", "min_val", "max_val", "mean_val", "std_val", "median_val",
             "first_obs", "last_obs", "stale_count", "outlier_count"]
     return dict(zip(keys, row)) if row else {}
+
+
+# ── A2/I2: Composite signal Z-score matrix for correlation + PCA ──────────────
+
+_COMPOSITES_YAML = Path(__file__).parents[1] / "config" / "composites.yaml"
+
+
+def load_composite_zscore_matrix(
+    country: str = "US",
+    min_obs_fraction: float = 0.7,
+) -> tuple[pd.DataFrame, list[dict]]:
+    """Return (wide_monthly_df, signal_meta) for the composite signal set.
+
+    wide_monthly_df: index=monthly as_of, columns=signal_id, values=zscore.
+    Rows with fewer than min_obs_fraction * n_signals non-NaN values are dropped.
+    signal_meta: list of {signal_id, label, force} dicts in composites.yaml order.
+    """
+    cfg = yaml.safe_load(_COMPOSITES_YAML.read_text()) or {}
+    country_prefix = country.lower()
+
+    signal_meta: list[dict] = []
+    for comp_name in ("growth_score", "inflation_score"):
+        force = comp_name.split("_")[0]
+        for ind in cfg.get(comp_name, {}).get("indicators", []):
+            concept_id = ind["id"]
+            signal_meta.append({
+                "signal_id": f"{country_prefix}.{concept_id}",
+                "label":     concept_id.split(".")[-1].replace("_", " ").title(),
+                "force":     force,
+            })
+
+    if not signal_meta:
+        return pd.DataFrame(), []
+
+    signal_ids   = [m["signal_id"] for m in signal_meta]
+    placeholders = ", ".join("?" * len(signal_ids))
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            f"SELECT id, as_of, zscore FROM signals WHERE id IN ({placeholders}) ORDER BY id, as_of",
+            signal_ids,
+        ).df()
+    finally:
+        con.close()
+
+    if df.empty:
+        return pd.DataFrame(), signal_meta
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    pivot = df.pivot(index="as_of", columns="id", values="zscore")
+    pivot = pivot.reindex(columns=signal_ids)
+    monthly = pivot.resample("ME").last().ffill(limit=3)
+
+    min_valid = int(len(signal_ids) * min_obs_fraction)
+    monthly = monthly.dropna(thresh=min_valid)
+
+    return monthly, signal_meta
+
+
+def compute_pca(matrix: pd.DataFrame) -> dict:
+    """Run PCA on the signal Z-score matrix via numpy SVD.
+
+    Returns dict with:
+      explained_variance_ratio: array of shape (n_components,)
+      loadings: array of shape (n_components, n_signals)  — each row is one PC
+      n_obs: number of observations used
+    """
+    filled = matrix.fillna(matrix.mean())
+    X = filled.values.astype(float)
+    X_centered = X - X.mean(axis=0)
+
+    U, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+    var_ratio = (S ** 2) / float((S ** 2).sum())
+
+    return {
+        "explained_variance_ratio": var_ratio,
+        "loadings": Vt,
+        "n_obs": len(X),
+    }

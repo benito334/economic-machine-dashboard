@@ -7,6 +7,7 @@ import pytest
 
 from indicators.models import CountryBinding
 from indicators.normalize import _direction, _is_stale, _percentile_series, _zscore_series, build_signals, sanity_check
+from indicators.transform import _MOMENTUM_PERIODS, _YOY_PERIODS
 
 
 def _binding(**kwargs) -> CountryBinding:
@@ -255,6 +256,46 @@ class TestDirectionWithStd:
         threshold = std * 0.10  # = 1.0
         assert _direction(threshold + 1e-10, series_std=std) == "rising"
         assert _direction(threshold, series_std=std) == "flat"
+
+
+class TestMomentumPercentile:
+    """D1: change_3m is percentile-ranked within its own valid history."""
+
+    def test_momentum_percentile_populated(self):
+        s = _monthly_series(30)
+        sigs = build_signals(s, _binding())
+        # First 3 obs have no c3m (NaN) → None; the rest should be populated
+        with_c3m = [sig for sig in sigs if sig.change_3m is not None]
+        assert all(sig.momentum_percentile is not None for sig in with_c3m)
+
+    def test_momentum_percentile_range(self):
+        s = _monthly_series(30)
+        sigs = build_signals(s, _binding())
+        pcts = [sig.momentum_percentile for sig in sigs if sig.momentum_percentile is not None]
+        assert all(0.0 <= p <= 1.0 for p in pcts)
+
+    def test_rising_series_top_half(self):
+        """A steadily accelerating series has its latest change_3m near the top."""
+        vals = np.cumsum(np.linspace(0.001, 0.005, 36))
+        s = pd.Series(vals, index=pd.date_range("2021", periods=36, freq="MS"))
+        sigs = build_signals(s, _binding())
+        latest = sigs[-1]
+        assert latest.momentum_percentile is not None
+        assert latest.momentum_percentile > 0.5
+
+    def test_no_c3m_gives_none(self):
+        """Series shorter than 3 periods can have no valid c3m → momentum_percentile None."""
+        s = pd.Series([0.01, 0.02], index=pd.date_range("2024-01", periods=2, freq="MS"))
+        sigs = build_signals(s, _binding())
+        assert all(sig.momentum_percentile is None for sig in sigs)
+
+    def test_monotone_ranks(self):
+        """On a linearly accelerating series, percentile ranks are monotonically increasing."""
+        vals = [i ** 2 * 0.001 for i in range(40)]
+        s = pd.Series(vals, index=pd.date_range("2020", periods=40, freq="MS"))
+        sigs = build_signals(s, _binding())
+        pcts = [sig.momentum_percentile for sig in sigs if sig.momentum_percentile is not None]
+        assert pcts == sorted(pcts)
 
 
 class TestSanityCheck:

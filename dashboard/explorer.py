@@ -17,9 +17,11 @@ from plotly.subplots import make_subplots
 
 from dashboard.explorer_data import (
     compare_raw_vs_processed,
+    compute_pca,
     compute_signal_stats,
     detect_gaps,
     flag_anomalies,
+    load_composite_zscore_matrix,
     load_raw_cache_series,
     load_signal_detail,
     load_signal_overview,
@@ -314,6 +316,28 @@ def get_layout() -> html.Div:
                                 className="text-muted d-block mb-2",
                             ),
                             html.Div(id="exp-raw-content"),
+                        ], className="pt-2"),
+                    ]),
+
+                    dbc.Tab(label="📊 Composite Analysis", tab_id="exp-tab-analysis", children=[
+                        html.Div([
+                            html.Small(
+                                "Pearson correlation matrix and PCA for the 17 composite "
+                                "regime signals (9 growth + 8 inflation). "
+                                "Computed on monthly Z-score history. "
+                                "Highly correlated signals (|r| > 0.8) may warrant weight review.",
+                                className="text-muted d-block mb-2",
+                            ),
+                            dcc.Graph(
+                                id="exp-corr-chart",
+                                config={"displayModeBar": True},
+                                style={"height": "52vh"},
+                            ),
+                            dcc.Graph(
+                                id="exp-pca-chart",
+                                config={"displayModeBar": True},
+                                style={"height": "32vh"},
+                            ),
                         ], className="pt-2"),
                     ]),
                 ]),
@@ -768,6 +792,9 @@ def register_callbacks(app: dash.Dash) -> None:
             style={"color": color, "fontFamily": "monospace"},
         )
 
+    # 9. Composite Analysis (A2/I2)
+    _register_analysis_callbacks(app)
+
 
 def _meta_item(label: str, value: str) -> dbc.ListGroupItem:
     return dbc.ListGroupItem(
@@ -775,3 +802,126 @@ def _meta_item(label: str, value: str) -> dbc.ListGroupItem:
         style={"backgroundColor": "transparent", "border": "none",
                "borderBottom": "1px solid var(--border-color)", "padding": "3px 0"},
     )
+
+
+# ── A2/I2: Composite Analysis callbacks ───────────────────────────────────────
+
+def _register_analysis_callbacks(app: dash.Dash) -> None:
+    import numpy as np
+    from plotly.subplots import make_subplots
+
+    _FORCE_BORDER = {"growth": "#4C9BE8", "inflation": "#E8734C"}
+
+    @app.callback(
+        [Output("exp-corr-chart", "figure"),
+         Output("exp-pca-chart",  "figure")],
+        [Input("exp-detail-tabs", "active_tab"),
+         Input("theme-store",     "data")],
+        prevent_initial_call=False,
+    )
+    def update_composite_analysis(active_tab: str, theme_name: str):
+        _empty = go.Figure()
+        _empty.update_layout(**figure_layout(theme_name or DEFAULT_THEME))
+        if active_tab != "exp-tab-analysis":
+            return _empty, _empty
+
+        matrix, signal_meta = load_composite_zscore_matrix()
+        if matrix.empty:
+            _empty.update_layout(**figure_layout(theme_name or DEFAULT_THEME, "No data"))
+            return _empty, _empty
+
+        short_labels  = [m["label"]  for m in signal_meta]
+        forces        = [m["force"]  for m in signal_meta]
+        border_colors = [_FORCE_BORDER.get(f, "#888") for f in forces]
+
+        # ── Correlation heatmap ───────────────────────────────────────────────
+        filled = matrix.fillna(matrix.mean())
+        corr   = filled.corr().values
+
+        corr_fig = go.Figure(go.Heatmap(
+            z=corr,
+            x=short_labels,
+            y=short_labels,
+            colorscale="RdBu_r",
+            zmid=0, zmin=-1, zmax=1,
+            text=[[f"{v:.2f}" for v in row] for row in corr],
+            texttemplate="%{text}",
+            textfont={"size": 8},
+            hovertemplate="%{y} × %{x}: %{z:.2f}<extra></extra>",
+            colorbar={"len": 0.9, "thickness": 12},
+        ))
+        # Divider line between growth (9) and inflation (8) signals
+        n_growth = sum(1 for m in signal_meta if m["force"] == "growth")
+        corr_fig.add_shape(type="line",
+            x0=n_growth - 0.5, x1=n_growth - 0.5, y0=-0.5, y1=len(signal_meta) - 0.5,
+            line={"color": "#ffffff", "width": 1.5, "dash": "dot"},
+        )
+        corr_fig.add_shape(type="line",
+            x0=-0.5, x1=len(signal_meta) - 0.5, y0=n_growth - 0.5, y1=n_growth - 0.5,
+            line={"color": "#ffffff", "width": 1.5, "dash": "dot"},
+        )
+        corr_fig.update_layout(
+            **figure_layout(theme_name or DEFAULT_THEME,
+                            f"Composite Signal Correlation Matrix  ·  {len(matrix)} months"),
+            height=520,
+            margin={"l": 130, "r": 80, "t": 50, "b": 120},
+        )
+
+        # ── PCA ───────────────────────────────────────────────────────────────
+        pca = compute_pca(matrix)
+        var_r   = pca["explained_variance_ratio"]
+        loadings = pca["loadings"]
+        n_obs   = pca["n_obs"]
+        n_show  = min(10, len(var_r))
+
+        pca_fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=[
+                "Explained Variance by PC",
+                "PC1 & PC2 Loadings per Signal",
+            ],
+            column_widths=[0.30, 0.70],
+        )
+
+        # Scree bar + cumulative line
+        pca_fig.add_trace(go.Bar(
+            x=[f"PC{i+1}" for i in range(n_show)],
+            y=var_r[:n_show] * 100,
+            marker_color="#4C9BE8",
+            showlegend=False,
+            hovertemplate="PC%{x}: %{y:.1f}%<extra></extra>",
+        ), row=1, col=1)
+        pca_fig.add_trace(go.Scatter(
+            x=[f"PC{i+1}" for i in range(n_show)],
+            y=np.cumsum(var_r[:n_show]) * 100,
+            mode="lines+markers",
+            line={"color": "#E8734C", "width": 1.5},
+            marker={"size": 5},
+            name="Cumulative",
+            hovertemplate="Cumulative: %{y:.1f}%<extra></extra>",
+        ), row=1, col=1)
+        pca_fig.update_yaxes(title_text="% variance", range=[0, 110], row=1, col=1)
+
+        # Loadings heatmap (PC1 + PC2 × all 17 signals)
+        pca_fig.add_trace(go.Heatmap(
+            z=loadings[:2],
+            x=short_labels,
+            y=["PC1", "PC2"],
+            colorscale="RdBu_r",
+            zmid=0,
+            text=[[f"{v:.2f}" for v in row] for row in loadings[:2]],
+            texttemplate="%{text}",
+            textfont={"size": 8},
+            hovertemplate="%{y} · %{x}: %{z:.2f}<extra></extra>",
+            showscale=False,
+        ), row=1, col=2)
+
+        pca_fig.update_layout(
+            **figure_layout(theme_name or DEFAULT_THEME,
+                            f"PCA  ·  {n_obs} observations  ·  "
+                            f"PC1+PC2 = {(var_r[0]+var_r[1])*100:.1f}% variance"),
+            height=320,
+            margin={"l": 55, "r": 20, "t": 50, "b": 90},
+        )
+
+        return corr_fig, pca_fig

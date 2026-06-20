@@ -11,16 +11,16 @@
 | ID | Area | Feedback Item | Action | Effort | Status | Notes |
 |---|---|---|---|---|---|---|
 | A1 | Signal selection | Add a small subset from Policy / Credit / External lenses as leading inputs to the regime composite | Evaluate top 2–3 candidates (e.g. Fed funds spread, credit growth momentum, trade balance trend); add to composites.yaml | Medium | ⬜ Deferred | Phase 2+ — need cross-country generalisation first |
-| A2 | Signal selection | Run correlation matrix + PCA before finalising the 16-signal composite subset | Analysis task: produce heatmap and explained-variance chart in Data Explorer | Medium | 🔵 Planned | Good diagnostic before Eurozone rollout |
+| A2 | Signal selection | Run correlation matrix + PCA before finalising the 16-signal composite subset | `load_composite_zscore_matrix()` + `compute_pca()` in `explorer_data.py`; "📊 Composite Analysis" tab in Data Explorer; correlation heatmap + scree + PC1/PC2 loadings heatmap | Medium | ✅ Done | `:8502 → Data Explorer → Composite Analysis`; 10 new tests |
 | A3 | Signal selection | Apply temporal weighting to annual-frequency lens signals (WB/IMF) to reflect lower timeliness | Build into forward-fill policy or per-signal weight multiplier | Medium | 🔵 Planned | Closely related to F1/L1 (decay); now partly covered by L1 |
-| B1 | Transformation | Verify calendar-adjusted N for weekly/daily `pct_change` (52 weeks, 252 trading days) | Audit `apply_transformation()` against each series frequency | Low | 🟡 In progress | Likely already correct; needs explicit test |
+| B1 | Transformation | Verify calendar-adjusted N for weekly/daily `pct_change` (52 weeks, 252 trading days) | All 5 frequencies confirmed correct; 14 new tests cover D/W/M/Q/A YoY periods and momentum windows | Low | ✅ Done | `test_transform.py`; all constants verified |
 | B2 | Transformation | Add short moving-average (e.g. 3-month) before YoY differencing for noisy series | Optional smoothing step in `transform.py`; config-gated per signal | Medium | ⬜ Deferred | Risk of masking genuine turning points; evaluate per series |
 | B3 | Transformation | ADF stationarity test on long-run debt / structural ratio series | Add one-time diagnostic script; log findings in decisions/ | Low | 🔵 Planned | Affects debt stress components most |
 | C1 | Z-score | Winsorise at ±4σ before computing Z-score | Z-score capped at ±4 after computing — simpler and always bounded | Low | ✅ Done | `_zscore_series()` clips Z at ±4σ; all 269 tests pass |
 | C2 | Z-score | Robust statistics option: median + MAD instead of mean + SD for heavy-tailed series | Add `robust=True` mode to `_zscore_series()`; config-gated per signal | Low | ⬜ Deferred | Evaluate after winsorisation is in place |
 | C3 | Z-score | Dynamic scaling: track rolling 24-month σ; if volatility spikes, scale Z accordingly | Add rolling-vol normalisation layer post Z-score | High | ⬜ Deferred | Adds complexity; revisit after Phase 3 back-test |
 | C4 | Z-score | Expanding-window Z-scores for back-testing (no look-ahead bias) | Phase 3 back-test mode; already planned in methodology.md | High | ⬜ Deferred | Phase 3 work item |
-| D1 | Momentum | Percentile-rank the momentum value to normalise across series with different volatilities | Add `momentum_percentile` field alongside existing `change_3m` | Low | 🔵 Planned | Useful for Confidence Score refinement |
+| D1 | Momentum | Percentile-rank the momentum value to normalise across series with different volatilities | `momentum_percentile DOUBLE` in Signal + DB; `_percentile_series(c3m_valid)` in `build_signals()`; 5 tests | Low | ✅ Done | `normalize.py`, `models.py`, `store.py`; 319 tests pass |
 | D2 | Momentum | Dynamic window weighting (shorter windows more relevant in volatile regimes) | Research task; implement as regime-conditional weight on 1m/3m/12m | High | ⬜ Deferred | Phase 3 — requires regime labels to define dynamism |
 | E1 | Direction flag | Replace `1e-9` threshold with a variance-based significance test (e.g. 95% confidence that 3m change ≠ 0) | `_direction(change_3m, series_std)` — threshold = 10% of series σ | Low | ✅ Done | `normalize.py`; series_std computed in `build_signals()` and passed through |
 | E2 | Direction flag | Add strong / moderate / weak qualifier based on change magnitude vs. σ | Extend direction field to include magnitude tier | Low | ⬜ Deferred | Dashboard impact large; design UI first |
@@ -31,7 +31,7 @@
 | H1 | Inflation composite | Merge 5Y + 10Y TIPS breakevenss into single `breakeven_avg` signal OR reduce each to 0.5 weight | Reduced each to weight 0.5 in `composites.yaml` | Low | ✅ Done | YAML-only; combined contribution unchanged at 1.0 |
 | H2 | Inflation composite | Apply 7-day SMA to daily crude oil before monthly aggregation | `pre_smooth_window: 7` in `us_bindings.yaml`; `CountryBinding.pre_smooth_window` field; applied in pipeline Pass 1 | Low | ✅ Done | `models.py`, `us_bindings.yaml`, `pipeline.py` |
 | I1 | Composite construction | OLS-based weight calibration against macro outcomes (incremental explanatory power) | Research task; regression of composite vs. actual GDP / CPI; adjust weights modestly (±20%) | High | ⬜ Deferred | Risk of overfitting; Phase 3 — do after expanding-window Z-scores |
-| I2 | Composite construction | PCA orthogonalisation as diagnostic for signal independence | Analysis task: run PCA on 9 growth signals and 8 inflation signals | Low | 🔵 Planned | Good companion to A2; no code change needed |
+| I2 | Composite construction | PCA orthogonalisation as diagnostic for signal independence | Covered by A2 implementation — same PCA panel shows growth and inflation signal loadings together | Low | ✅ Done | See A2 — combined in Composite Analysis tab |
 | J1 | Staleness — **debt stress only** | Exponential weight decay for stale components | Implemented in `indicators/longterm_stress.py` | — | ✅ Done (debt stress) | true half-life=4q, min_frac=0.20 — **NOT applied to regime composite** |
 | J2 | Staleness — **debt stress only** | Carry-forward cap | Implemented in all builder functions | — | ✅ Done (debt stress) | max_carry_quarters=4 — **NOT applied to regime composite** |
 | J3 | Staleness — **debt stress only** | Model-based extrapolation gate | Implemented; `enabled: false` by default | — | ✅ Done (debt stress) | rolling_mean or linear_trend — **NOT applied to regime composite** |
@@ -102,9 +102,10 @@ Items recommended for the next working session, roughly in order:
 | — | L2 | Per-frequency carry cap | ✅ Done this session | ✅ |
 | — | L3 | Per-signal stale tracking in CompositeSnapshot | ✅ Done this session | ✅ |
 | — | L4 | Dashboard stale-lag badges in Regime History component table | ✅ Done this session | ✅ |
-| 1 | A2 / I2 | Correlation matrix + PCA on composite signals | Analysis; informs further weight tuning | 🔵 Planned |
-| 2 | D1 | Percentile-rank momentum value | Normalises change_3m across series with different volatilities | 🔵 Planned |
-| 3 | B1 | Audit calendar-adjusted N in transformation | Quick verification; add test | 🟡 In progress |
+| — | A2/I2 | Correlation matrix + PCA | ✅ Done this session | ✅ |
+| — | D1 | Percentile-rank momentum | ✅ Done this session | ✅ |
+| — | B1 | Audit calendar N | ✅ Done this session | ✅ |
+| 1 | Phase 2 | Eurozone rollout | First non-US country binding | ⬜ Pending |
 
 ---
 

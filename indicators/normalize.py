@@ -106,6 +106,12 @@ def build_signals(
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
     series_std = float(clean.std(ddof=1)) if n > 1 else None
 
+    # D1: percentile-rank change_3m within its own valid history
+    c3m_pcts = pd.Series(np.nan, index=c3m.index)
+    _c3m_valid = c3m.dropna()
+    if not _c3m_valid.empty:
+        c3m_pcts.loc[_c3m_valid.index] = _percentile_series(_c3m_valid).values
+
     country_namespace = binding.country.lower()
     signal_id = f"{country_namespace}.{binding.id}"
     source_label = (
@@ -148,6 +154,7 @@ def build_signals(
                 change_1m=_f(c1m.iloc[i]),
                 change_3m=c3m_float,
                 change_12m=_f(c12m.iloc[i]),
+                momentum_percentile=_f(c3m_pcts.iloc[i]),
                 direction=_direction(c3m_float, series_std),
                 equilibrium_estimate=binding.equilibrium,
                 distance_from_equilibrium=dist,

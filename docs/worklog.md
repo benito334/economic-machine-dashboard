@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-19 — D1, B1, A2/I2 (momentum percentile, period audit, composite PCA)
+
+**D1** (momentum percentile): `momentum_percentile DOUBLE` added to `Signal` model and DB. In `build_signals()`, `_percentile_series()` is applied to the valid `change_3m` slice — rank of current 3-month change within its own full history. Aligns momentum comparisons across high/low-volatility series. 5 new tests.
+
+**B1** (calendar-adjusted N audit): All 5 frequencies audited. `_YOY_PERIODS` and `_MOMENTUM_PERIODS` constants are correct: D=252/21/63/252, W=52/4/13/52, M=12/1/3/12, Q=4/1/1/4, A=1/1/1/1. 14 new explicit tests covering all frequency × period combinations including weekly and annual YoY.
+
+**A2/I2** (composite correlation + PCA): New "📊 Composite Analysis" subtab added to the Data Explorer right panel. `load_composite_zscore_matrix()` + `compute_pca()` added to `explorer_data.py`. Shows: (1) 17×17 Pearson correlation heatmap of composite signal Z-scores with a growth/inflation divider line; (2) Scree plot + PC1/PC2 loadings heatmap. 10 new tests. Container rebuilt.
+
+Pipeline re-run: 59 signals updated with `momentum_percentile`. 319/319 tests pass.
+Next: Phase 2 Eurozone rollout (user sign-off after BEA refresh on 2026-06-26).
+
 ## 2026-06-19 — Regime History tab UX improvements (momentum display, table rollup, chart subplots)
 
 Three improvements to the Dash :8502 Regime History tab:

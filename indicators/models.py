@@ -46,6 +46,7 @@ class Signal(BaseModel):
     change_1m: Optional[float] = None  # absolute change over ~1 month
     change_3m: Optional[float] = None
     change_12m: Optional[float] = None
+    momentum_percentile: Optional[float] = None  # D1: rank of change_3m within full change_3m history (0–1)
     direction: Optional[str] = None  # rising | falling | flat
     equilibrium_estimate: Optional[float] = None
     distance_from_equilibrium: Optional[float] = None

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS signals (
     change_1m       DOUBLE,
     change_3m       DOUBLE,
     change_12m      DOUBLE,
+    momentum_percentile DOUBLE,
     direction       VARCHAR,
     equilibrium_estimate       DOUBLE,
     distance_from_equilibrium  DOUBLE,
@@ -47,7 +48,7 @@ CREATE TABLE IF NOT EXISTS signals (
 _SIGNAL_COLUMNS = [
     "id", "country", "force", "lead_lag", "as_of", "value", "units",
     "level_percentile", "zscore", "change_1m", "change_3m", "change_12m",
-    "direction", "equilibrium_estimate", "distance_from_equilibrium",
+    "momentum_percentile", "direction", "equilibrium_estimate", "distance_from_equilibrium",
     "surprise", "is_constructed", "is_proxy", "is_stale", "low_history",
     "provider", "source_tier", "vintage_available", "linkage", "source",
     "ingested_at",
@@ -81,6 +82,9 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     )
     conn.execute(
         "ALTER TABLE composites ADD COLUMN IF NOT EXISTS inflation_momentum DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE signals ADD COLUMN IF NOT EXISTS momentum_percentile DOUBLE"
     )
 
 
