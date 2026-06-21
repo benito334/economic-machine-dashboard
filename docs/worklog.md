@@ -4,6 +4,29 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-21 — :8502 Dash UI restructuring + Regime Map panels
+
+**Done:**
+- **Left-sidebar navigation**: replaced tabbed layout with persistent vertical pill nav. Two groups — *Data* (Chart Overlay, Data Explorer) and *Indicators* (Yield Curve, Regime Map, Regime History, Debt Stress). Series selector moved inside Chart Overlay.
+- **Browser back button**: `dcc.Location(id="url", refresh=False)` + `dbc.NavLink` hrefs push to browser history; `page-trigger` store guarantees downstream callbacks fire after DOM is updated.
+- **Regime Map scatter zoom**: quadrant backgrounds widened to ±100 (always fill viewport); initial axis range now computed from actual data with 15% buffer; `uirevision="scatter-map"` preserves user zoom across step changes.
+- **Below-map panels on :8502 Regime Map page** (ported from :8501):
+  - *What Changed* — top-8 Z-score movers (leading/coincident only), Δ vs prior reading
+  - *Cross-Signal Conflicts* — leading vs lagging/coincident direction gap > 40%; PMI vs Payrolls check
+  - *Geopolitical-Risk Overlay* — static deferred placeholder (WGI G-03)
+  - *Signal Drill-Downs* — collapsible `dbc.Accordion` for all 10 lens groups (A–I + Master); each panel shows indicator table with value, direction, percentile badge, Z-score, quality flags, causal-linkage tooltip
+  - *Data-Quality Log* — collapsed by default; `dash_table.DataTable` of stale/proxy/low-history/no-vintage signals
+- **Fixed chart height clipping bug**: removed hardcoded `height=` from regime history and debt stress figures; set `responsive=True` on `dcc.Graph` components with `calc(100vh - Xpx)` CSS heights; fixed double `margin=` keyword argument error in `update_layout` calls.
+- **Lens table rendering fix**: replaced `dcc.Markdown(dangerously_allow_html=True)` (unreliable for complex HTML in Dash 4.2) with proper `html.Table` / `html.Tr` / `html.Td` Dash components; accordion `title` props changed to plain strings.
+- `dashboard/charting_data.py`: added `load_latest_signals`, `load_change_feed`, `load_all_signal_histories`.
+- All services rebuild cleanly; :8502 HTTP 200; no callback errors in logs.
+
+**Next session:** Continue :8502 UI improvements. Consider migrating remaining :8501 content (methodology guide, footnotes). Phase 2 Eurozone rollout remains queued.
+
+**Blockers:** BEA refresh still pending (run `python3 -m indicators.pipeline --latest` after 2026-06-26).
+
+---
+
 ## 2026-06-20 — Post-Phase-1H code review remediation
 
 - Fixed Regime History carry-age badges: `stale_signals` point-in-time metadata now marks forward-filled components as `STALE · Nm` even when the source observation's ingestion-time stale flag is false

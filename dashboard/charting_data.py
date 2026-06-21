@@ -397,3 +397,77 @@ def load_debt_stress_history(
 
     df["as_of"] = pd.to_datetime(df["as_of"])
     return df
+
+
+# ── Signal overview helpers (for Regime Map panels) ───────────────────────────
+
+def load_latest_signals(country: str = "US") -> pd.DataFrame:
+    """Return the most-recent observation for every signal of a country."""
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            """
+            SELECT *
+            FROM signals
+            WHERE country = ?
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1
+            ORDER BY force, id
+            """,
+            [country],
+        ).df()
+    finally:
+        con.close()
+    return df
+
+
+def load_change_feed(country: str = "US") -> pd.DataFrame:
+    """Return leading/coincident signals sorted by absolute Z-score change (last 120 days)."""
+    import datetime
+    cutoff = (datetime.date.today() - datetime.timedelta(days=120)).isoformat()
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            """
+            WITH ranked AS (
+                SELECT id, force, lead_lag, as_of, value, zscore, direction,
+                       ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) AS rn
+                FROM signals
+                WHERE country = ? AND as_of >= ?
+            ),
+            latest AS (SELECT * FROM ranked WHERE rn = 1),
+            prior  AS (SELECT * FROM ranked WHERE rn = 2)
+            SELECT
+                l.id, l.force, l.lead_lag, l.as_of, l.value, l.zscore, l.direction,
+                p.zscore  AS prior_zscore,
+                p.as_of   AS prior_as_of,
+                ABS(l.zscore - COALESCE(p.zscore, l.zscore)) AS zscore_delta
+            FROM latest l
+            LEFT JOIN prior p ON l.id = p.id
+            WHERE l.lead_lag IN ('leading', 'coincident')
+            ORDER BY zscore_delta DESC
+            """,
+            [country, cutoff],
+        ).df()
+    finally:
+        con.close()
+    return df
+
+
+def load_all_signal_histories(country: str = "US", n_months: int = 36) -> pd.DataFrame:
+    """Bulk-load value history for all signals (used for sparkline generation)."""
+    import datetime
+    cutoff = (datetime.date.today() - datetime.timedelta(days=n_months * 31)).isoformat()
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            """
+            SELECT id, as_of, value
+            FROM signals
+            WHERE country = ? AND as_of >= ?
+            ORDER BY id, as_of
+            """,
+            [country, cutoff],
+        ).df()
+    finally:
+        con.close()
+    return df

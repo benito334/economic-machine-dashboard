@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-20:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **319 tests pass.** Methodology feedback tracker items H1/H2/G1/C1/E1/F1–L4, D1, B1, A2/I2 all implemented.
+**As of 2026-06-21:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **319 tests pass.** :8502 Dash UI restructured with left-sidebar navigation and full Regime Map panel set.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -93,15 +93,21 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
 | 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 225 tests pass |
-| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; Chart Overlay + Yield Curve + Regime History + 📉 Debt Stress + 🔬 Data Explorer tabs |
+| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; left-sidebar nav (Data / Indicators groups); Chart Overlay, Yield Curve, Regime Map, Regime History, Debt Stress, Data Explorer |
 | 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
 | 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
 | 1G Methodology improvements | ✅ **Done** | C1 (±4σ cap), E1 (variance direction), G1 (labour weights), H1/H2 (breakeven/oil), L1–L4 (regime staleness decay + carry caps + stale-lag badges), D1 (momentum percentile), B1 (period audit), A2/I2 (composite PCA); 319 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
-| 2 Country rollout | ⬜ **Next** | Eurozone first — unblocked |
+| 1I :8502 UI consolidation | 🔄 **In progress** | Left-sidebar nav done; Regime Map panels done; methodology guide + remaining :8501 content pending |
+| 2 Country rollout | ⬜ Queued | Eurozone first — unblocked |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Eurozone rollout. Start with `config/countries/eu_bindings.yaml`. Verify all series IDs before ingesting. Set `vintage_available: false` for all Eurozone series. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data.
+**To start the next session:** Continue :8502 UI work per user direction. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
+
+**:8502 Dash nav structure (as of 2026-06-21):**
+- Left sidebar: persistent vertical pill nav — Data group (Chart Overlay `/charts`, Data Explorer `/explorer`) + Indicators group (Yield Curve `/yield-curve`, Regime Map `/regime-map`, Regime History `/regime-history`, Debt Stress `/debt-stress`)
+- Regime Map page: scatter (55vh, data-driven zoom with 15% buffer) + What Changed + Conflicts + Signal Drill-Downs (10 lens accordions) + Data-Quality Log
+- Browser back/forward supported via `dcc.Location`; `page-trigger` store guarantees callback ordering
 
 ---
 

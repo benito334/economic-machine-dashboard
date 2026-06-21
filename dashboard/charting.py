@@ -22,15 +22,18 @@ import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, State, callback, dash_table, dcc, html
 from plotly.subplots import make_subplots
 
 from dashboard.charting_data import (
     available_dates_for_yield_curve,
+    load_all_signal_histories,
+    load_change_feed,
     load_composite_component_status,
     load_composite_history,
     load_debt_stress_component_dates,
     load_debt_stress_history,
+    load_latest_signals,
     load_series_catalog,
     load_signal_history,
     load_yield_curve_term_structure,
@@ -70,6 +73,348 @@ _QUADRANT_COLOR = {
     "Stagflation": "#E8734C",
     "Disinflationary Slowdown": "#4C9BE8",
 }
+
+
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha:.2f})"
+
+
+# ── Regime Map panel helpers (What Changed / Conflicts / Lens Drill-Downs) ────
+
+import math as _math
+
+_DIR_ARROW = {"rising": "↑", "falling": "↓", "flat": "→"}
+
+_LENS_GROUPS: list[tuple[str, list[str]]] = [
+    ("Nominal Spending Master Indicators", ["master"]),
+    ("A · Growth Force",                   ["growth"]),
+    ("B · Inflation Force",                ["inflation"]),
+    ("C · Monetary Policy & Rates",        ["policy"]),
+    ("D · Credit, Debt & Fiscal",          ["credit", "fiscal"]),
+    ("E · Risk Premiums",                  ["premium"]),
+    ("F · External & Trade",               ["external"]),
+    ("G · Capital Flows & Currency",       ["capital", "currency"]),
+    ("H · Governance & Political Risk",    ["governance"]),
+    ("I · Demographics & Structural",      ["demographics"]),
+]
+
+_LENS_ABOUT: dict[str, str] = {
+    "Nominal Spending Master Indicators": (
+        "Top-level view of nominal economic activity. GDP (real, nominal, deflator) and "
+        "derived spreads that summarise the pace of money flowing through the economy. "
+        "These are lagging — they confirm what already happened."
+    ),
+    "A · Growth Force": (
+        "Real economic output and labour-market strength. The Growth Score composite "
+        "is an equal-weight mean Z-score across 9 of these signals "
+        "(Unemployment is inverted — lower unemployment = stronger growth). "
+        "A positive score means the economy is running above its long-run average."
+    ),
+    "B · Inflation Force": (
+        "Price pressures across consumers, producers, and financial markets. The Inflation Score "
+        "uses full weight for core measures (PCE, CPI, Wages, Breakevens) and half weight "
+        "for commodity/headline items (Crude Oil, Headline CPI) to reduce short-term noise."
+    ),
+    "C · Monetary Policy & Rates": (
+        "The price and quantity of money set by the Federal Reserve. "
+        "Fed Funds and real yields tell you how tight or loose policy is; "
+        "the balance sheet reflects QE/QT."
+    ),
+    "D · Credit, Debt & Fiscal": (
+        "Leverage, debt sustainability, and the government's fiscal position. "
+        "High debt/GDP or a widening deficit increases fragility; "
+        "tightening lending standards are a leading warning of credit stress."
+    ),
+    "E · Risk Premiums": (
+        "The extra return investors demand for holding risky or longer-duration assets. "
+        "The yield curve (10Y−2Y, 10Y−3M) is a leading recession indicator — inversion has "
+        "preceded every US recession since 1970."
+    ),
+    "F · External & Trade": (
+        "How the economy relates to the rest of the world via trade flows. "
+        "The current account deficit means the US imports more than it exports and must "
+        "attract foreign capital to balance."
+    ),
+    "G · Capital Flows & Currency": (
+        "Cross-border investment and the value of the dollar. "
+        "FDI inflows signal long-term foreign confidence; the Real Effective Exchange Rate (REER) "
+        "shows competitiveness."
+    ),
+    "H · Governance & Political Risk": (
+        "Institutional quality, rule of law, and political stability (World Bank WGI scores). "
+        "These structural indicators move slowly but matter for long-run capital allocation. "
+        "Deferred — WB API unavailable."
+    ),
+    "I · Demographics & Structural": (
+        "Slow-moving forces that set the economy's long-run speed limit: population growth, "
+        "urbanisation, labour force participation, and age dependency."
+    ),
+}
+
+
+def _concept_label(signal_id: str) -> str:
+    parts = signal_id.split(".")
+    concept = parts[-1] if len(parts) >= 3 else signal_id
+    return concept.replace("_", " ").title()
+
+
+def _zscore_color(z: Any) -> str:
+    if z is None or (isinstance(z, float) and _math.isnan(z)):
+        return "#888"
+    z = float(z)
+    if z > 2:  return "#ff6666"
+    if z > 1:  return "#ffaa66"
+    if z < -2: return "#6699ff"
+    if z < -1: return "#88bbff"
+    return "#cccccc"
+
+
+def _fmt_value(val: Any, units: str) -> str:
+    if val is None or (isinstance(val, float) and _math.isnan(val)):
+        return "—"
+    if units in ("yoy_pct", "yoy_pct_spread"):
+        return f"{val*100:+.2f}%"
+    if units in (
+        "pct_level", "pct_gdp", "pct_pot_gdp",
+        "pct_working_age", "pct_pop_15plus", "pct_annual",
+        "pct_total_pop", "net_pct",
+    ):
+        return f"{val:.2f}%"
+    if units in ("diffusion_index", "index", "index_2020eq100", "index_2010eq100"):
+        return f"{val:.1f}"
+    if units == "ratio":
+        return f"{val:.3f}"
+    if units == "thousands":
+        return f"{val/1000:.1f}M" if abs(val) >= 1000 else f"{val:.0f}k"
+    if units == "millions_usd":
+        if abs(val) >= 1_000_000:
+            return f"${val/1_000_000:.2f}T"
+        if abs(val) >= 1_000:
+            return f"${val/1_000:.1f}B"
+        return f"${val:.0f}M"
+    return f"{val:.4g}"
+
+
+def _pct_badge_html(pct: Any, low_history: bool = False) -> str:
+    if pct is None or (isinstance(pct, float) and _math.isnan(pct)):
+        return '<span style="background:#3a3a3a;color:#888;padding:2px 5px;border-radius:3px;font-size:0.75em;">—</span>'
+    if low_history:
+        bg, title = "#555", ' title="low-history"'
+    elif pct > 0.85:
+        bg, title = "#9b1c1c", ""
+    elif pct > 0.70:
+        bg, title = "#c05a00", ""
+    elif pct < 0.15:
+        bg, title = "#1a3a6e", ""
+    elif pct < 0.30:
+        bg, title = "#2155a0", ""
+    else:
+        bg, title = "#444", ""
+    return (
+        f'<span{title} style="background:{bg};color:#eee;padding:2px 5px;'
+        f'border-radius:3px;font-size:0.75em;font-family:monospace;">'
+        f"{pct:.0%}</span>"
+    )
+
+
+def _quality_badges_html(row: "pd.Series") -> str:
+    parts: list[str] = []
+    if row.get("is_proxy"):
+        parts.append(
+            '<span title="proxy" style="background:#5a5a5a;color:#ddd;padding:1px 4px;'
+            'border-radius:3px;font-size:0.7em;">proxy</span>'
+        )
+    if row.get("is_stale"):
+        parts.append(
+            '<span title="stale" style="background:#7a4a00;color:#ffcc80;padding:1px 4px;'
+            'border-radius:3px;font-size:0.7em;">stale</span>'
+        )
+    if not row.get("vintage_available", True):
+        parts.append(
+            '<span title="no point-in-time vintage" style="background:#383838;color:#aaa;padding:1px 4px;'
+            'border-radius:3px;font-size:0.7em;">no&nbsp;vintage</span>'
+        )
+    if row.get("low_history"):
+        parts.append(
+            '<span title="low history" style="background:#4a5a5a;color:#cdd;padding:1px 4px;'
+            'border-radius:3px;font-size:0.7em;">low&nbsp;hist</span>'
+        )
+    return "&nbsp;".join(parts)
+
+
+def _sparkline_svg_str(values: list, width: int = 72, height: int = 18) -> str:
+    vals = [v for v in values if v is not None and not (isinstance(v, float) and _math.isnan(v))]
+    if len(vals) < 2:
+        return f'<svg width="{width}" height="{height}"></svg>'
+    mn, mx = min(vals), max(vals)
+    rng = mx - mn or 1.0
+    step = width / (len(vals) - 1)
+    pts = [f"{i*step:.1f},{height - (v - mn)/rng*(height-4) - 2:.1f}" for i, v in enumerate(vals)]
+    return (
+        f'<svg width="{width}" height="{height}" style="vertical-align:middle;">'
+        f'<path d="M{" L".join(pts)}" fill="none" stroke="#5590cc" stroke-width="1.5"/>'
+        f"</svg>"
+    )
+
+
+def _build_lens_table(lens_signals: "pd.DataFrame", histories_by_id: dict) -> html.Div:
+    """Build a lens signal table as Dash html components (no raw HTML strings)."""
+    if lens_signals.empty:
+        return html.Div("No data for this lens.", style={"color": "#666", "fontSize": "0.85em", "padding": "8px"})
+
+    _ll_color = {
+        "leading": "#aaffaa", "coincident": "#aaaaff",
+        "lagging": "#ffaaaa", "structural": "#ddddaa",
+    }
+
+    def _pct_badge(pct: Any, low_history: bool) -> html.Span:
+        if pct is None or (isinstance(pct, float) and _math.isnan(pct)):
+            bg = "#3a3a3a"; txt = "—"
+        elif low_history:
+            bg = "#555"; txt = f"{pct:.0%}"
+        elif pct > 0.85:
+            bg = "#9b1c1c"; txt = f"{pct:.0%}"
+        elif pct > 0.70:
+            bg = "#c05a00"; txt = f"{pct:.0%}"
+        elif pct < 0.15:
+            bg = "#1a3a6e"; txt = f"{pct:.0%}"
+        elif pct < 0.30:
+            bg = "#2155a0"; txt = f"{pct:.0%}"
+        else:
+            bg = "#444"; txt = f"{pct:.0%}"
+        return html.Span(txt, style={
+            "background": bg, "color": "#eee", "padding": "2px 5px",
+            "borderRadius": "3px", "fontSize": "0.75em", "fontFamily": "monospace",
+        })
+
+    def _quality_badges(row: Any) -> list:
+        parts = []
+        _bs = lambda txt, bg, fg="#ddd", title="": html.Span(txt, title=title, style={
+            "background": bg, "color": fg, "padding": "1px 4px",
+            "borderRadius": "3px", "fontSize": "0.7em", "marginRight": "3px",
+        })
+        if row.get("is_proxy"):
+            parts.append(_bs("proxy", "#5a5a5a", title="proxy series"))
+        if row.get("is_stale"):
+            parts.append(_bs("stale", "#7a4a00", fg="#ffcc80", title="not updated within release window"))
+        if not row.get("vintage_available", True):
+            parts.append(_bs("no vintage", "#383838", fg="#aaa", title="latest-revised only"))
+        if row.get("low_history"):
+            parts.append(_bs("low hist", "#4a5a5a", fg="#cdd", title="<15 observations"))
+        return parts
+
+    header_row = html.Tr([
+        html.Th("Indicator",                    style={"padding": "4px 8px", "color": "#666", "fontSize": "0.78em", "fontWeight": "600", "borderBottom": "1px solid #333"}),
+        html.Th("Value",   style={"padding": "4px 8px", "textAlign": "right", "color": "#666", "fontSize": "0.78em", "fontWeight": "600", "borderBottom": "1px solid #333"}),
+        html.Th("Dir",     style={"padding": "4px 8px", "textAlign": "center", "color": "#666", "fontSize": "0.78em", "fontWeight": "600", "borderBottom": "1px solid #333"}),
+        html.Th("Pct",     style={"padding": "4px 8px", "textAlign": "center", "color": "#666", "fontSize": "0.78em", "fontWeight": "600", "borderBottom": "1px solid #333"}),
+        html.Th("Z",       style={"padding": "4px 8px", "textAlign": "center", "color": "#666", "fontSize": "0.78em", "fontWeight": "600", "borderBottom": "1px solid #333"}),
+        html.Th("Quality", style={"padding": "4px 8px", "color": "#666", "fontSize": "0.78em", "fontWeight": "600", "borderBottom": "1px solid #333"}),
+    ])
+
+    data_rows = []
+    for _, row in lens_signals.iterrows():
+        sid  = str(row["id"])
+        label = _concept_label(sid)
+        linkage = str(row.get("linkage") or "")
+        val_str = _fmt_value(row.get("value"), str(row.get("units", "")))
+        arrow   = _DIR_ARROW.get(str(row.get("direction") or "flat"), "→")
+        pct     = row.get("level_percentile")
+        z       = row.get("zscore")
+        z_val   = f"{z:+.2f}" if z is not None and not (isinstance(z, float) and _math.isnan(z)) else "—"
+        z_color = _zscore_color(z)
+        ll      = str(row.get("lead_lag", ""))
+        ll_col  = _ll_color.get(ll, "#888")
+        source  = str(row.get("source", ""))
+
+        data_rows.append(html.Tr([
+            html.Td([
+                html.Span(label, title=linkage,
+                          style={"cursor": "help", "color": "#ddd", "fontWeight": "600"}),
+                html.Span(f" {ll}", style={"fontSize": "0.7em", "color": ll_col}),
+                html.Br(),
+                html.Span(source, style={"fontSize": "0.7em", "color": "#555"}),
+            ], style={"padding": "5px 8px"}),
+            html.Td(val_str, style={"padding": "5px 8px", "textAlign": "right",
+                                     "fontFamily": "monospace", "color": "#ccc"}),
+            html.Td(arrow, style={"padding": "5px 8px", "textAlign": "center", "fontSize": "1.1em"}),
+            html.Td(_pct_badge(pct, bool(row.get("low_history"))),
+                    style={"padding": "5px 8px", "textAlign": "center"}),
+            html.Td(z_val, style={"padding": "5px 8px", "textAlign": "center",
+                                   "fontFamily": "monospace", "color": z_color}),
+            html.Td(_quality_badges(row), style={"padding": "5px 8px"}),
+        ], style={"borderBottom": "1px solid #1e1e2e"}))
+
+    return html.Table(
+        [html.Thead(header_row), html.Tbody(data_rows)],
+        style={"width": "100%", "borderCollapse": "collapse", "fontSize": "0.88em"},
+    )
+
+
+def _what_changed_children(change_df: "pd.DataFrame") -> list:
+    if change_df.empty:
+        return [html.Span("No data.", style={"color": "#888", "fontSize": "0.85em"})]
+    items = []
+    for _, row in change_df.head(8).iterrows():
+        label = _concept_label(str(row["id"]))
+        z_now = float(row.get("zscore") or 0.0)
+        z_prev = float(row.get("prior_zscore") or z_now)
+        delta = z_now - z_prev
+        d_str = f"{delta:+.2f}" if not _math.isnan(delta) else "—"
+        arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
+        color = "#ff8888" if delta > 0.3 else ("#88aaff" if delta < -0.3 else "#aaa")
+        prior_date = str(row.get("prior_as_of", ""))[:7]
+        items.append(html.Div([
+            html.Span(str(row["force"]), style={"color": "#888"}),
+            html.Span(" · "),
+            html.B(label, style={"color": "#ddd"}),
+            html.Span(f" {arrow} {d_str}", style={"color": color, "fontSize": "1.1em"}),
+            html.Span(f"  Δ Z vs {prior_date}", style={"color": "#666", "fontSize": "0.78em"}),
+        ], style={"padding": "4px 0", "borderBottom": "1px solid #222", "fontSize": "0.88em"}))
+    return items
+
+
+def _conflicts_children(latest_signals: "pd.DataFrame") -> list:
+    conflicts: list[str] = []
+    for force in ["growth", "inflation"]:
+        force_sigs = latest_signals[latest_signals["force"] == force]
+        leading    = force_sigs[force_sigs["lead_lag"] == "leading"]["direction"].dropna()
+        lagging    = force_sigs[force_sigs["lead_lag"] == "lagging"]["direction"].dropna()
+        coincident = force_sigs[force_sigs["lead_lag"] == "coincident"]["direction"].dropna()
+        if leading.empty or (lagging.empty and coincident.empty):
+            continue
+        lead_rising = (leading == "rising").mean()
+        lag_ref = pd.concat([lagging, coincident])
+        lag_rising = (lag_ref == "rising").mean() if not lag_ref.empty else None
+        if lag_rising is not None:
+            gap = abs(lead_rising - lag_rising)
+            if gap > 0.4:
+                if lead_rising < 0.4 and lag_rising > 0.6:
+                    conflicts.append(
+                        f"**{force.title()}**: Leading turning down ({lead_rising:.0%}) "
+                        f"while lagging/coincident firm ({lag_rising:.0%})"
+                    )
+                elif lead_rising > 0.6 and lag_rising < 0.4:
+                    conflicts.append(
+                        f"**{force.title()}**: Leading strengthening ({lead_rising:.0%}) "
+                        f"while lagging/coincident soft ({lag_rising:.0%})"
+                    )
+    pmi = latest_signals[latest_signals["id"].str.endswith("pmi_proxy")]
+    pay = latest_signals[latest_signals["id"].str.endswith("payrolls")]
+    if not pmi.empty and not pay.empty:
+        pmi_d = pmi.iloc[0].get("direction")
+        pay_d = pay.iloc[0].get("direction")
+        if pmi_d and pay_d and pmi_d != pay_d:
+            conflicts.append(
+                f"**Leading vs Coincident**: PMI proxy {pmi_d} while Payrolls {pay_d}"
+            )
+    if conflicts:
+        return [dcc.Markdown(c, style={"fontSize": "0.88em", "marginBottom": "4px"}) for c in conflicts]
+    return [html.Span("No significant conflicts detected.",
+                      style={"color": "#888", "fontSize": "0.88em"})]
+
 
 # ── Series catalog ────────────────────────────────────────────────────────────
 
@@ -152,196 +497,249 @@ _UPCOMING_RELEASES: list[tuple[datetime.date, str]] = [
 ]
 
 
-def _sync_banner() -> dbc.Col:
-    """Return a header Col showing the next scheduled data sync date, or an overdue warning."""
+def _sync_banner() -> html.Div | None:
+    """Return a small banner showing the next data sync date, or None if nothing to show."""
     today = datetime.date.today()
     overdue = [(d, lbl) for d, lbl in _UPCOMING_RELEASES if d <= today]
     future  = [(d, lbl) for d, lbl in _UPCOMING_RELEASES if d > today]
 
     if overdue:
         _, lbl = overdue[0]
-        content = html.Span(
-            f"⚠  Update data now  ·  {lbl}",
-            style={"color": "#F4C842", "fontSize": "0.82rem", "fontWeight": "600", "whiteSpace": "nowrap"},
+        return html.Div(
+            f"⚠ Update now · {lbl}",
+            style={"fontSize": "0.72rem", "color": "#F4C842", "fontWeight": "600",
+                   "padding": "6px 12px", "lineHeight": "1.3"},
         )
-    elif future:
+    if future:
         next_date, lbl = future[0]
         days_left = (next_date - today).days
-        content = html.Span(
-            f"Next sync: {next_date.strftime('%b %d, %Y')}  ·  {lbl}  ({days_left}d)",
-            style={"color": "#888", "fontSize": "0.82rem", "whiteSpace": "nowrap"},
+        return html.Div(
+            f"Next sync: {next_date.strftime('%b %d')} · {lbl} ({days_left}d)",
+            style={"fontSize": "0.70rem", "color": "#666", "padding": "6px 12px", "lineHeight": "1.3"},
         )
-    else:
-        return dbc.Col(width=0)
-
-    return dbc.Col(content, width="auto", className="ms-3 align-self-center")
+    return None
 
 
-app.layout = dbc.Container(
-    fluid=True,
-    children=[
-        # Hidden stores and theme helpers
-        dcc.Store(id="selected-series", data=[]),
-        dcc.Store(id="date-range", data={"start": None, "end": None}),
-        dcc.Store(id="theme-store", data=DEFAULT_THEME),
-        dcc.Store(id="regime-step-index", data=0),
-        html.Div(id="theme-dummy", style={"display": "none"}),
+# ── Per-page layout functions ─────────────────────────────────────────────────
 
-        # Header
+def _left_nav() -> html.Div:
+    """Vertical nav sidebar: DATA + INDICATORS sections, theme picker at bottom."""
+    _label = lambda txt: html.Div(txt, style={
+        "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.1em",
+        "color": "var(--muted-color)", "fontWeight": "700",
+        "padding": "14px 12px 4px 12px",
+    })
+    _sync = _sync_banner()  # returns html.Div or None
+    return html.Div([
+        html.Div("Indicators Machine", style={
+            "fontSize": "0.85rem", "fontWeight": "700", "color": "var(--font-color)",
+            "padding": "14px 12px 10px 12px",
+            "borderBottom": "1px solid var(--border-color)",
+        }),
+        _label("Data"),
+        dbc.Nav([
+            dbc.NavLink("📊 Chart Overlay", href="/charts",    active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("🔬 Data Explorer", href="/explorer",  active="exact", className="py-1 px-3 small"),
+        ], vertical=True, pills=True, className="mb-1"),
+        _label("Indicators"),
+        dbc.Nav([
+            dbc.NavLink("〰 Yield Curve",   href="/yield-curve",    active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("📍 Regime Map",     href="/regime-map",     active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("📈 Regime History", href="/regime-history", active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("📉 Debt Stress",    href="/debt-stress",    active="exact", className="py-1 px-3 small"),
+        ], vertical=True, pills=True, className="mb-2"),
+        html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
+        html.Div(_theme_picker(), style={"padding": "0 8px"}),
+        html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
+        *([_sync] if _sync else []),
+    ], style={
+        "width": "195px",
+        "flexShrink": "0",
+        "minHeight": "100vh",
+        "backgroundColor": "var(--card-bg)",
+        "borderRight": "1px solid var(--border-color)",
+    })
+
+
+def _page_chart_overlay() -> html.Div:
+    presets = ["1Y", "3Y", "5Y", "10Y", "MAX"]
+    return html.Div([
         dbc.Row([
-            dbc.Col(html.H4("Indicators Machine — Charting", className="mb-0 py-2"), width="auto"),
-            _sync_banner(),
-            dbc.Col(_theme_picker(), width="auto", className="ms-auto"),
-            dbc.Col(
-                dbc.Button("← Regime Dashboard", href="http://localhost:8501",
-                           external_link=True, color="secondary", size="sm", outline=True,
-                           className="mt-1"),
-                width="auto",
-                className="ms-2",
-            ),
-        ], className="border-bottom mb-3"),
-
-        # ── Shared time controls (above tabs, apply to Overlay + Regime) ────
-        dbc.Row([
-            dbc.Col(_time_controls(), className="ps-3 pt-1"),
+            dbc.Col([
+                dbc.ButtonGroup(
+                    [dbc.Button(p, id=f"btn-{p}", color="secondary", size="sm", outline=True)
+                     for p in presets],
+                    className="me-3",
+                ),
+                html.Span("or drag the range slider", className="text-muted small align-middle"),
+            ], className="d-flex align-items-center mb-1 pt-2 pe-0", width=True),
         ]),
         dbc.Row([
             dbc.Col(
                 dcc.RangeSlider(
-                    id="range-slider",
-                    min=0, max=1, step=0.001,
-                    value=[0, 1],
-                    marks=None,
+                    id="range-slider", min=0, max=1, step=0.001, value=[0, 1], marks=None,
                     tooltip={"placement": "bottom", "always_visible": False},
-                    className="mb-2",
+                    className="mb-1",
                 ),
             ),
         ]),
-
         dbc.Row([
-            # ── Sidebar ───────────────────────────────────────────────────
-            dbc.Col(_series_selector(), width="auto", className="pe-0"),
-
-            # ── Main content ──────────────────────────────────────────────
-            dbc.Col([
-                dbc.Tabs(id="main-tabs", active_tab="tab-overlay", children=[
-
-                    dbc.Tab(label="Chart Overlay", tab_id="tab-overlay", children=[
-                        dcc.Graph(
-                            id="overlay-chart",
-                            config={"displayModeBar": True, "scrollZoom": True},
-                            style={"height": "65vh"},
-                        ),
-                    ]),
-
-                    dbc.Tab(label="Yield Curve", tab_id="tab-yield-curve", children=[
-                        html.Div([
-                            dbc.Row([
-                                dbc.Col([
-                                    html.Label("Date", className="small text-muted mb-1"),
-                                    dcc.Dropdown(
-                                        id="yc-date-picker",
-                                        options=[],  # populated on load
-                                        placeholder="Select a date…",
-                                        clearable=False,
-                                        style={"color": "#000"},
-                                    ),
-                                ], width=3),
-                                dbc.Col([
-                                    html.Label("Compare date (optional)", className="small text-muted mb-1"),
-                                    dcc.Dropdown(
-                                        id="yc-date-compare",
-                                        options=[],
-                                        placeholder="None",
-                                        clearable=True,
-                                        style={"color": "#000"},
-                                    ),
-                                ], width=3),
-                            ], className="mb-3 pt-2"),
-                            dcc.Graph(
-                                id="yield-curve-chart",
-                                config={"displayModeBar": True},
-                                style={"height": "55vh"},
-                            ),
-                        ]),
-                    ]),
-
-                    dbc.Tab(label="Regime History", tab_id="tab-regime", children=[
-                        # Navigation bar
-                        dbc.Row([
-                            dbc.Col([
-                                dbc.ButtonGroup([
-                                    dbc.Button(
-                                        "←", id="btn-regime-prev",
-                                        color="secondary", size="sm", outline=True,
-                                        title="Step back in time",
-                                    ),
-                                    dbc.Button(
-                                        "→", id="btn-regime-next",
-                                        color="secondary", size="sm", outline=True,
-                                        title="Step forward in time",
-                                    ),
-                                ], className="me-3"),
-                                html.Span(
-                                    id="regime-date-display",
-                                    className="text-muted small align-middle",
-                                ),
-                            ], className="d-flex align-items-center pt-2 pb-1"),
-                        ]),
-                        # Full-width info + component table
-                        dbc.Row([
-                            dbc.Col(
-                                dbc.Card(dbc.CardBody(
-                                    html.Div(id="regime-info-box"),
-                                    style={"padding": "16px"},
-                                )),
-                                width=12,
-                            ),
-                        ], className="pb-2"),
-                        # Full-width chart below
-                        dbc.Row([
-                            dbc.Col(
-                                dcc.Graph(
-                                    id="regime-chart",
-                                    config={"displayModeBar": True},
-                                    style={"height": "85vh"},
-                                ),
-                                width=12,
-                            ),
-                        ]),
-                    ]),
-
-                    dbc.Tab(label="📉 Debt Stress", tab_id="tab-debt-stress", children=[
-                        dbc.Row([
-                            dbc.Col(
-                                dbc.Card(dbc.CardBody(
-                                    html.Div(id="debt-stress-info-box"),
-                                    style={"padding": "16px"},
-                                )),
-                                width=12,
-                            ),
-                        ], className="pt-2"),
-                        dbc.Row([
-                            dbc.Col(
-                                dcc.Graph(
-                                    id="debt-stress-chart",
-                                    config={"displayModeBar": True},
-                                    style={"height": "65vh"},
-                                ),
-                                width=12,
-                            ),
-                        ], className="pt-2"),
-                    ]),
-
-                    dbc.Tab(label="🔬 Data Explorer", tab_id="tab-explorer", children=[
-                        _explorer.get_layout(),
-                    ]),
-                ]),
-            ]),
+            dbc.Col(
+                dcc.Graph(
+                    id="overlay-chart",
+                    config={"displayModeBar": True, "scrollZoom": True},
+                    style={"height": "76vh"},
+                ),
+            ),
+            dbc.Col(_series_selector(), width="auto", className="ps-0"),
         ]),
-    ],
-    style={"backgroundColor": "var(--page-bg)", "minHeight": "100vh"},
-)
+    ], className="pe-2 pt-1")
+
+
+def _page_explorer() -> html.Div:
+    return html.Div(_explorer.get_layout(), className="pe-2 pt-2")
+
+
+def _page_yield_curve() -> html.Div:
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                html.Label("Date", className="small text-muted mb-1"),
+                dcc.Dropdown(id="yc-date-picker", options=[], placeholder="Select a date…",
+                             clearable=False, style={"color": "#000"}),
+            ], width=3),
+            dbc.Col([
+                html.Label("Compare date (optional)", className="small text-muted mb-1"),
+                dcc.Dropdown(id="yc-date-compare", options=[], placeholder="None",
+                             clearable=True, style={"color": "#000"}),
+            ], width=3),
+        ], className="mb-3 pt-2"),
+        dcc.Graph(id="yield-curve-chart", config={"displayModeBar": True}, style={"height": "72vh"}),
+    ], className="pe-2")
+
+
+def _page_regime_map() -> html.Div:
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                dbc.ButtonGroup([
+                    dbc.Button("←",       id="btn-scatter-prev",    color="secondary", size="sm", outline=True, title="Step back"),
+                    dbc.Button("◉ Now",   id="btn-scatter-current", color="primary",   size="sm", outline=True, title="Current"),
+                    dbc.Button("→",       id="btn-scatter-next",    color="secondary", size="sm", outline=True, title="Step forward"),
+                ], className="me-3"),
+                html.Span(id="scatter-date-display", className="text-muted small align-middle"),
+            ], className="d-flex align-items-center pt-2 pb-1"),
+        ]),
+        dcc.Graph(id="scatter-chart",
+                  responsive=True,
+                  config={"displayModeBar": True, "scrollZoom": True},
+                  style={"height": "55vh", "minHeight": "420px"}),
+        html.Hr(style={"borderColor": "var(--border-color)", "margin": "10px 0"}),
+        # ── Below-map panels ─────────────────────────────────────────────────
+        dbc.Row([
+            dbc.Col([
+                html.Div("What Changed", style={"fontWeight": "700", "fontSize": "0.9rem", "marginBottom": "6px"}),
+                html.Div(id="what-changed"),
+            ], width=4),
+            dbc.Col([
+                html.Div("Cross-Signal Conflicts", style={"fontWeight": "700", "fontSize": "0.9rem", "marginBottom": "6px"}),
+                html.Div(id="conflicts-panel"),
+            ], width=4),
+            dbc.Col([
+                html.Div("Geopolitical-Risk Overlay", style={"fontWeight": "700", "fontSize": "0.9rem", "marginBottom": "6px"}),
+                html.Div(
+                    "WGI governance scores deferred (WB v2 API unavailable). See session-checklist G-03 for resolution path.",
+                    style={"color": "#666", "fontSize": "0.85em"},
+                ),
+            ], width=4),
+        ], className="py-2"),
+        html.Hr(style={"borderColor": "var(--border-color)", "margin": "10px 0"}),
+        # ── Signal Drill-Downs ────────────────────────────────────────────────
+        html.Div("Signal Drill-Downs", style={"fontWeight": "700", "fontSize": "0.95rem", "marginBottom": "4px"}),
+        html.Div(
+            "Percentile badge: 85%+ elevated · 15%− depressed · Hover indicator name for causal linkage.",
+            style={"color": "#666", "fontSize": "0.78em", "marginBottom": "10px"},
+        ),
+        html.Div(id="lens-drilldowns"),
+        html.Hr(style={"borderColor": "var(--border-color)", "margin": "10px 0"}),
+        dbc.Accordion([
+            dbc.AccordionItem(
+                html.Div(id="data-quality-log"),
+                title="Data-Quality Log",
+                item_id="dql",
+            ),
+        ], start_collapsed=True, className="mb-3"),
+    ], className="pe-2")
+
+
+def _page_regime_history() -> html.Div:
+    return html.Div([
+        dbc.Row([
+            dbc.Col([
+                dbc.ButtonGroup([
+                    dbc.Button("←",       id="btn-regime-prev",    color="secondary", size="sm", outline=True, title="Step back"),
+                    dbc.Button("◉ Now",   id="btn-regime-current", color="primary",   size="sm", outline=True, title="Current"),
+                    dbc.Button("→",       id="btn-regime-next",    color="secondary", size="sm", outline=True, title="Step forward"),
+                ], className="me-3"),
+                html.Span(id="regime-date-display", className="text-muted small align-middle"),
+            ], className="d-flex align-items-center pt-2 pb-1"),
+        ]),
+        dbc.Row([
+            dbc.Col(
+                dbc.Card(dbc.CardBody(html.Div(id="regime-info-box"), style={"padding": "16px"})),
+                width=12,
+            ),
+        ], className="pb-2"),
+        dbc.Row([
+            dbc.Col(
+                dcc.Graph(id="regime-chart",
+                          responsive=True,
+                          config={"displayModeBar": True},
+                          style={"height": "calc(100vh - 175px)", "minHeight": "700px"}),
+                width=12,
+            ),
+        ]),
+    ], className="pe-2")
+
+
+def _page_debt_stress() -> html.Div:
+    return html.Div([
+        dbc.Row([
+            dbc.Col(
+                dbc.Card(dbc.CardBody(html.Div(id="debt-stress-info-box"), style={"padding": "16px"})),
+                width=12,
+            ),
+        ], className="pt-2 pb-2"),
+        dbc.Row([
+            dbc.Col(
+                dcc.Graph(id="debt-stress-chart",
+                          responsive=True,
+                          config={"displayModeBar": True},
+                          style={"height": "calc(100vh - 200px)", "minHeight": "500px"}),
+                width=12,
+            ),
+        ]),
+    ], className="pe-2")
+
+
+# ── App layout ────────────────────────────────────────────────────────────────
+
+app.layout = html.Div([
+    dcc.Location(id="url", refresh=False),
+    # Top-level stores — persist across page navigations
+    dcc.Store(id="selected-series",   data=[]),
+    dcc.Store(id="date-range",        data={"start": None, "end": None}),
+    dcc.Store(id="theme-store",       data=DEFAULT_THEME),
+    dcc.Store(id="regime-step-index", data=0),
+    # Fired by routing callback so page callbacks wait until components exist in DOM
+    dcc.Store(id="page-trigger",      data={"page": "/charts"}),
+    html.Div(id="theme-dummy",        style={"display": "none"}),
+
+    html.Div([
+        _left_nav(),
+        html.Div(id="page-content", style={"flex": "1", "minWidth": "0", "padding": "0 12px"}),
+    ], style={"display": "flex", "minHeight": "100vh"}),
+], style={"backgroundColor": "var(--page-bg)"})
 
 # ── Theme callbacks ───────────────────────────────────────────────────────────
 
@@ -351,6 +749,32 @@ app.layout = dbc.Container(
 )
 def update_theme_store(theme_name: str) -> str:
     return theme_name or DEFAULT_THEME
+
+
+# ── Routing callback ──────────────────────────────────────────────────────────
+
+_PAGE_MAP = {
+    "/":              _page_chart_overlay,
+    "/charts":        _page_chart_overlay,
+    "/explorer":      _page_explorer,
+    "/yield-curve":   _page_yield_curve,
+    "/regime-map":    _page_regime_map,
+    "/regime-history":_page_regime_history,
+    "/debt-stress":   _page_debt_stress,
+}
+
+
+@callback(
+    [Output("page-content", "children"),
+     Output("page-trigger", "data")],
+    Input("url", "pathname"),
+    prevent_initial_call=False,
+)
+def route_page(pathname: str):
+    pathname = pathname or "/charts"
+    fn = _PAGE_MAP.get(pathname)
+    layout = fn() if fn else html.Div(f"Page '{pathname}' not found", className="p-4 text-muted")
+    return layout, {"page": pathname}
 
 
 # Clientside: update CSS custom properties on documentElement when theme changes.
@@ -400,7 +824,7 @@ def aggregate_selected(group_values: list[list[str]], _clear: Any) -> list[str]:
      Input("btn-MAX", "n_clicks"),
      Input("range-slider", "value")],
     State("date-range", "data"),
-    prevent_initial_call=False,
+    prevent_initial_call=True,
 )
 def update_date_range(
     _1y: Any, _3y: Any, _5y: Any, _10y: Any, _max: Any,
@@ -437,13 +861,15 @@ def update_date_range(
     Output("overlay-chart", "figure"),
     [Input("selected-series", "data"),
      Input("date-range", "data"),
-     Input("theme-store", "data")],
+     Input("theme-store", "data"),
+     Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
 def update_overlay_chart(
     selected_ids: list[str],
     date_range: dict,
     theme_name: str = DEFAULT_THEME,
+    _trigger: Any = None,
 ) -> go.Figure:
     t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     if not selected_ids:
@@ -518,10 +944,10 @@ def update_overlay_chart(
     [Output("yc-date-picker", "options"),
      Output("yc-date-picker", "value"),
      Output("yc-date-compare", "options")],
-    Input("main-tabs", "active_tab"),
+    Input("page-trigger", "data"),
     prevent_initial_call=False,
 )
-def populate_yc_dates(active_tab: str) -> tuple[list[dict], str, list[dict]]:
+def populate_yc_dates(_trigger: Any) -> tuple[list[dict], str, list[dict]]:
     dates = available_dates_for_yield_curve()
     if not dates:
         return [], "", []
@@ -835,22 +1261,7 @@ def _regime_info_children(
 
         def _section(force: str, total: int, color: str) -> list:
             df_f = comp_df[comp_df["composite"] == force].copy()
-            n_active = int((df_f["zscore"].notna() & ~df_f["is_stale"] & ~df_f["low_history"]).sum())
-            section_header = html.Tr([
-                html.Td(
-                    html.Span(
-                        f"{force.upper()} FORCE INPUTS  ·  {n_active}/{len(df_f)} active",
-                        style={"color": color, "fontWeight": "700",
-                               "fontSize": "0.72rem", "textTransform": "uppercase",
-                               "letterSpacing": "0.07em"},
-                    ),
-                    colSpan=6,
-                    style={"padding": "8px 10px",
-                           "backgroundColor": "rgba(0,0,0,0.25)",
-                           "borderBottom": f"1px solid {color}"},
-                ),
-            ])
-            rows = [section_header]
+            rows = []
             for _, sr in df_f.iterrows():
                 z = sr.get("zscore")
                 direction = sr.get("direction") or ""
@@ -967,23 +1378,23 @@ def _regime_info_children(
                 ))
             return rows
 
-        header_row = html.Tr([
-            html.Th("Signal",     style=th_sty),
-            html.Th("Wt",         style={**th_sty, "textAlign": "center"}),
-            html.Th("Last Data",  style={**th_sty, "textAlign": "center"}),
-            html.Th("Force Z",    style={**th_sty, "textAlign": "right"}),
-            html.Th("Momentum",   style=th_sty),
-            html.Th("Status",     style=th_sty),
-        ])
-
         def _section_table(force: str, n_total: int, color: str) -> html.Details:
             rows = _section(force, n_total, color)
+            df_f = comp_df[comp_df["composite"] == force]
             n_active = int(
-                (comp_df[comp_df["composite"] == force]["zscore"].notna()
-                 & ~comp_df[comp_df["composite"] == force]["is_stale"]
-                 & ~comp_df[comp_df["composite"] == force]["low_history"]).sum()
+                (df_f["zscore"].notna()
+                 & ~df_f["is_stale"]
+                 & ~df_f["low_history"]).sum()
             )
-            summary_label = f"{force.upper()} FORCE INPUTS  ·  {n_active}/{len(comp_df[comp_df['composite'] == force])} active"
+            summary_label = f"{force.upper()} FORCE INPUTS  ·  {n_active}/{len(df_f)} active"
+            _header_row = html.Tr([
+                html.Th("Signal",     style=th_sty),
+                html.Th("Wt",         style={**th_sty, "textAlign": "center"}),
+                html.Th("Last Data",  style={**th_sty, "textAlign": "center"}),
+                html.Th("Force Z",    style={**th_sty, "textAlign": "right"}),
+                html.Th("Momentum",   style=th_sty),
+                html.Th("Status",     style=th_sty),
+            ])
             return html.Details(
                 open=True,
                 children=[
@@ -1001,7 +1412,7 @@ def _regime_info_children(
                         },
                     ),
                     html.Table(
-                        [html.Thead(header_row), html.Tbody(rows)],
+                        [html.Thead(_header_row), html.Tbody(rows)],
                         style={"width": "100%", "borderCollapse": "collapse"},
                     ),
                 ],
@@ -1025,20 +1436,27 @@ def _regime_info_children(
 @callback(
     Output("regime-step-index", "data"),
     [Input("btn-regime-prev", "n_clicks"),
+     Input("btn-regime-current", "n_clicks"),
      Input("btn-regime-next", "n_clicks"),
+     Input("btn-scatter-prev", "n_clicks"),
+     Input("btn-scatter-current", "n_clicks"),
+     Input("btn-scatter-next", "n_clicks"),
      Input("date-range", "data")],
     State("regime-step-index", "data"),
     prevent_initial_call=True,
 )
 def update_regime_step(
-    _prev: Any,
-    _next: Any,
+    _rprev: Any, _rcurrent: Any, _rnext: Any,
+    _sprev: Any, _scurrent: Any, _snext: Any,
     date_range: dict,
     current_step: int,
 ) -> int:
     triggered = dash.callback_context.triggered_id
     if triggered == "date-range":
-        return 0  # reset to latest on range change
+        return 0
+
+    if triggered in ("btn-regime-current", "btn-scatter-current"):
+        return 0
 
     step = current_step or 0
     start = (date_range or {}).get("start")
@@ -1046,9 +1464,9 @@ def update_regime_step(
     comp = load_composite_history(start_date=start, end_date=end)
     max_step = max(0, len(comp) - 1)
 
-    if triggered == "btn-regime-prev":
+    if triggered in ("btn-regime-prev", "btn-scatter-prev"):
         return min(step + 1, max_step)
-    if triggered == "btn-regime-next":
+    if triggered in ("btn-regime-next", "btn-scatter-next"):
         return max(step - 1, 0)
     return step
 
@@ -1057,10 +1475,11 @@ def update_regime_step(
     [Output("regime-info-box", "children"),
      Output("regime-date-display", "children")],
     [Input("regime-step-index", "data"),
-     Input("date-range", "data")],
+     Input("date-range", "data"),
+     Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
-def update_regime_info(step: int, date_range: dict) -> tuple:
+def update_regime_info(step: int, date_range: dict, _trigger: Any = None) -> tuple:
     step = step or 0
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
@@ -1090,17 +1509,17 @@ def update_regime_info(step: int, date_range: dict) -> tuple:
 
 @callback(
     Output("regime-chart", "figure"),
-    [Input("main-tabs", "active_tab"),
-     Input("date-range", "data"),
+    [Input("date-range", "data"),
      Input("theme-store", "data"),
-     Input("regime-step-index", "data")],
+     Input("regime-step-index", "data"),
+     Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
 def update_regime_chart(
-    active_tab: str,
     date_range: dict,
     theme_name: str = DEFAULT_THEME,
     step: int = 0,
+    _trigger: Any = None,
 ) -> go.Figure:
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
@@ -1215,7 +1634,16 @@ def update_regime_chart(
         row=5, col=1,
     )
 
-    fig.update_layout(**figure_layout(theme_name), hovermode="x unified", height=1050)
+    fig.update_layout(**figure_layout(theme_name), hovermode="x unified")
+    fig.update_layout(margin={"l": 55, "r": 20, "t": 30, "b": 40})
+    fig.update_xaxes(
+        showspikes=True,
+        spikemode="across",
+        spikesnap="cursor",
+        spikedash="dot",
+        spikethickness=1,
+        spikecolor="rgba(180,180,180,0.6)",
+    )
 
     # ── Step-selection highlight ──────────────────────────────────────────────
     step = step or 0
@@ -1307,6 +1735,291 @@ def update_regime_chart(
         )
 
     return fig
+
+
+# ── Regime Map scatter — callbacks ────────────────────────────────────────────
+
+@callback(
+    Output("scatter-date-display", "children"),
+    [Input("regime-step-index", "data"),
+     Input("date-range", "data"),
+     Input("page-trigger", "data")],
+    prevent_initial_call=False,
+)
+def update_scatter_date(step: int, date_range: dict, _trigger: Any = None) -> str:
+    step = step or 0
+    start = (date_range or {}).get("start")
+    end = (date_range or {}).get("end")
+    comp = load_composite_history(start_date=start, end_date=end)
+    if comp.empty:
+        return "No data"
+    n = len(comp)
+    idx = max(0, min(n - 1 - step, n - 1))
+    sel_date = comp.iloc[idx]["as_of"]
+    all_comp = load_composite_history()
+    is_current = (
+        not all_comp.empty
+        and pd.Timestamp(sel_date) == pd.Timestamp(all_comp.iloc[-1]["as_of"])
+    )
+    date_str = sel_date.strftime("%b %Y")
+    return f"{date_str} · current" if is_current else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
+
+
+@callback(
+    Output("scatter-chart", "figure"),
+    [Input("regime-step-index", "data"),
+     Input("date-range", "data"),
+     Input("theme-store", "data"),
+     Input("page-trigger", "data")],
+    prevent_initial_call=False,
+)
+def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger: Any = None) -> go.Figure:
+    step = step or 0
+    theme_name = theme_name or DEFAULT_THEME
+    t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
+
+    start = (date_range or {}).get("start")
+    end = (date_range or {}).get("end")
+    comp_filtered = load_composite_history(start_date=start, end_date=end)
+    comp_all = load_composite_history()
+
+    fig = go.Figure()
+
+    if comp_all.empty or comp_filtered.empty:
+        fig.update_layout(**figure_layout(theme_name, "No composite data"))
+        return fig
+
+    # ── Compute data-driven axis range with 15% buffer ───────────────────────
+    gx = comp_all["growth_score"].dropna()
+    iy = comp_all["inflation_score"].dropna()
+    if not gx.empty and not iy.empty:
+        gx_span = (gx.max() - gx.min()) or 1.0
+        iy_span = (iy.max() - iy.min()) or 1.0
+        buf = 0.15
+        x_range = [gx.min() - buf * gx_span, gx.max() + buf * gx_span]
+        y_range = [iy.min() - buf * iy_span, iy.max() + buf * iy_span]
+    else:
+        x_range, y_range = [-3.0, 3.0], [-3.0, 3.0]
+
+    # ── Quadrant background rectangles (±100 so they always fill the viewport)
+    quad_bg = [
+        (0,    100, 0,    100, "Inflationary Boom",        "#F4C842"),
+        (0,    100, -100, 0,   "Expansion",                "#5CBA8A"),
+        (-100, 0,   0,    100, "Stagflation",              "#E8734C"),
+        (-100, 0,   -100, 0,   "Disinflationary Slowdown", "#4C9BE8"),
+    ]
+    shapes = [
+        dict(type="rect", xref="x", yref="y",
+             x0=x0, x1=x1, y0=y0, y1=y1,
+             fillcolor=color, opacity=0.09, line=dict(width=0), layer="below")
+        for x0, x1, y0, y1, _label, color in quad_bg
+    ]
+    # Axis centre lines
+    shapes += [
+        dict(type="line", xref="x", yref="paper", x0=0, x1=0, y0=0, y1=1,
+             line=dict(color="#555", width=1, dash="dot")),
+        dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=0,
+             line=dict(color="#555", width=1, dash="dot")),
+    ]
+
+    # ── Resolve selected index in all-history ────────────────────────────────
+    n_filtered = len(comp_filtered)
+    sel_idx_f = max(0, min(n_filtered - 1 - step, n_filtered - 1))
+    sel_date = pd.Timestamp(comp_filtered.iloc[sel_idx_f]["as_of"])
+
+    all_ts = [pd.Timestamp(d) for d in comp_all["as_of"]]
+    try:
+        sel_idx_all = next(i for i, d in enumerate(all_ts) if d == sel_date)
+    except StopIteration:
+        sel_idx_all = len(comp_all) - 1
+
+    # ── All-history grey context dots ────────────────────────────────────────
+    hist_dates = [str(d)[:7] for d in comp_all["as_of"]]
+    fig.add_trace(go.Scatter(
+        x=comp_all["growth_score"],
+        y=comp_all["inflation_score"],
+        mode="markers",
+        name="History",
+        marker=dict(size=4, color=t["muted_color"], opacity=0.25),
+        customdata=list(zip(hist_dates, comp_all["quadrant"])),
+        hovertemplate="%{customdata[0]}<br>Growth: %{x:.2f} · Inflation: %{y:.2f}<br>%{customdata[1]}<extra></extra>",
+        showlegend=False,
+    ))
+
+    # ── 12-month trail up to and including the selected point ────────────────
+    trail_start = max(0, sel_idx_all - 11)
+    trail = comp_all.iloc[trail_start: sel_idx_all + 1]
+    n_trail = len(trail)
+
+    if n_trail > 1:
+        fig.add_trace(go.Scatter(
+            x=trail["growth_score"],
+            y=trail["inflation_score"],
+            mode="lines",
+            line=dict(color="rgba(255,255,255,0.30)", width=1.5),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+    if n_trail > 0:
+        trail_rgba = [
+            _hex_to_rgba(_QUADRANT_COLOR.get(row["quadrant"], "#888"),
+                         0.30 + (i + 1) / n_trail * 0.55)
+            for i, (_, row) in enumerate(trail.iterrows())
+        ]
+        trail_sizes = [5 + (i + 1) / n_trail * 5 for i in range(n_trail)]
+        trail_dates = [str(d)[:7] for d in trail["as_of"]]
+        fig.add_trace(go.Scatter(
+            x=trail["growth_score"],
+            y=trail["inflation_score"],
+            mode="markers",
+            marker=dict(size=trail_sizes, color=trail_rgba),
+            customdata=list(zip(trail_dates, trail["quadrant"])),
+            hovertemplate="%{customdata[0]}<br>Growth: %{x:.2f} · Inflation: %{y:.2f}<br>%{customdata[1]}<extra></extra>",
+            showlegend=False,
+        ))
+
+    # ── Selected point ────────────────────────────────────────────────────────
+    sel = comp_all.iloc[sel_idx_all]
+    sel_color = _QUADRANT_COLOR.get(sel["quadrant"], "#888")
+    sel_label = str(sel["as_of"])[:7]
+    fig.add_trace(go.Scatter(
+        x=[sel["growth_score"]],
+        y=[sel["inflation_score"]],
+        mode="markers",
+        marker=dict(size=18, color=sel_color, line=dict(width=2.5, color="#ffffff")),
+        hovertemplate=(
+            f"{sel_label}<br>Growth: {sel['growth_score']:.2f}<br>"
+            f"Inflation: {sel['inflation_score']:.2f}<br>{sel['quadrant']}<extra></extra>"
+        ),
+        showlegend=False,
+    ))
+
+    # ── Quadrant corner labels (paper-coord: stay in corners at any zoom) ────
+    q_annotations = [
+        dict(text="Inflationary Boom",       x=0.98, y=0.98, xanchor="right",  yanchor="top"),
+        dict(text="Expansion",               x=0.98, y=0.02, xanchor="right",  yanchor="bottom"),
+        dict(text="Stagflation",             x=0.02, y=0.98, xanchor="left",   yanchor="top"),
+        dict(text="Disinflationary Slowdown",x=0.02, y=0.02, xanchor="left",   yanchor="bottom"),
+    ]
+    q_colors = ["#F4C842", "#5CBA8A", "#E8734C", "#4C9BE8"]
+    annotations = [
+        dict(xref="paper", yref="paper", showarrow=False,
+             font=dict(color=color, size=10, family="monospace"),
+             bgcolor="rgba(0,0,0,0)", **ann)
+        for ann, color in zip(q_annotations, q_colors)
+    ]
+
+    layout = figure_layout(theme_name)
+    layout.update(dict(
+        xaxis=dict(title="Growth Force Z-Score", range=x_range,
+                   zeroline=False, gridcolor=t["grid_color"], showgrid=True),
+        yaxis=dict(title="Inflation Force Z-Score", range=y_range,
+                   zeroline=False, gridcolor=t["grid_color"], showgrid=True),
+        shapes=shapes,
+        annotations=annotations,
+        hovermode="closest",
+        showlegend=False,
+        uirevision="scatter-map",  # constant → Plotly.react() preserves user zoom
+        margin=dict(l=60, r=20, t=20, b=50),
+    ))
+    fig.update_layout(**layout)
+    return fig
+
+
+# ── Regime Map below-map panels callback ─────────────────────────────────────
+
+@callback(
+    [Output("what-changed",    "children"),
+     Output("conflicts-panel", "children"),
+     Output("lens-drilldowns", "children"),
+     Output("data-quality-log","children")],
+    [Input("page-trigger", "data")],
+    prevent_initial_call=False,
+)
+def update_regime_map_panels(_trigger: Any = None) -> tuple:
+    latest_signals = load_latest_signals("US")
+    change_feed    = load_change_feed("US")
+
+    # ── What Changed ─────────────────────────────────────────────────────────
+    wc_children = _what_changed_children(change_feed)
+
+    # ── Conflicts ─────────────────────────────────────────────────────────────
+    cf_children = _conflicts_children(latest_signals) if not latest_signals.empty else [
+        html.Span("No signal data.", style={"color": "#888", "fontSize": "0.85em"})
+    ]
+
+    # ── Lens Drill-Downs ──────────────────────────────────────────────────────
+    histories_df = load_all_signal_histories("US")
+    histories_by_id: dict[str, list[float]] = {}
+    if not histories_df.empty:
+        for sid, grp in histories_df.groupby("id"):
+            histories_by_id[str(sid)] = grp.sort_values("as_of")["value"].tolist()
+
+    accordion_items = []
+    for lens_label, forces in _LENS_GROUPS:
+        if latest_signals.empty:
+            lens_df = pd.DataFrame()
+        else:
+            lens_df = latest_signals[latest_signals["force"].isin(forces)].copy()
+        n_sigs  = len(lens_df)
+        n_stale = int(lens_df["is_stale"].sum()) if n_sigs else 0
+        stale_txt = f"  ·  {n_stale} stale" if n_stale else ""
+        title_str = f"{lens_label}  ({n_sigs} signals){stale_txt}"
+        about = _LENS_ABOUT.get(lens_label, "")
+        body_children: list = []
+        if about:
+            body_children.append(html.Div(about, style={
+                "fontSize": "0.83em", "color": "#888",
+                "padding": "4px 0 10px 0", "borderBottom": "1px solid #222",
+                "marginBottom": "10px",
+            }))
+        body_children.append(_build_lens_table(lens_df, histories_by_id))
+        accordion_items.append(
+            dbc.AccordionItem(
+                html.Div(body_children),
+                title=title_str,
+                item_id=f"lens-{lens_label[:8].strip()}",
+            )
+        )
+    lens_children = [
+        dbc.Accordion(
+            accordion_items,
+            start_collapsed=True,
+            always_open=False,
+        )
+    ]
+
+    # ── Data Quality Log ──────────────────────────────────────────────────────
+    issues: list[dict] = []
+    if not latest_signals.empty:
+        for _, row in latest_signals.iterrows():
+            sid = str(row["id"])
+            if row.get("is_stale"):
+                issues.append({"Signal": sid, "Issue": "stale",       "Note": "Not updated within expected release window"})
+            if row.get("is_proxy"):
+                issues.append({"Signal": sid, "Issue": "proxy",       "Note": "Not the primary statistical release"})
+            if row.get("low_history"):
+                issues.append({"Signal": sid, "Issue": "low history", "Note": "< 15 observations — Z-score unreliable"})
+            if not row.get("vintage_available", True):
+                issues.append({"Signal": sid, "Issue": "no vintage",  "Note": "Latest-revised only; no point-in-time data"})
+    if issues:
+        dql_children = [
+            dash_table.DataTable(
+                data=issues,
+                columns=[{"name": c, "id": c} for c in ["Signal", "Issue", "Note"]],
+                style_table={"overflowX": "auto"},
+                style_cell={"fontSize": "0.85em", "textAlign": "left",
+                             "backgroundColor": "var(--card-bg)", "color": "var(--font-color)"},
+                style_header={"fontWeight": "600", "borderBottom": "1px solid #444"},
+                page_size=20,
+            )
+        ]
+    else:
+        dql_children = [html.Span("No data-quality issues detected.",
+                                  style={"color": "#5CBA8A", "fontSize": "0.88em"})]
+
+    return wc_children, cf_children, lens_children, dql_children
 
 
 # ── Debt Stress — helpers + callbacks ────────────────────────────────────────
@@ -1662,12 +2375,12 @@ def _build_debt_stress_info(
 
 @callback(
     Output("debt-stress-info-box", "children"),
-    [Input("main-tabs", "active_tab"),
-     Input("date-range", "data"),
-     Input("theme-store", "data")],
+    [Input("date-range", "data"),
+     Input("theme-store", "data"),
+     Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
-def update_debt_stress_info(active_tab: str, date_range: dict, theme_name: str) -> list:
+def update_debt_stress_info(date_range: dict, theme_name: str, _trigger: Any = None) -> list:
     end = (date_range or {}).get("end")
     df = load_debt_stress_history(country="US", end_date=end)
     latest = df.iloc[-1] if not df.empty else None
@@ -1679,15 +2392,15 @@ def update_debt_stress_info(active_tab: str, date_range: dict, theme_name: str) 
 
 @callback(
     Output("debt-stress-chart", "figure"),
-    [Input("main-tabs", "active_tab"),
-     Input("date-range", "data"),
-     Input("theme-store", "data")],
+    [Input("date-range", "data"),
+     Input("theme-store", "data"),
+     Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
 def update_debt_stress_chart(
-    active_tab: str,
     date_range: dict,
     theme_name: str = DEFAULT_THEME,
+    _trigger: Any = None,
 ) -> go.Figure:
     start = (date_range or {}).get("start")
     end   = (date_range or {}).get("end")
@@ -1766,11 +2479,10 @@ def update_debt_stress_chart(
 
     fig.update_yaxes(title_text="Z-Score", row=1, col=1)
     fig.update_yaxes(title_text="Z-Score (stress dir.)", row=2, col=1)
+    fig.update_layout(**figure_layout(theme_name), hovermode="x unified")
     fig.update_layout(
-        **figure_layout(theme_name),
-        hovermode="x unified",
-        height=700,
-        legend={"orientation": "h", "y": -0.12, "x": 0},
+        margin={"l": 55, "r": 20, "t": 30, "b": 60},
+        legend={"orientation": "h", "y": -0.15, "x": 0},
     )
     return fig
 
