@@ -1934,12 +1934,27 @@ def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger:
      Output("conflicts-panel", "children"),
      Output("lens-drilldowns", "children"),
      Output("data-quality-log","children")],
-    [Input("page-trigger", "data")],
+    [Input("regime-step-index", "data"),
+     Input("date-range", "data"),
+     Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
-def update_regime_map_panels(_trigger: Any = None) -> tuple:
-    latest_signals = load_latest_signals("US")
-    change_feed    = load_change_feed("US")
+def update_regime_map_panels(
+    step: int,
+    date_range: dict,
+    _trigger: Any = None,
+) -> tuple:
+    start = (date_range or {}).get("start")
+    end = (date_range or {}).get("end")
+    comp = load_composite_history(start_date=start, end_date=end)
+    if comp.empty:
+        selected_as_of = end
+    else:
+        idx = max(0, min(len(comp) - 1 - (step or 0), len(comp) - 1))
+        selected_as_of = pd.Timestamp(comp.iloc[idx]["as_of"]).date().isoformat()
+
+    latest_signals = load_latest_signals("US", as_of=selected_as_of)
+    change_feed = load_change_feed("US", as_of=selected_as_of)
 
     # ── What Changed ─────────────────────────────────────────────────────────
     wc_children = _what_changed_children(change_feed)
@@ -1950,7 +1965,7 @@ def update_regime_map_panels(_trigger: Any = None) -> tuple:
     ]
 
     # ── Lens Drill-Downs ──────────────────────────────────────────────────────
-    histories_df = load_all_signal_histories("US")
+    histories_df = load_all_signal_histories("US", as_of=selected_as_of)
     histories_by_id: dict[str, list[float]] = {}
     if not histories_df.empty:
         for sid, grp in histories_df.groupby("id"):

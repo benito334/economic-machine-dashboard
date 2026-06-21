@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-21:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **319 tests pass.** :8502 Dash UI restructured with left-sidebar navigation and full Regime Map panel set.
+**As of 2026-06-21:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **324 tests pass.** :8502 Dash UI restructured with left-sidebar navigation and full Regime Map panel set.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -96,7 +96,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; left-sidebar nav (Data / Indicators groups); Chart Overlay, Yield Curve, Regime Map, Regime History, Debt Stress, Data Explorer |
 | 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
 | 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
-| 1G Methodology improvements | ✅ **Done** | C1 (±4σ cap), E1 (variance direction), G1 (labour weights), H1/H2 (breakeven/oil), L1–L4 (regime staleness decay + carry caps + stale-lag badges), D1 (momentum percentile), B1 (period audit), A2/I2 (composite PCA); 319 tests pass |
+| 1G Methodology improvements | ✅ **Done** | C1 (±4σ cap), E1 (variance direction), G1 (labour weights), H1/H2 (breakeven/oil), L1–L4 (regime staleness decay + carry caps + stale-lag badges), D1 (momentum percentile), B1 (period audit), A2/I2 (composite PCA); 324 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
 | 1I :8502 UI consolidation | 🔄 **In progress** | Left-sidebar nav done; Regime Map panels done; methodology guide + remaining :8501 content pending |
 | 2 Country rollout | ⬜ Queued | Eurozone first — unblocked |

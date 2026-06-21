@@ -456,8 +456,9 @@ def register_callbacks(app: dash.Dash) -> None:
     )
     def update_ts(signal_id: Optional[str], theme_name: str = DEFAULT_THEME) -> tuple:
         fl = {**figure_layout(theme_name), "margin": {"l": 55, "r": 20, "t": 35, "b": 30}}
+        fl["title"] = {"text": "Select a signal", "x": 0.5}
         empty_fig = go.Figure()
-        empty_fig.update_layout(**fl, title={"text": "Select a signal", "x": 0.5})
+        empty_fig.update_layout(**fl)
         blank = ("—",) * 6
         if not signal_id:
             return (empty_fig,) + blank

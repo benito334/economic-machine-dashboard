@@ -600,17 +600,18 @@ def _conn() -> duckdb.DuckDBPyConnection:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_latest_signals(country: str) -> pd.DataFrame:
+def load_latest_signals(country: str, as_of: Optional[str] = None) -> pd.DataFrame:
+    reference_date = as_of or date.today().isoformat()
     with _conn() as conn:
         return conn.execute(
             """
             SELECT *
             FROM signals
-            WHERE country = ?
+            WHERE country = ? AND as_of <= ?
             QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1
             ORDER BY force, id
             """,
-            [country],
+            [country, reference_date],
         ).df()
 
 
@@ -625,18 +626,23 @@ def load_composite_history(country: str, n_months: int = 60) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_all_signal_histories(country: str, n_months: int = 36) -> pd.DataFrame:
+def load_all_signal_histories(
+    country: str,
+    n_months: int = 36,
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
     """Bulk-load all signal time series for sparkline generation."""
-    cutoff = (date.today() - timedelta(days=n_months * 31)).isoformat()
+    reference_date = pd.Timestamp(as_of).date() if as_of else date.today()
+    cutoff = (reference_date - timedelta(days=n_months * 31)).isoformat()
     with _conn() as conn:
         return conn.execute(
             """
             SELECT id, as_of, value
             FROM signals
-            WHERE country = ? AND as_of >= ?
+            WHERE country = ? AND as_of >= ? AND as_of <= ?
             ORDER BY id, as_of
             """,
-            [country, cutoff],
+            [country, cutoff, reference_date.isoformat()],
         ).df()
 
 
@@ -657,8 +663,9 @@ def load_debt_stress_latest(country: str, as_of: Optional[str] = None) -> pd.Ser
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_change_feed(country: str) -> pd.DataFrame:
-    cutoff = (date.today() - timedelta(days=120)).isoformat()
+def load_change_feed(country: str, as_of: Optional[str] = None) -> pd.DataFrame:
+    reference_date = pd.Timestamp(as_of).date() if as_of else date.today()
+    cutoff = (reference_date - timedelta(days=120)).isoformat()
     with _conn() as conn:
         return conn.execute(
             """
@@ -666,7 +673,7 @@ def load_change_feed(country: str) -> pd.DataFrame:
                 SELECT id, force, lead_lag, as_of, value, zscore, direction,
                        ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) AS rn
                 FROM signals
-                WHERE country = ? AND as_of >= ?
+                WHERE country = ? AND as_of <= ?
             ),
             latest AS (SELECT * FROM ranked WHERE rn = 1),
             prior  AS (SELECT * FROM ranked WHERE rn = 2)
@@ -677,10 +684,10 @@ def load_change_feed(country: str) -> pd.DataFrame:
                 ABS(l.zscore - COALESCE(p.zscore, l.zscore)) AS zscore_delta
             FROM latest l
             LEFT JOIN prior p ON l.id = p.id
-            WHERE l.lead_lag IN ('leading', 'coincident')
+            WHERE l.lead_lag IN ('leading', 'coincident') AND l.as_of >= ?
             ORDER BY zscore_delta DESC
             """,
-            [country, cutoff],
+            [country, reference_date.isoformat(), cutoff],
         ).df()
 
 
@@ -1476,22 +1483,9 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
         st.error("Signal database not found. Run `python3 -m indicators.pipeline` first.")
         st.stop()
 
-    # ── Load data ────────────────────────────────────────────────────────────────
+    # ── Load selected point-in-time data ─────────────────────────────────────────
     with st.spinner("Loading signals…"):
-        latest_signals = load_latest_signals("US")
-        comp_history   = load_composite_history("US", n_months=60)
-        all_histories  = load_all_signal_histories("US", n_months=36)
-        change_feed    = load_change_feed("US")
-
-    if latest_signals.empty:
-        st.warning("No signals in DB. Run the pipeline first.")
-        st.stop()
-
-    # Build sparkline lookup: {signal_id: [values...]}
-    histories_by_id: dict[str, list[float]] = {}
-    if not all_histories.empty:
-        for sid, grp in all_histories.groupby("id"):
-            histories_by_id[str(sid)] = grp.sort_values("as_of")["value"].tolist()
+        comp_history = load_composite_history("US", n_months=60)
 
     # Step-based composite selection (step=0 → latest, step=N → N months back)
     n_comp = len(comp_history)
@@ -1500,8 +1494,24 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
     selected_idx = max(0, n_comp - 1 - step) if n_comp > 0 else 0
     cur_comp:  pd.Series = comp_history.iloc[selected_idx] if n_comp > 0 else pd.Series()
     prev_comp: pd.Series = comp_history.iloc[selected_idx - 1] if selected_idx > 0 else pd.Series()
+    selected_as_of = str(cur_comp.get("as_of")) if not cur_comp.empty else None
+
+    with st.spinner("Loading signals…"):
+        latest_signals = load_latest_signals("US", as_of=selected_as_of)
+        all_histories = load_all_signal_histories("US", n_months=36, as_of=selected_as_of)
+        change_feed = load_change_feed("US", as_of=selected_as_of)
+
+    if latest_signals.empty:
+        st.warning("No signals in DB. Run the pipeline first.")
+        st.stop()
+
+    histories_by_id: dict[str, list[float]] = {}
+    if not all_histories.empty:
+        for sid, grp in all_histories.groupby("id"):
+            histories_by_id[str(sid)] = grp.sort_values("as_of")["value"].tolist()
+
     debt_stress = load_debt_stress_latest(
-        "US", str(cur_comp.get("as_of")) if not cur_comp.empty else None
+        "US", selected_as_of
     )
 
     # ── HUD ──────────────────────────────────────────────────────────────────────
@@ -1735,7 +1745,9 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
         st.markdown("### Long-Term Debt Stress")
         st.caption("7-component weighted Z-score composite. Exponential staleness decay applied to lagged inputs.")
 
-        _ds_df    = load_debt_stress_history(country="US")
+        _ds_df = load_debt_stress_history(
+            country="US", end_date=selected_as_of
+        )
         _ds_latest = _ds_df.iloc[-1] if not _ds_df.empty else None
         _comp_dates = load_debt_stress_component_dates(
             country="US",

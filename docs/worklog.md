@@ -4,6 +4,19 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-21 — Post-UI-restructure code review remediation
+
+- Fixed the Data Explorer initial-load callback error caused by passing Plotly's `title` layout argument twice
+- Made Regime Map panels point-in-time in both Dash and Streamlit: historical stepping now controls What Changed, Conflicts, lens drill-downs, quality flags, and sparkline windows
+- Made the Streamlit Debt Stress tab honor the selected regime date instead of always showing the latest snapshot
+- Corrected change-feed ranking so the latest reading must be recent but its comparison reading may fall outside the 120-day display window, preserving quarterly-series deltas
+- Updated the Regime History callback tests to the routed-page signature and added as-of/change-feed regressions
+- 324 tests pass; rebuilt :8501/:8502 containers return HTTP 200; all six :8502 routes completed headless-browser smoke tests with no callback errors
+- Next: continue Phase 1I UI consolidation, then Phase 2 Eurozone rollout
+- Blockers: BEA refresh remains pending until after 2026-06-26
+
+---
+
 ## 2026-06-21 — :8502 Dash UI restructuring + Regime Map panels
 
 **Done:**

@@ -401,29 +401,37 @@ def load_debt_stress_history(
 
 # ── Signal overview helpers (for Regime Map panels) ───────────────────────────
 
-def load_latest_signals(country: str = "US") -> pd.DataFrame:
-    """Return the most-recent observation for every signal of a country."""
+def load_latest_signals(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return each signal's most-recent observation at an optional as-of date."""
+    reference_date = as_of or pd.Timestamp.today().date().isoformat()
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = con.execute(
             """
             SELECT *
             FROM signals
-            WHERE country = ?
+            WHERE country = ? AND as_of <= ?
             QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1
             ORDER BY force, id
             """,
-            [country],
+            [country, reference_date],
         ).df()
     finally:
         con.close()
     return df
 
 
-def load_change_feed(country: str = "US") -> pd.DataFrame:
-    """Return leading/coincident signals sorted by absolute Z-score change (last 120 days)."""
+def load_change_feed(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return recent signals ranked by change from their actual prior observation."""
     import datetime
-    cutoff = (datetime.date.today() - datetime.timedelta(days=120)).isoformat()
+    reference_date = pd.Timestamp(as_of).date() if as_of else datetime.date.today()
+    cutoff = (reference_date - datetime.timedelta(days=120)).isoformat()
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = con.execute(
@@ -432,7 +440,7 @@ def load_change_feed(country: str = "US") -> pd.DataFrame:
                 SELECT id, force, lead_lag, as_of, value, zscore, direction,
                        ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) AS rn
                 FROM signals
-                WHERE country = ? AND as_of >= ?
+                WHERE country = ? AND as_of <= ?
             ),
             latest AS (SELECT * FROM ranked WHERE rn = 1),
             prior  AS (SELECT * FROM ranked WHERE rn = 2)
@@ -443,30 +451,35 @@ def load_change_feed(country: str = "US") -> pd.DataFrame:
                 ABS(l.zscore - COALESCE(p.zscore, l.zscore)) AS zscore_delta
             FROM latest l
             LEFT JOIN prior p ON l.id = p.id
-            WHERE l.lead_lag IN ('leading', 'coincident')
+            WHERE l.lead_lag IN ('leading', 'coincident') AND l.as_of >= ?
             ORDER BY zscore_delta DESC
             """,
-            [country, cutoff],
+            [country, reference_date.isoformat(), cutoff],
         ).df()
     finally:
         con.close()
     return df
 
 
-def load_all_signal_histories(country: str = "US", n_months: int = 36) -> pd.DataFrame:
+def load_all_signal_histories(
+    country: str = "US",
+    n_months: int = 36,
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
     """Bulk-load value history for all signals (used for sparkline generation)."""
     import datetime
-    cutoff = (datetime.date.today() - datetime.timedelta(days=n_months * 31)).isoformat()
+    reference_date = pd.Timestamp(as_of).date() if as_of else datetime.date.today()
+    cutoff = (reference_date - datetime.timedelta(days=n_months * 31)).isoformat()
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = con.execute(
             """
             SELECT id, as_of, value
             FROM signals
-            WHERE country = ? AND as_of >= ?
+            WHERE country = ? AND as_of >= ? AND as_of <= ?
             ORDER BY id, as_of
             """,
-            [country, cutoff],
+            [country, cutoff, reference_date.isoformat()],
         ).df()
     finally:
         con.close()

@@ -109,6 +109,59 @@ def test_charting_groups_match_catalog():
     assert grouped_ids == catalog_ids
 
 
+@pytest.mark.integration
+def test_latest_signals_respects_as_of_cutoff():
+    from dashboard.charting_data import load_latest_signals
+    cutoff = pd.Timestamp("2020-06-30")
+    df = load_latest_signals("US", as_of=str(cutoff.date()))
+    assert not df.empty
+    assert pd.to_datetime(df["as_of"]).max() <= cutoff
+
+
+@pytest.mark.integration
+def test_change_feed_uses_prior_observation_outside_120_day_window():
+    from dashboard.charting_data import load_change_feed
+    df = load_change_feed("US", as_of="2026-06-20")
+    row = df[df["id"] == "us.credit.lending_standards"]
+    assert not row.empty
+    assert pd.notna(row.iloc[0]["prior_as_of"])
+    assert row.iloc[0]["zscore_delta"] > 0
+
+
+def test_regime_map_panels_use_selected_as_of(monkeypatch):
+    import dashboard.charting as charting
+
+    comp = pd.DataFrame({
+        "as_of": pd.to_datetime(["2020-01-31", "2020-02-29"]),
+    })
+    seen: dict[str, str] = {}
+
+    monkeypatch.setattr(charting, "load_composite_history", lambda **_kwargs: comp)
+
+    def _latest(_country, as_of=None):
+        seen["latest"] = as_of
+        return pd.DataFrame()
+
+    def _changes(_country, as_of=None):
+        seen["changes"] = as_of
+        return pd.DataFrame()
+
+    def _histories(_country, n_months=36, as_of=None):
+        seen["histories"] = as_of
+        return pd.DataFrame()
+
+    monkeypatch.setattr(charting, "load_latest_signals", _latest)
+    monkeypatch.setattr(charting, "load_change_feed", _changes)
+    monkeypatch.setattr(charting, "load_all_signal_histories", _histories)
+
+    charting.update_regime_map_panels(1, {}, None)
+    assert seen == {
+        "latest": "2020-01-31",
+        "changes": "2020-01-31",
+        "histories": "2020-01-31",
+    }
+
+
 def test_dark_layout_returns_dict():
     from dashboard.charting import _dark_layout
     layout = _dark_layout()
@@ -285,7 +338,7 @@ def test_overlay_chart_callback_with_series():
 def test_regime_chart_callback():
     import plotly.graph_objects as go
     from dashboard.charting import update_regime_chart
-    fig = update_regime_chart("tab-regime", {"start": "2010-01-01", "end": None})
+    fig = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
     assert isinstance(fig, go.Figure)
     assert len(fig.data) >= 3  # growth score, inflation score, quadrant markers
 
@@ -295,8 +348,8 @@ def test_regime_chart_highlight_at_step():
     """Step > 0 adds highlight marker traces (one per subplot = 3 extra)."""
     import plotly.graph_objects as go
     from dashboard.charting import update_regime_chart
-    fig0 = update_regime_chart("tab-regime", {"start": "2010-01-01", "end": None}, step=0)
-    fig5 = update_regime_chart("tab-regime", {"start": "2010-01-01", "end": None}, step=5)
+    fig0 = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", step=0)
+    fig5 = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", step=5)
     # step=5 adds up to 3 highlight marker traces on top of the base traces
     assert len(fig5.data) >= len(fig0.data)
     # A vline shape should be present
@@ -535,7 +588,7 @@ class TestRegimeMomentumDisplay:
     @pytest.mark.integration
     def test_regime_chart_has_five_subplots(self):
         from dashboard.charting import update_regime_chart
-        fig = update_regime_chart("tab-regime", {}, "carbon", 0)
+        fig = update_regime_chart({}, "carbon", 0)
         # 5 subplots → subplot_titles has 5 entries; figure has at least 5 base traces
         assert len(fig.data) >= 5
         # y-axis domains: should have yaxis, yaxis2, yaxis3, yaxis4, yaxis5
