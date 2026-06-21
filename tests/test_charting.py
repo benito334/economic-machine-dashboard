@@ -7,6 +7,7 @@ Integration tests (marked): real DuckDB at DB_PATH.
 from __future__ import annotations
 
 import os
+import re
 import pytest
 import pandas as pd
 
@@ -550,9 +551,9 @@ class TestRegimeMomentumDisplay:
         from dashboard.charting import _regime_info_children
         children = _regime_info_children(self._base_row(), False, self._make_comp_df())
         all_texts = _collect_texts(children)
-        # "momentum-positive" phrase should appear (from the separate momentum blocks)
-        assert any("momentum-positive" in t.lower() for t in all_texts), \
-            f"Expected 'momentum-positive' in summary, got: {all_texts}"
+        # Momentum group header ("Momentum  (Δ MoM)") should appear in the summary strip
+        assert any("momentum" in t.lower() for t in all_texts), \
+            f"Expected 'Momentum' group header in summary, got: {all_texts}"
 
     def test_momentum_block_shows_fraction_string(self):
         from dashboard.charting import _regime_info_children
@@ -566,13 +567,12 @@ class TestRegimeMomentumDisplay:
         from dashboard.charting import _regime_info_children
         children = _regime_info_children(self._base_row(), False, self._make_comp_df())
         all_texts = _collect_texts(children)
-        # The force block subtitles are "N/N signals active" — no momentum phrase there.
+        # The force block subtitles are "N/N signals" — no momentum phrase there.
         # (Old format was "N/N signals · X/Y momentum-positive".)
-        # "momentum-positive" only appears in the dedicated momentum blocks, not force subtitles.
-        signals_active_texts = [t for t in all_texts if "signals active" in t]
-        assert len(signals_active_texts) >= 1, "Expected 'signals active' subtitle in score block"
-        assert not any("momentum" in t.lower() for t in signals_active_texts), \
-            f"Force subtitle should not contain 'momentum': {signals_active_texts}"
+        signals_texts = [t for t in all_texts if re.match(r"\d+/\d+ signals", t)]
+        assert len(signals_texts) >= 1, "Expected 'N/N signals' subtitle in score block"
+        assert not any("momentum" in t.lower() for t in signals_texts), \
+            f"Force subtitle should not contain 'momentum': {signals_texts}"
 
     @pytest.mark.integration
     def test_composite_history_has_momentum_columns(self):
@@ -631,7 +631,8 @@ class TestRegimeTableRollup:
                 )
         return count
 
-    def test_two_details_elements_present(self):
+    def test_combined_details_element_present(self):
+        """T5: growth and inflation tables are combined into one html.Details (collapsed)."""
         from dash import html as dhtml
         from dashboard.charting import _regime_info_children
         row = {
@@ -641,9 +642,10 @@ class TestRegimeTableRollup:
         }
         children = _regime_info_children(row, False, self._make_comp_df())
         n = self._count_type(children, dhtml.Details)
-        assert n == 2, f"Expected 2 html.Details elements (one per force), got {n}"
+        assert n == 1, f"Expected 1 combined html.Details element, got {n}"
 
-    def test_details_open_by_default(self):
+    def test_details_collapsed_by_default(self):
+        """T5: combined force table is collapsed (open=False) by default."""
         from dash import html as dhtml
         from dashboard.charting import _regime_info_children
         row = {
@@ -662,6 +664,101 @@ class TestRegimeTableRollup:
                     _find_details(item.children if isinstance(item.children, list) else [item.children])
 
         _find_details(children)
-        assert len(details_found) == 2
-        for d in details_found:
-            assert d.open is True, "Details element should be open by default"
+        assert len(details_found) == 1, f"Expected 1 Details element, got {len(details_found)}"
+        assert details_found[0].open is False, "Combined force table should be collapsed by default"
+
+
+class TestRoutedRegimeStepButtons:
+    """Prev/Now/Next must work when only one routed page is mounted."""
+
+    @staticmethod
+    def _collect_ids(component):
+        found = []
+        component_id = getattr(component, "id", None)
+        if component_id is not None:
+            found.append(component_id)
+        children = getattr(component, "children", None)
+        for child in children if isinstance(children, list) else ([children] if children is not None else []):
+            if hasattr(child, "children") or hasattr(child, "id"):
+                found.extend(TestRoutedRegimeStepButtons._collect_ids(child))
+        return found
+
+    @pytest.mark.parametrize("layout_name", ["_page_regime_history", "_page_regime_map"])
+    def test_each_routed_page_has_pattern_matched_step_buttons(self, layout_name):
+        import dashboard.charting as charting
+        layout = getattr(charting, layout_name)()
+        ids = self._collect_ids(layout)
+        actions = {
+            item["action"]
+            for item in ids
+            if isinstance(item, dict) and item.get("type") == "regime-step-button"
+        }
+        assert actions == {"prev", "current", "next"}
+
+    @pytest.mark.parametrize(
+        ("action", "current_step", "expected"),
+        [("prev", 0, 1), ("next", 2, 1), ("current", 2, 0)],
+    )
+    def test_step_button_updates_shared_index(
+        self, monkeypatch, action, current_step, expected
+    ):
+        import dashboard.charting as charting
+
+        class _Context:
+            triggered_id = {"type": "regime-step-button", "action": action}
+
+        monkeypatch.setattr(charting.dash, "callback_context", _Context())
+        monkeypatch.setattr(
+            charting,
+            "load_composite_history",
+            lambda **_kwargs: pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=4, freq="ME")}),
+        )
+        result = charting.update_regime_step(
+            1 if action == "prev" else None,
+            1 if action == "current" else None,
+            1 if action == "next" else None,
+            None,
+            {},
+            current_step,
+        )
+        assert result == expected
+
+    def test_graph_click_selects_matching_snapshot(self, monkeypatch):
+        import dashboard.charting as charting
+
+        monkeypatch.setattr(
+            charting,
+            "load_composite_history",
+            lambda **_kwargs: pd.DataFrame(
+                {"as_of": pd.date_range("2020-01-31", periods=4, freq="ME")}
+            ),
+        )
+
+        result = charting.select_regime_point(
+            {"points": [{"x": "2020-02-29"}]}, {}, 0
+        )
+
+        assert result == 2
+
+    def test_graph_click_uses_nearest_available_snapshot(self, monkeypatch):
+        import dashboard.charting as charting
+
+        monkeypatch.setattr(
+            charting,
+            "load_composite_history",
+            lambda **_kwargs: pd.DataFrame(
+                {"as_of": pd.to_datetime(["2020-01-31", "2020-02-29", "2020-03-31"])}
+            ),
+        )
+
+        result = charting.select_regime_point(
+            {"points": [{"x": "2020-02-20T12:00:00Z"}]}, {}, 0
+        )
+
+        assert result == 1
+
+    @pytest.mark.parametrize("click_data", [None, {}, {"points": []}, {"points": [{"x": None}]}])
+    def test_graph_click_ignores_missing_dates(self, click_data):
+        import dashboard.charting as charting
+
+        assert charting.select_regime_point(click_data, {}, 0) is charting.no_update

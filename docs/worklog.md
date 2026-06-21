@@ -4,6 +4,26 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-21 — Regime History graph point selection
+
+- Wired all five Regime History subplots through Dash's native graph click event; clicking a past point now selects the corresponding composite snapshot
+- The shared step index updates the sticky summary/component data and every graph's selected-point marker together
+- Date-based selection works across traces with different point counts and resolves sparse series to the nearest available composite date
+- Added exact-date, nearest-date/timezone, and invalid-click regressions; 335 tests pass on host and Docker
+- Rebuilt :8502; Regime History returns HTTP 200 and the click callback is registered without server errors
+
+---
+
+## 2026-06-21 — Routed Regime History step controls
+
+- Replaced page-specific Prev/Now/Next callback inputs with shared structured button IDs, so the callback remains active when only the routed Regime History page is mounted
+- Prev now selects the immediately older data point; Next moves one point toward the present; Now returns to the latest point
+- The shared `regime-step-index` continues to drive the sticky summary/component table and all five graph rows together
+- Added routed-layout and step-transition regressions; 329 tests pass on host and Docker
+- Rebuilt :8502; Regime History rendered all controls in a headless-browser smoke test with HTTP 200 and no callback errors
+
+---
+
 ## 2026-06-21 — Post-UI-restructure code review remediation
 
 - Fixed the Data Explorer initial-load callback error caused by passing Plotly's `title` layout argument twice

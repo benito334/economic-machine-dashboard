@@ -22,7 +22,7 @@ import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Input, Output, State, callback, dash_table, dcc, html
+from dash import Input, Output, State, callback, dash_table, dcc, html, no_update
 from plotly.subplots import make_subplots
 
 from dashboard.charting_data import (
@@ -47,6 +47,7 @@ app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.DARKLY],
     title="Indicators Machine — Charts",
+    update_title=None,          # prevent "Updating..." tab flicker from poll interval
     suppress_callback_exceptions=True,
 )
 server = app.server  # expose Flask for Gunicorn / production
@@ -555,7 +556,10 @@ def _left_nav() -> html.Div:
     ], style={
         "width": "195px",
         "flexShrink": "0",
-        "minHeight": "100vh",
+        "height": "100vh",
+        "position": "sticky",
+        "top": "0",
+        "overflowY": "auto",
         "backgroundColor": "var(--card-bg)",
         "borderRight": "1px solid var(--border-color)",
     })
@@ -623,9 +627,12 @@ def _page_regime_map() -> html.Div:
         dbc.Row([
             dbc.Col([
                 dbc.ButtonGroup([
-                    dbc.Button("←",       id="btn-scatter-prev",    color="secondary", size="sm", outline=True, title="Step back"),
-                    dbc.Button("◉ Now",   id="btn-scatter-current", color="primary",   size="sm", outline=True, title="Current"),
-                    dbc.Button("→",       id="btn-scatter-next",    color="secondary", size="sm", outline=True, title="Step forward"),
+                    dbc.Button("← Prev", id={"type": "regime-step-button", "action": "prev"},
+                               color="secondary", size="sm", outline=True, title="Previous data point"),
+                    dbc.Button("◉ Now", id={"type": "regime-step-button", "action": "current"},
+                               color="primary", size="sm", outline=True, title="Return to latest data point"),
+                    dbc.Button("Next →", id={"type": "regime-step-button", "action": "next"},
+                               color="secondary", size="sm", outline=True, title="Next data point"),
                 ], className="me-3"),
                 html.Span(id="scatter-date-display", className="text-muted small align-middle"),
             ], className="d-flex align-items-center pt-2 pb-1"),
@@ -672,24 +679,152 @@ def _page_regime_map() -> html.Div:
     ], className="pe-2")
 
 
+_RH_HELP_PANEL_BASE_STYLE: dict = {
+    "position": "fixed", "right": "0", "top": "0",
+    "height": "100vh", "width": "310px", "overflowY": "auto",
+    "zIndex": "500",
+    "backgroundColor": "var(--card-bg)",
+    "borderLeft": "1px solid var(--border-color)",
+    "padding": "16px 16px 32px 16px",
+    "transition": "transform 0.25s ease",
+    "boxShadow": "-4px 0 20px rgba(0,0,0,0.4)",
+}
+
+
+def _build_rh_help_panel() -> html.Div:
+    """Fixed right-side collapsible field guide for the Regime History page."""
+    _H = {
+        "fontSize": "0.6rem", "textTransform": "uppercase",
+        "letterSpacing": "0.08em", "fontWeight": "700",
+        "color": "var(--accent-color)", "marginBottom": "7px",
+        "marginTop": "16px", "paddingBottom": "4px",
+        "borderBottom": "1px solid var(--border-color)",
+    }
+    _TERM = {"fontWeight": "600", "fontSize": "0.78rem", "color": "var(--font-color)"}
+    _DEF  = {"fontSize": "0.76rem", "color": "var(--muted-color)", "marginBottom": "6px", "marginTop": "1px"}
+
+    def _row(term, defn):
+        if term:
+            return [html.Div(term, style=_TERM), html.Div(defn, style=_DEF)]
+        return [html.Div(defn, style={**_DEF, "marginTop": "0"})]
+
+    children = [
+        html.Div([
+            html.Span("Field Guide", style={"fontWeight": "700", "fontSize": "0.9rem"}),
+            dbc.Button("×", id="rh-help-close", color="link", size="sm", n_clicks=0,
+                       style={"padding": "0 2px", "fontSize": "1.3rem",
+                              "lineHeight": "1", "opacity": "0.6"}),
+        ], style={"display": "flex", "justifyContent": "space-between",
+                  "alignItems": "center", "marginBottom": "2px"}),
+        html.P("Regime History — all metrics explained.",
+               style={"fontSize": "0.74rem", "color": "var(--muted-color)", "marginBottom": "0"}),
+
+        html.Div("Regime Quadrant", style=_H),
+        *_row(None, "The macro season, determined by the sign of both force Z-scores."),
+        *_row("Expansion", "Growth ↑, Inflation ↓ — output recovering faster than prices."),
+        *_row("Inflationary Boom", "Growth ↑, Inflation ↑ — both above long-run normal."),
+        *_row("Stagflation", "Growth ↓, Inflation ↑ — weak output with elevated prices."),
+        *_row("Disinflationary Slowdown", "Growth ↓, Inflation ↓ — both below normal."),
+
+        html.Div("Force Z-Scores", style=_H),
+        *_row("Growth  (blue)", ("Weighted composite of 9 growth signals, each standardised "
+                                  "vs. its own history. Positive = above long-run average; negative = below.")),
+        *_row("Inflation  (orange)", ("Same for 8 inflation signals. "
+                                      "Positive = inflationary pressure above baseline.")),
+        *_row(None, ("The zero reference line is the historical mean. "
+                     "Magnitude shows how far conditions have deviated from 'normal'.")),
+
+        html.Div("Momentum  Δ MoM  (info box)", style=_H),
+        *_row(None, ("Month-over-month change in the force score: "
+                     "this month's composite Z-score minus last month's. "
+                     "↑ = score rose · ↓ = score fell · → = flat (|Δ| < 0.001).")),
+        *_row(None, "Distinct from the signal fraction in chart rows 2 & 4 — see 'Chart Rows' below."),
+
+        html.Div("Confidence", style=_H),
+        *_row(None, ("Fraction of constituent signals whose 3-month direction "
+                     "agrees with the assigned quadrant label.")),
+        *_row(None, ("In Stagflation we expect growth signals falling AND inflation signals rising. "
+                     "80% = 80% of all signals are moving in the expected direction.")),
+        *_row(None, "Below 50% = mixed signals; low conviction in the quadrant label."),
+
+        html.Div("Disequilibrium", style=_H),
+        *_row(None, ("Mean absolute Z-score across five structural force groups: "
+                     "Debt, External/Trade, Technology, Governance, Climate.")),
+        *_row(None, ("Unlike the cyclical quadrant, Disequilibrium captures slow-moving "
+                     "structural imbalances that build over years.")),
+        *_row("0 – 0.5", "Low structural tension."),
+        *_row("0.5 – 1.5", "Moderate tension."),
+        *_row("> 1.5", "High — system stretched far from long-run equilibrium."),
+
+        html.Div("Chart Rows", style=_H),
+        *_row("Row 1 · Growth Force Z-Score",
+              "Level of the growth composite over time. Fill shows magnitude above/below zero."),
+        *_row("Row 2 · Growth Momentum  (signal fraction)",
+              ("Fraction of the 9 growth signals whose 3-month direction is growth-positive. "
+               "50% = neutral split. 70% = 7 of 9 signals trending growth-positive, "
+               "independent of the absolute level. Note: 7/9 signals can be growth-positive "
+               "even when the Z-score is negative if the score is rising from a low base.")),
+        *_row("Row 3 · Inflation Force Z-Score",
+              "Level of the inflation composite over time."),
+        *_row("Row 4 · Inflation Momentum  (signal fraction)",
+              "Fraction of the 8 inflation signals trending inflation-positive. 50% = neutral."),
+        *_row("Row 5 · Regime Quadrant",
+              ("Discrete step-function: 0 = Dis. Slowdown · 1 = Expansion "
+               "· 2 = Inf. Boom · 3 = Stagflation.")),
+
+        html.Div("Force Component Table", style=_H),
+        *_row("Signal", "Constituent indicator name."),
+        *_row("Wt", "Composite weight. 1.0 = full; 0.5 = half. Set in composites.yaml."),
+        *_row("Last Data", "Date of the most-recent observation as of the selected date."),
+        *_row("Force Z", "Signal-level Z-score at the selected date. Positive = above historical mean."),
+        *_row("Momentum", "3-month change direction for this individual signal: ↑ ↓ →"),
+        *_row("Status", ("ACTIVE = included in composite · "
+                         "STALE = overdue per release schedule, excluded · "
+                         "LOW HISTORY = < 15 obs, Z-score unreliable, excluded · "
+                         "MISSING = no data at this date, excluded.")),
+    ]
+
+    return html.Div(
+        id="rh-help-panel",
+        style={**_RH_HELP_PANEL_BASE_STYLE, "transform": "translateX(100%)"},
+        children=children,
+    )
+
+
 def _page_regime_history() -> html.Div:
     return html.Div([
-        dbc.Row([
-            dbc.Col([
-                dbc.ButtonGroup([
-                    dbc.Button("←",       id="btn-regime-prev",    color="secondary", size="sm", outline=True, title="Step back"),
-                    dbc.Button("◉ Now",   id="btn-regime-current", color="primary",   size="sm", outline=True, title="Current"),
-                    dbc.Button("→",       id="btn-regime-next",    color="secondary", size="sm", outline=True, title="Step forward"),
-                ], className="me-3"),
-                html.Span(id="regime-date-display", className="text-muted small align-middle"),
-            ], className="d-flex align-items-center pt-2 pb-1"),
-        ]),
-        dbc.Row([
-            dbc.Col(
-                dbc.Card(dbc.CardBody(html.Div(id="regime-info-box"), style={"padding": "16px"})),
-                width=12,
-            ),
-        ], className="pb-2"),
+        dcc.Store(id="rh-help-open", data=False),
+        # ── Sticky header: controls + summary metrics box ─────────────────────
+        html.Div([
+            dbc.Row([
+                dbc.Col([
+                    dbc.ButtonGroup([
+                        dbc.Button("← Prev", id={"type": "regime-step-button", "action": "prev"},
+                                   color="secondary", size="sm", outline=True, title="Previous data point"),
+                        dbc.Button("◉ Now", id={"type": "regime-step-button", "action": "current"},
+                                   color="primary", size="sm", outline=True, title="Return to latest data point"),
+                        dbc.Button("Next →", id={"type": "regime-step-button", "action": "next"},
+                                   color="secondary", size="sm", outline=True, title="Next data point"),
+                    ], className="me-3"),
+                    html.Span(id="regime-date-display", className="text-muted small align-middle"),
+                ], className="d-flex align-items-center pt-2 pb-1"),
+                dbc.Col([
+                    dbc.Button("ℹ", id="rh-help-toggle", color="link", size="sm", n_clicks=0,
+                               title="Field Guide",
+                               style={"fontSize": "1.0rem", "padding": "2px 8px", "opacity": "0.7"}),
+                ], width="auto", className="d-flex align-items-center pt-2 pb-1 ms-auto"),
+            ]),
+            dbc.Row([
+                dbc.Col(
+                    dbc.Card(dbc.CardBody(html.Div(id="regime-info-box"), style={"padding": "14px 16px"})),
+                    width=12,
+                ),
+            ], className="pb-1"),
+        ], style={
+            "position": "sticky", "top": "0", "zIndex": "200",
+            "backgroundColor": "var(--page-bg)", "paddingBottom": "4px",
+        }),
+        # ── Chart (scrolls under sticky header) ───────────────────────────────
         dbc.Row([
             dbc.Col(
                 dcc.Graph(id="regime-chart",
@@ -699,6 +834,8 @@ def _page_regime_history() -> html.Div:
                 width=12,
             ),
         ]),
+        # ── Help panel (fixed, off-screen right by default) ────────────────────
+        _build_rh_help_panel(),
     ], className="pe-2")
 
 
@@ -733,12 +870,15 @@ app.layout = html.Div([
     dcc.Store(id="regime-step-index", data=0),
     # Fired by routing callback so page callbacks wait until components exist in DOM
     dcc.Store(id="page-trigger",      data={"page": "/charts"}),
+    # Keyboard navigation: interval polls the delta set by the key listener
+    dcc.Store(id="nav-event",         data=None),
+    dcc.Interval(id="key-interval",   interval=80, disabled=True, n_intervals=0),
     html.Div(id="theme-dummy",        style={"display": "none"}),
 
     html.Div([
         _left_nav(),
         html.Div(id="page-content", style={"flex": "1", "minWidth": "0", "padding": "0 12px"}),
-    ], style={"display": "flex", "minHeight": "100vh"}),
+    ], style={"display": "flex", "alignItems": "flex-start", "minHeight": "100vh"}),
 ], style={"backgroundColor": "var(--page-bg)"})
 
 # ── Theme callbacks ───────────────────────────────────────────────────────────
@@ -750,6 +890,49 @@ app.layout = html.Div([
 def update_theme_store(theme_name: str) -> str:
     return theme_name or DEFAULT_THEME
 
+
+# ── Keyboard navigation (arrow keys on Regime History page) ──────────────────
+# CB1: enable/disable the poll interval and set up the key listener
+
+app.clientside_callback(
+    """
+    function(pathname) {
+        window._rhKeyDelta = 0;
+        if (window._rhKeyListener) {
+            document.removeEventListener('keydown', window._rhKeyListener);
+            window._rhKeyListener = null;
+        }
+        if (pathname === '/regime-history') {
+            window._rhKeyListener = function(e) {
+                var t = e.target;
+                if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+                if (e.key === 'ArrowLeft')  { e.preventDefault(); window._rhKeyDelta =  1; }
+                if (e.key === 'ArrowRight') { e.preventDefault(); window._rhKeyDelta = -1; }
+            };
+            document.addEventListener('keydown', window._rhKeyListener);
+            return false;   /* enable interval */
+        }
+        return true;        /* disable interval */
+    }
+    """,
+    Output("key-interval", "disabled"),
+    Input("url", "pathname"),
+)
+
+# CB2: drain the keyboard delta into the nav-event store
+
+app.clientside_callback(
+    """
+    function(n) {
+        var d = window._rhKeyDelta || 0;
+        window._rhKeyDelta = 0;
+        if (d !== 0) return {type: 'delta', value: d, t: n};
+        return dash_clientside.no_update;
+    }
+    """,
+    Output("nav-event", "data"),
+    Input("key-interval", "n_intervals"),
+)
 
 # ── Routing callback ──────────────────────────────────────────────────────────
 
@@ -1079,6 +1262,8 @@ def _regime_info_children(
     is_current: bool,
     comp_df: "pd.DataFrame | None" = None,
     stale_dict: "dict[str, int] | None" = None,
+    g_delta: "float | None" = None,
+    i_delta: "float | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table."""
     quadrant   = row.get("quadrant") or "—"
@@ -1091,83 +1276,62 @@ def _regime_info_children(
     q_color    = _QUADRANT_COLOR.get(quadrant, "#888")
     muted      = {"color": "var(--muted-color)"}
 
-    def _fmt(v: Any, prec: int = 2) -> str:
+    def _fmt(v: Any, prec: int = 3) -> str:
         if v is None or (isinstance(v, float) and pd.isna(v)):
             return "—"
         return f"{v:+.{prec}f}"
 
     def _arrow(v: Any) -> str:
-        return "↑" if (v is not None and not pd.isna(v) and float(v) >= 0) else "↓"
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return "→"
+        return "↑" if float(v) > 0.001 else ("↓" if float(v) < -0.001 else "→")
 
-    # ── Momentum fractions from current signal directions ─────────────────────
-    g_mom_str = i_mom_str = "—"
-    if comp_df is not None and not comp_df.empty:
-        g_df = comp_df[comp_df["composite"] == "growth"]
-        i_df = comp_df[comp_df["composite"] == "inflation"]
+    def _score_color(v: Any, pos_color: str) -> str:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return "#555"
+        return pos_color if float(v) >= 0 else "#aaaaaa"
 
-        def _mom_str(df: "pd.DataFrame", positive_dir: str, negative_dir: str) -> str:
-            total = df[df["direction"].notna()]
-            if total.empty:
-                return "—"
-            # For inverted signals (unemployment), falling = growth-positive
-            positive_count = sum(
-                1 for _, sr in total.iterrows()
-                if (sr["direction"] == (negative_dir if sr["invert"] else positive_dir))
-            )
-            return f"{positive_count}/{len(total)}"
+    # ── Reusable block builders ───────────────────────────────────────────────
+    _SZ = "1.55rem"  # shared big-number font size
 
-        g_mom_str = _mom_str(g_df, "rising", "falling")
-        i_mom_str = _mom_str(i_df, "rising", "falling")
+    def _val_block(label: str, value: Any, color: str, sub: str = "") -> html.Div:
+        val_str = _fmt(value)
+        c = _score_color(value, color)
+        return html.Div([
+            html.Div(label, style={"fontSize": "0.65rem", "color": "var(--muted-color)",
+                                   "marginBottom": "3px", "whiteSpace": "nowrap"}),
+            html.Div([
+                html.Span(_arrow(value), style={"fontSize": "0.95rem", "color": c, "marginRight": "3px"}),
+                html.Span(val_str, style={"fontSize": _SZ, "fontWeight": "700",
+                                          "color": c, "fontFamily": "monospace"}),
+            ], style={"lineHeight": "1.1", "marginBottom": "2px"}),
+            html.Div(sub, style={"fontSize": "0.65rem", "color": "var(--muted-color)"}),
+        ], style={"minWidth": "105px"})
 
-    # ── Summary strip ─────────────────────────────────────────────────────────
-    def _score_block(label: str, score: Any, n_active: int, n_total: int,
-                     color: str) -> html.Div:
-        score_txt = f"{float(score):+.3f}" if score is not None and not (isinstance(score, float) and pd.isna(score)) else "—"
-        score_color = color if score is not None else "#555"
-        return html.Div(
-            style={
-                "borderLeft": f"3px solid {color}",
-                "paddingLeft": "10px", "minWidth": "160px",
-            },
-            children=[
-                html.Div(label,
-                         style={"fontSize": "0.65rem", "textTransform": "uppercase",
-                                "letterSpacing": "0.07em", "color": "var(--muted-color)"}),
-                html.Div(
-                    [html.Span(_arrow(score) + " ", style={"fontSize": "1.0rem", "color": score_color}),
-                     html.Span(score_txt, style={"fontSize": "1.6rem", "fontWeight": "700",
-                                                  "color": score_color, "fontFamily": "monospace"})],
-                    style={"lineHeight": "1.1", "marginBottom": "2px"},
-                ),
-                html.Div(
-                    f"{n_active}/{n_total} signals active",
-                    style={"fontSize": "0.68rem", "color": "var(--muted-color)"},
-                ),
-            ],
-        )
+    def _stat_block(label: str, val_str: str, color: str = "var(--font-color)") -> html.Div:
+        """Confidence / Disequilibrium — same visual size as _val_block but no arrow."""
+        return html.Div([
+            html.Div(label, style={"fontSize": "0.65rem", "color": "var(--muted-color)",
+                                   "marginBottom": "3px", "whiteSpace": "nowrap"}),
+            html.Div(val_str, style={"fontSize": _SZ, "fontWeight": "700",
+                                     "color": color, "fontFamily": "monospace",
+                                     "lineHeight": "1.1", "marginBottom": "2px"}),
+            html.Div(" ", style={"fontSize": "0.65rem"}),  # spacer to align baseline
+        ], style={"minWidth": "105px"})
 
-    def _mom_block(label: str, mom_str: str, color: str) -> html.Div:
-        return html.Div(
-            style={
-                "borderLeft": f"3px solid {color}",
-                "paddingLeft": "10px", "minWidth": "130px",
-            },
-            children=[
-                html.Div(label,
-                         style={"fontSize": "0.65rem", "textTransform": "uppercase",
-                                "letterSpacing": "0.07em", "color": "var(--muted-color)"}),
-                html.Div(
-                    mom_str,
-                    style={"fontSize": "1.6rem", "fontWeight": "700",
-                           "color": color, "fontFamily": "monospace",
-                           "lineHeight": "1.1", "marginBottom": "2px"},
-                ),
-                html.Div(
-                    "signals momentum-positive",
-                    style={"fontSize": "0.68rem", "color": "var(--muted-color)"},
-                ),
-            ],
-        )
+    def _group(header: str, blocks: list) -> html.Div:
+        """Blocks under a single centered section header, left-separated."""
+        return html.Div([
+            html.Div(header, style={
+                "fontSize": "0.6rem", "textTransform": "uppercase",
+                "letterSpacing": "0.09em", "color": "var(--muted-color)",
+                "fontWeight": "700", "textAlign": "center", "marginBottom": "8px",
+            }),
+            html.Div(blocks, style={"display": "flex", "gap": "18px"}),
+        ], style={
+            "borderLeft": "1px solid var(--border-color)",
+            "paddingLeft": "20px",
+        })
 
     past_badge = (
         html.Span(" ⚠ PAST DATA",
@@ -1175,67 +1339,45 @@ def _regime_info_children(
         if not is_current else None
     )
 
+    conf_str = (f"{confidence:.0%}" if confidence is not None and not pd.isna(confidence) else "—")
+    diseq_str = _fmt(diseq)
+
     summary_strip = html.Div(
         style={
             "display": "flex", "alignItems": "flex-start",
-            "gap": "24px", "flexWrap": "wrap", "marginBottom": "16px",
+            "gap": "0", "flexWrap": "wrap", "marginBottom": "16px",
         },
         children=[
-            # Quadrant badge
-            html.Div(
-                style={"display": "flex", "flexDirection": "column", "justifyContent": "center",
-                       "minWidth": "160px"},
-                children=[
-                    html.Div(
-                        [html.Span(quadrant), *([] if past_badge is None else [past_badge])],
-                        style={"backgroundColor": q_color, "color": "#111",
-                               "textAlign": "center", "fontWeight": "bold",
-                               "fontSize": "0.88rem", "padding": "8px 10px",
-                               "borderRadius": "4px", "marginBottom": "6px"},
-                    ),
-                    html.Div(
-                        [
-                            html.Span("Confidence: ",
-                                      style={"fontSize": "0.7rem", "color": "var(--muted-color)"}),
-                            html.Span(
-                                f"{int(confidence * 100)}%" if (confidence is not None and not pd.isna(confidence)) else "—",
-                                style={"fontSize": "0.7rem", "color": "var(--font-color)", "fontWeight": "600"},
-                            ),
-                        ],
-                    ),
-                    html.Div(
-                        [
-                            html.Span("Disequilibrium: ",
-                                      style={"fontSize": "0.7rem", "color": "var(--muted-color)"}),
-                            html.Span(
-                                _fmt(diseq),
-                                style={"fontSize": "0.7rem", "color": "var(--font-color)", "fontWeight": "600"},
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-            # Separator
-            html.Div(style={"width": "1px", "background": "var(--border-color)",
-                            "alignSelf": "stretch", "margin": "0 4px"}),
-            # Force scores
-            _score_block("Growth Force Z-Score", g_score, n_g, 9, _GROWTH_COLOR),
-            _score_block("Inflation Force Z-Score", i_score, n_i, 8, _INFLATION_COLOR),
-            # Separator
-            html.Div(style={"width": "1px", "background": "var(--border-color)",
-                            "alignSelf": "stretch", "margin": "0 4px"}),
-            # Momentum fractions (separate from force scores)
-            _mom_block("Growth Momentum", g_mom_str, _GROWTH_COLOR),
-            _mom_block("Inflation Momentum", i_mom_str, _INFLATION_COLOR),
-            html.Div(
-                style={"fontSize": "0.65rem", "color": "#555", "alignSelf": "flex-end",
-                       "marginLeft": "auto"},
-                children=[
-                    html.Div("Force Z-Score = weighted average of signal Z-scores"),
-                    html.Div("Momentum = fraction of signals in growth/inflation-positive direction"),
-                    html.Div("Confidence = direction-agreement fraction vs. expected for quadrant"),
-                ],
-            ),
+            # ── Quadrant badge ────────────────────────────────────────────────
+            html.Div([
+                html.Div(
+                    [html.Span(quadrant), *([] if past_badge is None else [past_badge])],
+                    style={"backgroundColor": q_color, "color": "#111",
+                           "textAlign": "center", "fontWeight": "bold",
+                           "fontSize": "0.88rem", "padding": "8px 12px",
+                           "borderRadius": "4px", "marginBottom": "6px",
+                           "whiteSpace": "nowrap"},
+                ),
+            ], style={"paddingRight": "20px", "minWidth": "140px",
+                      "display": "flex", "flexDirection": "column", "justifyContent": "flex-start"}),
+
+            # ── Force Z-Scores ─────────────────────────────────────────────────
+            _group("Force Z-Scores", [
+                _val_block("Growth",   g_score, _GROWTH_COLOR,    f"{n_g}/9 signals"),
+                _val_block("Inflation",i_score, _INFLATION_COLOR, f"{n_i}/8 signals"),
+            ]),
+
+            # ── Momentum (MoM Δ in force score) ───────────────────────────────
+            _group("Momentum  (Δ MoM)", [
+                _val_block("Growth",   g_delta, _GROWTH_COLOR),
+                _val_block("Inflation",i_delta, _INFLATION_COLOR),
+            ]),
+
+            # ── Confidence + Disequilibrium ────────────────────────────────────
+            _group("Regime Quality", [
+                _stat_block("Confidence",     conf_str),
+                _stat_block("Disequilibrium", diseq_str),
+            ]),
         ],
     )
 
@@ -1378,7 +1520,8 @@ def _regime_info_children(
                 ))
             return rows
 
-        def _section_table(force: str, n_total: int, color: str) -> html.Details:
+        def _force_table(force: str, n_total: int, color: str) -> list:
+            """Return [section_header_row, ...data_rows] for one force group."""
             rows = _section(force, n_total, color)
             df_f = comp_df[comp_df["composite"] == force]
             n_active = int(
@@ -1386,47 +1529,73 @@ def _regime_info_children(
                  & ~df_f["is_stale"]
                  & ~df_f["low_history"]).sum()
             )
-            summary_label = f"{force.upper()} FORCE INPUTS  ·  {n_active}/{len(df_f)} active"
-            _header_row = html.Tr([
-                html.Th("Signal",     style=th_sty),
-                html.Th("Wt",         style={**th_sty, "textAlign": "center"}),
-                html.Th("Last Data",  style={**th_sty, "textAlign": "center"}),
-                html.Th("Force Z",    style={**th_sty, "textAlign": "right"}),
-                html.Th("Momentum",   style=th_sty),
-                html.Th("Status",     style=th_sty),
+            section_header = html.Tr([
+                html.Td(
+                    f"{force.upper()} FORCE  ·  {n_active}/{len(df_f)} active",
+                    colSpan=6,
+                    style={
+                        "padding": "5px 10px",
+                        "fontSize": "0.68rem", "fontWeight": "700",
+                        "textTransform": "uppercase", "letterSpacing": "0.07em",
+                        "color": color,
+                        "backgroundColor": "rgba(0,0,0,0.18)",
+                        "borderBottom": f"1px solid {color}",
+                        "borderTop": "1px solid var(--border-color)",
+                    },
+                )
             ])
-            return html.Details(
-                open=True,
-                children=[
-                    html.Summary(
-                        summary_label,
-                        style={
-                            "cursor": "pointer",
-                            "padding": "6px 10px",
-                            "fontSize": "0.72rem", "fontWeight": "700",
-                            "textTransform": "uppercase", "letterSpacing": "0.07em",
-                            "color": color,
-                            "backgroundColor": "rgba(0,0,0,0.18)",
-                            "borderBottom": f"1px solid {color}",
-                            "userSelect": "none",
-                        },
-                    ),
-                    html.Table(
-                        [html.Thead(_header_row), html.Tbody(rows)],
-                        style={"width": "100%", "borderCollapse": "collapse"},
-                    ),
-                ],
-                style={"marginBottom": "6px"},
-            )
+            return [section_header] + rows
 
-        table_section = html.Div([
-            _section_table("growth",    9, _GROWTH_COLOR),
-            _section_table("inflation", 8, _INFLATION_COLOR),
+        col_header = html.Tr([
+            html.Th("Signal",    style=th_sty),
+            html.Th("Wt",        style={**th_sty, "textAlign": "center"}),
+            html.Th("Last Data", style={**th_sty, "textAlign": "center"}),
+            html.Th("Force Z",   style={**th_sty, "textAlign": "right"}),
+            html.Th("Momentum",  style=th_sty),
+            html.Th("Status",    style=th_sty),
         ])
 
+        all_rows = _force_table("growth", 9, _GROWTH_COLOR) + _force_table("inflation", 8, _INFLATION_COLOR)
+
+        df_g = comp_df[comp_df["composite"] == "growth"]
+        df_i = comp_df[comp_df["composite"] == "inflation"]
+        n_active_g = int((df_g["zscore"].notna() & ~df_g["is_stale"] & ~df_g["low_history"]).sum())
+        n_active_i = int((df_i["zscore"].notna() & ~df_i["is_stale"] & ~df_i["low_history"]).sum())
+        combined_label = (
+            f"Force Component Inputs  ·  "
+            f"Growth {n_active_g}/{len(df_g)}  ·  "
+            f"Inflation {n_active_i}/{len(df_i)}"
+        )
+
+        table_section = html.Details(
+            open=False,
+            children=[
+                html.Summary(
+                    combined_label,
+                    style={
+                        "cursor": "pointer",
+                        "padding": "6px 10px",
+                        "fontSize": "0.72rem", "fontWeight": "700",
+                        "textTransform": "uppercase", "letterSpacing": "0.07em",
+                        "color": "var(--muted-color)",
+                        "backgroundColor": "rgba(0,0,0,0.18)",
+                        "borderBottom": "1px solid var(--border-color)",
+                        "userSelect": "none",
+                    },
+                ),
+                html.Table(
+                    [html.Thead(col_header), html.Tbody(all_rows)],
+                    style={"width": "100%", "borderCollapse": "collapse"},
+                ),
+            ],
+            style={"marginBottom": "6px"},
+        )
+
     footer = html.Div(
-        "Force Z-Score = standardised distance from historical mean · "
-        "Momentum direction uses change_3m · Stale/low-history signals excluded from composite",
+        "Force Z-Score = weighted average of constituent signal Z-scores · "
+        "Momentum = month-over-month change in force score · "
+        "Confidence = direction-agreement fraction vs. expected quadrant · "
+        "Stale/low-history signals excluded from composite",
         style={"fontSize": "0.65rem", "color": "#555", "marginTop": "10px"},
     )
 
@@ -1435,40 +1604,94 @@ def _regime_info_children(
 
 @callback(
     Output("regime-step-index", "data"),
-    [Input("btn-regime-prev", "n_clicks"),
-     Input("btn-regime-current", "n_clicks"),
-     Input("btn-regime-next", "n_clicks"),
-     Input("btn-scatter-prev", "n_clicks"),
-     Input("btn-scatter-current", "n_clicks"),
-     Input("btn-scatter-next", "n_clicks"),
+    [Input({"type": "regime-step-button", "action": "prev"}, "n_clicks"),
+     Input({"type": "regime-step-button", "action": "current"}, "n_clicks"),
+     Input({"type": "regime-step-button", "action": "next"}, "n_clicks"),
+     Input("nav-event", "data"),
      Input("date-range", "data")],
     State("regime-step-index", "data"),
     prevent_initial_call=True,
 )
 def update_regime_step(
-    _rprev: Any, _rcurrent: Any, _rnext: Any,
-    _sprev: Any, _scurrent: Any, _snext: Any,
+    _prev_clicks: Any, _current_clicks: Any, _next_clicks: Any,
+    nav_event: dict,
     date_range: dict,
     current_step: int,
 ) -> int:
     triggered = dash.callback_context.triggered_id
-    if triggered == "date-range":
-        return 0
-
-    if triggered in ("btn-regime-current", "btn-scatter-current"):
-        return 0
-
     step = current_step or 0
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
+
+    if triggered == "date-range":
+        return 0
+
+    action = triggered.get("action") if isinstance(triggered, dict) else None
+
+    if action == "current":
+        return 0
+
+    if triggered == "nav-event":
+        ev = nav_event or {}
+        ev_type = ev.get("type")
+        val = ev.get("value")
+        if val is None:
+            return no_update
+        comp = load_composite_history(start_date=start, end_date=end)
+        n = len(comp)
+        if ev_type == "delta":
+            delta = int(val)
+            if delta == 0:
+                return no_update
+            return max(0, min(step + delta, n - 1))
+        return no_update
+
     comp = load_composite_history(start_date=start, end_date=end)
     max_step = max(0, len(comp) - 1)
 
-    if triggered in ("btn-regime-prev", "btn-scatter-prev"):
+    if action == "prev":
         return min(step + 1, max_step)
-    if triggered in ("btn-regime-next", "btn-scatter-next"):
+    if action == "next":
         return max(step - 1, 0)
     return step
+
+
+@callback(
+    Output("regime-step-index", "data", allow_duplicate=True),
+    Input("regime-chart", "clickData"),
+    State("date-range", "data"),
+    State("regime-step-index", "data"),
+    prevent_initial_call=True,
+)
+def select_regime_point(click_data: dict, date_range: dict, current_step: int) -> int:
+    """Move the shared Regime History snapshot to the date clicked in any subplot."""
+    points = (click_data or {}).get("points") or []
+    raw_date = points[0].get("x") if points else None
+    if raw_date is None:
+        return no_update
+
+    clicked_date = pd.to_datetime(raw_date, errors="coerce")
+    if pd.isna(clicked_date):
+        return no_update
+    if getattr(clicked_date, "tzinfo", None) is not None:
+        clicked_date = clicked_date.tz_convert(None)
+
+    start = (date_range or {}).get("start")
+    end = (date_range or {}).get("end")
+    comp = load_composite_history(start_date=start, end_date=end)
+    if comp.empty or "as_of" not in comp:
+        return no_update
+
+    dates = pd.to_datetime(comp["as_of"], errors="coerce")
+    valid = dates.notna()
+    if not valid.any():
+        return no_update
+
+    valid_positions = valid.to_numpy().nonzero()[0]
+    deltas = (dates[valid] - clicked_date).abs().to_numpy()
+    position = int(valid_positions[deltas.argmin()])
+    new_step = len(comp) - 1 - position
+    return new_step if new_step != (current_step or 0) else no_update
 
 
 @callback(
@@ -1500,11 +1723,22 @@ def update_regime_info(step: int, date_range: dict, _trigger: Any = None) -> tup
     date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
     date_display = f"{date_str} · current" if is_current else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
 
+    # Momentum = MoM change in force score (same definition as Streamlit HUD)
+    g_delta = i_delta = None
+    if idx > 0:
+        prev = comp.iloc[idx - 1]
+        gs, pgs = selected.get("growth_score"), prev.get("growth_score")
+        ins, pins = selected.get("inflation_score"), prev.get("inflation_score")
+        if gs is not None and pgs is not None and not pd.isna(gs) and not pd.isna(pgs):
+            g_delta = float(gs) - float(pgs)
+        if ins is not None and pins is not None and not pd.isna(ins) and not pd.isna(pins):
+            i_delta = float(ins) - float(pins)
+
     comp_df = load_composite_component_status(
         country="US", as_of=str(selected["as_of"])
     )
     stale_dict = _parse_stress_components(selected.get("stale_signals") or "")
-    return _regime_info_children(selected, is_current, comp_df, stale_dict), date_display
+    return _regime_info_children(selected, is_current, comp_df, stale_dict, g_delta, i_delta), date_display
 
 
 @callback(
@@ -1735,6 +1969,31 @@ def update_regime_chart(
         )
 
     return fig
+
+
+# ── Regime History help panel — callbacks ─────────────────────────────────────
+
+@callback(
+    Output("rh-help-open", "data"),
+    [Input("rh-help-toggle", "n_clicks"),
+     Input("rh-help-close", "n_clicks")],
+    State("rh-help-open", "data"),
+    prevent_initial_call=True,
+)
+def _toggle_rh_help(_n1: int, _n2: int, is_open: bool) -> bool:
+    return not bool(is_open)
+
+
+@callback(
+    Output("rh-help-panel", "style"),
+    Input("rh-help-open", "data"),
+    prevent_initial_call=False,
+)
+def _update_rh_help_panel_style(is_open: bool) -> dict:
+    return {
+        **_RH_HELP_PANEL_BASE_STYLE,
+        "transform": "translateX(0)" if is_open else "translateX(100%)",
+    }
 
 
 # ── Regime Map scatter — callbacks ────────────────────────────────────────────
