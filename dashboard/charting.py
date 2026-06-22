@@ -713,7 +713,8 @@ def _left_nav() -> html.Div:
 
     _country_options = [
         {"label": "🇺🇸 United States",          "value": "US"},
-        {"label": "🇪🇺 Eurozone  (soon)",         "value": "EZ", "disabled": True},
+        {"label": "🇪🇺 Eurozone",               "value": "EZ"},
+        {"label": "🇰🇷 South Korea",            "value": "KR"},
         {"label": "🇯🇵 Japan  (soon)",            "value": "JP", "disabled": True},
         {"label": "🇬🇧 United Kingdom  (soon)",   "value": "GB", "disabled": True},
     ]
@@ -1394,7 +1395,8 @@ def update_toggle_icon(collapsed: bool) -> str:
 
 
 _COUNTRY_FLAGS = {"US": ("🇺🇸", "United States"), "EZ": ("🇪🇺", "Eurozone"),
-                  "JP": ("🇯🇵", "Japan"),          "GB": ("🇬🇧", "United Kingdom")}
+                  "KR": ("🇰🇷", "South Korea"),    "JP": ("🇯🇵", "Japan"),
+                  "GB": ("🇬🇧", "United Kingdom")}
 
 
 @callback(
@@ -3197,25 +3199,28 @@ def update_scatter_chart(
      Output("data-quality-log","children")],
     [Input("regime-step-index", "data"),
      Input("date-range", "data"),
-     Input("page-trigger", "data")],
+     Input("page-trigger", "data"),
+     Input("country-store", "data")],
     prevent_initial_call=False,
 )
 def update_regime_map_panels(
     step: int,
     date_range: dict,
     _trigger: Any = None,
+    country: str = "US",
 ) -> tuple:
+    country = str(country or "US")
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
-    comp = load_composite_history(start_date=start, end_date=end)
+    comp = load_composite_history(start_date=start, end_date=end, country=country)
     if comp.empty:
         selected_as_of = end
     else:
         idx = max(0, min(len(comp) - 1 - (step or 0), len(comp) - 1))
         selected_as_of = pd.Timestamp(comp.iloc[idx]["as_of"]).date().isoformat()
 
-    latest_signals = load_latest_signals("US", as_of=selected_as_of)
-    change_feed = load_change_feed("US", as_of=selected_as_of)
+    latest_signals = load_latest_signals(country, as_of=selected_as_of)
+    change_feed = load_change_feed(country, as_of=selected_as_of)
 
     # ── What Changed ─────────────────────────────────────────────────────────
     wc_children = _what_changed_children(change_feed)
@@ -3226,7 +3231,7 @@ def update_regime_map_panels(
     ]
 
     # ── Lens Drill-Downs ──────────────────────────────────────────────────────
-    histories_df = load_all_signal_histories("US", as_of=selected_as_of)
+    histories_df = load_all_signal_histories(country, as_of=selected_as_of)
     histories_by_id: dict[str, list[float]] = {}
     if not histories_df.empty:
         for sid, grp in histories_df.groupby("id"):
