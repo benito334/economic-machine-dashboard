@@ -197,6 +197,73 @@ hr {
     color: var(--font-color) !important;
 }
 
+/* ── Global Overview Table ───────────────────────────────────────────────── */
+.ov-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+.ov-th-country, .ov-th-num {
+    color: var(--muted-color);
+    font-weight: 500;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    padding: 8px 14px 10px;
+    border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+    text-transform: uppercase;
+}
+.ov-th-num { text-align: right; }
+.ov-th-sub {
+    font-size: 0.60rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    margin-top: 2px;
+    text-transform: none;
+    opacity: 0.75;
+}
+.ov-country-name {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--font-color);
+    font-weight: 400;
+    white-space: nowrap;
+}
+.ov-cell-num {
+    padding: 8px 14px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+.ov-cell-default { color: var(--font-color); }
+.ov-cell-date {
+    font-size: 0.63rem;
+    color: var(--muted-color);
+    opacity: 0.7;
+}
+.ov-cell-missing {
+    padding: 8px 14px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--muted-color);
+    opacity: 0.4;
+}
+.ov-row:hover .ov-country-name,
+.ov-row:hover .ov-cell-num,
+.ov-row:hover .ov-cell-missing {
+    background-color: var(--card-bg);
+}
+/* Color-coded value classes */
+.ov-cell-warn { color: #E8853A !important; }
+.ov-cell-high { color: #4C9BE8 !important; }
+.ov-cell-pos  { color: #5CB85C !important; }
+.ov-legend-label {
+    font-size: 0.72rem;
+    color: var(--muted-color);
+    margin-right: 16px;
+}
+
 /* DataTable filter/pagination inputs */
 .dash-table-container .dash-filter input,
 .dash-table-container .previous-page,

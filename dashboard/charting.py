@@ -43,6 +43,7 @@ from dashboard.charting_data import (
 )
 from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import explorer as _explorer
+from dashboard import global_overview as _global_overview
 from dashboard import methodology as _methodology
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -753,7 +754,7 @@ def _left_nav() -> html.Div:
         # ── Overviews (placeholder — Phase 2+) ───────────────────────────────
         _label("Overviews"),
         dbc.Nav([
-            _nl("🌐", "Overview", "/overview", disabled=True, nav_id="navlnk-overview"),
+            _nl("🌐", "Overview", "/overview", nav_id="navlnk-overview"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Indicators ────────────────────────────────────────────────────────
@@ -885,6 +886,10 @@ def _page_chart_overlay() -> html.Div:
 
 def _page_explorer() -> html.Div:
     return html.Div(_explorer.get_layout(), className="pe-2 pt-2", style={"maxWidth": "1600px", "margin": "0 auto"})
+
+
+def _page_overview() -> html.Div:
+    return _global_overview.get_layout()
 
 
 def _page_methodology() -> html.Div:
@@ -1553,6 +1558,7 @@ app.clientside_callback(
 _PAGE_MAP = {
     "/":              _page_chart_overlay,
     "/charts":        _page_chart_overlay,
+    "/overview":      _page_overview,
     "/explorer":      _page_explorer,
     "/methodology":   _page_methodology,
     "/yield-curve":   _page_yield_curve,

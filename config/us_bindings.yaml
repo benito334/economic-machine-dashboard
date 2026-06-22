@@ -30,6 +30,23 @@ bindings:
     sanity_min: -0.20
     sanity_max: 0.25
 
+  - id: master.gdp_level_bn
+    series_id: GDP
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 20000.0
+    linkage: "Nominal GDP level in billions USD (SAAR). Used for cross-country size comparison in the Global Overview table."
+    sanity_min: 1000.0
+    sanity_max: 60000.0
+
   - id: master.gdp_real
     series_id: GDPC1
     provider: FRED
@@ -409,6 +426,23 @@ bindings:
     verified: true
     equilibrium: 2.5
     linkage: "Effective Fed funds rate — the primary lever of monetary policy; distance above neutral is the degree of restriction."
+    sanity_min: 0.0
+    sanity_max: 25.0
+
+  - id: policy.fed_funds_target
+    series_id: DFEDTARU
+    provider: FRED
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "Fed funds target rate upper bound (FOMC-announced policy rate). Used in the Global Overview table as the headline interest rate."
     sanity_min: 0.0
     sanity_max: 25.0
 
@@ -935,6 +969,23 @@ bindings:
     sanity_min: -2.0
     sanity_max: 5.0
 
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Total population (World Bank). Used in the Global Overview table; divide by 1,000,000 for display in millions."
+    sanity_min: 1000000.0
+    sanity_max: 2000000000.0
+
   - id: demo.age_dependency
     series_id: SP.POP.DPND
     provider: WorldBank
@@ -1078,6 +1129,23 @@ bindings:
     linkage: "Federal surplus (+) or deficit (−) in millions of dollars. Persistent large deficits monetise the cycle; a Z-score captures how extreme the current fiscal position is relative to history."
     sanity_min: -3000000.0
     sanity_max: 500000.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: FYFSGDA188S
+    provider: FRED
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Federal surplus/deficit as % of GDP. Negative = deficit. Used in the Global Overview table as the headline government budget balance."
+    sanity_min: -25.0
+    sanity_max: 10.0
 
   - id: fiscal.interest_payments
     series_id: FYOINT

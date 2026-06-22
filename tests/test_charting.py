@@ -116,21 +116,15 @@ def test_formula_catalog_uses_live_composite_config():
     assert "compute_composite_history" in by_title["Regime confidence"]["source"]
 
 
-def test_formula_page_is_routed_and_contains_requested_formulas():
+def test_overview_page_is_routed_and_renders_table():
     from dashboard.charting import _PAGE_MAP, route_page
 
-    assert "/formulas" in _PAGE_MAP
-    layout, trigger = route_page("/formulas")
+    assert "/overview" in _PAGE_MAP
+    layout, trigger = route_page("/overview")
     rendered = str(layout.to_plotly_json())
-    for title in (
-        "Effective weight and force score",
-        "Force momentum breadth",
-        "Regime confidence",
-        "Structural disequilibrium",
-        "Observation-age decay",
-    ):
-        assert title in rendered
-    assert trigger == {"page": "/formulas"}
+    assert "Global Overview" in rendered
+    assert "ov-table" in rendered
+    assert trigger == {"page": "/overview"}
 
 
 def test_charting_groups_match_catalog():
