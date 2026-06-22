@@ -264,6 +264,121 @@ hr {
     margin-right: 16px;
 }
 
+/* ── Data Dashboard Table ────────────────────────────────────────────────── */
+.dd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+.dd-th {
+    color: var(--muted-color);
+    font-weight: 500;
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 8px 12px 9px;
+    border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+}
+.dd-th-r { text-align: right; }
+
+/* Group header rows */
+.dd-group-header {
+    padding: 10px 12px 6px;
+    background-color: var(--header-bg);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+.dd-group-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--font-color);
+}
+.dd-group-count {
+    font-size: 0.64rem;
+    color: var(--muted-color);
+    margin-left: 8px;
+}
+
+/* Signal rows */
+.dd-row td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+.dd-row:hover td { background-color: var(--card-bg); }
+.dd-row-issue td { border-left: 2px solid transparent; }
+.dd-row-issue:hover td { border-left-color: #E8853A; }
+
+.dd-cell-name  { color: var(--font-color); white-space: nowrap; }
+.dd-cell-series { white-space: nowrap; }
+.dd-cell-val   { text-align: right; font-variant-numeric: tabular-nums;
+                  color: var(--font-color); white-space: nowrap; }
+.dd-cell-date  { white-space: nowrap; }
+.dd-cell-date-main { color: var(--font-color); font-size: 0.80rem; }
+.dd-cell-date-ago  { color: var(--muted-color); font-size: 0.63rem; }
+.dd-cell-freq  { color: var(--muted-color); white-space: nowrap; }
+.dd-cell-prov  { color: var(--muted-color); white-space: nowrap; }
+.dd-cell-next  { color: var(--muted-color); white-space: nowrap;
+                  font-variant-numeric: tabular-nums; }
+.dd-cell-badges { white-space: nowrap; }
+
+/* Series chip */
+.dd-series-chip {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 0.72rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background-color: var(--header-bg);
+    color: var(--muted-color);
+    border: 1px solid var(--border-color);
+}
+
+/* Status badges */
+.dd-badge {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid;
+    margin-right: 4px;
+    white-space: nowrap;
+}
+.dd-badge-ok    { color: #5CB85C; border-color: #5CB85C;
+                   background: color-mix(in srgb, #5CB85C 12%, transparent); }
+.dd-badge-stale { color: #E8853A; border-color: #E8853A;
+                   background: color-mix(in srgb, #E8853A 12%, transparent); }
+.dd-badge-due   { color: #E8A317; border-color: #E8A317;
+                   background: color-mix(in srgb, #E8A317 12%, transparent); }
+.dd-badge-info  { color: #4C9BE8; border-color: #4C9BE8;
+                   background: color-mix(in srgb, #4C9BE8 12%, transparent); }
+.dd-badge-muted { color: var(--muted-color); border-color: var(--border-color);
+                   background: transparent; }
+
+/* Summary bar */
+.dd-summary {
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background-color: var(--header-bg);
+    border: 1px solid var(--border-color);
+    display: inline-block;
+}
+.dd-summary-total { color: var(--font-color); font-weight: 600; }
+.dd-summary-ok    { color: #5CB85C; }
+.dd-summary-warn  { color: #E8853A; }
+.dd-summary-sep   { color: var(--muted-color); margin: 0 4px; }
+
+/* Legend */
+.dd-legend { font-size: 0.72rem; }
+.dd-legend-sep { color: var(--muted-color); margin-right: 12px; }
+
 /* DataTable filter/pagination inputs */
 .dash-table-container .dash-filter input,
 .dash-table-container .previous-page,

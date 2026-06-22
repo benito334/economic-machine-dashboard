@@ -42,6 +42,7 @@ from dashboard.charting_data import (
     load_yield_curve_term_structure,
 )
 from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
+from dashboard import data_dashboard as _data_dashboard
 from dashboard import explorer as _explorer
 from dashboard import global_overview as _global_overview
 from dashboard import methodology as _methodology
@@ -769,8 +770,9 @@ def _left_nav() -> html.Div:
         # ── Data ──────────────────────────────────────────────────────────────
         _label("Data"),
         dbc.Nav([
-            _nl("📊", "Chart Overlay", "/charts",          nav_id="navlnk-charts"),
-            _nl("🔬", "Data Explorer", "/explorer",        nav_id="navlnk-explorer"),
+            _nl("📋", "Data Dashboard", "/data-dashboard", nav_id="navlnk-data-dashboard"),
+            _nl("📊", "Chart Overlay",  "/charts",         nav_id="navlnk-charts"),
+            _nl("🔬", "Data Explorer",  "/explorer",       nav_id="navlnk-explorer"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Reference ─────────────────────────────────────────────────────────
@@ -890,6 +892,10 @@ def _page_explorer() -> html.Div:
 
 def _page_overview() -> html.Div:
     return _global_overview.get_layout()
+
+
+def _page_data_dashboard() -> html.Div:
+    return _data_dashboard.get_layout()
 
 
 def _page_methodology() -> html.Div:
@@ -1559,6 +1565,7 @@ _PAGE_MAP = {
     "/":              _page_chart_overlay,
     "/charts":        _page_chart_overlay,
     "/overview":      _page_overview,
+    "/data-dashboard":_page_data_dashboard,
     "/explorer":      _page_explorer,
     "/methodology":   _page_methodology,
     "/yield-curve":   _page_yield_curve,
