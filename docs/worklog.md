@@ -4,6 +4,16 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-21 — Regime History synchronized hover and disclosure state
+
+- Synchronized hover across all seven Regime History subplots by mirroring the hovered date through Plotly's client-side hover API
+- Added a full-height dashed vertical guide and placed each value label on its respective graph with consistent black styling
+- Preserved the Force Component Inputs disclosure state while stepping through dates; an opened table now remains open as the snapshot changes
+- Raised the minimum Plotly version to 5.21 for cross-subplot hover support and added callback/layout/state regressions
+- Verified the rendered interactions in headless Chromium; 339 repository tests pass and rebuilt :8502 returns HTTP 200
+
+---
+
 ## 2026-06-21 — Regime History graph point selection
 
 - Wired all five Regime History subplots through Dash's native graph click event; clicking a past point now selects the corresponding composite snapshot

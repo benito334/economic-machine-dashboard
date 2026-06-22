@@ -597,11 +597,11 @@ def _page_chart_overlay() -> html.Div:
             ),
             dbc.Col(_series_selector(), width="auto", className="ps-0"),
         ]),
-    ], className="pe-2 pt-1")
+    ], className="pe-2 pt-1", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 def _page_explorer() -> html.Div:
-    return html.Div(_explorer.get_layout(), className="pe-2 pt-2")
+    return html.Div(_explorer.get_layout(), className="pe-2 pt-2", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 def _page_yield_curve() -> html.Div:
@@ -619,7 +619,7 @@ def _page_yield_curve() -> html.Div:
             ], width=3),
         ], className="mb-3 pt-2"),
         dcc.Graph(id="yield-curve-chart", config={"displayModeBar": True}, style={"height": "72vh"}),
-    ], className="pe-2")
+    ], className="pe-2", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 def _page_regime_map() -> html.Div:
@@ -676,7 +676,7 @@ def _page_regime_map() -> html.Div:
                 item_id="dql",
             ),
         ], start_collapsed=True, className="mb-3"),
-    ], className="pe-2")
+    ], className="pe-2", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 _RH_HELP_PANEL_BASE_STYLE: dict = {
@@ -836,7 +836,7 @@ def _page_regime_history() -> html.Div:
         ]),
         # ── Help panel (fixed, off-screen right by default) ────────────────────
         _build_rh_help_panel(),
-    ], className="pe-2")
+    ], className="pe-2", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 def _page_debt_stress() -> html.Div:
@@ -856,7 +856,7 @@ def _page_debt_stress() -> html.Div:
                 width=12,
             ),
         ]),
-    ], className="pe-2")
+    ], className="pe-2", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 # ── App layout ────────────────────────────────────────────────────────────────
@@ -873,6 +873,9 @@ app.layout = html.Div([
     # Keyboard navigation: interval polls the delta set by the key listener
     dcc.Store(id="nav-event",         data=None),
     dcc.Interval(id="key-interval",   interval=80, disabled=True, n_intervals=0),
+    dcc.Store(id="hover-sync-init",   data=None),
+    dcc.Store(id="regime-components-open", data=False),
+    dcc.Store(id="regime-components-toggle-init", data=None),
     html.Div(id="theme-dummy",        style={"display": "none"}),
 
     html.Div([
@@ -932,6 +935,106 @@ app.clientside_callback(
     """,
     Output("nav-event", "data"),
     Input("key-interval", "n_intervals"),
+)
+
+# Plotly's native ``hoversubplots='axis'`` does not expand across the matched
+# axes created by ``make_subplots(shared_xaxes=True)``. Mirror the hovered
+# timestamp explicitly to every Cartesian subplot instead.
+app.clientside_callback(
+    """
+    function(figure) {
+        if (!figure) return dash_clientside.no_update;
+        setTimeout(function() {
+            var wrapper = document.getElementById('regime-chart');
+            var gd = wrapper && wrapper.querySelector('.js-plotly-plot');
+            if (!gd || typeof gd.on !== 'function' || gd._rhHoverSyncBound) return;
+
+            gd._rhHoverSyncBound = true;
+            function drawSharedHoverLine(rawX) {
+                var layout = gd._fullLayout;
+                var hoverLayer = gd.querySelector('.hoverlayer');
+                var xAxis = layout && layout.xaxis;
+                var yAxes = layout && layout._subplots ? layout._subplots.yaxis : null;
+                if (!hoverLayer || !xAxis || !yAxes || !yAxes.length) return;
+
+                var xPixel = xAxis._offset + xAxis.d2p(rawX);
+                var top = Infinity;
+                var bottom = -Infinity;
+                yAxes.forEach(function(axisId) {
+                    var key = axisId === 'y' ? 'yaxis' : 'yaxis' + axisId.slice(1);
+                    var axis = layout[key];
+                    if (!axis) return;
+                    top = Math.min(top, axis._offset);
+                    bottom = Math.max(bottom, axis._offset + axis._length);
+                });
+                if (!Number.isFinite(xPixel) || !Number.isFinite(top) || !Number.isFinite(bottom)) return;
+
+                var line = hoverLayer.querySelector('.rh-shared-hover-line');
+                if (!line) {
+                    line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('class', 'rh-shared-hover-line');
+                    line.setAttribute('stroke', 'rgba(210, 215, 225, 0.72)');
+                    line.setAttribute('stroke-width', '1');
+                    line.setAttribute('stroke-dasharray', '4,3');
+                    line.setAttribute('pointer-events', 'none');
+                    hoverLayer.insertBefore(line, hoverLayer.firstChild);
+                }
+                line.setAttribute('x1', xPixel);
+                line.setAttribute('x2', xPixel);
+                line.setAttribute('y1', top);
+                line.setAttribute('y2', bottom);
+            }
+
+            gd.on('plotly_hover', function(eventData) {
+                if (gd._rhHoverSyncing || !eventData || !eventData.points || !eventData.points.length) return;
+                var rawX = eventData.points[0].x;
+                var xValue = rawX instanceof Date ? rawX.getTime() : Date.parse(rawX);
+                var subplots = gd._fullLayout && gd._fullLayout._subplots
+                    ? gd._fullLayout._subplots.cartesian : null;
+                if (!Number.isFinite(xValue) || !subplots || !subplots.length) return;
+
+                gd._rhHoverSyncing = true;
+                try {
+                    Plotly.Fx.hover(gd, {xval: xValue}, subplots);
+                    requestAnimationFrame(function() { drawSharedHoverLine(rawX); });
+                } finally {
+                    setTimeout(function() { gd._rhHoverSyncing = false; }, 0);
+                }
+            });
+            gd.on('plotly_unhover', function() {
+                var line = gd.querySelector('.rh-shared-hover-line');
+                if (line) line.remove();
+            });
+        }, 0);
+        return Date.now();
+    }
+    """,
+    Output("hover-sync-init", "data"),
+    Input("regime-chart", "figure"),
+    prevent_initial_call=True,
+)
+
+# Native <details> toggle events are not exposed as Dash prop changes. Bind the
+# disclosure directly and persist its state in the top-level store so replacing
+# the date-specific info card does not collapse it.
+app.clientside_callback(
+    """
+    function(children) {
+        if (!children) return dash_clientside.no_update;
+        setTimeout(function() {
+            var details = document.getElementById('regime-components-details');
+            if (!details || details._rhToggleBound) return;
+            details._rhToggleBound = true;
+            details.addEventListener('toggle', function() {
+                dash_clientside.set_props('regime-components-open', {data: details.open});
+            });
+        }, 0);
+        return Date.now();
+    }
+    """,
+    Output("regime-components-toggle-init", "data"),
+    Input("regime-info-box", "children"),
+    prevent_initial_call=True,
 )
 
 # ── Routing callback ──────────────────────────────────────────────────────────
@@ -1116,6 +1219,7 @@ def update_overlay_chart(
         hovermode="x unified",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "left", "x": 0},
         height=max(300 * n_panes, 400),
+        uirevision="chart-overlay",
     )
     fig.update_xaxes(showgrid=True, gridcolor=t["grid_color"], row=n_panes, col=1)
     return fig
@@ -1247,7 +1351,7 @@ def update_yield_curve(
     fig.update_yaxes(title_text="Spread (%)", row=2, col=1)
     fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
 
-    fig.update_layout(**figure_layout(theme_name), height=650)
+    fig.update_layout(**figure_layout(theme_name), height=650, uirevision="yield-curve")
     return fig
 
 
@@ -1264,6 +1368,7 @@ def _regime_info_children(
     stale_dict: "dict[str, int] | None" = None,
     g_delta: "float | None" = None,
     i_delta: "float | None" = None,
+    components_open: bool = False,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table."""
     quadrant   = row.get("quadrant") or "—"
@@ -1334,8 +1439,9 @@ def _regime_info_children(
         })
 
     past_badge = (
-        html.Span(" ⚠ PAST DATA",
-                  style={"fontSize": "0.68rem", "color": "#F4C842", "marginLeft": "8px"})
+        html.Div("⚠ PAST DATA",
+                 style={"fontSize": "0.68rem", "color": "#F4C842",
+                        "textAlign": "center", "marginTop": "5px"})
         if not is_current else None
     )
 
@@ -1351,14 +1457,16 @@ def _regime_info_children(
             # ── Quadrant badge ────────────────────────────────────────────────
             html.Div([
                 html.Div(
-                    [html.Span(quadrant), *([] if past_badge is None else [past_badge])],
+                    quadrant,
                     style={"backgroundColor": q_color, "color": "#111",
                            "textAlign": "center", "fontWeight": "bold",
                            "fontSize": "0.88rem", "padding": "8px 12px",
-                           "borderRadius": "4px", "marginBottom": "6px",
+                           "borderRadius": "4px",
+                           "width": "195px", "boxSizing": "border-box",
                            "whiteSpace": "nowrap"},
                 ),
-            ], style={"paddingRight": "20px", "minWidth": "140px",
+                *([past_badge] if past_badge is not None else []),
+            ], style={"paddingRight": "20px", "width": "215px", "flexShrink": "0",
                       "display": "flex", "flexDirection": "column", "justifyContent": "flex-start"}),
 
             # ── Force Z-Scores ─────────────────────────────────────────────────
@@ -1568,7 +1676,8 @@ def _regime_info_children(
         )
 
         table_section = html.Details(
-            open=False,
+            id="regime-components-details",
+            open=bool(components_open),
             children=[
                 html.Summary(
                     combined_label,
@@ -1700,9 +1809,15 @@ def select_regime_point(click_data: dict, date_range: dict, current_step: int) -
     [Input("regime-step-index", "data"),
      Input("date-range", "data"),
      Input("page-trigger", "data")],
+    State("regime-components-open", "data"),
     prevent_initial_call=False,
 )
-def update_regime_info(step: int, date_range: dict, _trigger: Any = None) -> tuple:
+def update_regime_info(
+    step: int,
+    date_range: dict,
+    _trigger: Any = None,
+    components_open: bool = False,
+) -> tuple:
     step = step or 0
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
@@ -1738,7 +1853,12 @@ def update_regime_info(step: int, date_range: dict, _trigger: Any = None) -> tup
         country="US", as_of=str(selected["as_of"])
     )
     stale_dict = _parse_stress_components(selected.get("stale_signals") or "")
-    return _regime_info_children(selected, is_current, comp_df, stale_dict, g_delta, i_delta), date_display
+    return (
+        _regime_info_children(
+            selected, is_current, comp_df, stale_dict, g_delta, i_delta, components_open
+        ),
+        date_display,
+    )
 
 
 @callback(
@@ -1765,80 +1885,22 @@ def update_regime_chart(
         return fig
 
     fig = make_subplots(
-        rows=5, cols=1,
+        rows=7, cols=1,
         shared_xaxes=True,
-        vertical_spacing=0.04,
-        row_heights=[0.25, 0.15, 0.25, 0.15, 0.20],
+        vertical_spacing=0.03,
+        row_heights=[0.16, 0.18, 0.10, 0.18, 0.10, 0.14, 0.14],
         subplot_titles=[
+            "Regime Quadrant",
             "Growth Force Z-Score (composite)",
             "Growth Momentum (fraction of signals growth-positive)",
             "Inflation Force Z-Score (composite)",
             "Inflation Momentum (fraction of signals inflation-positive)",
-            "Regime Quadrant",
+            "Confidence (direction-agreement across signals)",
+            "Disequilibrium Score (mean distance from equilibrium)",
         ],
     )
 
-    # Row 1: Growth score
-    fig.add_trace(
-        go.Scatter(
-            x=comp["as_of"], y=comp["growth_score"],
-            name="Growth Score",
-            line={"color": _COLORS[0], "width": 1.5},
-            hovertemplate="%{x|%Y-%m-%d}<br>Growth Force Z: %{y:.2f}<extra></extra>",
-            fill="tozeroy",
-            fillcolor="rgba(76, 155, 232, 0.15)",
-        ),
-        row=1, col=1,
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=1, col=1)
-
-    # Row 2: Growth momentum
-    if "growth_momentum" in comp.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=comp["as_of"], y=comp["growth_momentum"],
-                name="Growth Momentum",
-                line={"color": _COLORS[0], "width": 1.5, "dash": "dot"},
-                hovertemplate="%{x|%Y-%m-%d}<br>Growth Momentum: %{y:.0%}<extra></extra>",
-                fill="tozeroy",
-                fillcolor="rgba(76, 155, 232, 0.10)",
-            ),
-            row=2, col=1,
-        )
-    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=2, col=1)
-    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=2, col=1)
-
-    # Row 3: Inflation score
-    fig.add_trace(
-        go.Scatter(
-            x=comp["as_of"], y=comp["inflation_score"],
-            name="Inflation Score",
-            line={"color": _COLORS[2], "width": 1.5},
-            hovertemplate="%{x|%Y-%m-%d}<br>Inflation Force Z: %{y:.2f}<extra></extra>",
-            fill="tozeroy",
-            fillcolor="rgba(228, 115, 76, 0.15)",
-        ),
-        row=3, col=1,
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=3, col=1)
-
-    # Row 4: Inflation momentum
-    if "inflation_momentum" in comp.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=comp["as_of"], y=comp["inflation_momentum"],
-                name="Inflation Momentum",
-                line={"color": _COLORS[2], "width": 1.5, "dash": "dot"},
-                hovertemplate="%{x|%Y-%m-%d}<br>Inflation Momentum: %{y:.0%}<extra></extra>",
-                fill="tozeroy",
-                fillcolor="rgba(228, 115, 76, 0.10)",
-            ),
-            row=4, col=1,
-        )
-    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=4, col=1)
-    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=4, col=1)
-
-    # Row 5: Quadrant as numeric bands
+    # Row 1: Quadrant as colour-coded scatter
     quadrant_map = {
         "Expansion": 1,
         "Inflationary Boom": 2,
@@ -1860,15 +1922,116 @@ def update_regime_chart(
             customdata=comp["quadrant"],
             showlegend=False,
         ),
-        row=5, col=1,
+        row=1, col=1,
     )
     fig.update_yaxes(
         tickvals=[0, 1, 2, 3],
         ticktext=["Dis.Slow", "Expansion", "Inf.Boom", "Stagflation"],
-        row=5, col=1,
+        row=1, col=1,
     )
 
-    fig.update_layout(**figure_layout(theme_name), hovermode="x unified")
+    # Row 2: Growth score
+    fig.add_trace(
+        go.Scatter(
+            x=comp["as_of"], y=comp["growth_score"],
+            name="Growth Score",
+            line={"color": _COLORS[0], "width": 1.5},
+            hovertemplate="%{x|%Y-%m-%d}<br>Growth Force Z: %{y:.2f}<extra></extra>",
+            fill="tozeroy",
+            fillcolor="rgba(76, 155, 232, 0.15)",
+        ),
+        row=2, col=1,
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
+
+    # Row 3: Growth momentum
+    if "growth_momentum" in comp.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=comp["as_of"], y=comp["growth_momentum"],
+                name="Growth Momentum",
+                line={"color": _COLORS[0], "width": 1.5, "dash": "dot"},
+                hovertemplate="%{x|%Y-%m-%d}<br>Growth Momentum: %{y:.0%}<extra></extra>",
+                fill="tozeroy",
+                fillcolor="rgba(76, 155, 232, 0.10)",
+            ),
+            row=3, col=1,
+        )
+    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=3, col=1)
+    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=3, col=1)
+
+    # Row 4: Inflation score
+    fig.add_trace(
+        go.Scatter(
+            x=comp["as_of"], y=comp["inflation_score"],
+            name="Inflation Score",
+            line={"color": _INFLATION_COLOR, "width": 1.5},
+            hovertemplate="%{x|%Y-%m-%d}<br>Inflation Force Z: %{y:.2f}<extra></extra>",
+            fill="tozeroy",
+            fillcolor="rgba(232, 115, 76, 0.15)",
+        ),
+        row=4, col=1,
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=4, col=1)
+
+    # Row 5: Inflation momentum
+    if "inflation_momentum" in comp.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=comp["as_of"], y=comp["inflation_momentum"],
+                name="Inflation Momentum",
+                line={"color": _INFLATION_COLOR, "width": 1.5, "dash": "dot"},
+                hovertemplate="%{x|%Y-%m-%d}<br>Inflation Momentum: %{y:.0%}<extra></extra>",
+                fill="tozeroy",
+                fillcolor="rgba(232, 115, 76, 0.10)",
+            ),
+            row=5, col=1,
+        )
+    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=5, col=1)
+    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=5, col=1)
+
+    # Row 6: Confidence
+    if "confidence" in comp.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=comp["as_of"], y=comp["confidence"],
+                name="Confidence",
+                line={"color": _COLORS[4], "width": 1.5},
+                hovertemplate="%{x|%Y-%m-%d}<br>Confidence: %{y:.0%}<extra></extra>",
+                fill="tozeroy",
+                fillcolor="rgba(176, 127, 212, 0.15)",
+            ),
+            row=6, col=1,
+        )
+    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=6, col=1)
+    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=6, col=1)
+
+    # Row 7: Disequilibrium
+    if "disequilibrium_score" in comp.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=comp["as_of"], y=comp["disequilibrium_score"],
+                name="Disequilibrium",
+                line={"color": _COLORS[1], "width": 1.5},
+                hovertemplate="%{x|%Y-%m-%d}<br>Disequilibrium: %{y:.3f}<extra></extra>",
+                fill="tozeroy",
+                fillcolor="rgba(244, 200, 66, 0.12)",
+            ),
+            row=7, col=1,
+        )
+
+    fig.update_layout(
+        **figure_layout(theme_name),
+        hovermode="x",
+        hoversubplots="axis",
+        hoverlabel={
+            "bgcolor": "#000000",
+            "bordercolor": "#000000",
+            "font": {"color": "#ffffff"},
+        },
+        showlegend=False,
+        uirevision="regime-history",  # constant → Plotly.react() preserves user zoom
+    )
     fig.update_layout(margin={"l": 55, "r": 20, "t": 30, "b": 40})
     fig.update_xaxes(
         showspikes=True,
@@ -1894,63 +2057,7 @@ def update_regime_chart(
         line_width=1.5,
     )
 
-    # Highlighted marker — growth score (row 1)
-    g_val = sel.get("growth_score")
-    if g_val is not None and not pd.isna(g_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[g_val],
-                mode="markers",
-                marker={"size": 11, "color": _COLORS[0],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=1, col=1,
-        )
-
-    # Highlighted marker — growth momentum (row 2)
-    gm_val = sel.get("growth_momentum")
-    if gm_val is not None and not pd.isna(gm_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[gm_val],
-                mode="markers",
-                marker={"size": 9, "color": _COLORS[0],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=2, col=1,
-        )
-
-    # Highlighted marker — inflation score (row 3)
-    i_val = sel.get("inflation_score")
-    if i_val is not None and not pd.isna(i_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[i_val],
-                mode="markers",
-                marker={"size": 11, "color": _COLORS[2],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=3, col=1,
-        )
-
-    # Highlighted marker — inflation momentum (row 4)
-    im_val = sel.get("inflation_momentum")
-    if im_val is not None and not pd.isna(im_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[im_val],
-                mode="markers",
-                marker={"size": 9, "color": _COLORS[2],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=4, col=1,
-        )
-
-    # Highlighted marker — quadrant row (row 5), open circle in quadrant colour
+    # Highlighted marker — quadrant row (row 1), open circle in quadrant colour
     q_val = q_numeric.iloc[sel_idx] if sel_idx < len(q_numeric) else None
     q_label = sel.get("quadrant")
     if q_val is not None and not pd.isna(q_val):
@@ -1965,7 +2072,91 @@ def update_regime_chart(
                 },
                 showlegend=False, hoverinfo="skip",
             ),
+            row=1, col=1,
+        )
+
+    # Highlighted marker — growth score (row 2)
+    g_val = sel.get("growth_score")
+    if g_val is not None and not pd.isna(g_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[g_val],
+                mode="markers",
+                marker={"size": 11, "color": _COLORS[0],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=2, col=1,
+        )
+
+    # Highlighted marker — growth momentum (row 3)
+    gm_val = sel.get("growth_momentum")
+    if gm_val is not None and not pd.isna(gm_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[gm_val],
+                mode="markers",
+                marker={"size": 9, "color": _COLORS[0],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=3, col=1,
+        )
+
+    # Highlighted marker — inflation score (row 4)
+    i_val = sel.get("inflation_score")
+    if i_val is not None and not pd.isna(i_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[i_val],
+                mode="markers",
+                marker={"size": 11, "color": _INFLATION_COLOR,
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=4, col=1,
+        )
+
+    # Highlighted marker — inflation momentum (row 5)
+    im_val = sel.get("inflation_momentum")
+    if im_val is not None and not pd.isna(im_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[im_val],
+                mode="markers",
+                marker={"size": 9, "color": _INFLATION_COLOR,
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
             row=5, col=1,
+        )
+
+    # Highlighted marker — confidence (row 6)
+    conf_val = sel.get("confidence")
+    if conf_val is not None and not pd.isna(conf_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[conf_val],
+                mode="markers",
+                marker={"size": 9, "color": _COLORS[4],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=6, col=1,
+        )
+
+    # Highlighted marker — disequilibrium (row 7)
+    diseq_val = sel.get("disequilibrium_score")
+    if diseq_val is not None and not pd.isna(diseq_val):
+        fig.add_trace(
+            go.Scatter(
+                x=[sel_ts], y=[diseq_val],
+                mode="markers",
+                marker={"size": 9, "color": _COLORS[1],
+                        "line": {"width": 2, "color": "#ffffff"}},
+                showlegend=False, hoverinfo="skip",
+            ),
+            row=7, col=1,
         )
 
     return fig
@@ -2753,7 +2944,7 @@ def update_debt_stress_chart(
 
     fig.update_yaxes(title_text="Z-Score", row=1, col=1)
     fig.update_yaxes(title_text="Z-Score (stress dir.)", row=2, col=1)
-    fig.update_layout(**figure_layout(theme_name), hovermode="x unified")
+    fig.update_layout(**figure_layout(theme_name), hovermode="x unified", uirevision="debt-stress")
     fig.update_layout(
         margin={"l": 55, "r": 20, "t": 30, "b": 60},
         legend={"orientation": "h", "y": -0.15, "x": 0},

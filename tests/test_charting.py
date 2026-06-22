@@ -345,6 +345,33 @@ def test_regime_chart_callback():
 
 
 @pytest.mark.integration
+def test_regime_chart_synchronizes_hover_across_subplots():
+    from dashboard.charting import update_regime_chart
+
+    fig = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
+
+    assert fig.layout.hovermode == "x"
+    assert fig.layout.hoversubplots == "axis"
+    assert fig.layout.xaxis.matches == "x7"
+    assert fig.layout.hoverlabel.bgcolor == "#000000"
+    assert fig.layout.hoverlabel.bordercolor == "#000000"
+    assert fig.layout.hoverlabel.font.color == "#ffffff"
+
+
+def test_regime_chart_registers_explicit_hover_synchronizer():
+    from dashboard.charting import app
+
+    callbacks = [
+        item for item in app._callback_list
+        if item.get("output") == "hover-sync-init.data"
+    ]
+
+    assert len(callbacks) == 1
+    assert callbacks[0]["inputs"] == [{"id": "regime-chart", "property": "figure"}]
+    assert callbacks[0]["clientside_function"] is not None
+
+
+@pytest.mark.integration
 def test_regime_chart_highlight_at_step():
     """Step > 0 adds highlight marker traces (one per subplot = 3 extra)."""
     import plotly.graph_objects as go
@@ -666,6 +693,45 @@ class TestRegimeTableRollup:
         _find_details(children)
         assert len(details_found) == 1, f"Expected 1 Details element, got {len(details_found)}"
         assert details_found[0].open is False, "Combined force table should be collapsed by default"
+
+    def test_details_can_be_rendered_open_after_date_change(self):
+        from dash import html as dhtml
+        from dashboard.charting import _regime_info_children
+
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 1,
+        }
+        children = _regime_info_children(
+            row, False, self._make_comp_df(), components_open=True
+        )
+        details_found = []
+
+        def _find_details(items):
+            for item in (items if isinstance(items, list) else [items]):
+                if isinstance(item, dhtml.Details):
+                    details_found.append(item)
+                if hasattr(item, "children") and item.children:
+                    _find_details(item.children if isinstance(item.children, list) else [item.children])
+
+        _find_details(children)
+        assert len(details_found) == 1
+        assert details_found[0].id == "regime-components-details"
+        assert details_found[0].open is True
+
+    def test_details_open_state_has_clientside_persistence_callback(self):
+        from dashboard.charting import app
+
+        callbacks = [
+            item for item in app._callback_list
+            if item.get("output") == "regime-components-toggle-init.data"
+        ]
+        assert len(callbacks) == 1
+        assert callbacks[0]["inputs"] == [
+            {"id": "regime-info-box", "property": "children"}
+        ]
+        assert callbacks[0]["clientside_function"] is not None
 
 
 class TestRoutedRegimeStepButtons:
