@@ -28,7 +28,8 @@ _TBODY_ID   = "dd-tbody"
 _SUMMARY_ID = "dd-summary-text"
 _THEAD_ID   = "dd-thead-tr"
 
-_SORTABLE = ["name", "as_of", "freq", "provider", "next_rel"]
+_SORTABLE   = ["name", "as_of", "freq", "provider", "next_rel", "status"]
+_RESET_BTN  = "dd-reset-sort"
 
 # ── Display mappings ──────────────────────────────────────────────────────────
 
@@ -250,6 +251,26 @@ def _has_issue(row: pd.Series) -> bool:
     return bool(row["is_stale"] or row["low_history"])
 
 
+def _status_sort_key(row: pd.Series, freq: str, next_rel: str) -> int:
+    """Lower = more severe (sorts issues to top on ascending)."""
+    if row["is_stale"]:
+        return 0
+    if next_rel not in ("—", "") and freq not in ("D", "W"):
+        try:
+            rel_dt = pd.Timestamp(next_rel + "-01" if len(next_rel) == 7 else next_rel)
+            if (pd.Timestamp.today() - rel_dt).days > 15:
+                return 1   # overdue but not yet pipeline-flagged
+        except Exception:
+            pass
+    if row["low_history"]:
+        return 2
+    if row["is_proxy"]:
+        return 3
+    if row["is_constructed"]:
+        return 4
+    return 5   # OK
+
+
 # ── Table building ────────────────────────────────────────────────────────────
 
 def _group_header(force: str, count: int) -> html.Tr:
@@ -323,7 +344,7 @@ def _build_header(sort_state: dict) -> list:
         _th_s("Frequency",    "freq"),
         _th_s("Source",       "provider"),
         _th_s("Next Release", "next_rel"),
-        html.Th("Status",      className="dd-th"),
+        _th_s("Status",       "status"),
     ]
 
 
@@ -350,6 +371,17 @@ def _build_tbody(df: pd.DataFrame, meta: dict, sort_state: dict) -> list:
         df = df.copy()
         df["_sk"] = df.apply(
             lambda r: _next_release(str(r["as_of"]), meta.get(r["id"], {}).get("frequency", "?")),
+            axis=1,
+        )
+        df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
+    elif sort_col == "status":
+        df = df.copy()
+        df["_sk"] = df.apply(
+            lambda r: _status_sort_key(
+                r,
+                meta.get(r["id"], {}).get("frequency", "?"),
+                _next_release(str(r["as_of"]), meta.get(r["id"], {}).get("frequency", "?")),
+            ),
             axis=1,
         )
         df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
@@ -452,6 +484,15 @@ def get_layout() -> html.Div:
             id=_FREQ_ID, options=freq_opts, value="",
             clearable=False, style=dd_style, className="dd-dropdown",
         ), md=2),
+        dbc.Col(
+            html.Button(
+                "↺ Reset Sort",
+                id=_RESET_BTN,
+                n_clicks=0,
+                className="dd-reset-btn",
+            ),
+            md="auto",
+        ),
     ], className="g-2 mb-3", align="center")
 
     legend = html.Div([
@@ -513,6 +554,7 @@ def register_callbacks(app) -> None:
             Input(_STATUS_ID, "value"),
             Input(_FREQ_ID,   "value"),
             *[Input(f"dd-hdr-{c}", "n_clicks") for c in _SORTABLE],
+            Input(_RESET_BTN, "n_clicks"),
         ],
         State(_SORT_STORE, "data"),
         prevent_initial_call=False,
@@ -525,7 +567,9 @@ def register_callbacks(app) -> None:
 
         # Resolve sort column from which header was clicked
         triggered = ctx.triggered_id or ""
-        if isinstance(triggered, str) and triggered.startswith("dd-hdr-"):
+        if triggered == _RESET_BTN:
+            sort_state = {"col": None, "dir": "asc"}
+        elif isinstance(triggered, str) and triggered.startswith("dd-hdr-"):
             new_col = triggered[len("dd-hdr-"):]
             if sort_state.get("col") == new_col:
                 new_dir = "desc" if sort_state.get("dir") == "asc" else "asc"

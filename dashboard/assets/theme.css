@@ -432,6 +432,23 @@ hr {
 .dd-badge-muted { color: var(--muted-color); border-color: var(--border-color);
                    background: transparent; }
 
+/* Reset sort button */
+.dd-reset-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--muted-color);
+    font-size: 0.72rem;
+    padding: 5px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.12s, border-color 0.12s;
+}
+.dd-reset-btn:hover {
+    color: var(--slider-accent);
+    border-color: var(--slider-accent);
+}
+
 /* Summary bar */
 .dd-summary {
     font-size: 0.78rem;
