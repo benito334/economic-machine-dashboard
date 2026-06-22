@@ -2977,20 +2977,22 @@ def _update_rh_help_panel_style(is_open: bool) -> dict:
     Output("scatter-date-display", "children"),
     [Input("regime-step-index", "data"),
      Input("date-range", "data"),
+     Input("country-store", "data"),
      Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
-def update_scatter_date(step: int, date_range: dict, _trigger: Any = None) -> str:
+def update_scatter_date(step: int, date_range: dict, country: str = "US", _trigger: Any = None) -> str:
     step = step or 0
+    country = str(country or "US")
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
-    comp = load_composite_history(start_date=start, end_date=end)
+    comp = load_composite_history(start_date=start, end_date=end, country=country)
     if comp.empty:
         return "No data"
     n = len(comp)
     idx = max(0, min(n - 1 - step, n - 1))
     sel_date = comp.iloc[idx]["as_of"]
-    all_comp = load_composite_history()
+    all_comp = load_composite_history(country=country)
     is_current = (
         not all_comp.empty
         and pd.Timestamp(sel_date) == pd.Timestamp(all_comp.iloc[-1]["as_of"])
@@ -3039,6 +3041,38 @@ def update_scatter_chart(
         fig.update_layout(**figure_layout(theme_name, "No composite data"))
         return fig
 
+    # ── Handle partial coverage (one axis all-null) ──────────────────────────
+    # When growth or inflation signals are all stale/absent, substitute 0 so
+    # the chart renders; add an annotation explaining the gap.
+    gx_raw = comp_all[g_col]
+    iy_raw = comp_all[i_col]
+    g_missing = gx_raw.isna().all()
+    i_missing = iy_raw.isna().all()
+
+    coverage_annotations: list[dict] = []
+    if g_missing:
+        comp_all = comp_all.copy()
+        comp_filtered = comp_filtered.copy()
+        comp_all[g_col] = 0.0
+        comp_filtered[g_col] = 0.0
+        coverage_annotations.append(dict(
+            text="⚠ Growth signals unavailable — X-axis fixed at 0",
+            xref="paper", yref="paper", x=0.01, y=0.01,
+            showarrow=False, font=dict(size=10, color="#E8734C"),
+            align="left",
+        ))
+    if i_missing:
+        comp_all = comp_all.copy()
+        comp_filtered = comp_filtered.copy()
+        comp_all[i_col] = 0.0
+        comp_filtered[i_col] = 0.0
+        coverage_annotations.append(dict(
+            text="⚠ Inflation signals unavailable — Y-axis fixed at 0",
+            xref="paper", yref="paper", x=0.01, y=0.05,
+            showarrow=False, font=dict(size=10, color="#E8734C"),
+            align="left",
+        ))
+
     # ── Compute data-driven axis range with 15% buffer ───────────────────────
     gx = comp_all[g_col].dropna()
     iy = comp_all[i_col].dropna()
@@ -3048,6 +3082,11 @@ def update_scatter_chart(
         buf = 0.15
         x_range = [gx.min() - buf * gx_span, gx.max() + buf * gx_span]
         y_range = [iy.min() - buf * iy_span, iy.max() + buf * iy_span]
+        # Give a visible spread on a fixed-zero axis
+        if g_missing:
+            x_range = [-1.0, 1.0]
+        if i_missing:
+            y_range = [-1.0, 1.0]
     else:
         x_range, y_range = [-3.0, 3.0], [-3.0, 3.0]
 
@@ -3180,7 +3219,7 @@ def update_scatter_chart(
         yaxis=dict(title=f"Inflation Force Z-Score{_win_sfx}", range=y_range,
                    zeroline=False, gridcolor=t["grid_color"], showgrid=True),
         shapes=shapes,
-        annotations=annotations,
+        annotations=annotations + coverage_annotations,
         hovermode="closest",
         showlegend=False,
         uirevision="scatter-map",  # constant → Plotly.react() preserves user zoom
