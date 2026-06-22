@@ -16,6 +16,7 @@
     --cell-bg:             #1c1c1c;
     --grid-color:          #2d2d2d;
     --series-label-color:  #aaaaaa;
+    --slider-accent:       #E8A317;   /* warm amber default (carbon dark) */
 }
 
 /* Page background — Bootstrap sets body bg via --bs-body-bg; we also set it
@@ -108,39 +109,92 @@ hr {
 .sidebar-slider .dash-slider-tooltip {
     display: none !important;
 }
-/* Track background — semi-transparent accent, visible on every palette */
+/* Track background — subtle tint of accent color */
 .sidebar-slider .dash-slider-track {
-    background-color: rgba(76, 155, 232, 0.28) !important;
+    background-color: color-mix(in srgb, var(--slider-accent) 22%, transparent) !important;
     height: 3px !important;
     border-radius: 2px !important;
 }
 /* Filled range — solid accent */
 .sidebar-slider .dash-slider-range {
-    background-color: #4C9BE8 !important;
+    background-color: var(--slider-accent) !important;
     height: 3px !important;
     border-radius: 2px !important;
 }
-/* Thumb — narrow vertical bar instead of circle */
+/* Thumb — narrow vertical bar, centered on the track by Radix */
 .sidebar-slider .dash-slider-thumb {
     width: 5px !important;
     height: 18px !important;
     border-radius: 3px !important;
-    background-color: #4C9BE8 !important;
+    background-color: var(--slider-accent) !important;
     border: none !important;
     box-shadow: none !important;
     cursor: ew-resize !important;
-    top: 50% !important;
-    transform: translate(-50%, -50%) !important;
+    /* Do NOT override top/transform — Radix centers the thumb on the track.
+       Overriding those properties shifts the thumb relative to the mark-label
+       space below the track, causing visible misalignment. */
 }
 .sidebar-slider .dash-slider-thumb:hover,
 .sidebar-slider .dash-slider-thumb:focus {
-    background-color: #79bfff !important;
+    filter: brightness(1.25) !important;
     outline: none !important;
-    box-shadow: 0 0 0 5px rgba(76, 155, 232, 0.25) !important;
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--slider-accent) 30%, transparent) !important;
 }
 .sidebar-slider .dash-slider-thumb[data-state="active"] {
-    background-color: #79bfff !important;
-    box-shadow: 0 0 0 5px rgba(76, 155, 232, 0.35) !important;
+    filter: brightness(1.35) !important;
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--slider-accent) 35%, transparent) !important;
+}
+
+/* ── Collapsible sidebar ─────────────────────────────────────────────────── */
+#sidebar-container {
+    transition: width 0.18s ease;
+    display: flex;
+    flex-direction: column;
+}
+#sidebar-container.sidebar-collapsed {
+    width: 48px !important;
+    min-width: 48px !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-text {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-section-label {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-sliders {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed hr {
+    margin: 4px 6px !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-nav-link {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    justify-content: center !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-header {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+#sidebar-container.sidebar-collapsed .country-full {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed .country-collapsed {
+    display: block !important;
+}
+.country-collapsed {
+    display: none;
+}
+.sidebar-nav-link {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Formula card copy button */
+.formula-copy-btn:hover {
+    opacity: 1 !important;
+    color: var(--font-color) !important;
 }
 
 /* DataTable filter/pagination inputs */

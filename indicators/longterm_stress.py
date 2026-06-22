@@ -113,6 +113,152 @@ def stress_band_label(score: float, bands: dict) -> str:
     return "High relative stress"
 
 
+def build_debt_stress_formula_catalog(config: dict | None = None) -> list[dict]:
+    """Return formula cards for the Debt Stress indicator, analogous to composites.build_formula_catalog().
+
+    Parameter values are read live from the active config so the formula page
+    stays in sync with longterm_stress.yaml without manual maintenance.
+    """
+    cfg = config or load_longterm_stress_config()
+    z_cfg   = cfg.get("z_score", {})
+    cov_cfg = cfg.get("coverage", {})
+    stale   = cfg.get("staleness", {})
+    bands   = cfg.get("bands", {})
+
+    win_q  = int(z_cfg.get("window_quarters",     40))
+    min_q  = int(z_cfg.get("min_periods_quarters", 20))
+    win_a  = int(z_cfg.get("window_annual",        10))
+    shift  = int(z_cfg.get("look_back_shift",       1))
+
+    min_wt  = float(cov_cfg.get("min_retained_weight", 0.60))
+
+    exp_lag = stale.get("expected_lag_quarters", {"Q": 1, "A": 4})
+    hl      = stale.get("stale_weight_halflife",  4)
+    min_frac = float(stale.get("stale_min_weight_fraction", 0.20))
+    max_carry = int(stale.get("max_carry_quarters", 4))
+
+    components = cfg.get("components", [])
+    comp_rows  = [
+        f"{c['label']}  w={c['weight']:.2f}, dir={c.get('stress_direction','positive')}"
+        for c in components
+    ]
+
+    b_low  = float(bands.get("below_normal_upper", -0.5))
+    b_norm = float(bands.get("elevated_lower",      0.5))
+    b_high = float(bands.get("high_lower",          1.0))
+
+    return [
+        {
+            "group": "Debt Stress",
+            "title": "Rolling Z-score (quarterly components)",
+            "equation": (
+                r"Z_t = \frac{x_t - \mu_{t-1}^{W}}{\sigma_{t-1}^{W}}"
+                r"\qquad W=" + str(win_q) + r"\text{ quarters}"
+            ),
+            "description": (
+                f"Each quarterly component is Z-scored within a rolling {win_q}-quarter window.  "
+                f"The window is shifted {shift} period(s) before computing μ and σ — "
+                "any data from the scored period is excluded, preventing look-ahead bias.  "
+                f"Minimum {min_q} non-null observations required before a Z-score is emitted."
+            ),
+            "parameters": [
+                f"W (quarters) = {win_q}",
+                f"min_periods  = {min_q}",
+                f"look_back_shift = {shift}",
+            ],
+            "source": "indicators/longterm_stress.py::_rolling_z_quarterly",
+        },
+        {
+            "group": "Debt Stress",
+            "title": "Rolling Z-score (annual components → quarterly)",
+            "equation": (
+                r"Z_t^{A} = \frac{x_t^{A} - \mu_{t-1}^{W_A}}{\sigma_{t-1}^{W_A}}"
+                r"\quad\xrightarrow{\text{ffill}}\quad Z_t^{Q}"
+                r"\qquad W_A=" + str(win_a) + r"\text{ yr}"
+            ),
+            "description": (
+                f"Annual components are Z-scored at annual frequency over a {win_a}-year rolling window "
+                f"(shift={shift} for look-ahead protection), then the resulting annual Z-score is "
+                f"forward-filled into the quarterly grid for up to {max_carry} quarters.  "
+                "Z-scoring the raw annual series avoids artificially inflating the sample size "
+                "that would result from Z-scoring after forward-filling."
+            ),
+            "parameters": [
+                f"W_A (years) = {win_a}",
+                f"max forward-fill quarters = {max_carry}",
+            ],
+            "source": "indicators/longterm_stress.py::_rolling_z_annual_then_ffill",
+        },
+        {
+            "group": "Debt Stress",
+            "title": "Staleness weight decay",
+            "equation": (
+                r"w_i^{eff} = w_i \cdot 0.5^{\,k_{excess}/h}"
+                r"\qquad h=" + str(hl) + r"\text{ qtrs}"
+            ),
+            "description": (
+                f"A component that has not updated within its expected publication lag "
+                f"(Q: {exp_lag.get('Q', 1)} qtr, A: {exp_lag.get('A', 4)} qtrs) begins to lose weight.  "
+                f"Effective weight halves every {hl} excess quarters.  "
+                f"If effective weight falls below {min_frac:.0%} of its configured weight, "
+                "the component is dropped from the score entirely.  "
+                f"Components carried beyond {max_carry} quarters are also dropped (Gap 2)."
+            ),
+            "parameters": [
+                f"h (half-life) = {hl} quarters",
+                f"min_weight_fraction = {min_frac:.0%}",
+                f"max_carry_quarters = {max_carry}",
+            ],
+            "source": "indicators/longterm_stress.py::staleness_weight_fraction",
+        },
+        {
+            "group": "Debt Stress",
+            "title": "Aggregate stress score",
+            "equation": (
+                r"S = \frac{\sum_i s_i\, Z_i\, w_i^{eff}}{\sum_i w_i^{eff}}"
+                r"\quad\text{if } \frac{\sum w^{eff}}{\sum w} \geq "
+                + f"{min_wt:.0%}"
+            ),
+            "description": (
+                f"Signed, effective-weight-normalised sum of component Z-scores.  "
+                "s_i = +1 for components where a higher value signals more stress "
+                "(debt ratios, interest burden); s_i = −1 for components where a "
+                "higher value signals less stress (fiscal surplus, revenue capacity).  "
+                f"The score is null if retained weight falls below {min_wt:.0%} of "
+                "the full basket, indicating insufficient data coverage."
+            ),
+            "parameters": [
+                f"min_retained_weight = {min_wt:.0%}",
+                "components: " + "; ".join(comp_rows),
+            ],
+            "source": "indicators/longterm_stress.py::compute_debt_stress_history",
+        },
+        {
+            "group": "Debt Stress",
+            "title": "Stress band labels",
+            "equation": (
+                r"S < " + f"{b_low:+g}" + r"\Rightarrow\text{Below-normal}"
+                r"\quad " + f"{b_low:+g}" + r"\leq S < " + f"{b_norm:+g}"
+                + r"\Rightarrow\text{Near norm}"
+                r"\quad " + f"{b_norm:+g}" + r"\leq S < " + f"{b_high:+g}"
+                + r"\Rightarrow\text{Elevated}"
+                r"\quad S\geq " + f"{b_high:+g}" + r"\Rightarrow\text{High}"
+            ),
+            "description": (
+                "Exploratory display bands only — NOT validated risk thresholds.  "
+                "Thresholds should be calibrated against historical episodes "
+                "(1994 bond rout, 2008 GFC, 2022 tightening) before operational use."
+            ),
+            "parameters": [
+                f"below_normal_upper = {b_low:+g}",
+                f"elevated_lower = {b_norm:+g}",
+                f"high_lower = {b_high:+g}",
+            ],
+            "source": "indicators/longterm_stress.py::stress_band_label",
+        },
+    ]
+
+
 # ── Raw data loading ──────────────────────────────────────────────────────────
 
 def _load_raw_fred(series_id: str, data_dir: Path) -> pd.Series:

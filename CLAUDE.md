@@ -98,15 +98,18 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
 | 1G Methodology improvements | ✅ **Done** | Configurable force importance/quality weights, momentum-agreement tilt, 3-month half-life decay, point-in-time weight audit; 349 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
-| 1I :8502 UI consolidation | 🔄 **In progress** | Sidebar sliders + rolling Z done; methodology guide + remaining :8501 content pending |
+| 1I :8502 UI consolidation | 🔄 **In progress** | Methodology audit + formula clipboard + confidence fix + slider amber + date block + tooltips done; remaining :8501 content pending |
 | 2 Country rollout | ⬜ Queued | Eurozone first — unblocked |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
 **To start the next session:** Phase 2 Eurozone rollout. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
 
 **:8502 Dash nav structure (as of 2026-06-22):**
-- Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage
-- Regime Map page: scatter (55vh, data-driven zoom with 15% buffer) + What Changed + Conflicts + Signal Drill-Downs (10 lens accordions) + Data-Quality Log
+- Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage; nav icons have `dbc.Tooltip` on hover in collapsed state
+- Sidebar slider accent: `--slider-accent` CSS var (amber `#E8A317` Carbon, gold `#F4C842` Slate, indigo `#4C6EF5` Dawn); track tint + hover glow via `color-mix()`; thumb centered by Radix (no `top` override)
+- Regime Map page: scatter (55vh, data-driven zoom with 15% buffer) + What Changed + Conflicts + Signal Drill-Downs (10 lens accordions) + Data-Quality Log; Force Components title bar amber (`var(--slider-accent)`); selected date shows "Month Year / X months ago" block
+- Methodology page: each section has inline formulas + full-section `dcc.Clipboard` copy; formulas embedded from live catalog (`build_formula_catalog()` + `build_debt_stress_formula_catalog()`)
+- Confidence metric: always DB directional-agreement fraction; rolling quadrant-consistency override removed (was trivially 100% in multi-year Stagflation)
 - Browser back/forward supported via `dcc.Location`; `page-trigger` store guarantees callback ordering
 - **Dash 4.x note**: Slider CSS uses `dash-slider-*` class names (Radix UI), NOT `rc-slider-*`
 - `_RQ_MAP` is module-level in `charting.py`; `zscore-window-store`/`diseq-window-store` use `storage_type="local"`

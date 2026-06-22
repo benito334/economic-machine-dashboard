@@ -4,6 +4,28 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-22 — Methodology audit, UI polish, formula clipboard, confidence fix
+
+**Done:**
+- **Confidence score fix**: rolling quadrant-consistency override (last 12 months) trivially hit 100% in a 3-year Stagflation regime. Removed the override entirely — `_regime_info_children` now always uses the raw DB `confidence` value (directional signal agreement fraction from the composites engine).
+- **Formula / Methodology audit**: cross-referenced `methodology.py` prose against `composites.yaml`, `longterm_stress.yaml`, and actual computation code. Found and corrected: base_share fabricated values (Section 6), completely wrong debt stress component table (Section 9), and 4 minor description errors.
+- **Debt stress formula catalog**: added `build_debt_stress_formula_catalog()` to `indicators/longterm_stress.py` — reads live from `longterm_stress.yaml`, same pattern as composites. Returns 5 formula cards (rolling Z quarterly, rolling Z annual→quarterly, staleness weight decay, aggregate stress score, band labels).
+- **Clipboard copy on formula cards**: added `dcc.Clipboard` button to each card in `formulas.py`; `_clipboard_text()` formats card as plain text with raw LaTeX.
+- **Formulas embedded in Methodology**: rewrote `methodology.py` — each accordion section ends with relevant inline formulas and the entire section is copyable via `dcc.Clipboard`; helper `_section_text()` generates clipboard-ready plain text including formula LaTeX. Removed the separate "ƒ Formula Reference" sub-tab and route.
+- **Slider accent color**: replaced blue slider color with theme-aware amber/gold (`--slider-accent` CSS var — `#E8A317` Carbon, `#F4C842` Slate, `#4C6EF5` Dawn). Added to `THEME_CSS_VARS` in `themes.py`. Slider track tint and hover glow use `color-mix()`.
+- **Slider thumb centering**: removed `top: 50%` / `transform: translate(-50%, -50%)` overrides on `.dash-slider-thumb` — Radix UI centers the thumb naturally within the track area; overriding these fought the mark-label space and caused misalignment.
+- **Debt Stress nav icon**: changed from 📉 to ⚖️ (was too similar to Regime History).
+- **Force Components title bar**: `html.Summary` color changed from `var(--muted-color)` to `var(--slider-accent)` (amber) for the main rollup row only; sub-headings (Growth / Inflation) unchanged.
+- **Date block under PAST DATA warning**: added `date_block` div to `_regime_info_children()` quadrant column — shows "Month Year" (large, bold) + "X months/years ago" (small) for both current and historical selected dates. Uses month difference calculation with year/remainder formatting ≥24 months.
+- **Settings icon size fix**: `⚙` (text glyph, renders small) → `⚙️` (emoji variation selector); icon span `fontSize: "1.1em"`; button `fontSize` raised to `"0.875rem"`; added `className="sidebar-nav-link"` so tooltip wires to same class.
+- **Sidebar nav tooltips (minimized)**: nav links got unique `id` props; `_nl()` helper appends `dbc.Tooltip` to `_tooltips` list; Settings button gets its own tooltip. Overdue sync banner: `⚠` icon always visible, `html.Span(text, className="sidebar-text")` hidden when collapsed.
+
+**Next:**
+- Phase 2 Eurozone rollout (`config/countries/eu_bindings.yaml`) — unblocked
+- Run `python3 -m indicators.pipeline --latest` after 2026-06-26 (BEA Q1 2026 data; clears 3 stale signals)
+
+---
+
 ## 2026-06-22 — Sidebar slider polish + scatter map fix + rolling confidence
 
 **Done:**

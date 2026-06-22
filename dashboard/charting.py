@@ -43,7 +43,6 @@ from dashboard.charting_data import (
 )
 from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import explorer as _explorer
-from dashboard import formulas as _formulas
 from dashboard import methodology as _methodology
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -636,24 +635,35 @@ _UPCOMING_RELEASES: list[tuple[datetime.date, str]] = [
 
 
 def _sync_banner() -> html.Div | None:
-    """Return a small banner showing the next data sync date, or None if nothing to show."""
+    """Sync-status banner.
+    Expanded: full text for both overdue and upcoming.
+    Collapsed: ⚠ icon only for overdue; upcoming hidden entirely.
+    """
     today = datetime.date.today()
     overdue = [(d, lbl) for d, lbl in _UPCOMING_RELEASES if d <= today]
     future  = [(d, lbl) for d, lbl in _UPCOMING_RELEASES if d > today]
 
     if overdue:
         _, lbl = overdue[0]
-        return html.Div(
-            f"⚠ Update now · {lbl}",
-            style={"fontSize": "0.72rem", "color": "#F4C842", "fontWeight": "600",
-                   "padding": "6px 12px", "lineHeight": "1.3"},
-        )
+        return html.Div([
+            html.Span("⚠", style={
+                "color": "#F4C842", "fontWeight": "700", "fontSize": "0.9rem",
+                "minWidth": "22px", "display": "inline-block", "textAlign": "center",
+            }),
+            html.Span(f" Update now · {lbl}", className="sidebar-text", style={
+                "fontSize": "0.72rem", "color": "#F4C842", "fontWeight": "600",
+            }),
+        ], style={"padding": "4px 12px 6px 12px", "lineHeight": "1.3",
+                  "display": "flex", "alignItems": "center"})
     if future:
         next_date, lbl = future[0]
         days_left = (next_date - today).days
+        # Whole banner hidden when collapsed — no icon needed for a future event
         return html.Div(
             f"Next sync: {next_date.strftime('%b %d')} · {lbl} ({days_left}d)",
-            style={"fontSize": "0.70rem", "color": "#666", "padding": "6px 12px", "lineHeight": "1.3"},
+            className="sidebar-text",
+            style={"fontSize": "0.70rem", "color": "#666",
+                   "padding": "4px 12px 6px 12px", "lineHeight": "1.3"},
         )
     return None
 
@@ -661,114 +671,178 @@ def _sync_banner() -> html.Div | None:
 # ── Per-page layout functions ─────────────────────────────────────────────────
 
 def _left_nav() -> html.Div:
-    """Vertical nav sidebar: DATA + INDICATORS sections, theme picker at bottom."""
-    _label = lambda txt: html.Div(txt, style={
-        "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.1em",
-        "color": "var(--muted-color)", "fontWeight": "700",
-        "padding": "14px 12px 4px 12px",
-    })
-    _sync = _sync_banner()  # returns html.Div or None
+    """Collapsible vertical nav sidebar."""
+    _sync = _sync_banner()
+
+    def _label(txt: str) -> html.Div:
+        return html.Div(txt, className="sidebar-section-label", style={
+            "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.1em",
+            "color": "var(--muted-color)", "fontWeight": "700",
+            "padding": "14px 12px 4px 12px",
+        })
+
+    _tooltips: list = []
+
+    def _nl(icon: str, text: str, href: str, disabled: bool = False,
+            nav_id: str | None = None) -> dbc.NavLink:
+        link = dbc.NavLink(
+            [
+                html.Span(icon, className="nav-icon",
+                          style={"minWidth": "22px", "display": "inline-block",
+                                 "textAlign": "center"}),
+                html.Span(f" {text}", className="sidebar-text"),
+            ],
+            href=href if not disabled else None,
+            active="exact" if not disabled else False,
+            disabled=disabled,
+            id=nav_id,
+            className="py-1 px-3 small sidebar-nav-link",
+        )
+        if nav_id:
+            _tooltips.append(dbc.Tooltip(
+                text, target=nav_id, placement="right",
+                delay={"show": 300, "hide": 50},
+            ))
+        return link
+
+    def _sm(v: int, lbl: str) -> dict:
+        return {"label": lbl, "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}}
+
     _country_options = [
-        {"label": "🇺🇸 United States", "value": "US"},
-        {"label": "🇪🇺 Eurozone  (soon)", "value": "EZ", "disabled": True},
-        {"label": "🇯🇵 Japan  (soon)",    "value": "JP", "disabled": True},
-        {"label": "🇬🇧 United Kingdom  (soon)", "value": "GB", "disabled": True},
+        {"label": "🇺🇸 United States",          "value": "US"},
+        {"label": "🇪🇺 Eurozone  (soon)",         "value": "EZ", "disabled": True},
+        {"label": "🇯🇵 Japan  (soon)",            "value": "JP", "disabled": True},
+        {"label": "🇬🇧 United Kingdom  (soon)",   "value": "GB", "disabled": True},
     ]
+
     return html.Div([
-        html.Div("Indicators Machine", style={
-            "fontSize": "0.85rem", "fontWeight": "700", "color": "var(--font-color)",
-            "padding": "14px 12px 6px 12px",
-        }),
-        # Country selector (Phase 2 multi-country)
+        # ── Header: title + collapse toggle ──────────────────────────────────
+        html.Div([
+            html.Span("Indicators Machine", className="sidebar-text", style={
+                "fontSize": "0.85rem", "fontWeight": "700",
+                "color": "var(--font-color)", "flexGrow": "1",
+            }),
+            html.Button("‹", id="sidebar-toggle-btn", n_clicks=0, style={
+                "background": "none", "border": "none", "cursor": "pointer",
+                "color": "var(--muted-color)", "fontSize": "1.1rem",
+                "padding": "0 4px", "lineHeight": "1", "flexShrink": "0",
+            }),
+        ], className="sidebar-header",
+           style={"display": "flex", "alignItems": "center",
+                  "padding": "14px 8px 6px 12px"}),
+
+        # ── Country selector ──────────────────────────────────────────────────
         dbc.Select(
             id="country-selector",
             options=_country_options,
             value="US",
             size="sm",
+            className="country-full",
             style={"fontSize": "0.78rem", "margin": "0 12px 10px 12px",
                    "width": "calc(100% - 24px)", "backgroundColor": "var(--card-bg)",
                    "color": "var(--font-color)", "borderColor": "var(--border-color)"},
         ),
-        html.Div(style={"borderBottom": "1px solid var(--border-color)", "marginBottom": "2px"}),
-        _label("Data"),
+        html.Div(id="country-flag-display", className="country-collapsed",
+                 children="🇺🇸", title="United States",
+                 style={"fontSize": "1.3rem", "textAlign": "center",
+                        "padding": "4px 0 8px 0", "cursor": "default"}),
+
+        html.Div(style={"borderBottom": "1px solid var(--border-color)",
+                        "marginBottom": "2px"}),
+
+        # ── Overviews (placeholder — Phase 2+) ───────────────────────────────
+        _label("Overviews"),
         dbc.Nav([
-            dbc.NavLink("📊 Chart Overlay",    href="/charts",      active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("🔬 Data Explorer",    href="/explorer",    active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("ƒ  Formula Reference", href="/formulas",    active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("📖 Methodology",       href="/methodology", active="exact", className="py-1 px-3 small"),
+            _nl("🌐", "Overview", "/overview", disabled=True, nav_id="navlnk-overview"),
         ], vertical=True, pills=True, className="mb-1"),
+
+        # ── Indicators ────────────────────────────────────────────────────────
         _label("Indicators"),
         dbc.Nav([
-            dbc.NavLink("〰 Yield Curve",   href="/yield-curve",    active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("📍 Regime Map",     href="/regime-map",     active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("📈 Regime History", href="/regime-history", active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("📉 Debt Stress",    href="/debt-stress",    active="exact", className="py-1 px-3 small"),
+            _nl("〰", "Yield Curve",    "/yield-curve",    nav_id="navlnk-yield-curve"),
+            _nl("📍", "Regime Map",     "/regime-map",     nav_id="navlnk-regime-map"),
+            _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
+            _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
+        ], vertical=True, pills=True, className="mb-1"),
+
+        # ── Data ──────────────────────────────────────────────────────────────
+        _label("Data"),
+        dbc.Nav([
+            _nl("📊", "Chart Overlay", "/charts",          nav_id="navlnk-charts"),
+            _nl("🔬", "Data Explorer", "/explorer",        nav_id="navlnk-explorer"),
+        ], vertical=True, pills=True, className="mb-1"),
+
+        # ── Reference ─────────────────────────────────────────────────────────
+        _label("Reference"),
+        dbc.Nav([
+            _nl("📖", "Methodology",       "/methodology", nav_id="navlnk-methodology"),
         ], vertical=True, pills=True, className="mb-2"),
+
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
-        # ── Window controls ─────────────────────────────────────────────────────
+
+        # ── Window sliders (hidden when sidebar collapsed) ────────────────────
         html.Div([
-            html.Div("Z-Score Window", style={
-                "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.08em",
-                "color": "var(--muted-color)", "fontWeight": "700",
-                "padding": "0 4px 4px 4px",
+            html.Div("Z-Score Window", className="sidebar-text", style={
+                "fontSize": "0.62rem", "textTransform": "uppercase",
+                "letterSpacing": "0.08em", "color": "var(--muted-color)",
+                "fontWeight": "700", "padding": "0 4px 4px 4px",
             }),
             dcc.Slider(
                 id="zscore-window-slider",
                 min=0, max=60, step=None,
-                marks={
-                    0:  {"label": "Full", "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                    36: {"label": "36m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                    48: {"label": "48m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                    60: {"label": "60m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                },
+                marks={0: _sm(0,"Full"), 36: _sm(36,"36m"), 48: _sm(48,"48m"), 60: _sm(60,"60m")},
                 value=0,
                 tooltip={"always_visible": False, "style": {"display": "none"}},
                 className="sidebar-slider",
             ),
-            html.Div("Disequilibrium Window", style={
-                "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.08em",
-                "color": "var(--muted-color)", "fontWeight": "700",
-                "padding": "10px 4px 4px 4px",
+            html.Div("Disequilibrium Window", className="sidebar-text", style={
+                "fontSize": "0.62rem", "textTransform": "uppercase",
+                "letterSpacing": "0.08em", "color": "var(--muted-color)",
+                "fontWeight": "700", "padding": "10px 4px 4px 4px",
             }),
             dcc.Slider(
                 id="diseq-window-slider",
                 min=0, max=24, step=None,
-                marks={
-                    0:  {"label": "Full", "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                    12: {"label": "12m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                    18: {"label": "18m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                    24: {"label": "24m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
-                },
+                marks={0: _sm(0,"Full"), 12: _sm(12,"12m"), 18: _sm(18,"18m"), 24: _sm(24,"24m")},
                 value=0,
                 tooltip={"always_visible": False, "style": {"display": "none"}},
                 className="sidebar-slider",
             ),
-        ], style={"padding": "0 8px 8px 8px"}),
-        html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
-        html.Div(_theme_picker(), style={"padding": "0 8px"}),
+        ], className="sidebar-sliders", style={"padding": "0 8px 8px 8px"}),
+
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
         *([_sync] if _sync else []),
-        # Settings gear — pinned to bottom
+
+        # ── Settings ──────────────────────────────────────────────────────────
         html.Div(
             dbc.Button(
-                "⚙  Settings",
+                [html.Span("⚙️", className="nav-icon",
+                           style={"minWidth": "22px", "display": "inline-block",
+                                  "textAlign": "center", "fontSize": "1.1em"}),
+                 html.Span(" Settings", className="sidebar-text")],
                 id="settings-btn",
                 color="link",
                 size="sm",
-                style={
-                    "color": "var(--muted-color)", "fontSize": "0.75rem",
-                    "padding": "6px 12px", "width": "100%", "textAlign": "left",
-                },
+                className="sidebar-nav-link",
+                style={"color": "var(--muted-color)", "fontSize": "0.875rem",
+                       "padding": "4px 12px", "width": "100%", "textAlign": "left",
+                       "display": "flex", "alignItems": "center"},
             ),
             style={"marginTop": "auto"},
         ),
-    ], style={
+
+        # ── Hover tooltips (shown on collapsed icon hover) ────────────────────
+        dbc.Tooltip("Settings", target="settings-btn", placement="right",
+                    delay={"show": 300, "hide": 50}),
+        *_tooltips,
+    ], id="sidebar-container", style={
         "width": "195px",
         "flexShrink": "0",
         "height": "100vh",
         "position": "sticky",
         "top": "0",
         "overflowY": "auto",
+        "overflowX": "hidden",
         "backgroundColor": "var(--card-bg)",
         "borderRight": "1px solid var(--border-color)",
     })
@@ -811,10 +885,6 @@ def _page_chart_overlay() -> html.Div:
 
 def _page_explorer() -> html.Div:
     return html.Div(_explorer.get_layout(), className="pe-2 pt-2", style={"maxWidth": "1600px", "margin": "0 auto"})
-
-
-def _page_formulas() -> html.Div:
-    return _formulas.get_layout()
 
 
 def _page_methodology() -> html.Div:
@@ -1089,61 +1159,68 @@ def _page_debt_stress() -> html.Div:
 
 # ── App layout ────────────────────────────────────────────────────────────────
 
+def _modal_mark(lbl: str) -> dict:
+    return {"label": lbl, "style": {"color": "var(--font-color)", "fontSize": "0.78rem"}}
+
+
 _SETTINGS_MODAL = dbc.Modal([
     dbc.ModalHeader(dbc.ModalTitle("Settings", style={"fontSize": "1rem"})),
     dbc.ModalBody([
+        # ── Theme ─────────────────────────────────────────────────────────────
+        html.Label("Theme", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+        html.Div(_theme_picker(), style={"marginTop": "6px", "marginBottom": "4px"}),
+
+        html.Hr(style={"borderColor": "var(--border-color)"}),
+
         # ── Force Z-Score window ──────────────────────────────────────────────
-        html.Label(
-            "Force Z-Score Look-back Window",
-            style={"fontWeight": "700", "fontSize": "0.88rem"},
-        ),
+        html.Label("Force Z-Score Look-back Window",
+                   style={"fontWeight": "700", "fontSize": "0.88rem"}),
         html.P(
-            "Controls how much history is used to define 'normal' for each force indicator.  "
-            "Full History anchors to the entire available record (default).  "
+            "Controls how much history is used to define 'normal' for each force indicator. "
+            "Full History anchors to the entire available record (default). "
             "Rolling windows make regime scores more responsive to structural shifts — "
             "guidance recommends 36–60 months.",
             style={"fontSize": "0.78rem", "color": "var(--muted-color)",
-                   "marginTop": "6px", "marginBottom": "12px"},
+                   "marginTop": "6px", "marginBottom": "16px"},
         ),
-        dbc.RadioItems(
-            id="zscore-window-radio",
-            options=[
-                {"label": "Full History (default)",              "value": 0},
-                {"label": "60 months · 5 years",                 "value": 60},
-                {"label": "48 months · 4 years  ★ recommended",  "value": 48},
-                {"label": "36 months · 3 years",                 "value": 36},
-            ],
-            value=0,
-            className="mb-3",
-            inputStyle={"marginRight": "8px"},
-            labelStyle={"fontSize": "0.83rem"},
+        html.Div(
+            dcc.Slider(
+                id="zscore-window-modal-slider",
+                min=0, max=60, step=None,
+                marks={0: _modal_mark("Full · default"), 36: _modal_mark("36m"),
+                       48: _modal_mark("48m ★"), 60: _modal_mark("60m")},
+                value=0,
+                tooltip={"always_visible": False, "style": {"display": "none"}},
+                className="sidebar-slider",
+            ),
+            style={"paddingBottom": "28px"},
         ),
+
         html.Hr(style={"borderColor": "var(--border-color)"}),
+
         # ── Disequilibrium window ─────────────────────────────────────────────
-        html.Label(
-            "Disequilibrium Look-back Window",
-            style={"fontWeight": "700", "fontSize": "0.88rem", "marginTop": "4px"},
-        ),
+        html.Label("Disequilibrium Look-back Window",
+                   style={"fontWeight": "700", "fontSize": "0.88rem", "marginTop": "4px"}),
         html.P(
-            "Disequilibrium measures how far structural forces are from equilibrium.  "
-            "A longer window smooths short-term noise; guidance recommends 12–24 months.  "
-            "Confidence is already short-window (uses 3-month direction flags; no setting needed).",
+            "Disequilibrium measures how far structural forces are from equilibrium. "
+            "A longer window smooths short-term noise; guidance recommends 12–24 months. "
+            "Confidence is short-window by design (3-month direction flags; no setting needed).",
             style={"fontSize": "0.78rem", "color": "var(--muted-color)",
-                   "marginTop": "6px", "marginBottom": "12px"},
+                   "marginTop": "6px", "marginBottom": "16px"},
         ),
-        dbc.RadioItems(
-            id="diseq-window-radio",
-            options=[
-                {"label": "Full History (default)",              "value": 0},
-                {"label": "24 months · 2 years",                 "value": 24},
-                {"label": "18 months · 1.5 years  ★ recommended", "value": 18},
-                {"label": "12 months · 1 year",                  "value": 12},
-            ],
-            value=0,
-            className="mb-3",
-            inputStyle={"marginRight": "8px"},
-            labelStyle={"fontSize": "0.83rem"},
+        html.Div(
+            dcc.Slider(
+                id="diseq-window-modal-slider",
+                min=0, max=24, step=None,
+                marks={0: _modal_mark("Full · default"), 12: _modal_mark("12m"),
+                       18: _modal_mark("18m ★"), 24: _modal_mark("24m")},
+                value=0,
+                tooltip={"always_visible": False, "style": {"display": "none"}},
+                className="sidebar-slider",
+            ),
+            style={"paddingBottom": "28px"},
         ),
+
         html.Hr(style={"borderColor": "var(--border-color)"}),
         html.P(
             "When a rolling window is active, regime panels read pre-computed DB columns — "
@@ -1179,6 +1256,8 @@ app.layout = html.Div([
     dcc.Store(id="diseq-window-store",   data=0, storage_type="local"),
     # Active country (Phase 2 multi-country support)
     dcc.Store(id="country-store",        data="US"),
+    # Sidebar collapsed state — persisted in localStorage
+    dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
     html.Div(id="theme-dummy",           style={"display": "none"}),
 
     _SETTINGS_MODAL,
@@ -1214,28 +1293,28 @@ def toggle_settings_modal(n_open: int, n_close: int, is_open: bool) -> bool:
 
 @callback(
     Output("zscore-window-store", "data"),
-    Input("zscore-window-slider", "value"),
-    Input("zscore-window-radio",  "value"),
+    Input("zscore-window-slider",       "value"),
+    Input("zscore-window-modal-slider", "value"),
     prevent_initial_call=True,
 )
-def update_zscore_window(slider_val: int, radio_val: int) -> int:
+def update_zscore_window(sidebar_val: int, modal_val: int) -> int:
     from dash import ctx
     if ctx.triggered_id == "zscore-window-slider":
-        return int(slider_val) if slider_val is not None else 0
-    return int(radio_val) if radio_val else 0
+        return int(sidebar_val) if sidebar_val is not None else 0
+    return int(modal_val) if modal_val is not None else 0
 
 
 @callback(
     Output("diseq-window-store", "data"),
-    Input("diseq-window-slider", "value"),
-    Input("diseq-window-radio",  "value"),
+    Input("diseq-window-slider",       "value"),
+    Input("diseq-window-modal-slider", "value"),
     prevent_initial_call=True,
 )
-def update_diseq_window(slider_val: int, radio_val: int) -> int:
+def update_diseq_window(sidebar_val: int, modal_val: int) -> int:
     from dash import ctx
     if ctx.triggered_id == "diseq-window-slider":
-        return int(slider_val) if slider_val is not None else 0
-    return int(radio_val) if radio_val else 0
+        return int(sidebar_val) if sidebar_val is not None else 0
+    return int(modal_val) if modal_val is not None else 0
 
 
 @callback(
@@ -1254,6 +1333,67 @@ def sync_zscore_slider(stored: int) -> int:
 )
 def sync_diseq_slider(stored: int) -> int:
     return int(stored) if stored is not None else 0
+
+
+@callback(
+    Output("zscore-window-modal-slider", "value"),
+    Input("zscore-window-store", "data"),
+    prevent_initial_call=False,
+)
+def sync_zscore_modal_slider(stored: int) -> int:
+    return int(stored) if stored is not None else 0
+
+
+@callback(
+    Output("diseq-window-modal-slider", "value"),
+    Input("diseq-window-store", "data"),
+    prevent_initial_call=False,
+)
+def sync_diseq_modal_slider(stored: int) -> int:
+    return int(stored) if stored is not None else 0
+
+
+@callback(
+    Output("sidebar-collapsed", "data"),
+    Input("sidebar-toggle-btn", "n_clicks"),
+    State("sidebar-collapsed", "data"),
+    prevent_initial_call=True,
+)
+def toggle_sidebar(n_clicks: int, is_collapsed: bool) -> bool:
+    return not bool(is_collapsed)
+
+
+@callback(
+    Output("sidebar-container", "className"),
+    Input("sidebar-collapsed", "data"),
+    prevent_initial_call=False,
+)
+def update_sidebar_class(collapsed: bool) -> str:
+    return "sidebar-collapsed" if bool(collapsed) else ""
+
+
+@callback(
+    Output("sidebar-toggle-btn", "children"),
+    Input("sidebar-collapsed", "data"),
+    prevent_initial_call=False,
+)
+def update_toggle_icon(collapsed: bool) -> str:
+    return "›" if bool(collapsed) else "‹"
+
+
+_COUNTRY_FLAGS = {"US": ("🇺🇸", "United States"), "EZ": ("🇪🇺", "Eurozone"),
+                  "JP": ("🇯🇵", "Japan"),          "GB": ("🇬🇧", "United Kingdom")}
+
+
+@callback(
+    Output("country-flag-display", "children"),
+    Output("country-flag-display", "title"),
+    Input("country-selector", "value"),
+    prevent_initial_call=False,
+)
+def update_country_flag(value: str):
+    flag, title = _COUNTRY_FLAGS.get(str(value or "US"), ("🌐", "Unknown"))
+    return flag, title
 
 
 @callback(
@@ -1414,7 +1554,6 @@ _PAGE_MAP = {
     "/":              _page_chart_overlay,
     "/charts":        _page_chart_overlay,
     "/explorer":      _page_explorer,
-    "/formulas":      _page_formulas,
     "/methodology":   _page_methodology,
     "/yield-curve":   _page_yield_curve,
     "/regime-map":    _page_regime_map,
@@ -1780,7 +1919,7 @@ def _regime_info_children(
     else:
         quadrant = row.get("quadrant") or "—"
 
-    confidence = rolling.get("confidence", row.get("confidence"))
+    confidence = row.get("confidence")
     # Use rolling disequilibrium score when a diseq window is active
     use_rolling_diseq = rolling.get("diseq_window", 0) > 0
     diseq = (
@@ -1857,6 +1996,35 @@ def _regime_info_children(
         if not is_current else None
     )
 
+    # ── Selected date block (shown for past and current) ─────────────────────
+    try:
+        _as_of = pd.Timestamp(row.get("as_of", ""))
+        _today = pd.Timestamp.today()
+        _mo_ago = (_today.year - _as_of.year) * 12 + (_today.month - _as_of.month)
+        if is_current:
+            _ago_str = "current"
+        elif _mo_ago >= 24:
+            _yrs = _mo_ago // 12
+            _rem = _mo_ago % 12
+            _ago_str = f"{_yrs} yr {_rem} mo ago" if _rem else f"{_yrs} yr ago"
+        else:
+            _ago_str = f"{_mo_ago} month{'s' if _mo_ago != 1 else ''} ago"
+        _date_label = _as_of.strftime("%b %Y")
+    except Exception:
+        _date_label, _ago_str = "—", ""
+
+    date_block = html.Div([
+        html.Div(_date_label, style={
+            "fontSize": "1.15rem", "fontWeight": "700",
+            "color": "var(--font-color)", "textAlign": "center",
+            "letterSpacing": "0.02em",
+        }),
+        html.Div(_ago_str, style={
+            "fontSize": "0.72rem", "color": "var(--muted-color)",
+            "textAlign": "center", "marginTop": "2px",
+        }),
+    ], style={"marginTop": "8px"})
+
     conf_str = (f"{confidence:.0%}" if confidence is not None and not pd.isna(confidence) else "—")
     diseq_str = _fmt(diseq)
 
@@ -1878,6 +2046,7 @@ def _regime_info_children(
                            "whiteSpace": "nowrap"},
                 ),
                 *([past_badge] if past_badge is not None else []),
+                date_block,
             ], style={"paddingRight": "20px", "width": "215px", "flexShrink": "0",
                       "display": "flex", "flexDirection": "column", "justifyContent": "flex-start"}),
 
@@ -2175,7 +2344,7 @@ def _regime_info_children(
                         "padding": "6px 10px",
                         "fontSize": "0.72rem", "fontWeight": "700",
                         "textTransform": "uppercase", "letterSpacing": "0.07em",
-                        "color": "var(--muted-color)",
+                        "color": "var(--slider-accent)",
                         "backgroundColor": "rgba(0,0,0,0.18)",
                         "borderBottom": "1px solid var(--border-color)",
                         "userSelect": "none",
@@ -2399,26 +2568,6 @@ def update_regime_info(
     if diseq_sfx:
         rd = selected.get(f"disequilibrium_{diseq_sfx}")
         rolling["diseq_score"] = float(rd) if rd is not None and not pd.isna(rd) else None
-
-    # ── Rolling confidence: quadrant consistency over last 12 months ───────────
-    # When a Z-score window is active, replace baseline confidence with the
-    # fraction of the last 12 months in which rolling g/i scores landed in the
-    # same quadrant as the current period.  This ensures confidence updates
-    # visibly when the slider changes.
-    if force_sfx and rolling.get("g_score") is not None and rolling.get("i_score") is not None:
-        rg_col_c = f"growth_score_{force_sfx}"
-        ri_col_c = f"inflation_score_{force_sfx}"
-        look = min(idx + 1, 12)
-        win_df = comp.iloc[max(0, idx - look + 1): idx + 1]
-        rg_s = win_df[rg_col_c].dropna()
-        ri_s = win_df[ri_col_c].dropna()
-        if len(rg_s) >= 2 and len(ri_s) >= 2:
-            cur_q = _RQ_MAP[(rolling["g_score"] >= 0, rolling["i_score"] >= 0)]
-            same_q = [
-                _RQ_MAP.get((g >= 0, i >= 0)) == cur_q
-                for g, i in zip(rg_s.values, ri_s.values)
-            ]
-            rolling["confidence"] = sum(same_q) / len(same_q)
 
     comp_df = load_composite_component_status(
         country=country, as_of=str(selected["as_of"])
