@@ -119,6 +119,21 @@ def fetch_series(
 _WB_BASE = "https://api.worldbank.org/v2"
 _WB_START_YEAR = 1990
 
+# Maps 2-letter binding country codes to World Bank API country codes.
+# Individual countries (US, KR, JP, etc.) use their ISO2 code directly.
+# Aggregate groups require special WB codes (e.g. EMU for Euro area).
+_WB_COUNTRY_MAP: dict[str, str] = {
+    "EZ": "EMU",   # Euro area aggregate (EZ = our internal code; WB uses EMU)
+    "JP": "JPN",   # WB accepts ISO2 but ISO3 also works
+    "GB": "GBR",
+    "KR": "KOR",
+    "CN": "CHN",
+    "IN": "IND",
+    "BR": "BRA",
+    "SA": "SAU",
+    "RU": "RUS",
+}
+
 
 def _wb_cache_path(series_id: str, country_iso: str) -> Path:
     safe = series_id.replace(".", "_")
@@ -174,29 +189,33 @@ def fetch_wb_series(
     Annual data index is converted to year-end timestamps.
     Caches to parquet; TTL same as FRED annual series (300 days).
     Returns None and logs a warning if the result is empty.
+
+    country_iso is the 2-letter binding code (e.g. "EA", "KR"). Mapped to the
+    correct WB API code (e.g. "EMU", "KOR") via _WB_COUNTRY_MAP.
     """
+    wb_code = _WB_COUNTRY_MAP.get(country_iso, country_iso)
     RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache = _wb_cache_path(series_id, country_iso)
+    cache = _wb_cache_path(series_id, wb_code)
 
     if not force_refresh and _is_fresh(cache, frequency):
-        logger.debug("[cache hit] WB %s/%s", country_iso, series_id)
+        logger.debug("[cache hit] WB %s/%s", wb_code, series_id)
         df = pd.read_parquet(cache)
         return df["value"]
 
-    logger.info("[WB fetch] %s/%s (from %d)", country_iso, series_id, start_year)
+    logger.info("[WB fetch] %s/%s (from %d)", wb_code, series_id, start_year)
 
     try:
-        series = _fetch_wb_from_api(series_id, country_iso, start_year)
+        series = _fetch_wb_from_api(series_id, wb_code, start_year)
     except Exception as exc:
-        logger.error("[WB] Failed to fetch %s/%s: %s", country_iso, series_id, exc)
+        logger.error("[WB] Failed to fetch %s/%s: %s", wb_code, series_id, exc)
         if cache.exists():
-            logger.warning("[cache fallback] Using stale cache for WB %s/%s", country_iso, series_id)
+            logger.warning("[cache fallback] Using stale cache for WB %s/%s", wb_code, series_id)
             df = pd.read_parquet(cache)
             return df["value"]
         return None
 
     series.to_frame().to_parquet(cache)
-    logger.debug("[cached] WB %s/%s → %s (%d obs)", country_iso, series_id, cache.name, len(series))
+    logger.debug("[cached] WB %s/%s → %s (%d obs)", wb_code, series_id, cache.name, len(series))
     return series
 
 
@@ -207,7 +226,7 @@ _IMF_BASE = "https://www.imf.org/external/datamapper/api/v1"
 # Map 2-letter country codes (used in CountryBinding) to IMF Datamapper ISO-3 codes
 _IMF_COUNTRY_MAP: dict[str, str] = {
     "US": "USA",
-    "EA": "EUR",
+    "EZ": "EUR",   # Euro area — note: IMF Datamapper does NOT support EUR aggregate; kept for completeness
     "JP": "JPN",
     "GB": "GBR",
     "CN": "CHN",

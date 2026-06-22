@@ -1,5 +1,6 @@
 """
-Phase 1A pipeline: fetch FRED + WorldBank series, transform, normalize, store to DuckDB.
+Phase 1A+ pipeline: fetch FRED + WorldBank + IMF series, transform, normalize, store to DuckDB.
+Multi-country: runs US (primary) then any YAML files under config/countries/.
 
 Usage:
     python -m indicators.pipeline              # normal run (uses cache)
@@ -16,6 +17,7 @@ from typing import Optional
 
 import pandas as pd
 import yaml
+from dotenv import load_dotenv
 
 from indicators.composites import compute_composite_history, load_composites_config
 from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series
@@ -137,45 +139,44 @@ def _print_signal(s: Signal) -> None:
     print(f"  → {s.id:45s}  {val_str:>10} {s.units:12}  {z_str}  {p_str}  {s.direction or '?':8}  {flags}")
 
 
-# ─── Main pipeline ───────────────────────────────────────────────────────────
+# ─── Per-country ingestion passes (1–4) ─────────────────────────────────────
 
-def run(force_refresh: bool = False, print_latest: bool = False) -> None:
-    print("=" * 70)
-    print("  Indicators Machine — Phase 1A Pipeline (US / FRED + WorldBank)")
-    print("=" * 70)
+def run_country(
+    conn,
+    yaml_path: Path,
+    force_refresh: bool = False,
+    is_primary: bool = False,
+) -> dict:
+    """
+    Run ingestion passes 1–4 for a single country binding YAML.
 
-    # Ensure data dirs exist
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    is_primary: if True, errors cause sys.exit(1); otherwise they are logged and skipped.
+    Returns a results dict with ok/empty/error/sanity_warn counts.
+    """
+    bindings = load_bindings(yaml_path)
+    country_code = bindings[0].country if bindings else yaml_path.stem.split("_")[0].upper()
 
-    conn = get_connection()
-    init_schema(conn)
-    removed_future = delete_future_signals(conn)
-    if removed_future:
-        logger.warning("Removed %d future-dated signal rows", removed_future)
+    fred_bindings    = [b for b in bindings if b.provider == "FRED"       and b.verified]
+    wb_bindings      = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
+    imf_bindings     = [b for b in bindings if b.provider == "IMF"        and b.verified]
+    derived_bindings = [b for b in bindings if b.provider == "derived"    and b.verified]
+    skipped          = [b for b in bindings if not b.verified]
 
-    bindings = load_bindings(_CONFIG_DIR / "us_bindings.yaml")
-    raw_bindings = [b for b in bindings if b.provider == "FRED" and b.verified]
-    wb_bindings = [b for b in bindings if b.provider == "WorldBank" and b.verified]
-    imf_bindings = [b for b in bindings if b.provider == "IMF" and b.verified]
-    derived_bindings = [b for b in bindings if b.provider == "derived" and b.verified]
-    skipped = [b for b in bindings if not b.verified]
-
-    print(f"\n  FRED series      : {len(raw_bindings)}")
-    print(f"  WorldBank series : {len(wb_bindings)}")
-    print(f"  IMF series       : {len(imf_bindings)}")
-    print(f"  Derived          : {len(derived_bindings)}")
-    print(f"  Skipped (deferred / ⚠ VERIFY) : {len(skipped)}")
+    print(f"\n{'=' * 70}")
+    print(f"  Country: {country_code}  ({yaml_path.name})")
+    print(f"  FRED: {len(fred_bindings)}  |  WorldBank: {len(wb_bindings)}  |  IMF: {len(imf_bindings)}  "
+          f"|  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
     if skipped:
-        print(f"    {', '.join(b.id for b in skipped)}")
-    print()
+        print(f"    Skipped: {', '.join(b.id for b in skipped)}")
+    print('=' * 70)
 
     results = {"ok": 0, "empty": 0, "error": 0, "sanity_warn": 0}
-    raw_store: dict[str, pd.Series] = {}        # FRED series_id → raw pd.Series
-    transformed_store: dict[str, pd.Series] = {}  # binding.id    → transformed pd.Series
+    raw_store: dict[str, pd.Series] = {}
+    transformed_store: dict[str, pd.Series] = {}
 
     # ── Pass 1: FRED series ───────────────────────────────────────────────
-    print("─── Pass 1: FRED series ───────────────────────────────────────────")
-    for binding in raw_bindings:
+    print(f"\n─── Pass 1: FRED series [{country_code}] ──────────────────────────────")
+    for binding in fred_bindings:
         try:
             raw = fetch_series(
                 binding.series_id,
@@ -189,12 +190,16 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
             raw_store[binding.series_id] = raw
 
-            # H2: optional pre-smoothing before transformation (e.g. 7-day SMA for crude oil)
             raw_for_transform = (
                 raw.rolling(binding.pre_smooth_window, min_periods=1).mean()
                 if binding.pre_smooth_window
                 else raw
             )
+
+            # Apply raw_scale before transformation (e.g. already-YoY% series like KR CPI)
+            if binding.raw_scale:
+                raw_for_transform = raw_for_transform / binding.raw_scale
+
             transformed = apply_transformation(raw_for_transform, binding.transformation, binding.frequency)
             transformed = transformed.dropna()
 
@@ -204,7 +209,6 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                 continue
 
             transformed_store[binding.id] = transformed
-
             signals = build_signals(transformed, binding, raw_for_transform)
             latest = signals[-1] if signals else None
 
@@ -216,18 +220,19 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
             n = upsert_signals(conn, signals)
             status = "PROXY" if binding.is_proxy else "OK"
-            freq_label = binding.frequency
             latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
-            latest_dt = str(transformed.index[-1].date()) if not transformed.empty else "?"
-            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:20s}  {freq_label}  {latest_dt}  {latest_val}  ({n} rows)")
+            latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:22s}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
             results["ok"] += 1
 
         except Exception as exc:
             logger.exception("[ERROR] %s: %s", binding.id, exc)
             results["error"] += 1
+            if is_primary:
+                sys.exit(1)
 
     # ── Pass 2: WorldBank series ───────────────────────────────────────────
-    print("\n─── Pass 2: WorldBank series ──────────────────────────────────────")
+    print(f"\n─── Pass 2: WorldBank series [{country_code}] ─────────────────────────")
     for binding in wb_bindings:
         try:
             raw = fetch_wb_series(
@@ -241,6 +246,9 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                 results["empty"] += 1
                 continue
 
+            if binding.raw_scale:
+                raw = raw / binding.raw_scale
+
             transformed = apply_transformation(raw, binding.transformation, binding.frequency)
             transformed = transformed.dropna()
 
@@ -250,7 +258,6 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                 continue
 
             transformed_store[binding.id] = transformed
-
             signals = build_signals(transformed, binding, raw)
             latest = signals[-1] if signals else None
 
@@ -263,16 +270,18 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             n = upsert_signals(conn, signals)
             status = "PROXY" if binding.is_proxy else "OK"
             latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
-            latest_dt = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
             print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  A  {latest_dt}  {latest_val}  ({n} rows)")
             results["ok"] += 1
 
         except Exception as exc:
             logger.exception("[ERROR] %s: %s", binding.id, exc)
             results["error"] += 1
+            if is_primary:
+                sys.exit(1)
 
     # ── Pass 3: IMF series ────────────────────────────────────────────────
-    print("\n─── Pass 3: IMF series ─────────────────────────────────────────────")
+    print(f"\n─── Pass 3: IMF series [{country_code}] ────────────────────────────────")
     for binding in imf_bindings:
         try:
             raw = fetch_imf_series(
@@ -295,7 +304,6 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                 continue
 
             transformed_store[binding.id] = transformed
-
             signals = build_signals(transformed, binding, raw)
             latest = signals[-1] if signals else None
 
@@ -308,105 +316,121 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             n = upsert_signals(conn, signals)
             status = "PROXY" if binding.is_proxy else "OK"
             latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
-            latest_dt = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
             print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  A  {latest_dt}  {latest_val}  ({n} rows)")
             results["ok"] += 1
 
         except Exception as exc:
             logger.exception("[ERROR] %s: %s", binding.id, exc)
             results["error"] += 1
+            if is_primary:
+                sys.exit(1)
 
     # ── Pass 4: Derived series ─────────────────────────────────────────────
-    print("\n─── Pass 4: Derived series ────────────────────────────────────────")
-    for binding in derived_bindings:
-        try:
-            series = compute_derived(binding, raw_store, transformed_store)
-            if series is None or series.empty:
-                print(f"  [EMPTY] {binding.id} (derived)")
-                results["empty"] += 1
-                continue
+    if derived_bindings:
+        print(f"\n─── Pass 4: Derived series [{country_code}] ────────────────────────────")
+        for binding in derived_bindings:
+            try:
+                series = compute_derived(binding, raw_store, transformed_store)
+                if series is None or series.empty:
+                    print(f"  [EMPTY] {binding.id} (derived)")
+                    results["empty"] += 1
+                    continue
 
-            transformed_store[binding.id] = series
-            signals = build_signals(series, binding)
-            latest = signals[-1] if signals else None
+                transformed_store[binding.id] = series
+                signals = build_signals(series, binding)
+                latest = signals[-1] if signals else None
 
-            if latest:
-                warns = sanity_check(latest, binding)
-                for w in warns:
-                    print(f"  [SANITY WARN] {w}")
-                    results["sanity_warn"] += 1
+                if latest:
+                    warns = sanity_check(latest, binding)
+                    for w in warns:
+                        print(f"  [SANITY WARN] {w}")
+                        results["sanity_warn"] += 1
 
-            n = upsert_signals(conn, signals)
-            latest_val = f"{latest.value:.4f}" if latest and latest.value is not None else "?"
-            latest_dt = str(latest.as_of) if latest else "?"
-            print(f"  [DERIVED] {binding.id:40s}  {latest_dt}  {latest_val}  ({n} rows)")
-            results["ok"] += 1
+                n = upsert_signals(conn, signals)
+                latest_val = f"{latest.value:.4f}" if latest and latest.value is not None else "?"
+                latest_dt  = str(latest.as_of) if latest else "?"
+                print(f"  [DERIVED] {binding.id:40s}  {latest_dt}  {latest_val}  ({n} rows)")
+                results["ok"] += 1
 
-        except Exception as exc:
-            logger.exception("[ERROR] %s (derived): %s", binding.id, exc)
-            results["error"] += 1
+            except Exception as exc:
+                logger.exception("[ERROR] %s (derived): %s", binding.id, exc)
+                results["error"] += 1
+                if is_primary:
+                    sys.exit(1)
 
-    # ── Pass 5: Composites ─────────────────────────────────────────────────
-    print("\n─── Pass 5: Composites engine ─────────────────────────────────────")
+    print(f"\n  [{country_code}] OK: {results['ok']}  |  Empty: {results['empty']}  "
+          f"|  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}")
+    return results
+
+
+# ─── Main pipeline ───────────────────────────────────────────────────────────
+
+def run(force_refresh: bool = False, print_latest: bool = False) -> None:
+    load_dotenv(_PROJECT_ROOT / ".env")
+
+    print("=" * 70)
+    print("  Indicators Machine — Pipeline (US primary + country rollout)")
+    print("=" * 70)
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    conn = get_connection()
+    init_schema(conn)
+    removed_future = delete_future_signals(conn)
+    if removed_future:
+        logger.warning("Removed %d future-dated signal rows", removed_future)
+
+    comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
+
+    # ── US (primary country) — passes 1–4 ────────────────────────────────
+    us_bindings = load_bindings(_CONFIG_DIR / "us_bindings.yaml")
+    us_results  = run_country(conn, _CONFIG_DIR / "us_bindings.yaml", force_refresh=force_refresh, is_primary=True)
+
+    # ── Pass 5: US Composites ──────────────────────────────────────────────
+    print("\n─── Pass 5: Composites engine [US] ────────────────────────────────")
     try:
-        comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
-        # Build signal-id → frequency map for per-frequency carry cap (L2)
-        country_prefix = "us"
-        freq_map = {
-            f"{country_prefix}.{b.id}": b.frequency
-            for b in bindings if b.verified
-        }
+        freq_map = {f"us.{b.id}": b.frequency for b in us_bindings if b.verified}
         snapshots = compute_composite_history(conn, "US", comp_config, freq_map=freq_map)
         n_comp      = upsert_composites(conn, snapshots)
         latest_snap = snapshots[-1] if snapshots else None
         if latest_snap:
-            q  = latest_snap.quadrant or "?"
-            gs = f"{latest_snap.growth_score:+.3f}" if latest_snap.growth_score is not None else "?"
+            q   = latest_snap.quadrant or "?"
+            gs  = f"{latest_snap.growth_score:+.3f}" if latest_snap.growth_score is not None else "?"
             is_ = f"{latest_snap.inflation_score:+.3f}" if latest_snap.inflation_score is not None else "?"
-            cf = f"{latest_snap.confidence:.0%}" if latest_snap.confidence is not None else "?"
-            ds = f"{latest_snap.disequilibrium_score:.3f}" if latest_snap.disequilibrium_score is not None else "?"
+            cf  = f"{latest_snap.confidence:.0%}" if latest_snap.confidence is not None else "?"
+            ds  = f"{latest_snap.disequilibrium_score:.3f}" if latest_snap.disequilibrium_score is not None else "?"
             print(f"  Snapshots stored : {n_comp}")
             print(f"  Latest ({latest_snap.as_of}): {q}")
             print(f"    Growth={gs}  Inflation={is_}  Confidence={cf}  Diseq={ds}")
-            print(f"    G-signals={latest_snap.n_growth_signals}  I-signals={latest_snap.n_inflation_signals}  Forces={latest_snap.n_forces}  LowCov={latest_snap.low_coverage}")
         else:
             print("  [WARN] No composite snapshots produced")
-            results["error"] += 1
     except Exception as exc:
-        logger.exception("[ERROR] Composites pass: %s", exc)
-        results["error"] += 1
+        logger.exception("[ERROR] Composites pass [US]: %s", exc)
 
-    # ── Passes 5b-5d: Rolling composite variants ──────────────────────────
-    print("\n─── Passes 5b-5d: Rolling composite variants ──────────────────────")
+    # ── Passes 5b-5d: Rolling composite variants [US] ─────────────────────
+    print("\n─── Passes 5b-5d: Rolling composite variants [US] ─────────────────")
     _ROLLING_CONFIGS = [
-        # (zscore_col,   diseq_window_months, force_suffix, diseq_suffix)
         ("zscore_36m", 12, "36m", "12m"),
         ("zscore_48m", 18, "48m", "18m"),
         ("zscore_60m", 24, "60m", "24m"),
     ]
     try:
-        comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
-        freq_map = {
-            f"us.{b.id}": b.frequency
-            for b in bindings if b.verified
-        }
+        freq_map = {f"us.{b.id}": b.frequency for b in us_bindings if b.verified}
         for zscore_col, diseq_w, force_sfx, diseq_sfx in _ROLLING_CONFIGS:
             roll_snaps = compute_composite_history(
                 conn, "US", comp_config, freq_map=freq_map,
                 zscore_col=zscore_col, diseq_window=diseq_w,
             )
             n_upd = update_rolling_composites(
-                conn, roll_snaps,
-                force_suffix=force_sfx,
-                diseq_suffix=diseq_sfx,
+                conn, roll_snaps, force_suffix=force_sfx, diseq_suffix=diseq_sfx,
             )
             print(f"  [{force_sfx} force / {diseq_sfx} diseq] Updated {n_upd} composite rows")
     except Exception as exc:
         logger.exception("[ERROR] Rolling composites pass: %s", exc)
-        results["error"] += 1
 
-    # ── Pass 6: Long-Term Debt Stress Indicator ────────────────────────────
-    print("\n─── Pass 6: Long-Term Debt Stress Indicator ───────────────────────")
+    # ── Pass 6: Long-Term Debt Stress Indicator [US only] ─────────────────
+    print("\n─── Pass 6: Long-Term Debt Stress Indicator [US] ──────────────────")
     try:
         stress_config = load_longterm_stress_config(_CONFIG_DIR / "longterm_stress.yaml")
         stress_snaps  = compute_debt_stress_history(conn, "US", stress_config, DATA_DIR)
@@ -415,21 +439,57 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         if latest_stress:
             sc = f"{latest_stress.stress_score:+.3f}" if latest_stress.stress_score is not None else "null"
             rw = f"{latest_stress.retained_weight:.0%}" if latest_stress.retained_weight is not None else "?"
-            print(f"  Snapshots stored : {n_stress}")
             total_stress_components = len(stress_config.get("components", []))
+            print(f"  Snapshots stored : {n_stress}")
             print(f"  Latest ({latest_stress.as_of}): stress={sc}  components={latest_stress.n_components}/{total_stress_components}"
                   f"  retained_weight={rw}  low_coverage={latest_stress.low_coverage}")
         else:
             print("  [WARN] No debt stress snapshots produced")
-            results["error"] += 1
     except Exception as exc:
         logger.exception("[ERROR] Debt stress pass: %s", exc)
-        results["error"] += 1
+
+    # ── Additional countries from config/countries/ ───────────────────────
+    country_dir = _CONFIG_DIR / "countries"
+    country_yamls = sorted(country_dir.glob("*_bindings.yaml")) if country_dir.exists() else []
+
+    for yaml_path in country_yamls:
+        country_results = run_country(conn, yaml_path, force_refresh=force_refresh, is_primary=False)
+
+        # Load bindings to build freq_map for composites
+        country_bindings = load_bindings(yaml_path)
+        country_code = country_bindings[0].country.lower() if country_bindings else yaml_path.stem.split("_")[0]
+        freq_map = {f"{country_code}.{b.id}": b.frequency for b in country_bindings if b.verified}
+
+        # Composites for this country
+        print(f"\n─── Pass 5: Composites engine [{country_code.upper()}] ──────────────────────")
+        try:
+            snaps = compute_composite_history(conn, country_code.upper(), comp_config, freq_map=freq_map)
+            n_comp = upsert_composites(conn, snaps)
+            latest = snaps[-1] if snaps else None
+            if latest:
+                q   = latest.quadrant or "?"
+                gs  = f"{latest.growth_score:+.3f}" if latest.growth_score is not None else "?"
+                is_ = f"{latest.inflation_score:+.3f}" if latest.inflation_score is not None else "?"
+                cf  = f"{latest.confidence:.0%}" if latest.confidence is not None else "?"
+                ds  = f"{latest.disequilibrium_score:.3f}" if latest.disequilibrium_score is not None else "?"
+                print(f"  Snapshots stored : {n_comp}")
+                print(f"  Latest ({latest.as_of}): {q}")
+                print(f"    Growth={gs}  Inflation={is_}  Confidence={cf}  Diseq={ds}")
+                print(f"    G-signals={latest.n_growth_signals}  I-signals={latest.n_inflation_signals}  LowCov={latest.low_coverage}")
+            else:
+                print(f"  [WARN] No composite snapshots produced for {country_code.upper()}")
+        except Exception as exc:
+            logger.exception("[ERROR] Composites pass [%s]: %s", country_code.upper(), exc)
 
     # ── Summary ────────────────────────────────────────────────────────────
     print()
     print("─── Summary ───────────────────────────────────────────────────────")
-    print(f"  OK: {results['ok']}  |  Empty: {results['empty']}  |  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}")
+    total_ok    = us_results["ok"]
+    total_empty = us_results["empty"]
+    total_err   = us_results["error"]
+    total_warn  = us_results["sanity_warn"]
+    print(f"  [US]  OK: {total_ok}  |  Empty: {total_empty}  |  Errors: {total_err}  |  Sanity warnings: {total_warn}")
+    print(f"  Country files processed: {len(country_yamls)}")
 
     if print_latest:
         print("\n─── Latest signals ────────────────────────────────────────────────")
@@ -441,7 +501,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
     conn.close()
 
-    if results["error"] > 0 or results["empty"] > 0:
+    if us_results["error"] > 0 or us_results["empty"] > 0:
         sys.exit(1)
 
 

@@ -1,0 +1,434 @@
+# South Korea (KR) indicator bindings — Phase 2
+# Country code: KR (ISO 3166-1 alpha-2)
+# All vintage_available: false — FRED vintages cover US only.
+# Note: raw_scale: 100 is applied to already-YoY% OECD/FRED series (values like 2.089)
+#       to convert them to decimal form (0.02089) before storage and Z-scoring.
+#       These use transformation: level (they are already YoY rates; no further transform).
+# Equilibrium values in transformed units:
+#   yoy_pct → decimal  (0.025 = 2.5%)
+#   level rate/yield → % level (3.5 = 3.5%)
+#   level pct_gdp → % (e.g. -3.0 = 3% deficit)
+#   level billions_usd → USD billions (1600.0)
+
+country: KR
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_real
+    series_id: NGDPRSAXDCKRQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.025
+    linkage: "Korea real GDP (chained 2015 KRW, SAAR). Trend growth has slowed from 5%+ pre-GFC to ~2–3%; export-driven cyclicality."
+    sanity_min: -0.15
+    sanity_max: 0.15
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1600.0
+    linkage: "Korea nominal GDP in current USD billions (IMF). Used for cross-country size comparison in the Global Overview table."
+    sanity_min: 100.0
+    sanity_max: 5000.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+  # OECD FRED series KORCPALTT01CTGYM and CPGRLE01KRM659N are already YoY rates
+  # expressed as % (e.g. 2.089 = 2.089% YoY). raw_scale: 100 converts to decimal.
+
+  - id: inflation.cpi_headline
+    series_id: KORCPALTT01CTGYM
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.020
+    linkage: "Korea CPI all items YoY (OECD, already in % form on FRED). Bank of Korea inflation target: 2% ± 0.5pp."
+    sanity_min: -0.05
+    sanity_max: 0.20
+
+  - id: inflation.cpi_core
+    series_id: CPGRLE01KRM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.020
+    linkage: "Korea CPI excluding energy YoY (OECD, already in % form). Tracks underlying price pressures less distorted by commodity swings."
+    sanity_min: -0.05
+    sanity_max: 0.15
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+
+  - id: growth.unemployment
+    series_id: LRUNTTTTKRM156S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "Korea harmonised unemployment rate (%). Structurally low; rises above 4% historically signal meaningful demand contraction."
+    sanity_min: 1.0
+    sanity_max: 15.0
+
+  - id: growth.retail_sales
+    series_id: KORSLRTTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.040
+    linkage: "Korea retail sales volume YoY (OECD, already in % form on FRED). Private consumption tracker in an export-led economy."
+    sanity_min: -0.20
+    sanity_max: 0.30
+
+  - id: growth.industrial_prod
+    series_id: KORPRINTO01IXOBM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.030
+    linkage: "Korea industrial production index YoY. Highly export-linked; semiconductor and electronics cycles dominate."
+    sanity_min: -0.25
+    sanity_max: 0.30
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4.0
+    linkage: "R&D expenditure as % of GDP. Korea is among the world's top R&D investors; structural driver of technological competitiveness."
+    sanity_min: 0.0
+    sanity_max: 8.0
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01KRM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.5
+    linkage: "Korea 10-year government bond yield. BoK policy rate pass-through; reflects real growth expectations and inflation risk premium."
+    sanity_min: 0.0
+    sanity_max: 20.0
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBKRBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2010eq100
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Korea real effective exchange rate (BIS, 2010=100). Won appreciation compresses export margins for semiconductor and auto sectors."
+    sanity_min: 60.0
+    sanity_max: 160.0
+
+  # ─── Fiscal (IMF KOR) ──────────────────────────────────────────────────────
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 45.0
+    linkage: "Korea general government gross debt as % of GDP (IMF). Rising from historically low base; fiscal expansion post-COVID warrants monitoring."
+    sanity_min: 0.0
+    sanity_max: 200.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.0
+    linkage: "Korea general government net lending/borrowing as % of GDP (IMF). Used in Global Overview Gov. Budget column."
+    sanity_min: -15.0
+    sanity_max: 10.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Korea IMF general government primary balance as % of GDP (excl. interest). Structural fiscal anchor metric."
+    sanity_min: -15.0
+    sanity_max: 10.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 30.0
+    linkage: "General government revenue as % of GDP. Korea's revenue ratio is lower than most OECD peers, constraining social spending capacity."
+    sanity_min: 10.0
+    sanity_max: 55.0
+
+  # ─── External & Trade (WorldBank / KOR) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "Korea current account balance as % of GDP. Typically in surplus; deterioration signals weak export demand or commodity import cost surge."
+    sanity_min: -10.0
+    sanity_max: 15.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 40.0
+    linkage: "Exports of goods and services as % of GDP. Korea is among the most export-dependent major economies; semiconductors, autos, and shipbuilding dominate."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 35.0
+    linkage: "Imports of goods and services as % of GDP. Energy and raw material imports are key swing factors for the current account."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.0
+    linkage: "FDI net inflows as % of GDP. Korea has historically attracted lower FDI than peers; rising inflows may reflect near-shoring trends."
+    sanity_min: -5.0
+    sanity_max: 20.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Korea total population (World Bank). Used in Global Overview; divide by 1,000,000 for display in millions."
+    sanity_min: 10000000.0
+    sanity_max: 100000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Annual population growth rate %. Korea has one of the world's lowest fertility rates; population is now declining."
+    sanity_min: -2.0
+    sanity_max: 3.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Age dependency ratio (dependents per 100 working-age). Rapidly aging Korea faces one of the most severe demographic transitions globally."
+    sanity_min: 20.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 64.0
+    linkage: "ILO-modeled labor force participation rate (% population 15+). Higher than EA average; rising female participation is a structural positive."
+    sanity_min: 30.0
+    sanity_max: 90.0

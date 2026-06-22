@@ -272,7 +272,8 @@ def _load_wide(
     Forward-fills up to ffill_limit months to bridge inter-observation gaps.
     """
     if not signal_ids:
-        return pd.DataFrame(columns=signal_ids)
+        empty = pd.DataFrame(columns=signal_ids)
+        return (empty, empty) if return_fill_age else empty
 
     placeholders = ", ".join(["?"] * len(signal_ids))
     df = conn.execute(
@@ -282,7 +283,8 @@ def _load_wide(
     ).df()
 
     if df.empty:
-        return pd.DataFrame(columns=signal_ids)
+        empty = pd.DataFrame(columns=signal_ids)
+        return (empty, empty) if return_fill_age else empty
 
     df["as_of"] = pd.to_datetime(df["as_of"])
     # De-dup (shouldn't happen, but guard against re-ingestion oddities)

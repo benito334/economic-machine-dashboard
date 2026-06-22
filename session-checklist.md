@@ -24,22 +24,27 @@ Will clear 3 stale signals: current account, NIIP, debt service ratio.
 ---
 
 ## Completed this session (2026-06-22)
-- Global Overview table (`/overview`): TE-style cross-country macro table, 9 columns, color-coded
-- 4 new series: `master.gdp_level_bn`, `policy.fed_funds_target`, `fiscal.budget_balance_gdp`, `demo.population_total_mn` (63 signals total)
-- Data Dashboard (`/data-dashboard`): 63 signals, grouped by force, sticky header, status badges
-- Sort + filter: sortable columns, filter bar (search / force / status / freq), flat vs grouped view
-- Status column sortable (0=stale…5=OK) + ↺ Reset Sort button
-- 349 tests pass; Docker rebuilt
+- Global Overview + Data Dashboard + sort/filter/reset (see prior entry)
+- **Phase 2 EZ + KR rollout**: 19 EZ signals + 22 KR signals live in DuckDB (104 total)
+- `raw_scale` field on CountryBinding for already-YoY% FRED series (KR CPI, retail sales)
+- `_WB_COUNTRY_MAP` in loader.py for WB API country code mapping (EZ→EMU, KR→KOR, etc.)
+- Multi-country pipeline: `run_country()` helper + country loop over `config/countries/*.yaml`
+- `_load_wide` composites bug fix: empty-input tuple unpacking crash fixed
+- 349 tests pass; Docker rebuilt; EZ+KR visible in Global Overview table
 
 ## Up next (next session)
 | Priority | Item |
 |---|---|
-| 1 | Phase 2 — Eurozone rollout: `config/countries/eu_bindings.yaml`; verify all series IDs; `vintage_available: false` for all |
-| 2 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline --latest` clears 3 stale signals |
+| 1 | Phase 2 — Japan (JP): next in rollout order |
+| 2 | EZ current_account_gdp: WB EMU returns empty; try alternate source (OECD/IMF/Eurostat) |
+| 3 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
 
 ## Notes for next session
-- 63 signals total (was 59); tests updated accordingly
-- `/overview` nav link is live; `/data-dashboard` is under Data nav group
+- 104 signals total (63 US + 22 KR + 19 EZ)
+- Country files live in `config/countries/ez_bindings.yaml`, `config/countries/kr_bindings.yaml`
+- Pipeline auto-discovers `config/countries/*_bindings.yaml` — adding Japan = create `jp_bindings.yaml`
+- EZ uses `country: EZ` code (maps to WB `EMU`); signals stored as `ez.*.*`
+- KR CPI/retail series have `raw_scale: 100` — already-YoY% OECD FRED series (`CTGYM`/`GYS` suffix)
 - Dash 4.x uses Radix UI for Slider — class names are `dash-slider-*`, not `rc-slider-*`
 - `_RQ_MAP` is module-level in `charting.py`; stores use `storage_type="local"`
 - :8501 (Streamlit) still running as reference; :8502 is the primary dashboard

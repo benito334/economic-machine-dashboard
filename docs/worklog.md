@@ -4,6 +4,26 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-22 — Phase 2: Euro Area (EZ) + South Korea (KR) rollout
+
+**Done:**
+- **`config/countries/ez_bindings.yaml`**: 20 bindings (10 FRED + 10 WB). FRED: `CLVMNACSCAB1GQEA19` (GDP real Q), `CP0000EZ19M086NEST` (HICP M), `00XEFDEZ19M086NEST` (HICP core M), `ECBDFR` (ECB rate D), `IRLTLT01EZM156N` (10Y M), `RBXMBIS` (REER M), `ECBASSETSW` (ECB assets W), `EA19PRINTO01IXOBSAM`/`EA19SLRTTO01IXOBSAM`/`LRHUTTTTEZM156S` (growth — stale). WB EMU: demographics, external, capital, fiscal, R&D.
+- **`config/countries/kr_bindings.yaml`**: 22 bindings (8 FRED + 10 WB + 4 IMF). FRED: `NGDPRSAXDCKRQ` (GDP real Q), `KORCPALTT01CTGYM` / `CPGRLE01KRM659N` (CPI headline+core, `raw_scale: 100`), `LRUNTTTTKRM156S` (unemployment M), `KORSLRTTO01GYSAM` (retail sales, `raw_scale: 100`), `KORPRINTO01IXOBM` (industrial prod M), `IRLTLT01KRM156N` (10Y M), `RBKRBIS` (REER M). IMF KOR: GDP$ (`NGDPD`), govt debt, budget/primary balance. WB KOR: same structural set.
+- **`indicators/models.py`**: added `raw_scale: Optional[float]` field to `CountryBinding` — divides raw FRED value by this factor before transformation (converts already-YoY% percent-form series to decimal).
+- **`indicators/loader.py`**: `_WB_COUNTRY_MAP` maps internal 2-letter codes → WB API codes (`EZ→EMU`, `KR→KOR`, etc.); `fetch_wb_series()` now uses this map for URL and cache path. `_IMF_COUNTRY_MAP` updated with `EZ` key.
+- **`indicators/pipeline.py`**: refactored to multi-country architecture. `run_country()` helper runs passes 1–4 for any binding YAML (with `raw_scale` applied and `is_primary` flag for error handling). `run()` now runs US first, then loops over `config/countries/*.yaml` for Phase 2+ countries and runs composites for each.
+- **`indicators/composites.py`**: bug fix — `_load_wide()` returned plain DataFrame on empty input even when `return_fill_age=True`, causing "too many values to unpack" crash for countries with no signals; now returns proper tuple.
+- **Pipeline results**: EZ 19/20 signals live (1 empty: `external.current_account_gdp` — WB EMU doesn't publish this); KR 22/22 signals live. EZ composites: 545 snapshots, latest Inflation=+0.886 (HICP 3.1%), LowCov growth (stale series excluded). KR composites: 436 snapshots, latest Growth=+0.093, LowCov inflation (CPI stale >12m).
+- **Global Overview now shows EZ + KR rows**: EZ — HICP 3.14%, ECB 2.25%, GDP 0.3%, unemployment 6.7% (2023 stale). KR — CPI 2.09%, GDP 3.78%, unemployment 2.8%, CA +5.33%, debt 52.3%.
+- **349 tests pass** (no test regressions).
+
+**Next:**
+- Add EZ current account slot via alternate source (Eurostat or IMF BOP); or remove from EZ row.
+- Phase 2 country 3: Japan (JP).
+- BEA refresh (after 2026-06-26) to clear 3 stale US signals.
+
+---
+
 ## 2026-06-22 — Global Overview table, Data Dashboard, sort/filter/reset
 
 **Done:**

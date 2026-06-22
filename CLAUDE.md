@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-22:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **349 tests pass.** 63 US signals live. Global Overview table + Data Dashboard (sort/filter/reset) complete.
+**As of 2026-06-22:** Phases 1A–1I complete. Phase 2 started: EZ + KR live. **349 tests pass.** 104 signals total (63 US + 22 KR + 19 EZ). Multi-country pipeline with `run_country()` helper; `raw_scale` field on CountryBinding; `_WB_COUNTRY_MAP` in loader.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -99,10 +99,18 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1G Methodology improvements | ✅ **Done** | Configurable force importance/quality weights, momentum-agreement tilt, 3-month half-life decay, point-in-time weight audit; 349 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
 | 1I :8502 UI consolidation | ✅ **Done** | Global Overview table + Data Dashboard (sticky header, sort/filter/reset); methodology audit + formula clipboard + confidence fix + slider amber + date block + tooltips all complete |
-| 2 Country rollout | ⬜ Queued | Eurozone first — unblocked |
+| 2 Country rollout | 🔄 **In progress** | EZ ✅ (19 signals) + KR ✅ (22 signals) live; next: Japan |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Eurozone rollout (`config/countries/eu_bindings.yaml`). Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
+**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account is empty (WB EMU lacks `BN.CAB.XOKA.GD.ZS`) — investigate alternate source.
+
+**Phase 2 architecture notes (as of 2026-06-22):**
+- Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir
+- Internal country codes: `EZ` (signal IDs: `ez.*`), `KR` (signal IDs: `kr.*`), `JP` (signal IDs: `jp.*`)
+- `_WB_COUNTRY_MAP` in `loader.py`: `EZ→EMU`, `KR→KOR`, `JP→JPN`, etc. — handles WB API country codes
+- `raw_scale` field on `CountryBinding`: divide raw fetched value by this factor before transformation; used for OECD FRED `CTGYM`/`GYS`-suffix series (already in YoY% form), e.g. KR CPI (`raw_scale: 100`)
+- IMF Datamapper does NOT support `EUR` (Euro area aggregate) — no IMF bindings for EZ
+- `_load_wide` in `composites.py`: fixed empty-input tuple bug (was crashing for countries with no signals)
 
 **:8502 Dash nav structure (as of 2026-06-22):**
 - Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage; nav icons have `dbc.Tooltip` on hover in collapsed state
