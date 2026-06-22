@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-21 — Dynamic Growth/Inflation force weighting
+
+- Replaced legacy fixed force weights with the documented `base_share × importance × quality_factor` model; all 17 importance defaults match `docs/feedback/force-momentum weighting guidance.md` and remain editable in `config/composites.yaml`
+- Added point-in-time momentum agreement tilts (1.5× agreement, 0.5× conflict by default) and exponential observation-age decay with a configurable three-month half-life
+- Preserved frequency-specific carry caps and provider-stale/low-history exclusions; each monthly snapshot now stores a JSON audit of config weight, momentum multiplier, age, decay, effective weight, and normalized contribution for every component
+- Rebuilt Force Component Inputs to mirror Debt Stress: Importance, Config Wt, Eff Wt, Last Data, Z-score, Momentum, and explicit ACTIVE/BOOSTED/CONFLICT/DECAYED/BLANK tags; disclosure state remains persistent across dates
+- Migrated and regenerated 558 US composite snapshots; latest remains Stagflation (Growth −0.079, Inflation +0.399, Confidence 36%)
+- Updated methodology/help text and both dashboard component tables; 347 tests pass on host and Docker, :8501/:8502 rebuilt, and the live :8502 table passed Chromium interaction/content checks
+
+---
+
 ## 2026-06-21 — Regime History synchronized hover and disclosure state
 
 - Synchronized hover across all seven Regime History subplots by mirroring the hovered date through Plotly's client-side hover API

@@ -727,12 +727,21 @@ def _build_rh_help_panel() -> html.Div:
         *_row("Disinflationary Slowdown", "Growth ↓, Inflation ↓ — both below normal."),
 
         html.Div("Force Z-Scores", style=_H),
-        *_row("Growth  (blue)", ("Weighted composite of 9 growth signals, each standardised "
+        *_row("Growth  (blue)", ("Dynamically weighted composite of 9 growth signals, each standardised "
                                   "vs. its own history. Positive = above long-run average; negative = below.")),
         *_row("Inflation  (orange)", ("Same for 8 inflation signals. "
                                       "Positive = inflationary pressure above baseline.")),
         *_row(None, ("The zero reference line is the historical mean. "
                      "Magnitude shows how far conditions have deviated from 'normal'.")),
+
+        html.Div("Dynamic Weighting", style=_H),
+        *_row("Config Weight", ("Normalized base share × editable importance × data-quality factor. "
+                                 "Importance defaults live in config/composites.yaml.")),
+        *_row("Momentum Tilt", ("Force and momentum agreement boosts weight up to 1.5×; "
+                                  "conflict reduces it to 0.5×; neutral leaves it unchanged.")),
+        *_row("Time Decay", ("Observation weight halves every 3 months after its last data point. "
+                               "Per-frequency carry caps still remove data that is too old.")),
+        *_row("Effective Weight", "Config weight × momentum tilt × time-decay fraction."),
 
         html.Div("Momentum  Δ MoM  (info box)", style=_H),
         *_row(None, ("Month-over-month change in the force score: "
@@ -774,7 +783,9 @@ def _build_rh_help_panel() -> html.Div:
 
         html.Div("Force Component Table", style=_H),
         *_row("Signal", "Constituent indicator name."),
-        *_row("Wt", "Composite weight. 1.0 = full; 0.5 = half. Set in composites.yaml."),
+        *_row("Importance", "Editable relevance judgement from 0 to 1; defaults come from the weighting guidance."),
+        *_row("Config Wt", "Normalized nominal weight after base share, importance, and data quality."),
+        *_row("Eff Wt", "Point-in-time weight after momentum agreement and age decay."),
         *_row("Last Data", "Date of the most-recent observation as of the selected date."),
         *_row("Force Z", "Signal-level Z-score at the selected date. Positive = above historical mean."),
         *_row("Momentum", "3-month change direction for this individual signal: ↑ ↓ →"),
@@ -1369,6 +1380,7 @@ def _regime_info_children(
     g_delta: "float | None" = None,
     i_delta: "float | None" = None,
     components_open: bool = False,
+    weight_audit: "dict | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table."""
     quadrant   = row.get("quadrant") or "—"
@@ -1508,6 +1520,10 @@ def _regime_info_children(
         td_mono = {**td_sty, "fontFamily": "monospace"}
 
         _stale_months = stale_dict or {}
+        _audit_by_signal: dict[str, dict] = {}
+        for force_audit in (weight_audit or {}).values():
+            if isinstance(force_audit, dict):
+                _audit_by_signal.update(force_audit)
 
         def _section(force: str, total: int, color: str) -> list:
             df_f = comp_df[comp_df["composite"] == force].copy()
@@ -1529,9 +1545,25 @@ def _regime_info_children(
                 else:
                     last_str = "—"
 
-                # Weight display
-                max_w = float(df_f["weight"].max())
-                wt_str = "½" if weight < max_w else "1"
+                # Configured and point-in-time effective weights
+                sig_id = sr.get("signal_id", "")
+                audit = _audit_by_signal.get(sig_id, {})
+                if bool(audit.get("missing", False)):
+                    z_missing = True
+                importance = float(audit.get("importance", sr.get("importance", 1.0)))
+                config_wt = float(audit.get("config_weight", weight))
+                eff_wt = float(audit.get("effective_weight", 0.0 if z_missing else config_wt))
+                momentum_mult = float(audit.get("momentum_multiplier", 1.0))
+                decay_fraction = float(audit.get("decay_fraction", 1.0))
+                audit_age = int(round(float(audit.get("age_months", 0.0))))
+                config_wt_str = f"{config_wt * 100:.1f}%"
+                eff_wt_str = f"{eff_wt * 100:.1f}%"
+                eff_wt_color = (
+                    "#E8734C" if eff_wt <= 0
+                    else (color if eff_wt > config_wt + 1e-9
+                          else ("#F4C842" if eff_wt < config_wt - 1e-9
+                                else "var(--font-color)"))
+                )
 
                 # Z-score bar cell
                 if z_missing:
@@ -1580,32 +1612,55 @@ def _regime_info_children(
                         ])
 
                 # Status cell
-                sig_id = sr.get("signal_id", "")
-                fill_months = _stale_months.get(sig_id, 0)
+                fill_months = max(_stale_months.get(sig_id, 0), audit_age)
                 # Composite carry age is point-in-time metadata.  It must drive
                 # the badge even when the source observation's ingestion-time
                 # is_stale flag is false (the usual case for forward fills).
-                if is_stale or fill_months > 0:
-                    stale_label = f"STALE · {fill_months}m" if fill_months else "STALE"
-                    status = html.Span(stale_label,
-                                       style={"background": "#7a4a00", "color": "#ffcc80",
-                                              "padding": "1px 5px", "borderRadius": "3px",
-                                              "fontSize": "0.70rem"})
+                if not z_missing and (is_stale or fill_months > 0):
+                    status = html.Span([
+                        html.Span(
+                            f"DECAYED · {fill_months}m",
+                            style={"background": "#7a4a00", "color": "#ffcc80",
+                                   "padding": "1px 5px", "borderRadius": "3px",
+                                   "fontSize": "0.70rem"},
+                        ),
+                        html.Span(
+                            f" · time {decay_fraction:.0%} · momentum {momentum_mult:.1f}×",
+                            style={"color": "var(--muted-color)", "fontSize": "0.72rem"},
+                        ),
+                    ])
                 elif low_hist:
                     status = html.Span("LOW HISTORY",
                                        style={"background": "#3a3a00", "color": "#cccc88",
                                               "padding": "1px 5px", "borderRadius": "3px",
                                               "fontSize": "0.70rem"})
                 elif z_missing:
-                    status = html.Span("MISSING",
+                    status = html.Span("BLANK",
                                        style={"background": "#3a2020", "color": "#cc7777",
                                               "padding": "1px 5px", "borderRadius": "3px",
                                               "fontSize": "0.70rem"})
                 else:
-                    status = html.Span("ACTIVE",
-                                       style={"background": "#1a3a1a", "color": "#88cc88",
-                                              "padding": "1px 5px", "borderRadius": "3px",
-                                              "fontSize": "0.70rem"})
+                    if momentum_mult > 1.0 + 1e-9:
+                        status_label = "ACTIVE · BOOSTED"
+                        detail = f" · momentum agreement {momentum_mult:.1f}×"
+                    elif momentum_mult < 1.0 - 1e-9:
+                        status_label = "ACTIVE · CONFLICT"
+                        detail = f" · momentum conflict {momentum_mult:.1f}×"
+                    else:
+                        status_label = "ACTIVE"
+                        detail = ""
+                    status = html.Span([
+                        html.Span(
+                            status_label,
+                            style={"background": "#1a3a1a", "color": "#88cc88",
+                                   "padding": "1px 5px", "borderRadius": "3px",
+                                   "fontSize": "0.70rem"},
+                        ),
+                        html.Span(
+                            detail,
+                            style={"color": "var(--muted-color)", "fontSize": "0.72rem"},
+                        ),
+                    ])
 
                 row_bg = (
                     "rgba(60,20,20,0.12)"
@@ -1616,8 +1671,11 @@ def _regime_info_children(
                     style={"backgroundColor": row_bg},
                     children=[
                         html.Td(sr["label"], style=td_sty),
-                        html.Td(wt_str, style={**td_mono, "textAlign": "center",
-                                               "color": "var(--muted-color)"}),
+                        html.Td(f"{importance:.2f}", style={**td_mono, "textAlign": "center"}),
+                        html.Td(config_wt_str, style={**td_mono, "textAlign": "center"}),
+                        html.Td(eff_wt_str, style={**td_mono, "textAlign": "center",
+                                                  "color": eff_wt_color,
+                                                  "fontWeight": "600" if eff_wt != config_wt else "400"}),
                         html.Td(last_str, style={**td_mono, "textAlign": "center",
                                                   "color": "var(--muted-color)",
                                                   "fontSize": "0.75rem"}),
@@ -1632,15 +1690,21 @@ def _regime_info_children(
             """Return [section_header_row, ...data_rows] for one force group."""
             rows = _section(force, n_total, color)
             df_f = comp_df[comp_df["composite"] == force]
-            n_active = int(
-                (df_f["zscore"].notna()
-                 & ~df_f["is_stale"]
-                 & ~df_f["low_history"]).sum()
-            )
+            if _audit_by_signal:
+                n_active = sum(
+                    float(_audit_by_signal.get(sid, {}).get("effective_weight", 0.0)) > 0
+                    for sid in df_f["signal_id"]
+                )
+            else:
+                n_active = int(
+                    (df_f["zscore"].notna()
+                     & ~df_f["is_stale"]
+                     & ~df_f["low_history"]).sum()
+                )
             section_header = html.Tr([
                 html.Td(
                     f"{force.upper()} FORCE  ·  {n_active}/{len(df_f)} active",
-                    colSpan=6,
+                    colSpan=8,
                     style={
                         "padding": "5px 10px",
                         "fontSize": "0.68rem", "fontWeight": "700",
@@ -1656,19 +1720,31 @@ def _regime_info_children(
 
         col_header = html.Tr([
             html.Th("Signal",    style=th_sty),
-            html.Th("Wt",        style={**th_sty, "textAlign": "center"}),
+            html.Th("Importance", style={**th_sty, "textAlign": "center"}),
+            html.Th("Config Wt", style={**th_sty, "textAlign": "center"}),
+            html.Th("Eff Wt",    style={**th_sty, "textAlign": "center"}),
             html.Th("Last Data", style={**th_sty, "textAlign": "center"}),
             html.Th("Force Z",   style={**th_sty, "textAlign": "right"}),
             html.Th("Momentum",  style=th_sty),
-            html.Th("Status",    style=th_sty),
+            html.Th("Status / Detail", style=th_sty),
         ])
 
         all_rows = _force_table("growth", 9, _GROWTH_COLOR) + _force_table("inflation", 8, _INFLATION_COLOR)
 
         df_g = comp_df[comp_df["composite"] == "growth"]
         df_i = comp_df[comp_df["composite"] == "inflation"]
-        n_active_g = int((df_g["zscore"].notna() & ~df_g["is_stale"] & ~df_g["low_history"]).sum())
-        n_active_i = int((df_i["zscore"].notna() & ~df_i["is_stale"] & ~df_i["low_history"]).sum())
+        if _audit_by_signal:
+            n_active_g = sum(
+                float(_audit_by_signal.get(sid, {}).get("effective_weight", 0.0)) > 0
+                for sid in df_g["signal_id"]
+            )
+            n_active_i = sum(
+                float(_audit_by_signal.get(sid, {}).get("effective_weight", 0.0)) > 0
+                for sid in df_i["signal_id"]
+            )
+        else:
+            n_active_g = int((df_g["zscore"].notna() & ~df_g["is_stale"] & ~df_g["low_history"]).sum())
+            n_active_i = int((df_i["zscore"].notna() & ~df_i["is_stale"] & ~df_i["low_history"]).sum())
         combined_label = (
             f"Force Component Inputs  ·  "
             f"Growth {n_active_g}/{len(df_g)}  ·  "
@@ -1692,19 +1768,23 @@ def _regime_info_children(
                         "userSelect": "none",
                     },
                 ),
-                html.Table(
-                    [html.Thead(col_header), html.Tbody(all_rows)],
-                    style={"width": "100%", "borderCollapse": "collapse"},
+                html.Div(
+                    html.Table(
+                        [html.Thead(col_header), html.Tbody(all_rows)],
+                        style={"width": "100%", "minWidth": "1050px", "borderCollapse": "collapse"},
+                    ),
+                    style={"overflowX": "auto"},
                 ),
             ],
             style={"marginBottom": "6px"},
         )
 
     footer = html.Div(
-        "Force Z-Score = weighted average of constituent signal Z-scores · "
-        "Momentum = month-over-month change in force score · "
+        "Config Wt = normalized base share × editable importance × data quality · "
+        "Eff Wt = Config Wt × momentum agreement tilt × 3-month half-life decay · "
+        "Force Z-Score = weighted average using effective weights · "
         "Confidence = direction-agreement fraction vs. expected quadrant · "
-        "Stale/low-history signals excluded from composite",
+        "Provider-stale/low-history signals excluded; carried observations remain active with decay",
         style={"fontSize": "0.65rem", "color": "#555", "marginTop": "10px"},
     )
 
@@ -1853,9 +1933,20 @@ def update_regime_info(
         country="US", as_of=str(selected["as_of"])
     )
     stale_dict = _parse_stress_components(selected.get("stale_signals") or "")
+    try:
+        weight_audit = json.loads(selected.get("weight_audit") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        weight_audit = {}
     return (
         _regime_info_children(
-            selected, is_current, comp_df, stale_dict, g_delta, i_delta, components_open
+            selected,
+            is_current,
+            comp_df,
+            stale_dict,
+            g_delta,
+            i_delta,
+            components_open,
+            weight_audit,
         ),
         date_display,
     )

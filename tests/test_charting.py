@@ -272,6 +272,7 @@ def test_load_composite_history():
     df = load_composite_history(start_date="2010-01-01")
     assert "growth_score" in df.columns
     assert "inflation_score" in df.columns
+    assert "weight_audit" in df.columns
     assert "quadrant" in df.columns
     assert len(df) > 100
     assert df["as_of"].dtype == "datetime64[us]" or df["as_of"].dtype.kind == "M"
@@ -492,7 +493,7 @@ class TestRegimeInfoStaleBadge:
         stale_dict = {"us.growth.payrolls": 2}
         children = _regime_info_children(row, False, comp_df, stale_dict)
         all_texts = _collect_texts(children)
-        assert any("STALE · 2m" in t for t in all_texts), f"Expected 'STALE · 2m' in {all_texts}"
+        assert any("DECAYED · 2m" in t for t in all_texts), f"Expected decay badge in {all_texts}"
 
     def test_stale_badge_plain_when_not_in_dict(self):
         from dashboard.charting import _regime_info_children
@@ -504,9 +505,7 @@ class TestRegimeInfoStaleBadge:
         }
         children = _regime_info_children(row, False, comp_df, {})
         all_texts = _collect_texts(children)
-        assert any("STALE" in t for t in all_texts)
-        assert not any("·" in t and "STALE" in t for t in all_texts), \
-            "Expected plain STALE (no lag) when signal not in stale_dict"
+        assert any("DECAYED · 0m" in t for t in all_texts)
 
     def test_forward_filled_signal_uses_stale_dict_even_if_source_is_fresh(self):
         from dashboard.charting import _regime_info_children
@@ -519,7 +518,7 @@ class TestRegimeInfoStaleBadge:
         stale_dict = {"us.growth.payrolls": 3}
         children = _regime_info_children(row, False, comp_df, stale_dict)
         all_texts = _collect_texts(children)
-        assert any("STALE · 3m" in t for t in all_texts)
+        assert any("DECAYED · 3m" in t for t in all_texts)
         assert not any("ACTIVE" in t for t in all_texts)
 
     @pytest.mark.integration
@@ -732,6 +731,40 @@ class TestRegimeTableRollup:
             {"id": "regime-info-box", "property": "children"}
         ]
         assert callbacks[0]["clientside_function"] is not None
+
+    def test_force_table_mirrors_debt_stress_weight_audit_columns(self):
+        from dashboard.charting import _regime_info_children
+
+        row = {
+            "quadrant": "Expansion", "growth_score": 0.5, "inflation_score": 0.3,
+            "confidence": 0.6, "disequilibrium_score": 0.4,
+            "n_growth_signals": 1, "n_inflation_signals": 1,
+        }
+        audit = {
+            "growth": {
+                "us.growth.payrolls": {
+                    "importance": 0.9,
+                    "config_weight": 0.1,
+                    "effective_weight": 0.15,
+                    "momentum_multiplier": 1.5,
+                    "decay_fraction": 1.0,
+                    "age_months": 0,
+                    "missing": False,
+                }
+            }
+        }
+        children = _regime_info_children(
+            row, False, self._make_comp_df(), weight_audit=audit
+        )
+        texts = _collect_texts(children)
+
+        for header in ("Importance", "Config Wt", "Eff Wt", "Status / Detail"):
+            assert header in texts
+        assert "0.90" in texts
+        assert "10.0%" in texts
+        assert "15.0%" in texts
+        assert "ACTIVE · BOOSTED" in texts
+        assert any("momentum agreement 1.5×" in text for text in texts)
 
 
 class TestRoutedRegimeStepButtons:

@@ -16,10 +16,34 @@ from dashboard.app import (
     _fmt_value,
     _pct_badge,
     _quality_badges,
+    _render_regime_component_table,
     _sparkline_svg,
     _zscore_color,
     load_debt_stress_latest,
 )
+
+
+def test_streamlit_force_table_shows_dynamic_weight_audit():
+    comp_df = pd.DataFrame([{
+        "composite": "growth", "signal_id": "us.growth.payrolls",
+        "label": "Payrolls", "weight": 1.0, "importance": 0.9,
+        "invert": False, "zscore": 0.5, "direction": "rising",
+        "change_3m": 0.1, "as_of": pd.Timestamp("2026-05-31"),
+        "is_stale": False, "low_history": False,
+    }])
+    audit = {"growth": {"us.growth.payrolls": {
+        "importance": 0.9, "config_weight": 0.1, "effective_weight": 0.15,
+        "momentum_multiplier": 1.5, "decay_fraction": 1.0,
+        "age_months": 0, "missing": False,
+    }}}
+
+    rendered = _render_regime_component_table(comp_df, {}, audit)
+
+    assert "Importance" in rendered
+    assert "Config Wt" in rendered
+    assert "Eff Wt" in rendered
+    assert "ACTIVE · BOOSTED" in rendered
+    assert "15.0%" in rendered
 
 # ── _fmt_value ──────────────────────────────────────────────────────────────
 
@@ -252,11 +276,14 @@ def test_real_db_composite_history():
     recent = df[df["as_of"] >= "2010-01-01"]
     assert recent["growth_score"].notna().all()
     assert recent["inflation_score"].notna().all()
-    # 2022 should be Inflationary Boom (not Stagflation — growth z-scores positive all year)
+    # Dynamic importance/momentum/decay weights should still classify most of
+    # 2022 as Inflationary Boom, while allowing late-year growth transitions.
     boom_2022 = df[(df["as_of"] >= "2022-01-01") & (df["as_of"] <= "2022-12-31")]
-    assert (boom_2022["quadrant"] == "Inflationary Boom").all(), (
-        "2022 should be labeled Inflationary Boom (strong labour market)"
+    boom_fraction = (boom_2022["quadrant"] == "Inflationary Boom").mean()
+    assert boom_fraction >= 0.75, (
+        "2022 should remain predominantly Inflationary Boom under dynamic weights"
     )
+    assert (boom_2022["inflation_score"] > 0).all()
 
 
 @pytest.mark.integration

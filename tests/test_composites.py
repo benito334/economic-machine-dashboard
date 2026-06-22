@@ -3,6 +3,7 @@ Tests for the Phase 1B composites engine.
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 
 import numpy as np
@@ -16,7 +17,10 @@ from indicators.composites import (
     _load_wide,
     _build_force_groups,
     compute_composite_history,
+    age_weight_fraction,
     load_composites_config,
+    momentum_weight_multiplier,
+    normalized_nominal_weights,
 )
 from indicators.models import CompositeSnapshot
 from store.store import (
@@ -159,6 +163,7 @@ def test_upsert_and_query_composites(mem_conn):
         n_inflation_signals=6,
         n_forces=3,
         low_coverage=False,
+        weight_audit='{"growth":{}}',
     )
     n = upsert_composites(mem_conn, [snap])
     assert n == 1
@@ -167,6 +172,7 @@ def test_upsert_and_query_composites(mem_conn):
     assert len(df) == 1
     assert df.iloc[0]["quadrant"] == "Inflationary Boom"
     assert abs(df.iloc[0]["growth_score"] - 0.5) < 1e-6
+    assert df.iloc[0]["weight_audit"] == '{"growth":{}}'
 
 
 def test_upsert_composites_is_idempotent(mem_conn):
@@ -276,6 +282,30 @@ def test_expansion_quadrant_detected(mem_conn):
     assert all(q == "Expansion" for q in quadrants), f"Expected Expansion, got {set(quadrants)}"
 
 
+def test_snapshot_audits_dynamic_and_decay_weight_layers(mem_conn):
+    _seed_expansion(mem_conn)
+    cfg = {
+        **_minimal_config(),
+        "dynamic_weighting": {
+            "enabled": True,
+            "momentum_alpha": 0.5,
+            "min_multiplier": 0.1,
+            "max_multiplier": 1.5,
+            "force_zero_epsilon": 0.05,
+        },
+        "time_decay": {"enabled": True, "half_life_months": 3, "hard_drop_months": 12},
+    }
+    snapshots = compute_composite_history(mem_conn, "US", cfg)
+    audit = json.loads(snapshots[-1].weight_audit)
+    payrolls = audit["growth"]["us.growth.payrolls"]
+
+    assert payrolls["config_weight"] == pytest.approx(0.5)
+    assert payrolls["momentum_multiplier"] == pytest.approx(1.5)
+    assert payrolls["decay_fraction"] == pytest.approx(1.0)
+    assert payrolls["effective_weight"] == pytest.approx(0.75)
+    assert payrolls["normalized_weight"] == pytest.approx(0.5)
+
+
 def test_confidence_high_when_signals_agree(mem_conn):
     """When all signals agree with the quadrant direction, confidence should be close to 1."""
     _seed_stagflation(mem_conn)
@@ -318,23 +348,88 @@ def test_inflation_config_uses_bound_ppi_signal():
     assert "inflation.commodity_index" not in ids
 
 
-# ── H1: Breakeven weights ─────────────────────────────────────────────────────
+# ── Guidance defaults: importance, base shares, and quality ──────────────────
 
-def test_breakeven_weights_halved():
+def test_breakeven_guidance_defaults():
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["inflation_score"]["indicators"]}
-    assert by_id["inflation.breakeven_5y"]["weight"] == 0.5
-    assert by_id["inflation.breakeven_10y"]["weight"] == 0.5
+    for signal_id in ("inflation.breakeven_5y", "inflation.breakeven_10y"):
+        assert by_id[signal_id]["base_share"] == 0.5
+        assert by_id[signal_id]["importance"] == 0.25
+        assert by_id[signal_id]["quality_factor"] == 0.90
 
 
 # ── G1: Labour-market group weights ──────────────────────────────────────────
 
-def test_labour_market_weights():
+def test_growth_importance_guidance_defaults():
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["growth_score"]["indicators"]}
-    for sig in ("growth.payrolls", "growth.job_openings", "growth.labor_force_part", "growth.unemployment"):
-        assert by_id[sig]["weight"] == 0.75, f"{sig} should have weight 0.75"
-    assert by_id["growth.capacity_util"]["weight"] == 1.05
+    expected = {
+        "growth.payrolls": 0.90,
+        "growth.industrial_prod": 0.80,
+        "growth.retail_sales": 0.75,
+        "growth.real_pce": 0.70,
+        "growth.capacity_util": 0.65,
+        "growth.job_openings": 0.85,
+        "growth.pmi_proxy": 0.80,
+        "growth.labor_force_part": 0.60,
+        "growth.unemployment": 0.55,
+    }
+    assert {signal_id: by_id[signal_id]["importance"] for signal_id in expected} == expected
+
+
+def test_inflation_importance_guidance_defaults():
+    cfg = load_composites_config()
+    by_id = {ind["id"]: ind for ind in cfg["inflation_score"]["indicators"]}
+    expected = {
+        "inflation.pce_core": 0.95,
+        "inflation.cpi_core": 0.95,
+        "inflation.wages": 0.30,
+        "inflation.breakeven_5y": 0.25,
+        "inflation.breakeven_10y": 0.25,
+        "inflation.cpi_headline": 0.20,
+        "inflation.crude_oil": 0.10,
+        "inflation.ppi_broad": 0.30,
+    }
+    assert {signal_id: by_id[signal_id]["importance"] for signal_id in expected} == expected
+
+
+def test_guidance_nominal_weights_are_normalized_after_quality():
+    cfg = load_composites_config()
+    growth = normalized_nominal_weights(cfg["growth_score"]["indicators"])
+    inflation = normalized_nominal_weights(cfg["inflation_score"]["indicators"])
+
+    assert sum(growth.values()) == pytest.approx(1.0)
+    assert sum(inflation.values()) == pytest.approx(1.0)
+    assert growth["growth.capacity_util"] > growth["growth.payrolls"]
+    assert inflation["inflation.pce_core"] == pytest.approx(
+        inflation["inflation.cpi_core"]
+    )
+    assert inflation["inflation.pce_core"] > inflation["inflation.crude_oil"]
+
+
+def test_momentum_agreement_tilts_weight_and_respects_inversion():
+    assert momentum_weight_multiplier(1.0, "rising") == pytest.approx(1.5)
+    assert momentum_weight_multiplier(1.0, "falling") == pytest.approx(0.5)
+    assert momentum_weight_multiplier(0.01, "rising") == pytest.approx(1.0)
+    # Unemployment Z below zero, then inverted, is positive growth force;
+    # falling unemployment is also growth-positive, so the two agree.
+    assert momentum_weight_multiplier(-1.0, "falling", invert=True) == pytest.approx(1.5)
+
+
+def test_three_month_age_is_one_half_weight():
+    assert age_weight_fraction(0, 3) == pytest.approx(1.0)
+    assert age_weight_fraction(3, 3) == pytest.approx(0.5)
+    assert age_weight_fraction(6, 3) == pytest.approx(0.25)
+
+
+def test_importance_setting_changes_nominal_weight():
+    indicators = [
+        {"id": "a", "base_share": 1.0, "importance": 0.9, "quality_factor": 1.0},
+        {"id": "b", "base_share": 1.0, "importance": 0.1, "quality_factor": 1.0},
+    ]
+    weights = normalized_nominal_weights(indicators)
+    assert weights == {"a": pytest.approx(0.9), "b": pytest.approx(0.1)}
 
 
 # ── F1/L1: Fill-age and staleness decay ──────────────────────────────────────

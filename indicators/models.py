@@ -79,6 +79,7 @@ class CompositeSnapshot(BaseModel):
     stale_signals: Optional[str] = None  # L3: "signal_id:fill_months,..." for signals with fill_age > 0
     growth_momentum: Optional[float] = None    # fraction of growth-positive direction signals (0–1)
     inflation_momentum: Optional[float] = None # fraction of inflation-positive direction signals (0–1)
+    weight_audit: Optional[str] = None  # JSON: point-in-time nominal/dynamic/decay weights by signal
 
 
 class DebtStressSnapshot(BaseModel):

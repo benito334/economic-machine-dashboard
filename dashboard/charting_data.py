@@ -9,6 +9,8 @@ import duckdb
 import pandas as pd
 import yaml
 
+from indicators.composites import normalized_nominal_weights
+
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
 _CHART_SERIES_YAML = Path(__file__).parent.parent / "config" / "chart_series.yaml"
@@ -107,7 +109,7 @@ def load_composite_history(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Return the composites table with columns: as_of, growth_score, inflation_score, quadrant."""
+    """Return point-in-time composite scores and their component-weight audit."""
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         clauses = []
@@ -122,7 +124,7 @@ def load_composite_history(
         df = con.execute(
             f"SELECT as_of, growth_score, inflation_score, quadrant, confidence, "
             f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces, stale_signals, "
-            f"growth_momentum, inflation_momentum "
+            f"growth_momentum, inflation_momentum, weight_audit "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()
@@ -239,14 +241,19 @@ def load_composite_component_status(
     rows_meta: list[dict] = []
     for comp_name in ("growth_score", "inflation_score"):
         force = comp_name.split("_")[0]  # "growth" or "inflation"
-        for ind in cfg.get(comp_name, {}).get("indicators", []):
+        indicators = cfg.get(comp_name, {}).get("indicators", [])
+        nominal_weights = normalized_nominal_weights(indicators) if indicators else {}
+        for ind in indicators:
             concept_id = ind["id"]
             rows_meta.append({
                 "composite":  force,
                 "concept_id": concept_id,
                 "signal_id":  f"{country_prefix}.{concept_id}",
                 "label":      _COMPOSITE_SIGNAL_LABELS.get(concept_id, concept_id.split(".")[-1].replace("_", " ").title()),
-                "weight":     float(ind.get("weight", 1.0)),
+                "weight":     float(nominal_weights[concept_id]),
+                "base_share": float(ind.get("base_share", ind.get("weight", 1.0))),
+                "importance": float(ind.get("importance", 1.0)),
+                "quality_factor": float(ind.get("quality_factor", 1.0)),
                 "invert":     bool(ind.get("invert", False)),
             })
 

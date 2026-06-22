@@ -10,6 +10,7 @@ Entry point:  compute_composite_history(conn, country, config)
 from __future__ import annotations
 
 import logging
+import json
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -42,7 +43,89 @@ _EXPECTED_DIR: dict[tuple[bool, bool], tuple[str, str]] = {
 def load_composites_config(path: Path | None = None) -> dict:
     p = path or (_CONFIG_DIR / "composites.yaml")
     with open(p) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    _validate_weighting_config(config)
+    return config
+
+
+def _validate_weighting_config(config: dict) -> None:
+    """Fail fast on invalid tunable importance/quality and dynamic-weight settings."""
+    for section in ("growth_score", "inflation_score"):
+        indicators = config.get(section, {}).get("indicators", [])
+        for ind in indicators:
+            for key in ("importance", "quality_factor"):
+                if key in ind and not 0 <= float(ind[key]) <= 1:
+                    raise ValueError(f"{section}.{ind.get('id')}.{key} must be in [0, 1]")
+            if "base_share" in ind and float(ind["base_share"]) < 0:
+                raise ValueError(f"{section}.{ind.get('id')}.base_share must be >= 0")
+
+    dynamic = config.get("dynamic_weighting", {})
+    if float(dynamic.get("momentum_alpha", 0.5)) < 0:
+        raise ValueError("dynamic_weighting.momentum_alpha must be >= 0")
+    min_mult = float(dynamic.get("min_multiplier", 0.1))
+    max_mult = float(dynamic.get("max_multiplier", 1.5))
+    if min_mult < 0 or max_mult < min_mult:
+        raise ValueError("dynamic_weighting multipliers must satisfy 0 <= min <= max")
+
+    decay = config.get("time_decay", {})
+    if decay and float(decay.get("half_life_months", 3.0)) <= 0:
+        raise ValueError("time_decay.half_life_months must be > 0")
+
+
+def normalized_nominal_weights(indicators: list[dict]) -> dict[str, float]:
+    """Return config weights normalized to 1.0 for one force basket.
+
+    New configs use ``base_share × importance × quality_factor``. Legacy configs
+    containing only ``weight`` remain supported for tests and downstream users.
+    """
+    raw: dict[str, float] = {}
+    for ind in indicators:
+        if any(key in ind for key in ("base_share", "importance", "quality_factor")):
+            value = (
+                float(ind.get("base_share", 1.0))
+                * float(ind.get("importance", 1.0))
+                * float(ind.get("quality_factor", 1.0))
+            )
+        else:
+            value = float(ind.get("weight", 1.0))
+        raw[ind["id"]] = max(0.0, value)
+    total = sum(raw.values())
+    if total <= 0:
+        raise ValueError("Composite nominal weights must sum to more than zero")
+    return {signal_id: value / total for signal_id, value in raw.items()}
+
+
+def momentum_weight_multiplier(
+    force_z: float,
+    direction: object,
+    *,
+    invert: bool = False,
+    alpha: float = 0.5,
+    min_multiplier: float = 0.1,
+    max_multiplier: float = 1.5,
+    zero_epsilon: float = 0.05,
+) -> float:
+    """Apply the guidance's force/momentum agreement tilt."""
+    adjusted_z = -float(force_z) if invert else float(force_z)
+    force_sign = 0 if abs(adjusted_z) < zero_epsilon else (1 if adjusted_z > 0 else -1)
+    if direction == "rising":
+        momentum_sign = 1
+    elif direction == "falling":
+        momentum_sign = -1
+    else:
+        momentum_sign = 0
+    if invert:
+        momentum_sign *= -1
+    multiplier = 1.0 + alpha * force_sign * momentum_sign
+    return float(np.clip(multiplier, min_multiplier, max_multiplier))
+
+
+def age_weight_fraction(age_months: float, half_life_months: float = 3.0) -> float:
+    """Exponential time decay: a signal loses half its weight each half-life."""
+    age = max(0.0, float(age_months))
+    if half_life_months <= 0:
+        raise ValueError("half_life_months must be > 0")
+    return float(0.5 ** (age / float(half_life_months)))
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
@@ -181,10 +264,23 @@ def compute_composite_history(
     force_groups = _build_force_groups(conn, country, config)
     diseq_ids    = list(dict.fromkeys(sid for ids in force_groups.values() for sid in ids))
 
-    # ── Staleness-decay config (F1/L1) ────────────────────────────────────────
-    decay_cfg     = config.get("staleness_decay", {})
-    decay_enabled = bool(decay_cfg.get("enabled", False))
-    decay_factor  = float(decay_cfg.get("decay_factor", 0.9))
+    # ── Configurable nominal + dynamic weighting ─────────────────────────────
+    growth_nominal = normalized_nominal_weights(growth_cfg)
+    inflation_nominal = normalized_nominal_weights(inflation_cfg)
+    dynamic_cfg = config.get("dynamic_weighting", {})
+    dynamic_enabled = bool(dynamic_cfg.get("enabled", False))
+
+    # New configs use a half-life; retain the old decay-factor form for custom
+    # configs and historical tests that have not migrated yet.
+    time_decay_cfg = config.get("time_decay", {})
+    legacy_decay_cfg = config.get("staleness_decay", {})
+    decay_enabled = bool(
+        time_decay_cfg.get("enabled", False)
+        or legacy_decay_cfg.get("enabled", False)
+    )
+    half_life_months = float(time_decay_cfg.get("half_life_months", 3.0))
+    hard_drop_months = time_decay_cfg.get("hard_drop_months")
+    legacy_decay_factor = float(legacy_decay_cfg.get("decay_factor", 0.9))
 
     # ── Per-frequency carry cap (L2) ──────────────────────────────────────────
     freq_limits_cfg = config.get("per_frequency_ffill_limit", {})
@@ -249,46 +345,85 @@ def compute_composite_history(
         d_row = d_comp.loc[dt]  if (not d_comp.empty  and dt in d_comp.index)  else pd.Series(dtype=object)
         zd_row = z_diseq.loc[dt] if (not z_diseq.empty and dt in z_diseq.index) else pd.Series(dtype=float)
 
-        # ── Growth Score ──────────────────────────────────────────────────────
-        g_sum, g_w = 0.0, 0.0
-        g_ids_contrib: list[str] = []
+        def _score_force(
+            indicators: list[dict], nominal_weights: dict[str, float]
+        ) -> tuple[Optional[float], list[str], dict[str, dict]]:
+            weighted_sum = 0.0
+            active_weight = 0.0
+            contributing: list[str] = []
+            audit: dict[str, dict] = {}
 
-        for ind in growth_cfg:
-            sid = f"{country_prefix}.{ind['id']}"
-            z = z_row.get(sid)
-            if z is None or (isinstance(z, float) and np.isnan(z)):
-                continue
-            w   = ind.get("weight", 1.0)
-            if decay_enabled and fill_age_comp is not None and sid in fill_age_comp.columns:
-                age = fill_age_comp.loc[dt, sid] if dt in fill_age_comp.index else 0.0
-                w *= decay_factor ** (float(age) if pd.notna(age) else 0.0)
-            adj = -float(z) if ind.get("invert", False) else float(z)
-            g_sum += adj * w
-            g_w   += w
-            g_ids_contrib.append(sid)
+            for ind in indicators:
+                concept_id = ind["id"]
+                sid = f"{country_prefix}.{concept_id}"
+                z = z_row.get(sid)
+                direction = d_row.get(sid)
+                nominal = nominal_weights[concept_id]
+                age = 0.0
+                if fill_age_comp is not None and sid in fill_age_comp.columns and dt in fill_age_comp.index:
+                    age_raw = fill_age_comp.loc[dt, sid]
+                    age = float(age_raw) if pd.notna(age_raw) else 0.0
 
-        growth_score = g_sum / g_w if g_w > 0 else None
-        n_growth     = len(g_ids_contrib)
+                momentum_mult = 1.0
+                decay_fraction = 1.0
+                effective = 0.0
+                adjusted_z: Optional[float] = None
+                missing = bool(z is None or (isinstance(z, float) and np.isnan(z)))
 
-        # ── Inflation Score ───────────────────────────────────────────────────
-        i_sum, i_w = 0.0, 0.0
-        i_ids_contrib: list[str] = []
+                if not missing:
+                    adjusted_z = -float(z) if ind.get("invert", False) else float(z)
+                    if dynamic_enabled:
+                        momentum_mult = momentum_weight_multiplier(
+                            float(z),
+                            direction,
+                            invert=bool(ind.get("invert", False)),
+                            alpha=float(dynamic_cfg.get("momentum_alpha", 0.5)),
+                            min_multiplier=float(dynamic_cfg.get("min_multiplier", 0.1)),
+                            max_multiplier=float(dynamic_cfg.get("max_multiplier", 1.5)),
+                            zero_epsilon=float(dynamic_cfg.get("force_zero_epsilon", 0.05)),
+                        )
+                    if decay_enabled:
+                        if time_decay_cfg:
+                            decay_fraction = age_weight_fraction(age, half_life_months)
+                        else:
+                            decay_fraction = legacy_decay_factor ** age
+                    if hard_drop_months is not None and age > float(hard_drop_months):
+                        decay_fraction = 0.0
+                    effective = nominal * momentum_mult * decay_fraction
+                    if effective > 0:
+                        weighted_sum += adjusted_z * effective
+                        active_weight += effective
+                        contributing.append(sid)
 
-        for ind in inflation_cfg:
-            sid = f"{country_prefix}.{ind['id']}"
-            z = z_row.get(sid)
-            if z is None or (isinstance(z, float) and np.isnan(z)):
-                continue
-            w = ind.get("weight", 1.0)
-            if decay_enabled and fill_age_comp is not None and sid in fill_age_comp.columns:
-                age = fill_age_comp.loc[dt, sid] if dt in fill_age_comp.index else 0.0
-                w *= decay_factor ** (float(age) if pd.notna(age) else 0.0)
-            i_sum += float(z) * w
-            i_w   += w
-            i_ids_contrib.append(sid)
+                audit[sid] = {
+                    "base_share": round(float(ind.get("base_share", ind.get("weight", 1.0))), 6),
+                    "importance": round(float(ind.get("importance", 1.0)), 6),
+                    "quality_factor": round(float(ind.get("quality_factor", 1.0)), 6),
+                    "config_weight": round(nominal, 8),
+                    "momentum_multiplier": round(momentum_mult, 6),
+                    "age_months": round(age, 3),
+                    "decay_fraction": round(decay_fraction, 6),
+                    "effective_weight": round(effective, 8),
+                    "normalized_weight": 0.0,
+                    "missing": missing,
+                }
 
-        inflation_score = i_sum / i_w if i_w > 0 else None
-        n_inflation     = len(i_ids_contrib)
+            if active_weight > 0:
+                for sid in contributing:
+                    audit[sid]["normalized_weight"] = round(
+                        audit[sid]["effective_weight"] / active_weight, 8
+                    )
+            score = weighted_sum / active_weight if active_weight > 0 else None
+            return score, contributing, audit
+
+        growth_score, g_ids_contrib, growth_audit = _score_force(
+            growth_cfg, growth_nominal
+        )
+        inflation_score, i_ids_contrib, inflation_audit = _score_force(
+            inflation_cfg, inflation_nominal
+        )
+        n_growth = len(g_ids_contrib)
+        n_inflation = len(i_ids_contrib)
 
         # ── Regime Quadrant + Confidence ──────────────────────────────────────
         quadrant   = None
@@ -402,6 +537,11 @@ def compute_composite_history(
                 stale_signals=stale_signals,
                 growth_momentum   =round(growth_momentum,    4) if growth_momentum    is not None else None,
                 inflation_momentum=round(inflation_momentum, 4) if inflation_momentum is not None else None,
+                weight_audit=json.dumps(
+                    {"growth": growth_audit, "inflation": inflation_audit},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
             )
         )
 

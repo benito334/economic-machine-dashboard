@@ -84,6 +84,9 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         "ALTER TABLE composites ADD COLUMN IF NOT EXISTS inflation_momentum DOUBLE"
     )
     conn.execute(
+        "ALTER TABLE composites ADD COLUMN IF NOT EXISTS weight_audit VARCHAR DEFAULT ''"
+    )
+    conn.execute(
         "ALTER TABLE signals ADD COLUMN IF NOT EXISTS momentum_percentile DOUBLE"
     )
 
@@ -166,6 +169,7 @@ CREATE TABLE IF NOT EXISTS composites (
     stale_signals        VARCHAR   DEFAULT '',
     growth_momentum      DOUBLE,
     inflation_momentum   DOUBLE,
+    weight_audit         VARCHAR   DEFAULT '',
     created_at           TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -175,7 +179,7 @@ _COMPOSITE_COLUMNS = [
     "country", "as_of", "growth_score", "inflation_score", "quadrant",
     "confidence", "disequilibrium_score", "n_growth_signals",
     "n_inflation_signals", "n_forces", "low_coverage", "stale_signals",
-    "growth_momentum", "inflation_momentum",
+    "growth_momentum", "inflation_momentum", "weight_audit",
     "created_at",
 ]
 

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import math
+import json
 import os
 from datetime import date, timedelta
 from pathlib import Path
@@ -384,15 +385,27 @@ def _badge_html(text: str, bg: str, fg: str) -> str:
     return f'<span style="background:{bg};color:{fg};padding:1px 5px;border-radius:3px;font-size:0.70rem;">{text}</span>'
 
 
-def _render_regime_component_table(comp_df: pd.DataFrame, stale_dict: dict) -> str:
+def _render_regime_component_table(
+    comp_df: pd.DataFrame,
+    stale_dict: dict,
+    weight_audit: Optional[dict] = None,
+) -> str:
     if comp_df is None or comp_df.empty:
         return '<div style="color:#666;padding:8px;">No component data.</div>'
+    audit_by_signal: dict[str, dict] = {}
+    for force_audit in (weight_audit or {}).values():
+        if isinstance(force_audit, dict):
+            audit_by_signal.update(force_audit)
     rows_html: list[str] = []
     for force, color in [("growth", _GROWTH_COLOR), ("inflation", _INFLATION_COLOR)]:
         df_f = comp_df[comp_df["composite"] == force]
-        n_active = int((df_f["zscore"].notna() & ~df_f["is_stale"] & ~df_f["low_history"]).sum())
+        n_active = (
+            sum(float(audit_by_signal.get(sid, {}).get("effective_weight", 0.0)) > 0 for sid in df_f["signal_id"])
+            if audit_by_signal
+            else int((df_f["zscore"].notna() & ~df_f["is_stale"] & ~df_f["low_history"]).sum())
+        )
         rows_html.append(
-            f'<tr><td colspan="6" style="padding:8px 10px;background:rgba(0,0,0,0.3);'
+            f'<tr><td colspan="8" style="padding:8px 10px;background:rgba(0,0,0,0.3);'
             f'border-bottom:1px solid {color};">'
             f'<span style="color:{color};font-weight:700;font-size:0.72rem;'
             f'text-transform:uppercase;letter-spacing:0.07em;">'
@@ -408,8 +421,15 @@ def _render_regime_component_table(comp_df: pd.DataFrame, stale_dict: dict) -> s
             as_of     = sr.get("as_of")
             weight    = float(sr.get("weight", 1.0))
             z_missing = z is None or (isinstance(z, float) and pd.isna(z))
-            max_w = float(df_f["weight"].max())
-            wt_str = "½" if weight < max_w else "1"
+            sig_id = sr.get("signal_id", "")
+            audit = audit_by_signal.get(sig_id, {})
+            z_missing = z_missing or bool(audit.get("missing", False))
+            importance = float(audit.get("importance", sr.get("importance", 1.0)))
+            config_wt = float(audit.get("config_weight", weight))
+            eff_wt = float(audit.get("effective_weight", 0.0 if z_missing else config_wt))
+            momentum_mult = float(audit.get("momentum_multiplier", 1.0))
+            decay = float(audit.get("decay_fraction", 1.0))
+            age = max(stale_dict.get(sig_id, 0), int(round(float(audit.get("age_months", 0)))))
             last_str = pd.Timestamp(as_of).strftime("%b %Y") if (as_of is not None and not pd.isna(as_of)) else "—"
             # Z-score cell
             if z_missing:
@@ -427,22 +447,25 @@ def _render_regime_component_table(comp_df: pd.DataFrame, stale_dict: dict) -> s
             else:
                 dir_cell = '<span style="color:#555;">—</span>'
             # Status cell
-            sig_id = sr.get("signal_id", "")
-            fill_months = stale_dict.get(sig_id, 0)
-            if is_stale or fill_months > 0:
-                stale_lbl = f"STALE · {fill_months}m" if fill_months else "STALE"
-                status = _badge_html(stale_lbl, "#7a4a00", "#ffcc80")
+            if not z_missing and (is_stale or age > 0):
+                status = _badge_html(f"DECAYED · {age}m", "#7a4a00", "#ffcc80")
+                status += f' <span style="color:#666;font-size:0.72rem;">time {decay:.0%} · momentum {momentum_mult:.1f}×</span>'
             elif low_hist:
                 status = _badge_html("LOW HISTORY", "#3a3a00", "#cccc88")
             elif z_missing:
-                status = _badge_html("MISSING", "#3a2020", "#cc7777")
+                status = _badge_html("BLANK", "#3a2020", "#cc7777")
             else:
-                status = _badge_html("ACTIVE", "#1a3a1a", "#88cc88")
-            row_bg = "rgba(60,20,20,0.12)" if (z_missing or is_stale or fill_months > 0 or low_hist) else "transparent"
+                suffix = " · BOOSTED" if momentum_mult > 1 else (" · CONFLICT" if momentum_mult < 1 else "")
+                status = _badge_html(f"ACTIVE{suffix}", "#1a3a1a", "#88cc88")
+                if suffix:
+                    status += f' <span style="color:#666;font-size:0.72rem;">momentum {momentum_mult:.1f}×</span>'
+            row_bg = "rgba(60,20,20,0.12)" if (z_missing or is_stale or age > 0 or low_hist) else "transparent"
             rows_html.append(
                 f'<tr style="background:{row_bg};">'
                 f'<td {_TD}>{sr["label"]}</td>'
-                f'<td style="text-align:center;padding:5px 10px;font-family:monospace;font-size:0.82rem;border-bottom:1px solid #222;color:#666;">{wt_str}</td>'
+                f'<td {_TD_MONO}>{importance:.2f}</td>'
+                f'<td {_TD_MONO}>{config_wt * 100:.1f}%</td>'
+                f'<td {_TD_MONO}>{eff_wt * 100:.1f}%</td>'
                 f'<td style="text-align:center;padding:5px 10px;font-family:monospace;font-size:0.75rem;border-bottom:1px solid #222;color:#666;">{last_str}</td>'
                 f'{z_cell}'
                 f'<td {_TD}>{dir_cell}</td>'
@@ -451,13 +474,13 @@ def _render_regime_component_table(comp_df: pd.DataFrame, stale_dict: dict) -> s
             )
     header = (
         f'<tr><th {_TH}>Signal</th>'
-        f'<th style="text-align:center;padding:5px 10px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#666;border-bottom:1px solid #333;">Wt</th>'
+        f'<th {_TH}>Importance</th><th {_TH}>Config Wt</th><th {_TH}>Eff Wt</th>'
         f'<th style="text-align:center;padding:5px 10px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#666;border-bottom:1px solid #333;">Last Data</th>'
         f'<th style="text-align:right;padding:5px 10px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#666;border-bottom:1px solid #333;">Force Z</th>'
         f'<th {_TH}>Momentum</th>'
-        f'<th {_TH}>Status</th></tr>'
+        f'<th {_TH}>Status / Detail</th></tr>'
     )
-    return f'<table style="width:100%;border-collapse:collapse;">{header}{"".join(rows_html)}</table>'
+    return f'<div style="overflow-x:auto;"><table style="width:100%;min-width:1050px;border-collapse:collapse;">{header}{"".join(rows_html)}</table></div>'
 
 
 def _render_debt_stress_table(
@@ -1410,7 +1433,7 @@ Derived from the 3-month change in value. A small dead-band prevents noise from 
 #### Composite Scores
 
 **Growth Score**
-Equal-weight mean Z-score across 9 signals. Unemployment is *inverted* (lower unemployment = stronger growth).
+Dynamic weighted mean Z-score across 9 signals. Nominal weights combine base share, editable importance, and data quality; force/momentum agreement and observation age then adjust each point-in-time effective weight. Unemployment is *inverted* (lower unemployment = stronger growth).
 
 | Signal | Type |
 |---|---|
@@ -1427,17 +1450,13 @@ Equal-weight mean Z-score across 9 signals. Unemployment is *inverted* (lower un
 Positive score → economy running above its historical average.
 
 **Inflation Score**
-Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline items carry 0.5× to reduce short-term noise.
+Uses the same dynamic formula across 8 signals. Core measures have the highest default importance; commodity and market inputs receive smaller documented priors.
 
-| Signal | Weight | Type |
-|---|---|---|
-| Core PCE (YoY %) | 1.0× | coincident |
-| Core CPI (YoY %) | 1.0× | coincident |
-| Wages (YoY %) | 1.0× | lagging |
-| 5Y Breakeven (%) | 1.0× | leading |
-| 10Y Breakeven (%) | 1.0× | leading |
-| Headline CPI (YoY %) | 0.5× | coincident |
-| Crude Oil YoY (%) | 0.5× | leading |
+`effective weight = normalized(base share × importance × quality) × momentum tilt × age decay`
+
+- Momentum agreement: 1.5× default; conflict: 0.5×; neutral: 1.0×
+- Age decay: three-month half-life within the configured carry cap
+- Importance and global weighting settings: `config/composites.yaml`
             """)
 
             st.markdown("""
@@ -1732,7 +1751,11 @@ Weighted mean Z-score. Core measures carry full weight (1×); commodity/headline
         _as_of_str = str(cur_comp.get("as_of", "")) if not cur_comp.empty else None
         _comp_df = load_composite_component_status(country="US", as_of=_as_of_str)
         _stale_dict = _parse_stress_components(cur_comp.get("stale_signals") or "") if not cur_comp.empty else {}
-        st.html(_render_regime_component_table(_comp_df, _stale_dict))
+        try:
+            _weight_audit = json.loads(cur_comp.get("weight_audit") or "{}") if not cur_comp.empty else {}
+        except (TypeError, json.JSONDecodeError):
+            _weight_audit = {}
+        st.html(_render_regime_component_table(_comp_df, _stale_dict, _weight_audit))
 
         st.plotly_chart(
             _build_regime_history_fig(comp_history, step=step),
