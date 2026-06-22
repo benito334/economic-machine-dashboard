@@ -84,13 +84,13 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-22:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **349 tests pass.** Rolling Z-score pipeline complete; sidebar window sliders with localStorage persistence; Dash 4.x Radix UI slider CSS.
+**As of 2026-06-22:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **349 tests pass.** 63 US signals live. Global Overview table + Data Dashboard (sort/filter/reset) complete.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
 | 1A-i FRED lenses A–E + Master | ✅ **Done** | 37/37 signals live in DuckDB, 51 tests pass |
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
-| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
+| 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 63/63 signals live (4 new: gdp_level_bn, fed_funds_target, budget_balance_gdp, population_total_mn); 349 tests pass |
 | 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium; + 9 rolling composite columns (36m/48m/60m force, 12m/18m/24m diseq) |
 | 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel |
 | 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; left-sidebar nav + window sliders (localStorage-persisted) + country selector |
@@ -98,15 +98,17 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
 | 1G Methodology improvements | ✅ **Done** | Configurable force importance/quality weights, momentum-agreement tilt, 3-month half-life decay, point-in-time weight audit; 349 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
-| 1I :8502 UI consolidation | 🔄 **In progress** | Methodology audit + formula clipboard + confidence fix + slider amber + date block + tooltips done; remaining :8501 content pending |
+| 1I :8502 UI consolidation | ✅ **Done** | Global Overview table + Data Dashboard (sticky header, sort/filter/reset); methodology audit + formula clipboard + confidence fix + slider amber + date block + tooltips all complete |
 | 2 Country rollout | ⬜ Queued | Eurozone first — unblocked |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Eurozone rollout. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
+**To start the next session:** Phase 2 Eurozone rollout (`config/countries/eu_bindings.yaml`). Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
 
 **:8502 Dash nav structure (as of 2026-06-22):**
 - Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage; nav icons have `dbc.Tooltip` on hover in collapsed state
 - Sidebar slider accent: `--slider-accent` CSS var (amber `#E8A317` Carbon, gold `#F4C842` Slate, indigo `#4C6EF5` Dawn); track tint + hover glow via `color-mix()`; thumb centered by Radix (no `top` override)
+- **Data group pages**: `🌐 Global Overview` (`/overview`) — TE-style cross-country macro table (9 columns, color-coded, date-stamped); `📋 Data Dashboard` (`/data-dashboard`) — 63-signal feed monitor with sticky header, sortable columns, filter bar, status badges, ↺ Reset Sort
+- **Data Dashboard sort**: clicking column header toggles asc/desc; Status column sort key: 0=stale→5=OK; flat when sorted, grouped by force when no sort active
 - Regime Map page: scatter (55vh, data-driven zoom with 15% buffer) + What Changed + Conflicts + Signal Drill-Downs (10 lens accordions) + Data-Quality Log; Force Components title bar amber (`var(--slider-accent)`); selected date shows "Month Year / X months ago" block
 - Methodology page: each section has inline formulas + full-section `dcc.Clipboard` copy; formulas embedded from live catalog (`build_formula_catalog()` + `build_debt_stress_formula_catalog()`)
 - Confidence metric: always DB directional-agreement fraction; rolling quadrant-consistency override removed (was trivially 100% in multi-year Stagflation)

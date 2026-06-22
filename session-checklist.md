@@ -24,22 +24,22 @@ Will clear 3 stale signals: current account, NIIP, debt service ratio.
 ---
 
 ## Completed this session (2026-06-22)
-- Rolling Z-score pipeline: 6 rolling Z columns on signals, 9 rolling composite columns; Passes 5b-5d
-- Sidebar sliders for Z-Score and Disequilibrium windows; slider state persists via localStorage
-- Scatter map blank bug fixed (invalid f-string in hovertemplate)
-- Rolling confidence (quadrant-consistency % over 12m rolling scores) replaces baseline when window active
-- Dash 4.x slider CSS: all class names updated from rc-slider-* to dash-slider-* (Radix UI); tooltip hidden, vertical bar thumb, visible track on all palettes
-- Country selector in sidebar (Phase 2 hooks); Settings modal with Disequilibrium window radio
+- Global Overview table (`/overview`): TE-style cross-country macro table, 9 columns, color-coded
+- 4 new series: `master.gdp_level_bn`, `policy.fed_funds_target`, `fiscal.budget_balance_gdp`, `demo.population_total_mn` (63 signals total)
+- Data Dashboard (`/data-dashboard`): 63 signals, grouped by force, sticky header, status badges
+- Sort + filter: sortable columns, filter bar (search / force / status / freq), flat vs grouped view
+- Status column sortable (0=stale…5=OK) + ↺ Reset Sort button
+- 349 tests pass; Docker rebuilt
 
 ## Up next (next session)
 | Priority | Item |
 |---|---|
 | 1 | Phase 2 — Eurozone rollout: `config/countries/eu_bindings.yaml`; verify all series IDs; `vintage_available: false` for all |
 | 2 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline --latest` clears 3 stale signals |
-| 3 | :8502 UI remaining polish per user direction |
 
 ## Notes for next session
+- 63 signals total (was 59); tests updated accordingly
+- `/overview` nav link is live; `/data-dashboard` is under Data nav group
 - Dash 4.x uses Radix UI for Slider — class names are `dash-slider-*`, not `rc-slider-*`
-- `_RQ_MAP` is now module-level in `charting.py` (used by both scatter and regime-info callbacks)
-- `zscore-window-store` and `diseq-window-store` use `storage_type="local"` — survived across refreshes
+- `_RQ_MAP` is module-level in `charting.py`; stores use `storage_type="local"`
 - :8501 (Streamlit) still running as reference; :8502 is the primary dashboard

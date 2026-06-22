@@ -4,6 +4,26 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-22 — Global Overview table, Data Dashboard, sort/filter/reset
+
+**Done:**
+- **Global Overview page** (`/overview`): TE-style cross-country macro summary table — 9 columns (GDP $B, GDP Growth %, Interest Rate, Inflation, Jobless Rate, Govt Budget, Debt/GDP, Current Account, Population). Color-coded: `ov-cell-warn` (orange) for stress signals, `ov-cell-pos` (green) for positives, `ov-cell-high` (blue) for scale highlights. Date shown below each value as `yyyy-mm`. Only US row live; architecture supports future Phase 2 countries via `id LIKE '%.{concept}'` DuckDB query.
+- **4 new series added** (`config/us_bindings.yaml`): `master.gdp_level_bn` (FRED:GDP, billions), `policy.fed_funds_target` (FRED:DFEDTARU, daily), `fiscal.budget_balance_gdp` (FRED:FYFSGDA188S, annual), `demo.population_total_mn` (WB:SP.POP.TOTL, annual). Total signals: 63.
+- **Data Dashboard page** (`/data-dashboard`): operational feed health monitor. 63 signals grouped by force. Columns: Signal, Series ID chip, Latest Value (formatted by units), As Of (+ X days ago), Frequency, Source, Next Release (estimated), Status badges.
+- **Status badges**: `✓ OK` (green), `STALE` (orange), `+Nd overdue` (amber), `LOW HIST` (blue), `PROXY`/`DERIVED`/`NO VINTAGE` (grey).
+- **Sticky header**: `position: sticky; top: 0` on `thead tr th`; `box-shadow: inset 0 -2px 0 var(--border-color)` replaces `border-bottom` (which disappears under sticky).
+- **Sort + Filter**: sortable columns (Signal, As Of, Frequency, Source, Next Release, Status); filter bar (search text, force, status, frequency dropdowns). Sorting switches to flat view; no sort = grouped by force.
+- **Status sort key**: 0=stale → 1=overdue → 2=low_hist → 3=proxy → 4=derived → 5=OK.
+- **↺ Reset Sort button**: clears sort state back to default grouped view.
+- **`/overview` nav link** enabled (removed `disabled=True`; Docker was running stale image — required `docker compose build + up -d`).
+- Tests updated: 3 hardcoded `== 59` counts → `== 63`; formula-route test replaced with overview-route test. **349 tests pass.**
+
+**Next:**
+- Phase 2 Eurozone rollout (`config/countries/eu_bindings.yaml`) — unblocked
+- Run `python3 -m indicators.pipeline --latest` after 2026-06-26 (BEA Q1 2026 data; clears 3 stale signals)
+
+---
+
 ## 2026-06-22 — Methodology audit, UI polish, formula clipboard, confidence fix
 
 **Done:**
