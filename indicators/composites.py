@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from indicators.normalize import ZSCORE_CAP_SIGMA
+
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).parents[1]
@@ -126,6 +128,112 @@ def age_weight_fraction(age_months: float, half_life_months: float = 3.0) -> flo
     if half_life_months <= 0:
         raise ValueError("half_life_months must be > 0")
     return float(0.5 ** (age / float(half_life_months)))
+
+
+def build_formula_catalog(config: dict | None = None) -> list[dict[str, object]]:
+    """Describe the live composite formulas using their active runtime settings.
+
+    The dashboard consumes this catalog rather than maintaining a second set of
+    parameter values. Formula cards therefore change with ``composites.yaml``.
+    """
+    cfg = config or load_composites_config()
+    dynamic = cfg.get("dynamic_weighting", {})
+    decay = cfg.get("time_decay", {})
+    carry = cfg.get("per_frequency_ffill_limit", {})
+    confidence = cfg.get("regime_confidence", {})
+    diseq = cfg.get("disequilibrium_score", {})
+    force_groups = diseq.get("forces", [])
+    group_names = [next(iter(group)) for group in force_groups if isinstance(group, dict) and group]
+
+    alpha = float(dynamic.get("momentum_alpha", 0.5))
+    min_mult = float(dynamic.get("min_multiplier", 0.1))
+    max_mult = float(dynamic.get("max_multiplier", 1.5))
+    epsilon = float(dynamic.get("force_zero_epsilon", 0.05))
+    half_life = float(decay.get("half_life_months", 3.0))
+    hard_drop = decay.get("hard_drop_months")
+    min_signals = int(confidence.get("min_signals_required", 4))
+    min_forces = int(diseq.get("min_forces_required", 3))
+
+    return [
+        {
+            "group": "Force",
+            "title": "Component Z-score",
+            "equation": r"Z_i = \operatorname{clip}\!\left(\frac{x_i-\mu_i}{s_i},-c,c\right)",
+            "description": (
+                "Each transformed signal is standardized against its full available history "
+                "using the sample standard deviation."
+            ),
+            "parameters": [f"c = {ZSCORE_CAP_SIGMA:g}σ", "history = all available non-null observations"],
+            "source": "indicators/normalize.py::_zscore_series",
+        },
+        {
+            "group": "Force",
+            "title": "Configured component weight",
+            "equation": r"w_i^{cfg}=\frac{b_i\,I_i\,q_i}{\sum_j b_j\,I_j\,q_j}",
+            "description": "Base share, editable importance, and quality are normalized within each force basket.",
+            "parameters": ["b = base share", "I = importance", "q = quality factor"],
+            "source": "indicators/composites.py::normalized_nominal_weights",
+        },
+        {
+            "group": "Momentum",
+            "title": "Force/momentum weight tilt",
+            "equation": r"m_i=\operatorname{clip}\!\left(1+\alpha\,\operatorname{sign}(Z_i^{adj})\,d_i,m_{min},m_{max}\right)",
+            "description": "Agreement between the adjusted force sign and 3-month direction boosts weight; disagreement reduces it.",
+            "parameters": [
+                f"α = {alpha:g}", f"bounds = {min_mult:g}× to {max_mult:g}×",
+                f"|Z| < {epsilon:g} is neutral", "d = −1 falling, 0 flat, +1 rising",
+            ],
+            "source": "indicators/composites.py::momentum_weight_multiplier",
+        },
+        {
+            "group": "Decay",
+            "title": "Observation-age decay",
+            "equation": r"\delta_i(a)=0.5^{\,a/h}",
+            "description": "A carried observation loses half its remaining weight every configured half-life.",
+            "parameters": [
+                f"h = {half_life:g} months",
+                f"global hard drop = {hard_drop:g} months" if hard_drop is not None else "global hard drop = disabled",
+                "carry caps = " + ", ".join(f"{k}:{v}m" for k, v in carry.items()),
+            ],
+            "source": "indicators/composites.py::age_weight_fraction + compute_composite_history",
+        },
+        {
+            "group": "Force",
+            "title": "Effective weight and force score",
+            "equation": r"w_i^{eff}=w_i^{cfg}m_i\delta_i,\qquad F=\frac{\sum_i w_i^{eff}Z_i^{adj}}{\sum_i w_i^{eff}}",
+            "description": "Only available, reliable components with positive effective weight enter Growth or Inflation force.",
+            "parameters": ["inverted signals use Zᵃᵈʲ = −Z", "weights are renormalized over active components"],
+            "source": "indicators/composites.py::compute_composite_history._score_force",
+        },
+        {
+            "group": "Momentum",
+            "title": "Force momentum breadth",
+            "equation": r"M_F=\frac{N(\text{active signals moving force-positive})}{N(\text{active signals with direction})}",
+            "description": "Growth counts rising signals (falling for inverted unemployment); Inflation counts rising signals.",
+            "parameters": ["direction is based on the transformed signal's 3-month change"],
+            "source": "indicators/composites.py::compute_composite_history",
+        },
+        {
+            "group": "Confidence",
+            "title": "Regime confidence",
+            "equation": r"C=\frac{1}{2}\left(\frac{N_G^{agree}}{N_G}+\frac{N_I^{agree}}{N_I}\right)",
+            "description": "Average agreement within Growth and Inflation between component directions and the assigned quadrant.",
+            "parameters": [f"minimum active signals per force = {min_signals}", "empty direction set defaults to 50%"],
+            "source": "indicators/composites.py::compute_composite_history",
+        },
+        {
+            "group": "Disequilibrium",
+            "title": "Structural disequilibrium",
+            "equation": r"D=\frac{1}{K}\sum_{k=1}^{K}\operatorname{mean}_{i\in k}\!\left(|Z(\,x_i-e_i\,)|\right)",
+            "description": "Mean absolute standardized distance from equilibrium, first within each available structural force group and then across groups.",
+            "parameters": [
+                f"configured groups = {', '.join(group_names)}",
+                f"low coverage when K < {min_forces}",
+                "groups without data are excluded from K",
+            ],
+            "source": "indicators/composites.py::compute_composite_history",
+        },
+    ]
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
@@ -241,10 +349,17 @@ def compute_composite_history(
     config: dict,
     start_date: Optional[date] = None,
     freq_map: Optional[dict[str, str]] = None,
+    zscore_col: str = "zscore",
+    diseq_window: int = 0,
 ) -> list:
     """
     Compute Growth Score, Inflation Score, Regime Quadrant, Confidence, and
     Disequilibrium Score for every month-end from first available data to today.
+
+    zscore_col:   which signals column to use for force scoring
+                  ("zscore" = full history; "zscore_36m" / "zscore_48m" / "zscore_60m" = rolling)
+    diseq_window: rolling window in months for disequilibrium Z-score
+                  (0 = full history std via global STDDEV_SAMP)
 
     Returns list[CompositeSnapshot] ready for store.upsert_composites().
     """
@@ -301,10 +416,10 @@ def compute_composite_history(
     }
     if decay_enabled:
         z_comp, fill_age_comp = _load_wide(
-            conn, composite_ids, "zscore", **load_kwargs, return_fill_age=True
+            conn, composite_ids, zscore_col, **load_kwargs, return_fill_age=True
         )
     else:
-        z_comp = _load_wide(conn, composite_ids, "zscore", **load_kwargs)
+        z_comp = _load_wide(conn, composite_ids, zscore_col, **load_kwargs)
         fill_age_comp = None
     d_comp  = _load_wide(conn, composite_ids, "direction", **load_kwargs)
 
@@ -318,14 +433,21 @@ def compute_composite_history(
             "distance_from_equilibrium",
             exclude_unreliable=True,
         )
-        placeholders = ", ".join(["?"] * len(diseq_ids))
-        scales = conn.execute(
-            f"SELECT id, STDDEV_SAMP(distance_from_equilibrium) AS scale "
-            f"FROM signals WHERE id IN ({placeholders}) GROUP BY id",
-            diseq_ids,
-        ).df()
-        scale_by_id = scales.set_index("id")["scale"].replace(0, np.nan)
-        z_diseq = dist.divide(scale_by_id, axis="columns")
+        if diseq_window > 0:
+            # Rolling std over the specified window (months = rows since dist is monthly)
+            half = max(1, diseq_window // 2)
+            roll_std = dist.rolling(diseq_window, min_periods=half).std()
+            roll_std = roll_std.replace(0, np.nan)
+            z_diseq = dist.divide(roll_std).clip(lower=-ZSCORE_CAP_SIGMA, upper=ZSCORE_CAP_SIGMA)
+        else:
+            placeholders = ", ".join(["?"] * len(diseq_ids))
+            scales = conn.execute(
+                f"SELECT id, STDDEV_SAMP(distance_from_equilibrium) AS scale "
+                f"FROM signals WHERE id IN ({placeholders}) GROUP BY id",
+                diseq_ids,
+            ).df()
+            scale_by_id = scales.set_index("id")["scale"].replace(0, np.nan)
+            z_diseq = dist.divide(scale_by_id, axis="columns")
 
     if z_comp.empty:
         logger.warning("No composite signal data found for country=%s", country)

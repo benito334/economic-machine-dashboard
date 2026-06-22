@@ -108,23 +108,27 @@ def load_multi_signal_history(
 def load_composite_history(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    country: str = "US",
 ) -> pd.DataFrame:
-    """Return point-in-time composite scores and their component-weight audit."""
+    """Return point-in-time composite scores, rolling variants, and component-weight audit."""
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
-        clauses = []
-        params: list = []
+        clauses = ["country = ?"]
+        params: list = [country]
         if start_date:
             clauses.append("as_of >= ?")
             params.append(start_date)
         if end_date:
             clauses.append("as_of <= ?")
             params.append(end_date)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        where = "WHERE " + " AND ".join(clauses)
         df = con.execute(
             f"SELECT as_of, growth_score, inflation_score, quadrant, confidence, "
             f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces, stale_signals, "
-            f"growth_momentum, inflation_momentum, weight_audit "
+            f"growth_momentum, inflation_momentum, weight_audit, "
+            f"growth_score_36m, growth_score_48m, growth_score_60m, "
+            f"inflation_score_36m, inflation_score_48m, inflation_score_60m, "
+            f"disequilibrium_12m, disequilibrium_18m, disequilibrium_24m "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()
@@ -466,6 +470,40 @@ def load_change_feed(
     finally:
         con.close()
     return df
+
+
+_COMPOSITES_YAML = Path(__file__).parent.parent / "config" / "composites.yaml"
+
+
+def load_composite_signal_values(country: str = "US") -> pd.DataFrame:
+    """Bulk-load all historical transformed values for growth+inflation composite signals.
+
+    Returns a DataFrame with columns: id, as_of, value, frequency.
+    Used by the dashboard to recompute force Z-scores with a configurable rolling window.
+    """
+    cfg = yaml.safe_load(_COMPOSITES_YAML.read_text()) or {}
+    prefix = country.lower()
+    ids: list[str] = []
+    for section in ("growth_score", "inflation_score"):
+        for ind in cfg.get(section, {}).get("indicators", []):
+            ids.append(f"{prefix}.{ind['id']}")
+
+    if not ids:
+        return pd.DataFrame()
+
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        placeholders = ",".join(["?"] * len(ids))
+        df = con.execute(
+            f"SELECT id, as_of, value FROM signals "
+            f"WHERE id IN ({placeholders}) ORDER BY id, as_of",
+            ids,
+        ).df()
+    finally:
+        con.close()
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    return df.dropna(subset=["value"])
 
 
 def load_all_signal_histories(

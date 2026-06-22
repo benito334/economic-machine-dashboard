@@ -51,6 +51,13 @@ class Signal(BaseModel):
     equilibrium_estimate: Optional[float] = None
     distance_from_equilibrium: Optional[float] = None
     surprise: Optional[float] = None  # actual − consensus (if wired)
+    # Rolling Z-scores for configurable look-back windows (pre-computed at pipeline time)
+    zscore_12m: Optional[float] = None
+    zscore_18m: Optional[float] = None
+    zscore_24m: Optional[float] = None
+    zscore_36m: Optional[float] = None
+    zscore_48m: Optional[float] = None
+    zscore_60m: Optional[float] = None
     is_constructed: bool = False
     is_proxy: bool = False
     is_stale: bool = False

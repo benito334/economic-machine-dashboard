@@ -25,7 +25,8 @@ from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
 from store.store import (
     delete_future_signals, get_connection, init_schema,
-    upsert_signals, upsert_composites, upsert_debt_stress, query_latest,
+    upsert_signals, upsert_composites, update_rolling_composites,
+    upsert_debt_stress, query_latest,
 )
 
 logging.basicConfig(
@@ -373,6 +374,35 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             results["error"] += 1
     except Exception as exc:
         logger.exception("[ERROR] Composites pass: %s", exc)
+        results["error"] += 1
+
+    # ── Passes 5b-5d: Rolling composite variants ──────────────────────────
+    print("\n─── Passes 5b-5d: Rolling composite variants ──────────────────────")
+    _ROLLING_CONFIGS = [
+        # (zscore_col,   diseq_window_months, force_suffix, diseq_suffix)
+        ("zscore_36m", 12, "36m", "12m"),
+        ("zscore_48m", 18, "48m", "18m"),
+        ("zscore_60m", 24, "60m", "24m"),
+    ]
+    try:
+        comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
+        freq_map = {
+            f"us.{b.id}": b.frequency
+            for b in bindings if b.verified
+        }
+        for zscore_col, diseq_w, force_sfx, diseq_sfx in _ROLLING_CONFIGS:
+            roll_snaps = compute_composite_history(
+                conn, "US", comp_config, freq_map=freq_map,
+                zscore_col=zscore_col, diseq_window=diseq_w,
+            )
+            n_upd = update_rolling_composites(
+                conn, roll_snaps,
+                force_suffix=force_sfx,
+                diseq_suffix=diseq_sfx,
+            )
+            print(f"  [{force_sfx} force / {diseq_sfx} diseq] Updated {n_upd} composite rows")
+    except Exception as exc:
+        logger.exception("[ERROR] Rolling composites pass: %s", exc)
         results["error"] += 1
 
     # ── Pass 6: Long-Term Debt Stress Indicator ────────────────────────────

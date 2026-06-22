@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from indicators.models import CountryBinding, Signal
-from indicators.transform import compute_momentum
+from indicators.transform import compute_momentum, months_to_periods
 
 _LOW_HISTORY_THRESHOLD = 15  # fewer obs → set low_history=True
 
@@ -30,7 +30,22 @@ _STALE_THRESHOLDS: dict[str, timedelta] = {
 
 _DIRECTION_THRESHOLD = 1e-9       # fallback when series_std is unavailable
 _DIRECTION_STD_FRACTION = 0.10    # C1: change must exceed 10% of 1σ to be directional
-_WINSORISE_SIGMA = 4.0            # C1: clip outliers beyond ±4σ before Z-scoring
+ZSCORE_CAP_SIGMA = 4.0             # C1: clip outliers beyond ±4σ before Z-scoring
+
+
+def zscore_rolling(series: pd.Series, window: int) -> pd.Series:
+    """Rolling Z-score over the given window, capped at ±4σ (C1).
+
+    Used when the force Z-score look-back is set to a finite window in settings.
+    min_periods = window // 2 so values are returned before the window fully fills.
+    """
+    s = series.copy()
+    half = max(1, window // 2)
+    roll_mean = s.rolling(window, min_periods=half).mean()
+    roll_std  = s.rolling(window, min_periods=half).std(ddof=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = (s - roll_mean) / roll_std
+    return z.clip(lower=-ZSCORE_CAP_SIGMA, upper=ZSCORE_CAP_SIGMA)
 
 
 def _zscore_series(s: pd.Series) -> pd.Series:
@@ -43,7 +58,7 @@ def _zscore_series(s: pd.Series) -> pd.Series:
     if std == 0 or np.isnan(std):
         return pd.Series(0.0, index=s.index)
     z = (s - mu) / std
-    return z.clip(lower=-_WINSORISE_SIGMA, upper=_WINSORISE_SIGMA)
+    return z.clip(lower=-ZSCORE_CAP_SIGMA, upper=ZSCORE_CAP_SIGMA)
 
 
 def _percentile_series(s: pd.Series) -> pd.Series:
@@ -106,6 +121,13 @@ def build_signals(
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
     series_std = float(clean.std(ddof=1)) if n > 1 else None
 
+    # Pre-compute rolling Z-scores for all configurable look-back windows
+    _ROLLING_MONTHS = [12, 18, 24, 36, 48, 60]
+    rolling_zs: dict[str, pd.Series] = {
+        f"zscore_{m}m": zscore_rolling(clean, months_to_periods(m, binding.frequency))
+        for m in _ROLLING_MONTHS
+    }
+
     # D1: percentile-rank change_3m within its own valid history
     c3m_pcts = pd.Series(np.nan, index=c3m.index)
     _c3m_valid = c3m.dropna()
@@ -158,6 +180,12 @@ def build_signals(
                 direction=_direction(c3m_float, series_std),
                 equilibrium_estimate=binding.equilibrium,
                 distance_from_equilibrium=dist,
+                zscore_12m=_f(rolling_zs["zscore_12m"].iloc[i]),
+                zscore_18m=_f(rolling_zs["zscore_18m"].iloc[i]),
+                zscore_24m=_f(rolling_zs["zscore_24m"].iloc[i]),
+                zscore_36m=_f(rolling_zs["zscore_36m"].iloc[i]),
+                zscore_48m=_f(rolling_zs["zscore_48m"].iloc[i]),
+                zscore_60m=_f(rolling_zs["zscore_60m"].iloc[i]),
                 is_proxy=binding.is_proxy,
                 is_constructed=binding.is_constructed,
                 is_stale=_is_stale(obs, binding.frequency, is_latest),

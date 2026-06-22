@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS signals (
     equilibrium_estimate       DOUBLE,
     distance_from_equilibrium  DOUBLE,
     surprise        DOUBLE,
+    zscore_12m      DOUBLE,
+    zscore_18m      DOUBLE,
+    zscore_24m      DOUBLE,
+    zscore_36m      DOUBLE,
+    zscore_48m      DOUBLE,
+    zscore_60m      DOUBLE,
     is_constructed  BOOLEAN   DEFAULT FALSE,
     is_proxy        BOOLEAN   DEFAULT FALSE,
     is_stale        BOOLEAN   DEFAULT FALSE,
@@ -49,7 +55,9 @@ _SIGNAL_COLUMNS = [
     "id", "country", "force", "lead_lag", "as_of", "value", "units",
     "level_percentile", "zscore", "change_1m", "change_3m", "change_12m",
     "momentum_percentile", "direction", "equilibrium_estimate", "distance_from_equilibrium",
-    "surprise", "is_constructed", "is_proxy", "is_stale", "low_history",
+    "surprise",
+    "zscore_12m", "zscore_18m", "zscore_24m", "zscore_36m", "zscore_48m", "zscore_60m",
+    "is_constructed", "is_proxy", "is_stale", "low_history",
     "provider", "source_tier", "vintage_available", "linkage", "source",
     "ingested_at",
 ]
@@ -89,6 +97,14 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         "ALTER TABLE signals ADD COLUMN IF NOT EXISTS momentum_percentile DOUBLE"
     )
+    for _col in ("zscore_12m", "zscore_18m", "zscore_24m", "zscore_36m", "zscore_48m", "zscore_60m"):
+        conn.execute(f"ALTER TABLE signals ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
+    for _col in (
+        "growth_score_36m", "growth_score_48m", "growth_score_60m",
+        "inflation_score_36m", "inflation_score_48m", "inflation_score_60m",
+        "disequilibrium_12m", "disequilibrium_18m", "disequilibrium_24m",
+    ):
+        conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -170,6 +186,15 @@ CREATE TABLE IF NOT EXISTS composites (
     growth_momentum      DOUBLE,
     inflation_momentum   DOUBLE,
     weight_audit         VARCHAR   DEFAULT '',
+    growth_score_36m     DOUBLE,
+    growth_score_48m     DOUBLE,
+    growth_score_60m     DOUBLE,
+    inflation_score_36m  DOUBLE,
+    inflation_score_48m  DOUBLE,
+    inflation_score_60m  DOUBLE,
+    disequilibrium_12m   DOUBLE,
+    disequilibrium_18m   DOUBLE,
+    disequilibrium_24m   DOUBLE,
     created_at           TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -181,6 +206,12 @@ _COMPOSITE_COLUMNS = [
     "n_inflation_signals", "n_forces", "low_coverage", "stale_signals",
     "growth_momentum", "inflation_momentum", "weight_audit",
     "created_at",
+]
+# Rolling composite columns are written by update_rolling_composites() after the baseline insert.
+_ROLLING_COMPOSITE_SUFFIXES = [
+    ("36m", "12m"),
+    ("48m", "18m"),
+    ("60m", "24m"),
 ]
 
 
@@ -228,6 +259,61 @@ def upsert_composites(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
         raise
     finally:
         conn.unregister("_composite_staging")
+
+    return len(df)
+
+
+def update_rolling_composites(
+    conn: duckdb.DuckDBPyConnection,
+    snapshots: list,
+    force_suffix: str,
+    diseq_suffix: str,
+) -> int:
+    """
+    Batch-update rolling composite columns on existing rows.
+
+    snapshots: list of CompositeSnapshot produced by compute_composite_history()
+               with a non-default zscore_col / diseq_window.
+    force_suffix: e.g. "36m" → writes growth_score_36m, inflation_score_36m
+    diseq_suffix:  e.g. "12m" → writes disequilibrium_12m
+    """
+    if not snapshots:
+        return 0
+
+    rows = [
+        {
+            "country": s.country,
+            "as_of": s.as_of.isoformat(),
+            f"growth_score_{force_suffix}": s.growth_score,
+            f"inflation_score_{force_suffix}": s.inflation_score,
+            f"disequilibrium_{diseq_suffix}": s.disequilibrium_score,
+        }
+        for s in snapshots
+        if s.as_of <= date.today()
+    ]
+    if not rows:
+        return 0
+
+    df = pd.DataFrame(rows)
+    conn.register("_rolling_staging", df)
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute(f"""
+            UPDATE composites
+            SET
+                growth_score_{force_suffix}    = s.growth_score_{force_suffix},
+                inflation_score_{force_suffix} = s.inflation_score_{force_suffix},
+                disequilibrium_{diseq_suffix}  = s.disequilibrium_{diseq_suffix}
+            FROM _rolling_staging AS s
+            WHERE composites.country = s.country
+              AND DATE_TRUNC('month', composites.as_of) = DATE_TRUNC('month', s.as_of::DATE)
+        """)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.unregister("_rolling_staging")
 
     return len(df)
 

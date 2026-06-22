@@ -102,6 +102,37 @@ def test_charting_app_catalog_loaded():
     assert len(_BY_ID) == len(_CATALOG)
 
 
+def test_formula_catalog_uses_live_composite_config():
+    from indicators.composites import build_formula_catalog, load_composites_config
+
+    config = load_composites_config()
+    catalog = build_formula_catalog(config)
+    by_title = {item["title"]: item for item in catalog}
+    alpha = config["dynamic_weighting"]["momentum_alpha"]
+    half_life = config["time_decay"]["half_life_months"]
+
+    assert f"α = {alpha:g}" in by_title["Force/momentum weight tilt"]["parameters"]
+    assert f"h = {half_life:g} months" in by_title["Observation-age decay"]["parameters"]
+    assert "compute_composite_history" in by_title["Regime confidence"]["source"]
+
+
+def test_formula_page_is_routed_and_contains_requested_formulas():
+    from dashboard.charting import _PAGE_MAP, route_page
+
+    assert "/formulas" in _PAGE_MAP
+    layout, trigger = route_page("/formulas")
+    rendered = str(layout.to_plotly_json())
+    for title in (
+        "Effective weight and force score",
+        "Force momentum breadth",
+        "Regime confidence",
+        "Structural disequilibrium",
+        "Observation-age decay",
+    ):
+        assert title in rendered
+    assert trigger == {"page": "/formulas"}
+
+
 def test_charting_groups_match_catalog():
     from dashboard.charting import _CATALOG, _GROUPS
     # Every catalog entry appears in exactly one group

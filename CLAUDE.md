@@ -84,30 +84,32 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-21:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **347 tests pass.** Growth/Inflation forces use configurable importance, quality, momentum-agreement, and time-decay weights with point-in-time audits.
+**As of 2026-06-22:** Phases 1A + 1B + 1C + 1D + 1E + 1F + 1G + 1H complete and verified. **349 tests pass.** Rolling Z-score pipeline complete; sidebar window sliders with localStorage persistence; Dash 4.x Radix UI slider CSS.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
 | 1A-i FRED lenses A–E + Master | ✅ **Done** | 37/37 signals live in DuckDB, 51 tests pass |
 | 1A-ii World Bank lenses F/G/H/demo | ✅ **Done** | 50/50 signals live, 60 tests pass; WGI API unavailable — slots deferred |
 | 1A-iii IMF/OECD fiscal lenses | ✅ **Done** | 59/59 signals live, 91 tests pass; deferred climate/governance slots present |
-| 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium |
-| 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel; 225 tests pass |
-| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; left-sidebar nav (Data / Indicators groups); Chart Overlay, Yield Curve, Regime Map, Regime History, Debt Stress, Data Explorer |
+| 1B Composites engine | ✅ **Done** | 558 monthly snapshots; Growth/Inflation scores, Regime Quadrant, Confidence, Disequilibrium; + 9 rolling composite columns (36m/48m/60m force, 12m/18m/24m diseq) |
+| 1C Streamlit dashboard | ✅ **Done** | HUD (+ Debt Stress gauge), 4-quadrant scatter + 12-month trail, accordions A–I, badges, sparklines, conflict panel |
+| 1D Dash charting view | ✅ **Done** | Plotly Dash on :8502; left-sidebar nav + window sliders (localStorage-persisted) + country selector |
 | 1E Data Explorer | ✅ **Done** | Signal browser, time series + Z-score chart, observations table, gap detection, raw vs processed compare, spot-check |
 | 1F Long-Term Debt Stress | ✅ **Done** | 7-component Z-score composite; point-in-time exponential staleness decay; `debt_stress_snapshots` table; pipeline Pass 6; HUD gauge + Dash tab |
-| 1G Methodology improvements | ✅ **Done** | Configurable force importance/quality weights, momentum-agreement tilt, 3-month half-life decay, point-in-time weight audit; C1, E1, H1/H2, L1–L4, D1, B1, A2/I2; 347 tests pass |
+| 1G Methodology improvements | ✅ **Done** | Configurable force importance/quality weights, momentum-agreement tilt, 3-month half-life decay, point-in-time weight audit; 349 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
-| 1I :8502 UI consolidation | 🔄 **In progress** | Left-sidebar nav done; Regime Map panels done; methodology guide + remaining :8501 content pending |
+| 1I :8502 UI consolidation | 🔄 **In progress** | Sidebar sliders + rolling Z done; methodology guide + remaining :8501 content pending |
 | 2 Country rollout | ⬜ Queued | Eurozone first — unblocked |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Continue :8502 UI work per user direction. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
+**To start the next session:** Phase 2 Eurozone rollout. Also run `python3 -m indicators.pipeline --latest` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale signals).
 
-**:8502 Dash nav structure (as of 2026-06-21):**
-- Left sidebar: persistent vertical pill nav — Data group (Chart Overlay `/charts`, Data Explorer `/explorer`) + Indicators group (Yield Curve `/yield-curve`, Regime Map `/regime-map`, Regime History `/regime-history`, Debt Stress `/debt-stress`)
+**:8502 Dash nav structure (as of 2026-06-22):**
+- Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage
 - Regime Map page: scatter (55vh, data-driven zoom with 15% buffer) + What Changed + Conflicts + Signal Drill-Downs (10 lens accordions) + Data-Quality Log
 - Browser back/forward supported via `dcc.Location`; `page-trigger` store guarantees callback ordering
+- **Dash 4.x note**: Slider CSS uses `dash-slider-*` class names (Radix UI), NOT `rc-slider-*`
+- `_RQ_MAP` is module-level in `charting.py`; `zscore-window-store`/`diseq-window-store` use `storage_type="local"`
 
 ---
 

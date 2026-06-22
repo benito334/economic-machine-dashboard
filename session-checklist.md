@@ -23,22 +23,23 @@ Will clear 3 stale signals: current account, NIIP, debt service ratio.
 
 ---
 
-## Completed this session (2026-06-21)
-- :8502 Dash UI restructuring: left-sidebar nav, browser back button, page routing via `dcc.Location`
-- Regime Map scatter: data-driven auto-zoom with 15% buffer; ±100 quadrant backgrounds
-- Below-map panels ported from :8501: What Changed, Conflicts, Signal Drill-Downs (all 10 lenses), Data-Quality Log
-- Fixed chart height clipping (responsive=True + calc(100vh) CSS heights; removed hardcoded height= from figure layouts)
-- Fixed lens accordion: replaced dcc.Markdown HTML rendering with proper html.Table Dash components
-- Fixed `update_layout` duplicate `margin=` keyword argument error
+## Completed this session (2026-06-22)
+- Rolling Z-score pipeline: 6 rolling Z columns on signals, 9 rolling composite columns; Passes 5b-5d
+- Sidebar sliders for Z-Score and Disequilibrium windows; slider state persists via localStorage
+- Scatter map blank bug fixed (invalid f-string in hovertemplate)
+- Rolling confidence (quadrant-consistency % over 12m rolling scores) replaces baseline when window active
+- Dash 4.x slider CSS: all class names updated from rc-slider-* to dash-slider-* (Radix UI); tooltip hidden, vertical bar thumb, visible track on all palettes
+- Country selector in sidebar (Phase 2 hooks); Settings modal with Disequilibrium window radio
 
-## Up next (next session — continue :8502 UI)
+## Up next (next session)
 | Priority | Item |
 |---|---|
-| 1 | Continue :8502 UI work — further refinements per user direction |
-| 2 | Phase 2 — Eurozone rollout: `config/countries/eu_bindings.yaml`; verify all series IDs; `vintage_available: false` for all |
-| 3 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline --latest` |
+| 1 | Phase 2 — Eurozone rollout: `config/countries/eu_bindings.yaml`; verify all series IDs; `vintage_available: false` for all |
+| 2 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline --latest` clears 3 stale signals |
+| 3 | :8502 UI remaining polish per user direction |
 
 ## Notes for next session
-- :8501 (Streamlit) and :8502 (Dash) are still both running; user intends :8502 as the sole dashboard going forward
-- The `dashboard/app.py` (Streamlit) changes from Phase 1H are committed; :8501 remains functional as a reference
-- Methodology Guide expander and data footnotes from :8501 not yet ported to :8502
+- Dash 4.x uses Radix UI for Slider — class names are `dash-slider-*`, not `rc-slider-*`
+- `_RQ_MAP` is now module-level in `charting.py` (used by both scatter and regime-info callbacks)
+- `zscore-window-store` and `diseq-window-store` use `storage_type="local"` — survived across refreshes
+- :8501 (Streamlit) still running as reference; :8502 is the primary dashboard

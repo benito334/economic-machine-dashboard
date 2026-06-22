@@ -4,6 +4,88 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-22 — Sidebar slider polish + scatter map fix + rolling confidence
+
+**Done:**
+- **Scatter map blank bug fixed**: `update_scatter_chart` hovertemplate had invalid f-string `{sel_g:.2f if sel_g is not None else '—'}` (format spec can't contain conditional logic); pre-computed `_g_str`/`_i_str` strings before the f-string
+- **Sidebar Z-Score + Disequilibrium sliders**: added `dcc.Slider` widgets directly to `_left_nav()` for both windows; `step=None` snaps to pre-computed marks only; wired to existing `zscore-window-store` / `diseq-window-store` via `ctx.triggered_id` dispatch
+- **Slider persistence across refreshes**: changed both stores to `storage_type="local"` (browser localStorage); added `sync_zscore_slider` / `sync_diseq_slider` callbacks (`prevent_initial_call=False`) to restore slider positions from store on page load
+- **Rolling confidence**: when a Z-score window is active, confidence now shows quadrant-consistency % over the last 12 months of rolling g/i scores instead of baseline directional-agreement; updates visibly when slider moves; `_RQ_MAP` promoted to module level
+- **Slider visual polish** (Dash 4.x / Radix UI class names — NOT rc-slider):
+  - Tooltip hidden: `.dash-slider-tooltip { display: none }`
+  - Track background: `rgba(76,155,232,0.28)` — reads on Carbon/Slate/Dawn
+  - Filled range: `#4C9BE8` solid blue
+  - Thumb: 5×18px vertical pill (`dash-slider-thumb`); hover glow
+  - Mark text: `var(--font-color)` inline style in `marks` dict (overrides Radix default dark ink)
+- **Country selector**: `dbc.Select` in sidebar; US enabled, EZ/JP/GB disabled (Phase 2 hooks)
+- **Settings modal**: separate Disequilibrium window radio added alongside Force Z radio
+
+**Next:**
+- Phase 2 Eurozone rollout per user direction
+- BEA refresh after 2026-06-26: `python3 -m indicators.pipeline --latest`
+
+---
+
+## 2026-06-22 — Full pipeline rolling Z implementation + dashboard panels update
+
+**Done:**
+- **`indicators/transform.py`**: added `months_to_periods(months, frequency)` — converts month-count windows to native observation counts per frequency (M→months, Q→months÷3, A→months÷12, min 4)
+- **`indicators/models.py`**: added 6 rolling Z-score fields to `Signal`: `zscore_12m`, `zscore_18m`, `zscore_24m`, `zscore_36m`, `zscore_48m`, `zscore_60m`
+- **`indicators/normalize.py`**: `build_signals()` now pre-computes all 6 rolling Z-scores for each signal using `zscore_rolling()` and `months_to_periods()` with frequency-adjusted windows
+- **`store/store.py`**: added 6 rolling Z columns to signals table schema + 9 rolling composite columns (`growth_score_36m/48m/60m`, `inflation_score_36m/48m/60m`, `disequilibrium_12m/18m/24m`) to composites table; `init_schema()` migrations; `update_rolling_composites()` batch-UPDATE function
+- **`indicators/composites.py`**: `compute_composite_history()` gains `zscore_col` and `diseq_window` parameters; supports rolling Z for force scoring and rolling std for disequilibrium normalization
+- **`indicators/pipeline.py`**: added Passes 5b–5d — runs composites engine 3× more with (36m/12m), (48m/18m), (60m/24m) window pairs; stores results via `update_rolling_composites()`; 558 composite rows updated per pass
+- **`dashboard/charting_data.py`**: `load_composite_history()` now includes all 9 rolling columns in SELECT + accepts `country` parameter
+- **`dashboard/charting.py`**:
+  - Settings modal: removed 24mo force option (below guidance range), added **Disequilibrium Window** section (Full History / 24mo / 18mo★ / 12mo) with `diseq-window-radio` wired to `diseq-window-store`
+  - `app.layout`: added `diseq-window-store` and `country-store` dcc.Stores
+  - `_left_nav()`: added country dropdown (`dbc.Select`, id=`country-selector`) above nav groups; shows US (enabled), EZ/JP/GB (disabled, "soon")
+  - New callbacks: `update_diseq_window`, `update_country`
+  - `_FORCE_WINDOW_COL`/`_DISEQ_WINDOW_COL` maps for column routing
+  - `update_regime_info`: uses DB pre-computed rolling columns instead of on-the-fly computation; accepts `diseq-window-store`, `country-store` inputs
+  - `_regime_info_children()`: uses `rolling["diseq_score"]` when diseq window active
+  - `update_regime_chart`: uses `g_col`/`i_col`/`d_col` rolling columns for all 7 subplots (quadrant derived from rolling scores when window active)
+  - `update_scatter_chart`: uses rolling columns for context dots, trail, selected point; axis labels show window when active
+- **Pipeline re-run**: 558 baseline composites + 3×558 rolling variants stored; all signals refreshed with 6 rolling Z columns; 349 tests pass; `:8502` HTTP 200
+
+**Pipeline note:** 11 FRED series still returning API-key errors (breakeven, yields, spreads, crude oil) — these hit rate limits without cached parquets. Those are pre-existing; rolling Z for those series is NaN. The composite passes use zscore_36m/48m/60m from the cached signals that do have data.
+
+**Next:** Phase 2 Eurozone rollout; BEA refresh after 2026-06-26; further :8502 UI polish per user direction
+
+---
+
+## 2026-06-21 — Rolling Z-score window, Momentum Z, and Methodology page
+
+**Done:**
+- **`indicators/normalize.py`**: added `zscore_rolling(series, window)` — rolling mean/std Z-score capped at ±4σ with `min_periods = window // 2`
+- **`dashboard/charting_data.py`**: added `load_composite_signal_values(country)` — bulk-loads all growth + inflation composite signal transformed values from DuckDB for rolling Z computation
+- **`dashboard/charting.py`**:
+  - Imported `numpy`, `Path`, `load_composite_signal_values`, `dashboard.methodology`
+  - Added `_compute_rolling_history(country, window)` — recomputes full composite score history with rolling Z-scores; applies nominal weights from composites.yaml; aligns quarterly series to monthly index via ffill ≤ 95 days
+  - Added `_momentum_z_at(comp, idx, window=12)` — Z-score of the current MoM force-score change against the preceding 12 monthly changes
+  - **Settings modal** (`dbc.Modal`, id=`settings-modal`) with 5 window options: Full History / 60mo / 48mo (recommended) / 36mo / 24mo; wired to `zscore-window-store` dcc.Store
+  - **⚙ Settings** button added at the bottom of the left sidebar (`id="settings-btn"`)
+  - **`_page_methodology()`** + `/methodology` route added to `_PAGE_MAP`
+  - **📖 Methodology** nav link added to the Data section in the left sidebar
+  - `update_regime_info` callback: added `Input("zscore-window-store")` input; when window > 0, recomputes growth/inflation scores from rolling Z history, derives rolling quadrant label, and computes rolling MoM deltas; always computes Momentum Z from stored composite history
+  - `_regime_info_children()`: added `rolling` dict parameter; Force Z-Score group header shows "rolling Nmo" when window active; new **Momentum Z (12mo)** group shows Z-score of recent MoM changes; quadrant label derived from rolling scores when active
+- **`dashboard/methodology.py`** (new): comprehensive 12-section methodology page covering overview, data sources, signal transformation, force Z-score (both modes), momentum (both metrics), dynamic weighting, composite construction, regime classification, debt stress, data quality flags, country coverage, and deferred items
+- 349 tests pass; `:8502` rebuilt and returns HTTP 200; `/methodology` and settings modal confirmed in Dash layout JSON
+
+**Next:** Phase 2 Eurozone rollout; BEA refresh after 2026-06-26; further :8502 UI polish per user direction
+
+---
+
+## 2026-06-21 — Code-backed Formula Reference
+
+- Added a Formula Reference page at `/formulas` under the Dash Data navigation
+- The page renders live equations for component/force Z-scores, configured and effective weights, momentum tilt and breadth, confidence, structural disequilibrium, and observation-age decay
+- Formula cards read active values directly from the composite calculation modules and `config/composites.yaml`, including momentum alpha/bounds, neutral-Z threshold, decay half-life/hard drop, frequency carry caps, and coverage minimums
+- Each card identifies its authoritative calculation function so formulas and displayed settings remain traceable as the methodology evolves
+- Rebuilt :8502, verified `/formulas` in headless Chromium, and passed all 349 tests in Docker
+
+---
+
 ## 2026-06-21 — Dynamic Growth/Inflation force weighting
 
 - Replaced legacy fixed force weights with the documented `base_share × importance × quality_factor` model; all 17 importance defaults match `docs/feedback/force-momentum weighting guidance.md` and remain editable in `config/composites.yaml`

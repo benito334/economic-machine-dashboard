@@ -120,8 +120,8 @@ regime_confidence:
   min_signals_required: 4   # refuse to label quadrant if fewer than 4 signals available
 
 # Disequilibrium score: equal weight over |distance_from_equilibrium| Z-scores
-# across all five structural force lenses. Forces with no data contribute 0
-# but reduce the denominator; a low_coverage flag fires if < 3 of 5 lenses present.
+# across all available structural force lenses. Forces with no data are excluded
+# from the denominator; a low_coverage flag fires if fewer than 3 lenses are present.
 disequilibrium_score:
   forces:
     - debt_money:    [credit, policy]          # Lens C + D

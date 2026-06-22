@@ -95,6 +95,54 @@ hr {
     border-color: var(--border-color) !important;
 }
 
+/* Sidebar window sliders — Dash 4.x uses dash-slider-* (Radix UI), not rc-slider-* */
+.sidebar-slider {
+    padding: 0 4px !important;
+}
+/* Mark labels */
+.sidebar-slider .dash-slider-mark {
+    font-size: 0.62rem !important;
+    color: var(--font-color) !important;
+}
+/* Hide hover tooltip */
+.sidebar-slider .dash-slider-tooltip {
+    display: none !important;
+}
+/* Track background — semi-transparent accent, visible on every palette */
+.sidebar-slider .dash-slider-track {
+    background-color: rgba(76, 155, 232, 0.28) !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+/* Filled range — solid accent */
+.sidebar-slider .dash-slider-range {
+    background-color: #4C9BE8 !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+/* Thumb — narrow vertical bar instead of circle */
+.sidebar-slider .dash-slider-thumb {
+    width: 5px !important;
+    height: 18px !important;
+    border-radius: 3px !important;
+    background-color: #4C9BE8 !important;
+    border: none !important;
+    box-shadow: none !important;
+    cursor: ew-resize !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
+.sidebar-slider .dash-slider-thumb:hover,
+.sidebar-slider .dash-slider-thumb:focus {
+    background-color: #79bfff !important;
+    outline: none !important;
+    box-shadow: 0 0 0 5px rgba(76, 155, 232, 0.25) !important;
+}
+.sidebar-slider .dash-slider-thumb[data-state="active"] {
+    background-color: #79bfff !important;
+    box-shadow: 0 0 0 5px rgba(76, 155, 232, 0.35) !important;
+}
+
 /* DataTable filter/pagination inputs */
 .dash-table-container .dash-filter input,
 .dash-table-container .previous-page,

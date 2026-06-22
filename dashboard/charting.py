@@ -16,10 +16,12 @@ import datetime
 import json
 import os
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 import dash
 import dash_bootstrap_components as dbc
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from dash import Input, Output, State, callback, dash_table, dcc, html, no_update
@@ -31,6 +33,7 @@ from dashboard.charting_data import (
     load_change_feed,
     load_composite_component_status,
     load_composite_history,
+    load_composite_signal_values,
     load_debt_stress_component_dates,
     load_debt_stress_history,
     load_latest_signals,
@@ -40,6 +43,8 @@ from dashboard.charting_data import (
 )
 from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import explorer as _explorer
+from dashboard import formulas as _formulas
+from dashboard import methodology as _methodology
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -80,6 +85,138 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"rgba({r},{g},{b},{alpha:.2f})"
+
+
+# ── Rolling Z-score composite helpers ────────────────────────────────────────
+
+_COMPOSITES_CONFIG_PATH = Path(__file__).parent.parent / "config" / "composites.yaml"
+
+
+def _load_composites_config_cached() -> dict:
+    """Load composites.yaml once per process (config rarely changes)."""
+    import yaml
+    return yaml.safe_load(_COMPOSITES_CONFIG_PATH.read_text()) or {}
+
+
+def _compute_rolling_history(country: str, window: int) -> pd.DataFrame:
+    """
+    Recompute growth and inflation force scores across the full history using a
+    rolling Z-score window.  Returns DataFrame with columns:
+        as_of (datetime), rolling_growth, rolling_inflation.
+
+    Used when the Settings panel selects a finite look-back window.
+    Nominal weights from composites.yaml are applied; no momentum tilts
+    (those depend on Z-sign which would be circular at this layer).
+    """
+    from indicators.normalize import zscore_rolling, ZSCORE_CAP_SIGMA
+
+    cfg = _load_composites_config_cached()
+    values_df = load_composite_signal_values(country)
+    if values_df.empty:
+        return pd.DataFrame()
+
+    prefix = country.lower()
+
+    def _force_series(indicators: list) -> pd.Series:
+        weight_map: dict[str, float] = {}
+        invert_map: dict[str, bool] = {}
+        for ind in indicators:
+            sig_id = f"{prefix}.{ind['id']}"
+            w = (
+                float(ind.get("base_share", 1.0))
+                * float(ind.get("importance", 1.0))
+                * float(ind.get("quality_factor", 1.0))
+            )
+            weight_map[sig_id] = w
+            invert_map[sig_id] = bool(ind.get("invert", False))
+
+        total = sum(weight_map.values())
+        if total <= 0:
+            return pd.Series(dtype=float)
+        norm_w = {k: v / total for k, v in weight_map.items()}
+
+        # Build rolling Z per signal on its native date index
+        z_dict: dict[str, pd.Series] = {}
+        for sig_id, w in norm_w.items():
+            raw = (
+                values_df[values_df["id"] == sig_id]
+                .set_index("as_of")["value"]
+                .sort_index()
+                .dropna()
+            )
+            if raw.empty:
+                continue
+            z = zscore_rolling(raw, window)
+            if invert_map[sig_id]:
+                z = -z
+            z_dict[sig_id] = z
+
+        if not z_dict:
+            return pd.Series(dtype=float)
+
+        # Align to a monthly date range with ffill ≤ 95 days (covers one quarter)
+        min_dt = min(s.index.min() for s in z_dict.values())
+        max_dt = max(s.index.max() for s in z_dict.values())
+        monthly_idx = pd.date_range(min_dt, max_dt, freq="MS")
+
+        # Weighted numerator and denominator (re-normalise over available signals)
+        num = pd.Series(0.0, index=monthly_idx)
+        den = pd.Series(0.0, index=monthly_idx)
+        for sig_id, z_s in z_dict.items():
+            w = norm_w[sig_id]
+            z_aligned = z_s.reindex(monthly_idx, method="ffill",
+                                    tolerance=pd.Timedelta(days=95))
+            mask = z_aligned.notna()
+            num += z_aligned.fillna(0.0) * w
+            den += mask.astype(float) * w
+
+        score = (num / den.replace(0.0, float("nan"))).clip(
+            lower=-ZSCORE_CAP_SIGMA, upper=ZSCORE_CAP_SIGMA
+        )
+        return score
+
+    g = _force_series(cfg.get("growth_score", {}).get("indicators", []))
+    i_s = _force_series(cfg.get("inflation_score", {}).get("indicators", []))
+
+    if g.empty and i_s.empty:
+        return pd.DataFrame()
+
+    idx = g.index if not g.empty else i_s.index
+    return pd.DataFrame({
+        "as_of": idx,
+        "rolling_growth": g.reindex(idx).values,
+        "rolling_inflation": i_s.reindex(idx).values,
+    })
+
+
+def _momentum_z_at(comp: pd.DataFrame, idx: int, window: int = 12) -> tuple:
+    """
+    Return (g_mom_z, i_mom_z): Z-score of the current MoM force-score change
+    against the preceding `window` monthly changes.
+
+    comp must be sorted oldest-first (as returned by load_composite_history).
+    idx is the integer position of the selected snapshot.
+    """
+    if comp.empty or idx < 1:
+        return None, None
+
+    def _z(series: pd.Series) -> "float | None":
+        deltas = series.astype(float).diff()
+        if idx >= len(deltas):
+            return None
+        current = deltas.iloc[idx]
+        if pd.isna(current):
+            return None
+        start = max(1, idx - window + 1)
+        window_vals = deltas.iloc[start: idx + 1].dropna()
+        if len(window_vals) < 3:
+            return None
+        mu, sd = window_vals.mean(), window_vals.std(ddof=1)
+        if sd == 0 or pd.isna(sd):
+            return None
+        return float(np.clip((current - mu) / sd, -4.0, 4.0))
+
+    return _z(comp["growth_score"]), _z(comp["inflation_score"])
 
 
 # ── Regime Map panel helpers (What Changed / Conflicts / Lens Drill-Downs) ────
@@ -531,16 +668,34 @@ def _left_nav() -> html.Div:
         "padding": "14px 12px 4px 12px",
     })
     _sync = _sync_banner()  # returns html.Div or None
+    _country_options = [
+        {"label": "🇺🇸 United States", "value": "US"},
+        {"label": "🇪🇺 Eurozone  (soon)", "value": "EZ", "disabled": True},
+        {"label": "🇯🇵 Japan  (soon)",    "value": "JP", "disabled": True},
+        {"label": "🇬🇧 United Kingdom  (soon)", "value": "GB", "disabled": True},
+    ]
     return html.Div([
         html.Div("Indicators Machine", style={
             "fontSize": "0.85rem", "fontWeight": "700", "color": "var(--font-color)",
-            "padding": "14px 12px 10px 12px",
-            "borderBottom": "1px solid var(--border-color)",
+            "padding": "14px 12px 6px 12px",
         }),
+        # Country selector (Phase 2 multi-country)
+        dbc.Select(
+            id="country-selector",
+            options=_country_options,
+            value="US",
+            size="sm",
+            style={"fontSize": "0.78rem", "margin": "0 12px 10px 12px",
+                   "width": "calc(100% - 24px)", "backgroundColor": "var(--card-bg)",
+                   "color": "var(--font-color)", "borderColor": "var(--border-color)"},
+        ),
+        html.Div(style={"borderBottom": "1px solid var(--border-color)", "marginBottom": "2px"}),
         _label("Data"),
         dbc.Nav([
-            dbc.NavLink("📊 Chart Overlay", href="/charts",    active="exact", className="py-1 px-3 small"),
-            dbc.NavLink("🔬 Data Explorer", href="/explorer",  active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("📊 Chart Overlay",    href="/charts",      active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("🔬 Data Explorer",    href="/explorer",    active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("ƒ  Formula Reference", href="/formulas",    active="exact", className="py-1 px-3 small"),
+            dbc.NavLink("📖 Methodology",       href="/methodology", active="exact", className="py-1 px-3 small"),
         ], vertical=True, pills=True, className="mb-1"),
         _label("Indicators"),
         dbc.Nav([
@@ -550,9 +705,63 @@ def _left_nav() -> html.Div:
             dbc.NavLink("📉 Debt Stress",    href="/debt-stress",    active="exact", className="py-1 px-3 small"),
         ], vertical=True, pills=True, className="mb-2"),
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
+        # ── Window controls ─────────────────────────────────────────────────────
+        html.Div([
+            html.Div("Z-Score Window", style={
+                "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.08em",
+                "color": "var(--muted-color)", "fontWeight": "700",
+                "padding": "0 4px 4px 4px",
+            }),
+            dcc.Slider(
+                id="zscore-window-slider",
+                min=0, max=60, step=None,
+                marks={
+                    0:  {"label": "Full", "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                    36: {"label": "36m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                    48: {"label": "48m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                    60: {"label": "60m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                },
+                value=0,
+                tooltip={"always_visible": False, "style": {"display": "none"}},
+                className="sidebar-slider",
+            ),
+            html.Div("Disequilibrium Window", style={
+                "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.08em",
+                "color": "var(--muted-color)", "fontWeight": "700",
+                "padding": "10px 4px 4px 4px",
+            }),
+            dcc.Slider(
+                id="diseq-window-slider",
+                min=0, max=24, step=None,
+                marks={
+                    0:  {"label": "Full", "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                    12: {"label": "12m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                    18: {"label": "18m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                    24: {"label": "24m",  "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}},
+                },
+                value=0,
+                tooltip={"always_visible": False, "style": {"display": "none"}},
+                className="sidebar-slider",
+            ),
+        ], style={"padding": "0 8px 8px 8px"}),
+        html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
         html.Div(_theme_picker(), style={"padding": "0 8px"}),
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
         *([_sync] if _sync else []),
+        # Settings gear — pinned to bottom
+        html.Div(
+            dbc.Button(
+                "⚙  Settings",
+                id="settings-btn",
+                color="link",
+                size="sm",
+                style={
+                    "color": "var(--muted-color)", "fontSize": "0.75rem",
+                    "padding": "6px 12px", "width": "100%", "textAlign": "left",
+                },
+            ),
+            style={"marginTop": "auto"},
+        ),
     ], style={
         "width": "195px",
         "flexShrink": "0",
@@ -602,6 +811,14 @@ def _page_chart_overlay() -> html.Div:
 
 def _page_explorer() -> html.Div:
     return html.Div(_explorer.get_layout(), className="pe-2 pt-2", style={"maxWidth": "1600px", "margin": "0 auto"})
+
+
+def _page_formulas() -> html.Div:
+    return _formulas.get_layout()
+
+
+def _page_methodology() -> html.Div:
+    return _methodology.get_layout()
 
 
 def _page_yield_curve() -> html.Div:
@@ -872,22 +1089,99 @@ def _page_debt_stress() -> html.Div:
 
 # ── App layout ────────────────────────────────────────────────────────────────
 
+_SETTINGS_MODAL = dbc.Modal([
+    dbc.ModalHeader(dbc.ModalTitle("Settings", style={"fontSize": "1rem"})),
+    dbc.ModalBody([
+        # ── Force Z-Score window ──────────────────────────────────────────────
+        html.Label(
+            "Force Z-Score Look-back Window",
+            style={"fontWeight": "700", "fontSize": "0.88rem"},
+        ),
+        html.P(
+            "Controls how much history is used to define 'normal' for each force indicator.  "
+            "Full History anchors to the entire available record (default).  "
+            "Rolling windows make regime scores more responsive to structural shifts — "
+            "guidance recommends 36–60 months.",
+            style={"fontSize": "0.78rem", "color": "var(--muted-color)",
+                   "marginTop": "6px", "marginBottom": "12px"},
+        ),
+        dbc.RadioItems(
+            id="zscore-window-radio",
+            options=[
+                {"label": "Full History (default)",              "value": 0},
+                {"label": "60 months · 5 years",                 "value": 60},
+                {"label": "48 months · 4 years  ★ recommended",  "value": 48},
+                {"label": "36 months · 3 years",                 "value": 36},
+            ],
+            value=0,
+            className="mb-3",
+            inputStyle={"marginRight": "8px"},
+            labelStyle={"fontSize": "0.83rem"},
+        ),
+        html.Hr(style={"borderColor": "var(--border-color)"}),
+        # ── Disequilibrium window ─────────────────────────────────────────────
+        html.Label(
+            "Disequilibrium Look-back Window",
+            style={"fontWeight": "700", "fontSize": "0.88rem", "marginTop": "4px"},
+        ),
+        html.P(
+            "Disequilibrium measures how far structural forces are from equilibrium.  "
+            "A longer window smooths short-term noise; guidance recommends 12–24 months.  "
+            "Confidence is already short-window (uses 3-month direction flags; no setting needed).",
+            style={"fontSize": "0.78rem", "color": "var(--muted-color)",
+                   "marginTop": "6px", "marginBottom": "12px"},
+        ),
+        dbc.RadioItems(
+            id="diseq-window-radio",
+            options=[
+                {"label": "Full History (default)",              "value": 0},
+                {"label": "24 months · 2 years",                 "value": 24},
+                {"label": "18 months · 1.5 years  ★ recommended", "value": 18},
+                {"label": "12 months · 1 year",                  "value": 12},
+            ],
+            value=0,
+            className="mb-3",
+            inputStyle={"marginRight": "8px"},
+            labelStyle={"fontSize": "0.83rem"},
+        ),
+        html.Hr(style={"borderColor": "var(--border-color)"}),
+        html.P(
+            "When a rolling window is active, regime panels read pre-computed DB columns — "
+            "no additional computation at render time.  Re-run the pipeline to refresh.",
+            style={"fontSize": "0.73rem", "color": "var(--muted-color)"},
+        ),
+    ]),
+    dbc.ModalFooter(
+        dbc.Button("Close", id="settings-close-btn", color="secondary",
+                   size="sm", n_clicks=0, className="ms-auto"),
+    ),
+], id="settings-modal", is_open=False, size="md")
+
+
 app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     # Top-level stores — persist across page navigations
-    dcc.Store(id="selected-series",   data=[]),
-    dcc.Store(id="date-range",        data={"start": None, "end": None}),
-    dcc.Store(id="theme-store",       data=DEFAULT_THEME),
-    dcc.Store(id="regime-step-index", data=0),
+    dcc.Store(id="selected-series",      data=[]),
+    dcc.Store(id="date-range",           data={"start": None, "end": None}),
+    dcc.Store(id="theme-store",          data=DEFAULT_THEME),
+    dcc.Store(id="regime-step-index",    data=0),
     # Fired by routing callback so page callbacks wait until components exist in DOM
-    dcc.Store(id="page-trigger",      data={"page": "/charts"}),
+    dcc.Store(id="page-trigger",         data={"page": "/charts"}),
     # Keyboard navigation: interval polls the delta set by the key listener
-    dcc.Store(id="nav-event",         data=None),
-    dcc.Interval(id="key-interval",   interval=80, disabled=True, n_intervals=0),
-    dcc.Store(id="hover-sync-init",   data=None),
-    dcc.Store(id="regime-components-open", data=False),
-    dcc.Store(id="regime-components-toggle-init", data=None),
-    html.Div(id="theme-dummy",        style={"display": "none"}),
+    dcc.Store(id="nav-event",            data=None),
+    dcc.Interval(id="key-interval",      interval=80, disabled=True, n_intervals=0),
+    dcc.Store(id="hover-sync-init",      data=None),
+    dcc.Store(id="regime-components-open",          data=False),
+    dcc.Store(id="regime-components-toggle-init",   data=None),
+    # Settings: force Z-score rolling window (0 = full history)
+    dcc.Store(id="zscore-window-store",  data=0, storage_type="local"),
+    # Settings: disequilibrium rolling window (0 = full history)
+    dcc.Store(id="diseq-window-store",   data=0, storage_type="local"),
+    # Active country (Phase 2 multi-country support)
+    dcc.Store(id="country-store",        data="US"),
+    html.Div(id="theme-dummy",           style={"display": "none"}),
+
+    _SETTINGS_MODAL,
 
     html.Div([
         _left_nav(),
@@ -903,6 +1197,72 @@ app.layout = html.Div([
 )
 def update_theme_store(theme_name: str) -> str:
     return theme_name or DEFAULT_THEME
+
+
+# ── Settings modal callbacks ──────────────────────────────────────────────────
+
+@callback(
+    Output("settings-modal", "is_open"),
+    [Input("settings-btn",       "n_clicks"),
+     Input("settings-close-btn", "n_clicks")],
+    State("settings-modal", "is_open"),
+    prevent_initial_call=True,
+)
+def toggle_settings_modal(n_open: int, n_close: int, is_open: bool) -> bool:
+    return not is_open
+
+
+@callback(
+    Output("zscore-window-store", "data"),
+    Input("zscore-window-slider", "value"),
+    Input("zscore-window-radio",  "value"),
+    prevent_initial_call=True,
+)
+def update_zscore_window(slider_val: int, radio_val: int) -> int:
+    from dash import ctx
+    if ctx.triggered_id == "zscore-window-slider":
+        return int(slider_val) if slider_val is not None else 0
+    return int(radio_val) if radio_val else 0
+
+
+@callback(
+    Output("diseq-window-store", "data"),
+    Input("diseq-window-slider", "value"),
+    Input("diseq-window-radio",  "value"),
+    prevent_initial_call=True,
+)
+def update_diseq_window(slider_val: int, radio_val: int) -> int:
+    from dash import ctx
+    if ctx.triggered_id == "diseq-window-slider":
+        return int(slider_val) if slider_val is not None else 0
+    return int(radio_val) if radio_val else 0
+
+
+@callback(
+    Output("zscore-window-slider", "value"),
+    Input("zscore-window-store", "data"),
+    prevent_initial_call=False,
+)
+def sync_zscore_slider(stored: int) -> int:
+    return int(stored) if stored is not None else 0
+
+
+@callback(
+    Output("diseq-window-slider", "value"),
+    Input("diseq-window-store", "data"),
+    prevent_initial_call=False,
+)
+def sync_diseq_slider(stored: int) -> int:
+    return int(stored) if stored is not None else 0
+
+
+@callback(
+    Output("country-store", "data"),
+    Input("country-selector", "value"),
+    prevent_initial_call=True,
+)
+def update_country(value: str) -> str:
+    return str(value) if value else "US"
 
 
 # ── Keyboard navigation (arrow keys on Regime History page) ──────────────────
@@ -1054,6 +1414,8 @@ _PAGE_MAP = {
     "/":              _page_chart_overlay,
     "/charts":        _page_chart_overlay,
     "/explorer":      _page_explorer,
+    "/formulas":      _page_formulas,
+    "/methodology":   _page_methodology,
     "/yield-curve":   _page_yield_curve,
     "/regime-map":    _page_regime_map,
     "/regime-history":_page_regime_history,
@@ -1381,13 +1743,51 @@ def _regime_info_children(
     i_delta: "float | None" = None,
     components_open: bool = False,
     weight_audit: "dict | None" = None,
+    rolling: "dict | None" = None,
 ) -> list:
-    """Build the full-width regime info card: summary strip + component table."""
-    quadrant   = row.get("quadrant") or "—"
-    g_score    = row.get("growth_score")
-    i_score    = row.get("inflation_score")
-    confidence = row.get("confidence")
-    diseq      = row.get("disequilibrium_score")
+    """Build the full-width regime info card: summary strip + component table.
+
+    rolling (optional): {
+        "window": int,          # months in rolling window (0 = full history)
+        "g_score": float|None,  # rolling growth force score
+        "i_score": float|None,  # rolling inflation force score
+        "g_delta": float|None,  # rolling MoM delta (growth)
+        "i_delta": float|None,  # rolling MoM delta (inflation)
+        "g_mom_z": float|None,  # Z-score of MoM changes (growth)
+        "i_mom_z": float|None,  # Z-score of MoM changes (inflation)
+    }
+    """
+    rolling = rolling or {}
+    rw = int(rolling.get("window", 0))
+    use_rolling = rw > 0
+
+    # Use rolling scores if window is active, otherwise stored composite scores
+    g_score    = rolling.get("g_score") if use_rolling else row.get("growth_score")
+    i_score    = rolling.get("i_score") if use_rolling else row.get("inflation_score")
+
+    # Derive quadrant from rolling scores when active; fall back to stored label
+    _RQ = {
+        (True,  True):  "Inflationary Boom",
+        (True,  False): "Expansion",
+        (False, True):  "Stagflation",
+        (False, False): "Disinflationary Slowdown",
+    }
+    if use_rolling and g_score is not None and i_score is not None:
+        try:
+            quadrant = _RQ[(float(g_score) >= 0, float(i_score) >= 0)]
+        except Exception:
+            quadrant = row.get("quadrant") or "—"
+    else:
+        quadrant = row.get("quadrant") or "—"
+
+    confidence = rolling.get("confidence", row.get("confidence"))
+    # Use rolling disequilibrium score when a diseq window is active
+    use_rolling_diseq = rolling.get("diseq_window", 0) > 0
+    diseq = (
+        rolling.get("diseq_score", row.get("disequilibrium_score"))
+        if use_rolling_diseq
+        else row.get("disequilibrium_score")
+    )
     n_g        = int(row.get("n_growth_signals", 0) or 0)
     n_i        = int(row.get("n_inflation_signals", 0) or 0)
     q_color    = _QUADRANT_COLOR.get(quadrant, "#888")
@@ -1482,15 +1882,28 @@ def _regime_info_children(
                       "display": "flex", "flexDirection": "column", "justifyContent": "flex-start"}),
 
             # ── Force Z-Scores ─────────────────────────────────────────────────
-            _group("Force Z-Scores", [
-                _val_block("Growth",   g_score, _GROWTH_COLOR,    f"{n_g}/9 signals"),
-                _val_block("Inflation",i_score, _INFLATION_COLOR, f"{n_i}/8 signals"),
-            ]),
+            _group(
+                f"Force Z-Scores{'  ·  rolling ' + str(rw) + 'mo' if use_rolling else ''}",
+                [
+                    _val_block("Growth",    g_score, _GROWTH_COLOR,    f"{n_g}/9 signals"),
+                    _val_block("Inflation", i_score, _INFLATION_COLOR, f"{n_i}/8 signals"),
+                ],
+            ),
 
             # ── Momentum (MoM Δ in force score) ───────────────────────────────
             _group("Momentum  (Δ MoM)", [
-                _val_block("Growth",   g_delta, _GROWTH_COLOR),
-                _val_block("Inflation",i_delta, _INFLATION_COLOR),
+                _val_block("Growth",    rolling.get("g_delta", g_delta) if use_rolling else g_delta,
+                           _GROWTH_COLOR),
+                _val_block("Inflation", rolling.get("i_delta", i_delta) if use_rolling else i_delta,
+                           _INFLATION_COLOR),
+            ]),
+
+            # ── Momentum Z (Z-score of recent MoM changes) ────────────────────
+            _group("Momentum Z  (12mo)", [
+                _val_block("Growth",    rolling.get("g_mom_z"), _GROWTH_COLOR,
+                           "Z of Δ MoM"),
+                _val_block("Inflation", rolling.get("i_mom_z"), _INFLATION_COLOR,
+                           "Z of Δ MoM"),
             ]),
 
             # ── Confidence + Disequilibrium ────────────────────────────────────
@@ -1883,25 +2296,47 @@ def select_regime_point(click_data: dict, date_range: dict, current_step: int) -
     return new_step if new_step != (current_step or 0) else no_update
 
 
+# Maps user-facing window month value → composites DB column suffix
+_FORCE_WINDOW_COL = {36: "36m", 48: "48m", 60: "60m"}
+_DISEQ_WINDOW_COL = {12: "12m", 18: "18m", 24: "24m"}
+
+# Quadrant classification from (growth_positive, inflation_positive) booleans
+_RQ_MAP = {
+    (True,  True):  "Inflationary Boom",
+    (True,  False): "Expansion",
+    (False, True):  "Stagflation",
+    (False, False): "Disinflationary Slowdown",
+}
+
+
 @callback(
     [Output("regime-info-box", "children"),
      Output("regime-date-display", "children")],
-    [Input("regime-step-index", "data"),
-     Input("date-range", "data"),
-     Input("page-trigger", "data")],
+    [Input("regime-step-index",  "data"),
+     Input("date-range",         "data"),
+     Input("zscore-window-store","data"),
+     Input("diseq-window-store", "data"),
+     Input("country-store",      "data"),
+     Input("page-trigger",       "data")],
     State("regime-components-open", "data"),
     prevent_initial_call=False,
 )
 def update_regime_info(
     step: int,
     date_range: dict,
+    zscore_window: int = 0,
+    diseq_window: int = 0,
+    country: str = "US",
     _trigger: Any = None,
     components_open: bool = False,
 ) -> tuple:
     step = step or 0
+    zscore_window = int(zscore_window or 0)
+    diseq_window = int(diseq_window or 0)
+    country = str(country or "US")
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
-    comp = load_composite_history(start_date=start, end_date=end)
+    comp = load_composite_history(start_date=start, end_date=end, country=country)
 
     if comp.empty:
         return [], "No data"
@@ -1909,16 +2344,19 @@ def update_regime_info(
     n = len(comp)
     idx = max(0, min(n - 1 - step, n - 1))
     selected = comp.iloc[idx].to_dict()
-    all_comp = load_composite_history()
+    all_comp = load_composite_history(country=country)
     is_current = (
         not all_comp.empty
         and pd.Timestamp(selected["as_of"]) == pd.Timestamp(all_comp.iloc[-1]["as_of"])
     )
 
     date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
-    date_display = f"{date_str} · current" if is_current else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
+    date_display = (
+        f"{date_str} · current" if is_current
+        else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
+    )
 
-    # Momentum = MoM change in force score (same definition as Streamlit HUD)
+    # ── Stored MoM delta (always computed from stored composite scores) ────────
     g_delta = i_delta = None
     if idx > 0:
         prev = comp.iloc[idx - 1]
@@ -1929,8 +2367,61 @@ def update_regime_info(
         if ins is not None and pins is not None and not pd.isna(ins) and not pd.isna(pins):
             i_delta = float(ins) - float(pins)
 
+    # ── Momentum Z — Z-score of recent MoM changes (always from stored scores) ─
+    g_mom_z, i_mom_z = _momentum_z_at(comp, idx, window=12)
+
+    # ── Rolling force scores (from pre-computed DB columns) ────────────────────
+    rolling: dict = {
+        "window": zscore_window,
+        "diseq_window": diseq_window,
+        "g_mom_z": g_mom_z,
+        "i_mom_z": i_mom_z,
+    }
+
+    force_sfx = _FORCE_WINDOW_COL.get(zscore_window)
+    if force_sfx:
+        rg_col, ri_col = f"growth_score_{force_sfx}", f"inflation_score_{force_sfx}"
+        rg = selected.get(rg_col)
+        ri = selected.get(ri_col)
+        rolling["g_score"] = float(rg) if rg is not None and not pd.isna(rg) else None
+        rolling["i_score"] = float(ri) if ri is not None and not pd.isna(ri) else None
+        if idx > 0:
+            prev = comp.iloc[idx - 1]
+            prev_rg = prev.get(rg_col)
+            prev_ri = prev.get(ri_col)
+            if rolling["g_score"] is not None and prev_rg is not None and not pd.isna(prev_rg):
+                rolling["g_delta"] = rolling["g_score"] - float(prev_rg)
+            if rolling["i_score"] is not None and prev_ri is not None and not pd.isna(prev_ri):
+                rolling["i_delta"] = rolling["i_score"] - float(prev_ri)
+
+    # ── Rolling disequilibrium (from pre-computed DB columns) ─────────────────
+    diseq_sfx = _DISEQ_WINDOW_COL.get(diseq_window)
+    if diseq_sfx:
+        rd = selected.get(f"disequilibrium_{diseq_sfx}")
+        rolling["diseq_score"] = float(rd) if rd is not None and not pd.isna(rd) else None
+
+    # ── Rolling confidence: quadrant consistency over last 12 months ───────────
+    # When a Z-score window is active, replace baseline confidence with the
+    # fraction of the last 12 months in which rolling g/i scores landed in the
+    # same quadrant as the current period.  This ensures confidence updates
+    # visibly when the slider changes.
+    if force_sfx and rolling.get("g_score") is not None and rolling.get("i_score") is not None:
+        rg_col_c = f"growth_score_{force_sfx}"
+        ri_col_c = f"inflation_score_{force_sfx}"
+        look = min(idx + 1, 12)
+        win_df = comp.iloc[max(0, idx - look + 1): idx + 1]
+        rg_s = win_df[rg_col_c].dropna()
+        ri_s = win_df[ri_col_c].dropna()
+        if len(rg_s) >= 2 and len(ri_s) >= 2:
+            cur_q = _RQ_MAP[(rolling["g_score"] >= 0, rolling["i_score"] >= 0)]
+            same_q = [
+                _RQ_MAP.get((g >= 0, i >= 0)) == cur_q
+                for g, i in zip(rg_s.values, ri_s.values)
+            ]
+            rolling["confidence"] = sum(same_q) / len(same_q)
+
     comp_df = load_composite_component_status(
-        country="US", as_of=str(selected["as_of"])
+        country=country, as_of=str(selected["as_of"])
     )
     stale_dict = _parse_stress_components(selected.get("stale_signals") or "")
     try:
@@ -1947,6 +2438,7 @@ def update_regime_info(
             i_delta,
             components_open,
             weight_audit,
+            rolling,
         ),
         date_display,
     )
@@ -1957,6 +2449,9 @@ def update_regime_info(
     [Input("date-range", "data"),
      Input("theme-store", "data"),
      Input("regime-step-index", "data"),
+     Input("zscore-window-store", "data"),
+     Input("diseq-window-store",  "data"),
+     Input("country-store",       "data"),
      Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
@@ -1964,16 +2459,49 @@ def update_regime_chart(
     date_range: dict,
     theme_name: str = DEFAULT_THEME,
     step: int = 0,
+    zscore_window: int = 0,
+    diseq_window: int = 0,
+    country: str = "US",
     _trigger: Any = None,
 ) -> go.Figure:
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
+    zscore_window = int(zscore_window or 0)
+    diseq_window = int(diseq_window or 0)
+    country = str(country or "US")
 
-    comp = load_composite_history(start_date=start, end_date=end)
+    comp = load_composite_history(start_date=start, end_date=end, country=country)
     if comp.empty:
         fig = go.Figure()
         fig.update_layout(**figure_layout(theme_name, "No composite data"))
         return fig
+
+    # Resolve which columns to use based on rolling window settings
+    force_sfx = _FORCE_WINDOW_COL.get(zscore_window)
+    diseq_sfx = _DISEQ_WINDOW_COL.get(diseq_window)
+    g_col = f"growth_score_{force_sfx}" if force_sfx and f"growth_score_{force_sfx}" in comp.columns else "growth_score"
+    i_col = f"inflation_score_{force_sfx}" if force_sfx and f"inflation_score_{force_sfx}" in comp.columns else "inflation_score"
+    d_col = f"disequilibrium_{diseq_sfx}" if diseq_sfx and f"disequilibrium_{diseq_sfx}" in comp.columns else "disequilibrium_score"
+
+    # Derive quadrant from rolling scores when a force window is active
+    if force_sfx and g_col != "growth_score":
+        _RQ = {
+            (True,  True):  "Inflationary Boom",
+            (True,  False): "Expansion",
+            (False, True):  "Stagflation",
+            (False, False): "Disinflationary Slowdown",
+        }
+        def _roll_quadrant(row):
+            g, i = row[g_col], row[i_col]
+            if pd.isna(g) or pd.isna(i):
+                return row.get("quadrant")
+            return _RQ[(float(g) >= 0, float(i) >= 0)]
+        quadrant_series = comp.apply(_roll_quadrant, axis=1)
+    else:
+        quadrant_series = comp["quadrant"]
+
+    win_label = f" · rolling {zscore_window}mo" if force_sfx else ""
+    diseq_label = f" · rolling {diseq_window}mo" if diseq_sfx else ""
 
     fig = make_subplots(
         rows=7, cols=1,
@@ -1982,12 +2510,12 @@ def update_regime_chart(
         row_heights=[0.16, 0.18, 0.10, 0.18, 0.10, 0.14, 0.14],
         subplot_titles=[
             "Regime Quadrant",
-            "Growth Force Z-Score (composite)",
+            f"Growth Force Z-Score (composite{win_label})",
             "Growth Momentum (fraction of signals growth-positive)",
-            "Inflation Force Z-Score (composite)",
+            f"Inflation Force Z-Score (composite{win_label})",
             "Inflation Momentum (fraction of signals inflation-positive)",
             "Confidence (direction-agreement across signals)",
-            "Disequilibrium Score (mean distance from equilibrium)",
+            f"Disequilibrium Score (mean distance from equilibrium{diseq_label})",
         ],
     )
 
@@ -1998,7 +2526,7 @@ def update_regime_chart(
         "Stagflation": 3,
         "Disinflationary Slowdown": 0,
     }
-    q_numeric = comp["quadrant"].map(quadrant_map).fillna(-1)
+    q_numeric = quadrant_series.map(quadrant_map).fillna(-1)
     fig.add_trace(
         go.Scatter(
             x=comp["as_of"],
@@ -2006,11 +2534,11 @@ def update_regime_chart(
             mode="markers",
             name="Quadrant",
             marker={
-                "color": [_QUADRANT_COLOR.get(q, "#888") for q in comp["quadrant"]],
+                "color": [_QUADRANT_COLOR.get(q, "#888") for q in quadrant_series],
                 "size": 5,
             },
             hovertemplate="%{x|%Y-%m-%d}<br>%{customdata}<extra></extra>",
-            customdata=comp["quadrant"],
+            customdata=quadrant_series,
             showlegend=False,
         ),
         row=1, col=1,
@@ -2021,10 +2549,10 @@ def update_regime_chart(
         row=1, col=1,
     )
 
-    # Row 2: Growth score
+    # Row 2: Growth score (rolling or full-history)
     fig.add_trace(
         go.Scatter(
-            x=comp["as_of"], y=comp["growth_score"],
+            x=comp["as_of"], y=comp[g_col],
             name="Growth Score",
             line={"color": _COLORS[0], "width": 1.5},
             hovertemplate="%{x|%Y-%m-%d}<br>Growth Force Z: %{y:.2f}<extra></extra>",
@@ -2054,7 +2582,7 @@ def update_regime_chart(
     # Row 4: Inflation score
     fig.add_trace(
         go.Scatter(
-            x=comp["as_of"], y=comp["inflation_score"],
+            x=comp["as_of"], y=comp[i_col],
             name="Inflation Score",
             line={"color": _INFLATION_COLOR, "width": 1.5},
             hovertemplate="%{x|%Y-%m-%d}<br>Inflation Force Z: %{y:.2f}<extra></extra>",
@@ -2097,11 +2625,11 @@ def update_regime_chart(
     fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=6, col=1)
     fig.update_yaxes(tickformat=".0%", range=[0, 1], row=6, col=1)
 
-    # Row 7: Disequilibrium
-    if "disequilibrium_score" in comp.columns:
+    # Row 7: Disequilibrium (rolling or full-history)
+    if d_col in comp.columns:
         fig.add_trace(
             go.Scatter(
-                x=comp["as_of"], y=comp["disequilibrium_score"],
+                x=comp["as_of"], y=comp[d_col],
                 name="Disequilibrium",
                 line={"color": _COLORS[1], "width": 1.5},
                 hovertemplate="%{x|%Y-%m-%d}<br>Disequilibrium: %{y:.3f}<extra></extra>",
@@ -2166,8 +2694,8 @@ def update_regime_chart(
             row=1, col=1,
         )
 
-    # Highlighted marker — growth score (row 2)
-    g_val = sel.get("growth_score")
+    # Highlighted marker — growth score (row 2, rolling-aware)
+    g_val = sel.get(g_col)
     if g_val is not None and not pd.isna(g_val):
         fig.add_trace(
             go.Scatter(
@@ -2194,8 +2722,8 @@ def update_regime_chart(
             row=3, col=1,
         )
 
-    # Highlighted marker — inflation score (row 4)
-    i_val = sel.get("inflation_score")
+    # Highlighted marker — inflation score (row 4, rolling-aware)
+    i_val = sel.get(i_col)
     if i_val is not None and not pd.isna(i_val):
         fig.add_trace(
             go.Scatter(
@@ -2236,8 +2764,8 @@ def update_regime_chart(
             row=6, col=1,
         )
 
-    # Highlighted marker — disequilibrium (row 7)
-    diseq_val = sel.get("disequilibrium_score")
+    # Highlighted marker — disequilibrium (row 7, rolling-aware)
+    diseq_val = sel.get(d_col)
     if diseq_val is not None and not pd.isna(diseq_val):
         fig.add_trace(
             go.Scatter(
@@ -2311,18 +2839,34 @@ def update_scatter_date(step: int, date_range: dict, _trigger: Any = None) -> st
     [Input("regime-step-index", "data"),
      Input("date-range", "data"),
      Input("theme-store", "data"),
+     Input("zscore-window-store", "data"),
+     Input("country-store",       "data"),
      Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
-def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger: Any = None) -> go.Figure:
+def update_scatter_chart(
+    step: int,
+    date_range: dict,
+    theme_name: str,
+    zscore_window: int = 0,
+    country: str = "US",
+    _trigger: Any = None,
+) -> go.Figure:
     step = step or 0
     theme_name = theme_name or DEFAULT_THEME
+    zscore_window = int(zscore_window or 0)
+    country = str(country or "US")
     t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
 
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
-    comp_filtered = load_composite_history(start_date=start, end_date=end)
-    comp_all = load_composite_history()
+    comp_filtered = load_composite_history(start_date=start, end_date=end, country=country)
+    comp_all = load_composite_history(country=country)
+
+    # Resolve rolling columns
+    force_sfx = _FORCE_WINDOW_COL.get(zscore_window)
+    g_col = f"growth_score_{force_sfx}" if force_sfx and f"growth_score_{force_sfx}" in comp_all.columns else "growth_score"
+    i_col = f"inflation_score_{force_sfx}" if force_sfx and f"inflation_score_{force_sfx}" in comp_all.columns else "inflation_score"
 
     fig = go.Figure()
 
@@ -2331,8 +2875,8 @@ def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger:
         return fig
 
     # ── Compute data-driven axis range with 15% buffer ───────────────────────
-    gx = comp_all["growth_score"].dropna()
-    iy = comp_all["inflation_score"].dropna()
+    gx = comp_all[g_col].dropna()
+    iy = comp_all[i_col].dropna()
     if not gx.empty and not iy.empty:
         gx_span = (gx.max() - gx.min()) or 1.0
         iy_span = (iy.max() - iy.min()) or 1.0
@@ -2374,15 +2918,24 @@ def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger:
     except StopIteration:
         sel_idx_all = len(comp_all) - 1
 
+    # ── Derive quadrant for rolling columns ───────────────────────────────────
+    def _quadrant_for(row):
+        g, i = row.get(g_col), row.get(i_col)
+        if g is None or i is None or pd.isna(g) or pd.isna(i):
+            return row.get("quadrant") or "—"
+        return _RQ_MAP[(float(g) >= 0, float(i) >= 0)]
+
+    eff_quadrant = comp_all.apply(_quadrant_for, axis=1)
+
     # ── All-history grey context dots ────────────────────────────────────────
     hist_dates = [str(d)[:7] for d in comp_all["as_of"]]
     fig.add_trace(go.Scatter(
-        x=comp_all["growth_score"],
-        y=comp_all["inflation_score"],
+        x=comp_all[g_col],
+        y=comp_all[i_col],
         mode="markers",
         name="History",
         marker=dict(size=4, color=t["muted_color"], opacity=0.25),
-        customdata=list(zip(hist_dates, comp_all["quadrant"])),
+        customdata=list(zip(hist_dates, eff_quadrant)),
         hovertemplate="%{customdata[0]}<br>Growth: %{x:.2f} · Inflation: %{y:.2f}<br>%{customdata[1]}<extra></extra>",
         showlegend=False,
     ))
@@ -2390,12 +2943,13 @@ def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger:
     # ── 12-month trail up to and including the selected point ────────────────
     trail_start = max(0, sel_idx_all - 11)
     trail = comp_all.iloc[trail_start: sel_idx_all + 1]
+    trail_q = eff_quadrant.iloc[trail_start: sel_idx_all + 1]
     n_trail = len(trail)
 
     if n_trail > 1:
         fig.add_trace(go.Scatter(
-            x=trail["growth_score"],
-            y=trail["inflation_score"],
+            x=trail[g_col],
+            y=trail[i_col],
             mode="lines",
             line=dict(color="rgba(255,255,255,0.30)", width=1.5),
             showlegend=False,
@@ -2404,35 +2958,37 @@ def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger:
 
     if n_trail > 0:
         trail_rgba = [
-            _hex_to_rgba(_QUADRANT_COLOR.get(row["quadrant"], "#888"),
+            _hex_to_rgba(_QUADRANT_COLOR.get(q, "#888"),
                          0.30 + (i + 1) / n_trail * 0.55)
-            for i, (_, row) in enumerate(trail.iterrows())
+            for i, q in enumerate(trail_q)
         ]
         trail_sizes = [5 + (i + 1) / n_trail * 5 for i in range(n_trail)]
         trail_dates = [str(d)[:7] for d in trail["as_of"]]
         fig.add_trace(go.Scatter(
-            x=trail["growth_score"],
-            y=trail["inflation_score"],
+            x=trail[g_col],
+            y=trail[i_col],
             mode="markers",
             marker=dict(size=trail_sizes, color=trail_rgba),
-            customdata=list(zip(trail_dates, trail["quadrant"])),
+            customdata=list(zip(trail_dates, trail_q)),
             hovertemplate="%{customdata[0]}<br>Growth: %{x:.2f} · Inflation: %{y:.2f}<br>%{customdata[1]}<extra></extra>",
             showlegend=False,
         ))
 
     # ── Selected point ────────────────────────────────────────────────────────
     sel = comp_all.iloc[sel_idx_all]
-    sel_color = _QUADRANT_COLOR.get(sel["quadrant"], "#888")
+    sel_quadrant = eff_quadrant.iloc[sel_idx_all]
+    sel_color = _QUADRANT_COLOR.get(sel_quadrant, "#888")
     sel_label = str(sel["as_of"])[:7]
+    sel_g = sel.get(g_col)
+    sel_i = sel.get(i_col)
+    _g_str = f"{float(sel_g):.2f}" if sel_g is not None and not pd.isna(sel_g) else "—"
+    _i_str = f"{float(sel_i):.2f}" if sel_i is not None and not pd.isna(sel_i) else "—"
     fig.add_trace(go.Scatter(
-        x=[sel["growth_score"]],
-        y=[sel["inflation_score"]],
+        x=[sel_g],
+        y=[sel_i],
         mode="markers",
         marker=dict(size=18, color=sel_color, line=dict(width=2.5, color="#ffffff")),
-        hovertemplate=(
-            f"{sel_label}<br>Growth: {sel['growth_score']:.2f}<br>"
-            f"Inflation: {sel['inflation_score']:.2f}<br>{sel['quadrant']}<extra></extra>"
-        ),
+        hovertemplate=f"{sel_label}<br>Growth: {_g_str}<br>Inflation: {_i_str}<br>{sel_quadrant}<extra></extra>",
         showlegend=False,
     ))
 
@@ -2451,11 +3007,12 @@ def update_scatter_chart(step: int, date_range: dict, theme_name: str, _trigger:
         for ann, color in zip(q_annotations, q_colors)
     ]
 
+    _win_sfx = f" ({zscore_window}mo)" if force_sfx else ""
     layout = figure_layout(theme_name)
     layout.update(dict(
-        xaxis=dict(title="Growth Force Z-Score", range=x_range,
+        xaxis=dict(title=f"Growth Force Z-Score{_win_sfx}", range=x_range,
                    zeroline=False, gridcolor=t["grid_color"], showgrid=True),
-        yaxis=dict(title="Inflation Force Z-Score", range=y_range,
+        yaxis=dict(title=f"Inflation Force Z-Score{_win_sfx}", range=y_range,
                    zeroline=False, gridcolor=t["grid_color"], showgrid=True),
         shapes=shapes,
         annotations=annotations,
