@@ -57,7 +57,8 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
 )
 server = app.server  # expose Flask for Gunicorn / production
-_explorer.register_callbacks(app)  # Phase 1E Data Explorer callbacks
+_explorer.register_callbacks(app)       # Phase 1E Data Explorer callbacks
+_data_dashboard.register_callbacks(app) # Data Feed Monitor sort + filter
 
 # ── Palette ──────────────────────────────────────────────────────────────────
 

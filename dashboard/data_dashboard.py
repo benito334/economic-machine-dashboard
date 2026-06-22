@@ -1,8 +1,7 @@
-"""Data Dashboard — operational feed health monitor.
+"""Data Dashboard — operational feed health monitor with sort + filter.
 
-One row per signal, grouped by force. Shows source series, latest value,
-as-of date, update frequency, next expected release, and colour-coded
-status badges.
+Sticky header, sortable columns (Signal, As Of, Frequency, Source,
+Next Release), and filter bar (search, force, status, frequency).
 """
 from __future__ import annotations
 
@@ -13,12 +12,25 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 import yaml
-from dash import html
+import dash_bootstrap_components as dbc
+from dash import Input, Output, State, ctx, dcc, html, no_update
 
 _DB = os.getenv("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 
-# ── Display mappings ─────────────────────────────────────────────────────────
+# ── Component IDs ─────────────────────────────────────────────────────────────
+_SORT_STORE = "dd-sort-store"
+_SEARCH_ID  = "dd-search"
+_FORCE_ID   = "dd-force-filter"
+_STATUS_ID  = "dd-status-filter"
+_FREQ_ID    = "dd-freq-filter"
+_TBODY_ID   = "dd-tbody"
+_SUMMARY_ID = "dd-summary-text"
+_THEAD_ID   = "dd-thead-tr"
+
+_SORTABLE = ["name", "as_of", "freq", "provider", "next_rel"]
+
+# ── Display mappings ──────────────────────────────────────────────────────────
 
 _FORCE_ORDER = [
     "master", "growth", "inflation", "policy", "credit",
@@ -108,44 +120,34 @@ _SIGNAL_NAMES: dict[str, str] = {
 }
 
 _FREQ_LABELS: dict[str, str] = {
-    "D": "Daily",
-    "W": "Weekly",
-    "M": "Monthly",
-    "Q": "Quarterly",
-    "A": "Annual",
+    "D": "Daily", "W": "Weekly", "M": "Monthly", "Q": "Quarterly", "A": "Annual",
 }
+_FREQ_ORDER = {"D": 0, "W": 1, "M": 2, "Q": 3, "A": 4}
 
-# Days to add to last as_of to estimate next release (observation period + lag)
 _NEXT_DAYS: dict[str, int] = {
-    "D": 2,
-    "W": 10,    # next weekly obs + a few days
-    "M": 45,    # next monthly obs + ~2 week release lag
-    "Q": 120,   # next quarter + ~4 week release lag
-    "A": 400,   # next annual obs + some months lag
+    "D": 2, "W": 10, "M": 45, "Q": 120, "A": 400,
 }
 
-# ── YAML metadata ────────────────────────────────────────────────────────────
+
+# ── YAML metadata ─────────────────────────────────────────────────────────────
 
 def _load_binding_meta() -> dict[str, dict]:
-    """Load frequency and provider from us_bindings.yaml keyed by full signal id."""
     path = _CONFIG_DIR / "us_bindings.yaml"
     with open(path) as f:
         cfg = yaml.safe_load(f)
     country = cfg.get("country", "US").lower()
-    meta: dict[str, dict] = {}
-    for b in cfg.get("bindings", []):
-        full_id = f"{country}.{b['id']}"
-        meta[full_id] = {
+    return {
+        f"{country}.{b['id']}": {
             "frequency": b.get("frequency", "?"),
             "source_tier": b.get("source_tier", "free"),
         }
-    return meta
+        for b in cfg.get("bindings", [])
+    }
 
 
-# ── DB query ─────────────────────────────────────────────────────────────────
+# ── DB query ──────────────────────────────────────────────────────────────────
 
 def _load_signals() -> pd.DataFrame:
-    """Latest snapshot for every US signal."""
     con = duckdb.connect(_DB, read_only=True)
     df = con.execute("""
         SELECT id, force, as_of, value, units, source, provider,
@@ -159,16 +161,14 @@ def _load_signals() -> pd.DataFrame:
     return df
 
 
-# ── Formatting helpers ───────────────────────────────────────────────────────
+# ── Formatting ────────────────────────────────────────────────────────────────
 
 def _fmt_val(value: float, units: str) -> str:
     u = (units or "").lower()
     if u in ("yoy_pct", "yoy_pct_spread"):
         return f"{value * 100:+.2f}%"
-    # Signed % — budget balances, current account, spreads (can be meaningfully negative)
     if u in ("pct_gdp", "pct_pot_gdp", "net_pct"):
         return f"{value:+.2f}%"
-    # Unsigned % levels — rates, utilisation, ratios (inherently positive)
     if u in ("pct_level", "pct_working_age", "pct_total_pop",
              "pct_pop_15plus", "pct_annual"):
         return f"{value:.2f}%"
@@ -182,21 +182,19 @@ def _fmt_val(value: float, units: str) -> str:
         return f"{value / 1e6:.1f}M"
     if u.startswith("index_"):
         return f"{value:.1f}"
-    if u == "ratio":
-        return f"{value:.3f}"
-    if u == "diffusion_index":
-        return f"{value:.1f}"
+    if u in ("ratio", "diffusion_index"):
+        return f"{value:.2f}"
     return f"{value:.2f}"
 
 
-def _fmt_series(source: str, provider: str) -> tuple[str, str]:
-    """Return (series_label, provider_label) from the 'source' column."""
-    if not source or source == "derived":
+def _fmt_series(source: str) -> tuple[str, str]:
+    """Return (series_id_label, provider_label)."""
+    if not source or source in ("derived", "null", "None"):
         return "Derived", "—"
     if ":" in source:
         prov, sid = source.split(":", 1)
         return sid, prov
-    return source, provider or "—"
+    return source, "—"
 
 
 def _next_release(as_of: str, freq: str) -> str:
@@ -209,17 +207,15 @@ def _next_release(as_of: str, freq: str) -> str:
 
 def _days_ago(as_of: str) -> str:
     delta = (pd.Timestamp.today() - pd.Timestamp(as_of)).days
-    if delta == 0:
+    if delta <= 0:
         return "today"
-    if delta == 1:
-        return "1d ago"
     if delta < 32:
         return f"{delta}d ago"
     months = round(delta / 30.5)
     return f"{months}mo ago"
 
 
-# ── Status badges ────────────────────────────────────────────────────────────
+# ── Badges ────────────────────────────────────────────────────────────────────
 
 def _badges(row: pd.Series, next_rel: str, freq: str) -> list[html.Span]:
     today = pd.Timestamp.today()
@@ -227,9 +223,7 @@ def _badges(row: pd.Series, next_rel: str, freq: str) -> list[html.Span]:
 
     if row["is_stale"]:
         badges.append(html.Span("STALE", className="dd-badge dd-badge-stale"))
-
-    # Check if next release is overdue but pipeline hasn't flagged stale yet
-    if not row["is_stale"] and next_rel not in ("—", "") and freq not in ("D",):
+    elif next_rel not in ("—", "") and freq not in ("D", "W"):
         try:
             rel_dt = pd.Timestamp(next_rel + "-01" if len(next_rel) == 7 else next_rel)
             overdue = (today - rel_dt).days
@@ -240,146 +234,344 @@ def _badges(row: pd.Series, next_rel: str, freq: str) -> list[html.Span]:
 
     if row["low_history"]:
         badges.append(html.Span("LOW HIST", className="dd-badge dd-badge-info"))
-
     if row["is_proxy"]:
         badges.append(html.Span("PROXY", className="dd-badge dd-badge-muted"))
-
     if row["is_constructed"]:
         badges.append(html.Span("DERIVED", className="dd-badge dd-badge-muted"))
-
     if not row["vintage_available"] and not row["is_constructed"]:
         badges.append(html.Span("NO VINTAGE", className="dd-badge dd-badge-muted"))
 
     if not badges:
         badges.append(html.Span("✓ OK", className="dd-badge dd-badge-ok"))
-
     return badges
 
 
-# ── Table components ─────────────────────────────────────────────────────────
+def _has_issue(row: pd.Series) -> bool:
+    return bool(row["is_stale"] or row["low_history"])
+
+
+# ── Table building ────────────────────────────────────────────────────────────
 
 def _group_header(force: str, count: int) -> html.Tr:
     label = _FORCE_LABELS.get(force, force.title())
-    return html.Tr([
-        html.Td(
-            [
-                html.Span(label, className="dd-group-label"),
-                html.Span(f"{count} signal{'s' if count != 1 else ''}",
-                          className="dd-group-count"),
-            ],
-            colSpan=8,
-            className="dd-group-header",
-        )
-    ])
+    return html.Tr(html.Td(
+        [
+            html.Span(label, className="dd-group-label"),
+            html.Span(f"{count} signal{'s' if count != 1 else ''}",
+                      className="dd-group-count"),
+        ],
+        colSpan=8,
+        className="dd-group-header",
+    ))
 
 
-def _signal_row(row: pd.Series, meta: dict) -> html.Tr:
-    concept = ".".join(row["id"].split(".")[1:])   # strip country prefix
-    name = _SIGNAL_NAMES.get(concept, concept.replace(".", " › ").replace("_", " ").title())
-    series_label, prov_label = _fmt_series(str(row["source"]), str(row["provider"]))
-    freq = meta.get("frequency", "?")
+def _signal_row(row: pd.Series, sig_meta: dict) -> html.Tr:
+    concept = ".".join(row["id"].split(".")[1:])
+    name = _SIGNAL_NAMES.get(concept, concept.replace("_", " ").title())
+    series_label, prov_label = _fmt_series(str(row["source"]))
+    freq = sig_meta.get("frequency", "?")
     freq_label = _FREQ_LABELS.get(freq, freq)
     next_rel = _next_release(str(row["as_of"]), freq)
     val_str = _fmt_val(float(row["value"]), str(row["units"]))
     ago = _days_ago(str(row["as_of"]))
     badges = _badges(row, next_rel, freq)
-    # Highlight row if any non-OK badge
-    has_issue = any("dd-badge-ok" not in b.className for b in badges if hasattr(b, "className") and b.className)
+    issue = _has_issue(row)
 
     return html.Tr([
-        html.Td(name, className="dd-cell-name"),
-        html.Td(
-            html.Span(series_label, className="dd-series-chip"),
-            className="dd-cell-series",
-        ),
+        html.Td(name,  className="dd-cell-name"),
+        html.Td(html.Span(series_label, className="dd-series-chip"),
+                className="dd-cell-series"),
         html.Td(val_str, className="dd-cell-val"),
-        html.Td(
-            [
-                html.Span(str(row["as_of"])[:7], className="dd-cell-date-main"),
-                html.Br(),
-                html.Span(ago, className="dd-cell-date-ago"),
-            ],
-            className="dd-cell-date",
-        ),
-        html.Td(freq_label, className="dd-cell-freq"),
-        html.Td(prov_label, className="dd-cell-prov"),
-        html.Td(next_rel, className="dd-cell-next"),
-        html.Td(badges, className="dd-cell-badges"),
-    ], className="dd-row dd-row-issue" if has_issue else "dd-row")
+        html.Td([
+            html.Span(str(row["as_of"])[:7], className="dd-cell-date-main"),
+            html.Br(),
+            html.Span(ago, className="dd-cell-date-ago"),
+        ], className="dd-cell-date"),
+        html.Td(freq_label,  className="dd-cell-freq"),
+        html.Td(prov_label,  className="dd-cell-prov"),
+        html.Td(next_rel,    className="dd-cell-next"),
+        html.Td(badges,      className="dd-cell-badges"),
+    ], className="dd-row dd-row-issue" if issue else "dd-row")
 
 
-# ── Layout ───────────────────────────────────────────────────────────────────
+def _build_header(sort_state: dict) -> list:
+    col = sort_state.get("col")
+    asc = sort_state.get("dir", "asc") == "asc"
 
-def get_layout() -> html.Div:
-    df = _load_signals()
-    meta = _load_binding_meta()
+    def _icon(c: str) -> str:
+        if col == c:
+            return " ↑" if asc else " ↓"
+        return " ⇅"
 
-    # Group by force in display order
-    force_order = _FORCE_ORDER + sorted(set(df["force"]) - set(_FORCE_ORDER))
-    groups = {f: grp for f, grp in df.groupby("force")}
+    def _th_s(label: str, c: str) -> html.Th:
+        active = col == c
+        return html.Th(
+            html.Button(
+                [label, html.Span(_icon(c), className="dd-sort-icon")],
+                id=f"dd-hdr-{c}",
+                n_clicks=0,
+                className="dd-col-btn",
+            ),
+            className=f"dd-th dd-th-sort {'dd-th-active' if active else ''}",
+        )
 
-    header = html.Tr([
-        html.Th("Signal",         className="dd-th"),
-        html.Th("Series",         className="dd-th"),
-        html.Th("Latest Value",   className="dd-th dd-th-r"),
-        html.Th("As Of",          className="dd-th"),
-        html.Th("Frequency",      className="dd-th"),
-        html.Th("Source",         className="dd-th"),
-        html.Th("Next Release",   className="dd-th"),
-        html.Th("Status",         className="dd-th"),
-    ])
+    return [
+        _th_s("Signal",       "name"),
+        html.Th("Series",      className="dd-th"),
+        html.Th("Latest Value",className="dd-th dd-th-r"),
+        _th_s("As Of",        "as_of"),
+        _th_s("Frequency",    "freq"),
+        _th_s("Source",       "provider"),
+        _th_s("Next Release", "next_rel"),
+        html.Th("Status",      className="dd-th"),
+    ]
+
+
+def _build_tbody(df: pd.DataFrame, meta: dict, sort_state: dict) -> list:
+    sort_col = sort_state.get("col")
+    asc = sort_state.get("dir", "asc") == "asc"
+
+    # Sort key
+    if sort_col == "name":
+        df = df.copy()
+        df["_sk"] = df["id"].apply(
+            lambda x: _SIGNAL_NAMES.get(".".join(x.split(".")[1:]), x).lower())
+        df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
+    elif sort_col == "as_of":
+        df = df.sort_values("as_of", ascending=asc)
+    elif sort_col == "freq":
+        df = df.copy()
+        df["_sk"] = df["id"].apply(
+            lambda x: _FREQ_ORDER.get(meta.get(x, {}).get("frequency", "?"), 99))
+        df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
+    elif sort_col == "provider":
+        df = df.sort_values("provider", ascending=asc)
+    elif sort_col == "next_rel":
+        df = df.copy()
+        df["_sk"] = df.apply(
+            lambda r: _next_release(str(r["as_of"]), meta.get(r["id"], {}).get("frequency", "?")),
+            axis=1,
+        )
+        df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
 
     rows: list = []
-    total_issues = 0
-    for force in force_order:
-        grp = groups.get(force)
-        if grp is None or grp.empty:
-            continue
-        rows.append(_group_header(force, len(grp)))
-        for _, r in grp.iterrows():
-            sig_meta = meta.get(r["id"], {})
-            rows.append(_signal_row(r, sig_meta))
-            # Count signals with any issue
-            if r["is_stale"] or r["low_history"]:
-                total_issues += 1
+    if sort_col is not None:
+        # Flat when sorting — no group headers
+        for _, r in df.iterrows():
+            rows.append(_signal_row(r, meta.get(r["id"], {})))
+    else:
+        # Grouped by force
+        seen = set(_FORCE_ORDER)
+        extras = sorted(set(df["force"]) - seen)
+        for force in _FORCE_ORDER + extras:
+            grp = df[df["force"] == force]
+            if grp.empty:
+                continue
+            rows.append(_group_header(force, len(grp)))
+            for _, r in grp.iterrows():
+                rows.append(_signal_row(r, meta.get(r["id"], {})))
 
-    # Summary bar
-    total = len(df)
-    ok_count = total - total_issues
-    summary = html.Div([
-        html.Span(f"{total} signals", className="dd-summary-total"),
-        html.Span(" · ", className="dd-summary-sep"),
-        html.Span(f"✓ {ok_count} OK", className="dd-summary-ok"),
-        html.Span(" · ", className="dd-summary-sep"),
-        html.Span(f"⚠ {total_issues} with issues", className="dd-summary-warn") if total_issues else
-        html.Span("All feeds current", className="dd-summary-ok"),
-    ], className="dd-summary")
+    if not rows:
+        rows = [html.Tr(html.Td(
+            "No signals match the current filters.",
+            colSpan=8,
+            className="dd-cell-empty",
+        ))]
+    return rows
+
+
+def _build_summary(df: pd.DataFrame, total_all: int, active_filters: int) -> list:
+    n = len(df)
+    n_issues = int((df["is_stale"] | df["low_history"]).sum())
+    n_ok = n - n_issues
+    parts: list = [
+        html.Span(f"{n}", style={"fontWeight": 700}),
+        html.Span(" signals", style={"color": "var(--muted-color)"}),
+    ]
+    if active_filters and n < total_all:
+        parts += [html.Span(f" of {total_all}", style={"color": "var(--muted-color)"})]
+    parts += [
+        html.Span("  ·  ", style={"color": "var(--muted-color)"}),
+        html.Span(f"✓ {n_ok} OK", className="dd-summary-ok"),
+        html.Span("  ·  ", style={"color": "var(--muted-color)"}),
+        (html.Span(f"⚠ {n_issues} with issues", className="dd-summary-warn")
+         if n_issues else html.Span("All feeds current", className="dd-summary-ok")),
+    ]
+    return parts
+
+
+# ── Layout shell ──────────────────────────────────────────────────────────────
+
+def get_layout() -> html.Div:
+    meta = _load_binding_meta()
+    df = _load_signals()
+
+    # Force dropdown options
+    forces_present = sorted(df["force"].unique())
+    force_opts = [{"label": "All Forces", "value": ""}] + [
+        {"label": _FORCE_LABELS.get(f, f.title()), "value": f}
+        for f in _FORCE_ORDER if f in forces_present
+    ]
+
+    # Frequency dropdown options
+    freqs_present = {meta.get(r["id"], {}).get("frequency", "") for _, r in df.iterrows()} - {""}
+    freq_opts = [{"label": "All Frequencies", "value": ""}] + [
+        {"label": _FREQ_LABELS.get(f, f), "value": f}
+        for f in ["D", "W", "M", "Q", "A"] if f in freqs_present
+    ]
+
+    dd_style = {
+        "backgroundColor": "var(--card-bg)",
+        "color": "var(--font-color)",
+        "borderColor": "var(--border-color)",
+        "fontSize": "0.78rem",
+    }
+
+    filter_bar = dbc.Row([
+        dbc.Col(dcc.Input(
+            id=_SEARCH_ID, type="text", debounce=True,
+            placeholder="Search signal name or series ID…",
+            className="dd-search-input",
+        ), md=4),
+        dbc.Col(dcc.Dropdown(
+            id=_FORCE_ID, options=force_opts, value="",
+            clearable=False, style=dd_style, className="dd-dropdown",
+        ), md=3),
+        dbc.Col(dcc.Dropdown(
+            id=_STATUS_ID,
+            options=[
+                {"label": "All Status",      "value": "all"},
+                {"label": "✓ OK only",       "value": "ok"},
+                {"label": "⚠ Issues only",   "value": "issues"},
+                {"label": "STALE",           "value": "stale"},
+                {"label": "LOW HIST",        "value": "low_hist"},
+            ],
+            value="all", clearable=False, style=dd_style, className="dd-dropdown",
+        ), md=2),
+        dbc.Col(dcc.Dropdown(
+            id=_FREQ_ID, options=freq_opts, value="",
+            clearable=False, style=dd_style, className="dd-dropdown",
+        ), md=2),
+    ], className="g-2 mb-3", align="center")
 
     legend = html.Div([
-        html.Span("✓ OK", className="dd-badge dd-badge-ok"), html.Span(" — feed current  ", className="dd-legend-sep"),
-        html.Span("STALE", className="dd-badge dd-badge-stale"), html.Span(" — past release window  ", className="dd-legend-sep"),
-        html.Span("+Nd", className="dd-badge dd-badge-due"), html.Span(" — release overdue  ", className="dd-legend-sep"),
-        html.Span("LOW HIST", className="dd-badge dd-badge-info"), html.Span(" — short history  ", className="dd-legend-sep"),
-        html.Span("PROXY", className="dd-badge dd-badge-muted"), html.Span(" — proxy series  ", className="dd-legend-sep"),
-        html.Span("DERIVED", className="dd-badge dd-badge-muted"), html.Span(" — computed from other feeds", className="dd-legend-sep"),
-    ], className="dd-legend")
+        html.Span("✓ OK", className="dd-badge dd-badge-ok"),
+        html.Span(" feed current  ", className="dd-legend-sep"),
+        html.Span("STALE", className="dd-badge dd-badge-stale"),
+        html.Span(" past window  ", className="dd-legend-sep"),
+        html.Span("+Nd", className="dd-badge dd-badge-due"),
+        html.Span(" release overdue  ", className="dd-legend-sep"),
+        html.Span("LOW HIST", className="dd-badge dd-badge-info"),
+        html.Span(" short history  ", className="dd-legend-sep"),
+        html.Span("DERIVED", className="dd-badge dd-badge-muted"),
+        html.Span(" computed from other feeds", className="dd-legend-sep"),
+    ], className="dd-legend", style={"marginTop": "12px"})
 
     return html.Div([
         html.Div([
-            html.H4("Data Feed Monitor", style={"marginBottom": "2px", "fontSize": "1.1rem"}),
+            html.H4("Data Feed Monitor",
+                    style={"marginBottom": "2px", "fontSize": "1.1rem"}),
             html.P(
-                "One row per signal. Grouped by force. Shows source series, latest ingested value, "
-                "last observation date, and estimated next release window.",
-                style={"color": "var(--muted-color)", "fontSize": "0.74rem", "marginBottom": "10px"},
+                "All 63 ingested signals. Grouped by force. "
+                "Click a column header to sort. Sorting switches to flat view.",
+                style={"color": "var(--muted-color)", "fontSize": "0.74rem",
+                       "marginBottom": "12px"},
             ),
-            summary,
-        ], className="pt-3 pb-2"),
+            filter_bar,
+            html.Div(id=_SUMMARY_ID, className="dd-summary", style={"marginBottom": "10px"}),
+        ], className="pt-3"),
+
+        dcc.Store(id=_SORT_STORE, data={"col": None, "dir": "asc"}),
+
         html.Div(
-            html.Table(
-                [html.Thead(header), html.Tbody(rows)],
-                className="dd-table",
-            ),
-            style={"overflowX": "auto"},
+            html.Table([
+                html.Thead(html.Tr(
+                    _build_header({"col": None, "dir": "asc"}),
+                    id=_THEAD_ID,
+                )),
+                html.Tbody(id=_TBODY_ID),
+            ], className="dd-table"),
+            className="dd-scroll-wrapper",
         ),
-        html.Div(legend, style={"marginTop": "14px"}),
+        legend,
     ], className="pe-2", style={"maxWidth": "1400px", "margin": "0 auto"})
+
+
+# ── Callbacks ─────────────────────────────────────────────────────────────────
+
+def register_callbacks(app) -> None:
+    @app.callback(
+        [
+            Output(_TBODY_ID,   "children"),
+            Output(_SUMMARY_ID, "children"),
+            Output(_SORT_STORE, "data"),
+            Output(_THEAD_ID,   "children"),
+        ],
+        [
+            Input(_SEARCH_ID, "value"),
+            Input(_FORCE_ID,  "value"),
+            Input(_STATUS_ID, "value"),
+            Input(_FREQ_ID,   "value"),
+            *[Input(f"dd-hdr-{c}", "n_clicks") for c in _SORTABLE],
+        ],
+        State(_SORT_STORE, "data"),
+        prevent_initial_call=False,
+    )
+    def _update(*args):
+        n_filters = 4
+        filter_vals = list(args[:n_filters])          # search, force, status, freq
+        sort_state: dict = args[-1] or {"col": None, "dir": "asc"}
+        search, force_filter, status_filter, freq_filter = filter_vals
+
+        # Resolve sort column from which header was clicked
+        triggered = ctx.triggered_id or ""
+        if isinstance(triggered, str) and triggered.startswith("dd-hdr-"):
+            new_col = triggered[len("dd-hdr-"):]
+            if sort_state.get("col") == new_col:
+                new_dir = "desc" if sort_state.get("dir") == "asc" else "asc"
+            else:
+                new_dir = "asc"
+            sort_state = {"col": new_col, "dir": new_dir}
+
+        df = _load_signals()
+        meta = _load_binding_meta()
+        total_all = len(df)
+
+        # ── Filters ────────────────────────────────────────────────────────
+        if search and search.strip():
+            q = search.strip().lower()
+            def _match(r):
+                concept = ".".join(r["id"].split(".")[1:])
+                name = _SIGNAL_NAMES.get(concept, "").lower()
+                return q in name or q in r["id"].lower() or q in str(r["source"]).lower()
+            df = df[df.apply(_match, axis=1)]
+
+        if force_filter:
+            df = df[df["force"] == force_filter]
+
+        if freq_filter:
+            freq_mask = df["id"].apply(
+                lambda x: meta.get(x, {}).get("frequency", "") == freq_filter)
+            df = df[freq_mask]
+
+        if status_filter == "ok":
+            df = df[~df["is_stale"] & ~df["low_history"]]
+        elif status_filter == "issues":
+            df = df[df["is_stale"] | df["low_history"]]
+        elif status_filter == "stale":
+            df = df[df["is_stale"]]
+        elif status_filter == "low_hist":
+            df = df[df["low_history"]]
+
+        # ── Build outputs ──────────────────────────────────────────────────
+        active_filters = sum([
+            bool(search and search.strip()),
+            bool(force_filter),
+            bool(freq_filter),
+            status_filter not in ("all", None, ""),
+        ])
+
+        tbody    = _build_tbody(df, meta, sort_state)
+        summary  = _build_summary(df, total_all, active_filters)
+        header   = _build_header(sort_state)
+        return tbody, summary, sort_state, header
