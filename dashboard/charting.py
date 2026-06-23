@@ -46,6 +46,7 @@ from dashboard import data_dashboard as _data_dashboard
 from dashboard import explorer as _explorer
 from dashboard import global_overview as _global_overview
 from dashboard import methodology as _methodology
+from dashboard import weight_audit as _weight_audit
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -778,7 +779,8 @@ def _left_nav() -> html.Div:
         # ── Reference ─────────────────────────────────────────────────────────
         _label("Reference"),
         dbc.Nav([
-            _nl("📖", "Methodology",       "/methodology", nav_id="navlnk-methodology"),
+            _nl("📖", "Methodology",  "/methodology",  nav_id="navlnk-methodology"),
+            _nl("🔍", "Weight Audit", "/weight-audit", nav_id="navlnk-weight-audit"),
         ], vertical=True, pills=True, className="mb-2"),
 
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
@@ -900,6 +902,10 @@ def _page_data_dashboard() -> html.Div:
 
 def _page_methodology() -> html.Div:
     return _methodology.get_layout()
+
+
+def _page_weight_audit() -> html.Div:
+    return _weight_audit.get_layout()
 
 
 def _page_yield_curve() -> html.Div:
@@ -1573,6 +1579,7 @@ _PAGE_MAP = {
     "/regime-map":    _page_regime_map,
     "/regime-history":_page_regime_history,
     "/debt-stress":   _page_debt_stress,
+    "/weight-audit":  _page_weight_audit,
 }
 
 

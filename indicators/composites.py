@@ -302,6 +302,180 @@ def audit_signal_correlations(
     return pairs
 
 
+def compute_force_balance(config: dict) -> tuple[float, float, float]:
+    """Return (g_mass, i_mass, g_to_i_ratio) from a composites config.
+
+    Mass = Σ(base_share × importance × quality_factor) across basket — the
+    pre-normalization weight total for each force. Used by the Weight Audit UI.
+    """
+    def _mass(indicators: list[dict]) -> float:
+        return sum(
+            float(ind.get("base_share", 1.0))
+            * float(ind.get("importance", 1.0))
+            * float(ind.get("quality_factor", 1.0))
+            for ind in indicators
+        )
+    g = _mass(config["growth_score"]["indicators"])
+    i = _mass(config["inflation_score"]["indicators"])
+    return g, i, (g / i if i > 0 else float("inf"))
+
+
+def compute_signal_correlation_matrix(
+    conn,
+    country: str,
+    config: dict,
+    min_periods: int = 24,
+) -> tuple[pd.DataFrame, list[str], list[str]]:
+    """Return full Z-score correlation matrix + growth/inflation ID lists.
+
+    The DataFrame is indexed and columned by signal IDs in config order
+    (country-prefixed). Missing signals appear as all-NaN rows/columns.
+    """
+    prefix = country.lower()
+    growth_ids = [f"{prefix}.{ind['id']}" for ind in config["growth_score"]["indicators"]]
+    inflation_ids = [f"{prefix}.{ind['id']}" for ind in config["inflation_score"]["indicators"]]
+    all_ids = list(dict.fromkeys(growth_ids + inflation_ids))
+
+    if len(all_ids) < 2:
+        return pd.DataFrame(), growth_ids, inflation_ids
+
+    placeholders = ", ".join(["?"] * len(all_ids))
+    df = conn.execute(
+        f"SELECT id, as_of, zscore FROM signals WHERE id IN ({placeholders}) ORDER BY as_of",
+        all_ids,
+    ).df()
+
+    if df.empty:
+        return pd.DataFrame(), growth_ids, inflation_ids
+
+    wide = df.pivot(index="as_of", columns="id", values="zscore").sort_index()
+    wide.index = pd.to_datetime(wide.index)
+    corr = wide.corr(min_periods=min_periods)
+    corr = corr.reindex(index=all_ids, columns=all_ids)
+    return corr, growth_ids, inflation_ids
+
+
+def monte_carlo_regime_sensitivity(
+    conn,
+    country: str,
+    config: dict,
+    n_trials: int = 500,
+    sigma: float = 0.15,
+    rng_seed: int = 42,
+) -> dict:
+    """Monte Carlo over importance weights → distribution of regime scores.
+
+    Holds the latest Z-scores fixed and perturbs each signal's importance by
+    N(0, sigma) multiplicatively, then recomputes normalized weighted scores.
+    Returns regime quadrant outcome distribution across n_trials.
+
+    Args:
+        conn: DuckDB connection.
+        country: Two-letter internal country code (e.g. "US", "EZ").
+        config: Loaded composites config.
+        n_trials: Number of Monte Carlo trials (default 500).
+        sigma: Fractional std-dev for importance perturbation (0.15 = ±15%).
+        rng_seed: Reproducibility seed.
+
+    Returns dict with:
+        outcomes: list[dict] — growth_score, inflation_score, quadrant per trial
+        quadrant_counts: dict quadrant → count
+        base_growth: float — unperturbed composite growth score
+        base_inflation: float — unperturbed composite inflation score
+        n_valid_signals_growth: int — signals with non-null Z-scores
+        n_valid_signals_inflation: int
+    """
+    rng = np.random.default_rng(rng_seed)
+    prefix = country.lower()
+    growth_cfg = config["growth_score"]["indicators"]
+    inflation_cfg = config["inflation_score"]["indicators"]
+    growth_ids = [f"{prefix}.{ind['id']}" for ind in growth_cfg]
+    inflation_ids = [f"{prefix}.{ind['id']}" for ind in inflation_cfg]
+    all_ids = list(dict.fromkeys(growth_ids + inflation_ids))
+
+    empty = {
+        "outcomes": [], "quadrant_counts": {},
+        "base_growth": 0.0, "base_inflation": 0.0,
+        "n_valid_signals_growth": 0, "n_valid_signals_inflation": 0,
+    }
+    if not all_ids:
+        return empty
+
+    placeholders = ", ".join(["?"] * len(all_ids))
+    df_latest = conn.execute(
+        f"""
+        SELECT s.id, s.zscore
+        FROM signals s
+        INNER JOIN (
+            SELECT id, MAX(as_of) AS max_as_of
+            FROM signals WHERE id IN ({placeholders}) GROUP BY id
+        ) t ON s.id = t.id AND s.as_of = t.max_as_of
+        """,
+        all_ids,
+    ).df()
+
+    if df_latest.empty:
+        return empty
+
+    latest_z: dict[str, float] = dict(zip(df_latest["id"], df_latest["zscore"]))
+
+    def _score(cfg: list[dict], ids: list[str], imp_vec: "np.ndarray | None" = None) -> tuple[float, int]:
+        weights, zscores = [], []
+        for k, (ind, sid) in enumerate(zip(cfg, ids)):
+            z = latest_z.get(sid)
+            if z is None or pd.isna(z):
+                continue
+            imp = float(imp_vec[k]) if imp_vec is not None else float(ind.get("importance", 1.0))
+            imp = max(0.01, imp)
+            w = float(ind.get("base_share", 1.0)) * imp * float(ind.get("quality_factor", 1.0))
+            z_adj = -float(z) if ind.get("invert", False) else float(z)
+            weights.append(w)
+            zscores.append(z_adj)
+        if not weights:
+            return 0.0, 0
+        total = sum(weights)
+        return sum(w * z / total for w, z in zip(weights, zscores)), len(weights)
+
+    base_g, n_g = _score(growth_cfg, growth_ids)
+    base_i, n_i = _score(inflation_cfg, inflation_ids)
+
+    base_imp_g = np.array([float(ind.get("importance", 1.0)) for ind in growth_cfg])
+    base_imp_i = np.array([float(ind.get("importance", 1.0)) for ind in inflation_cfg])
+
+    outcomes: list[dict] = []
+    q_counts: dict[str, int] = {
+        "Expansion": 0, "Inflationary Boom": 0,
+        "Disinflationary Slowdown": 0, "Stagflation": 0,
+    }
+
+    for _ in range(n_trials):
+        pg = np.clip(base_imp_g * (1 + rng.normal(0, sigma, len(growth_cfg))), 0.01, 2.0)
+        pi = np.clip(base_imp_i * (1 + rng.normal(0, sigma, len(inflation_cfg))), 0.01, 2.0)
+        g, _ = _score(growth_cfg, growth_ids, pg)
+        inf_, _ = _score(inflation_cfg, inflation_ids, pi)
+
+        if g >= 0 and inf_ >= 0:
+            q = "Inflationary Boom"
+        elif g >= 0 and inf_ < 0:
+            q = "Expansion"
+        elif g < 0 and inf_ >= 0:
+            q = "Stagflation"
+        else:
+            q = "Disinflationary Slowdown"
+
+        q_counts[q] += 1
+        outcomes.append({"growth_score": round(g, 4), "inflation_score": round(inf_, 4), "quadrant": q})
+
+    return {
+        "outcomes": outcomes,
+        "quadrant_counts": q_counts,
+        "base_growth": round(base_g, 4),
+        "base_inflation": round(base_i, 4),
+        "n_valid_signals_growth": n_g,
+        "n_valid_signals_inflation": n_i,
+    }
+
+
 def build_formula_catalog(config: dict | None = None) -> list[dict[str, object]]:
     """Describe the live composite formulas using their active runtime settings.
 
