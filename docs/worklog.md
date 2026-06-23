@@ -4,6 +4,23 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-23 — Signal weight calibration: tier system, force-balance audit, correlation audit
+
+**Done:**
+- **Weight tier system** (PRIMARY / STRONG / CONTEXT / VOLATILE) documented and applied across all three country composites (`us_composites.yaml`, `ez_composites.yaml`, `kr_composites.yaml`) as a country-agnostic template. Matches guidance in `docs/Guidance/signal_weight_guidance.md`.
+- **Anti-redundancy rule** applied: secondary signal's importance reduced to ≤40% of primary when `[CORR AUDIT]` surfaces |r| > 0.80 same-basket pairs: US cpi_core 0.95→0.65 (vs pce_core), breakeven_10y 0.25→0.20 (vs 5y); EZ cpi_headline base_share 1.0→0.7 importance 0.65→0.45, hicp_energy importance 0.25→0.20; KR cpi_headline 0.60→0.45.
+- **`_log_force_balance()`** private function added to `composites.py`: logs `[BALANCE]` INFO/WARNING per country per Pass 5 run. All three now within 0.75–1.33 (US: 1.32, EZ: 0.83, KR: 0.82). Previously US=1.52, EZ=0.63, KR=0.64.
+- **`audit_signal_correlations()`** public function added to `composites.py`: queries Z-score history, builds correlation matrix, logs `[CORR AUDIT] WARN` for same-basket pairs above threshold. Called in pipeline after every country's composite upsert.
+- **4 test assertions updated** to reflect calibrated values (`test_breakeven_guidance_defaults`, `test_growth_importance_guidance_defaults`, `test_inflation_importance_guidance_defaults`, `test_guidance_nominal_weights_are_normalized_after_quality`). **353/353 tests pass.**
+- Committed and pushed: `b095880`.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- BEA refresh after 2026-06-26 (`python3 -m indicators.pipeline`) clears 3 stale US signals.
+- Phase 3B `indicators/calibrate.py`: country-agnostic weight calibration via supervised regime scoring (see guidance doc Sections 5–9).
+
+---
+
 ## 2026-06-23 — EZ signal expansion (cont.) — ECB fetcher, GDP, Debt/GDP, CA investigation
 
 **Done:**
