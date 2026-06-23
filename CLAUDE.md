@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-23:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). ECB SDW fetcher live (Pass 1.6). EZ composites 6/6 growth + 6/6 inflation. Global Overview shows EZ GDP (16,485B USD 2024) + Debt/GDP (87.8% 2025). EA current account gap documented as unresolvable from free APIs.
+**As of 2026-06-23:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Signal weight calibration complete (tier system + force balance + cross-correlation audit). Weight Audit page live at `/weight-audit`. EA current account gap documented as unresolvable from free APIs.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -102,7 +102,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 2 Country rollout | 🔄 **In progress** | EZ ✅ (34 signals, 6G+6I composites) + KR ✅ (22 signals) live; next: Japan |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is closed — all free API sources exhausted, documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
+**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is closed — all free API sources exhausted, documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash. Phase 3B `indicators/calibrate.py` (supervised weight calibration via regime back-scoring) is the next planned infrastructure item.
 
 **Phase 2 architecture notes (as of 2026-06-23):**
 - Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir
@@ -122,6 +122,13 @@ Currently: US series via FRED API only. All other countries use latest-revised d
   - Pipeline skips composite pass with warning if no country file — safe for new countries before file is created
   - Adding a new country: create both `{cc}_bindings.yaml` AND `{cc}_composites.yaml`
   - `config/composites.yaml` is now **DEPRECATED** — marked in-file, no code reads it
+- **Weight calibration system** (added 2026-06-23):
+  - Importance tiers: PRIMARY (0.85–1.00), STRONG (0.60–0.84), CONTEXT (0.30–0.59), VOLATILE (0.10–0.29) — documented in every `{cc}_composites.yaml`
+  - Anti-redundancy rule: if `[CORR AUDIT]` flags same-basket |r| > 0.80, secondary importance ≤ 40% of primary
+  - Force-balance rule: `_log_force_balance()` in `composites.py` logs `[BALANCE]` INFO/WARN per country per Pass 5 run; target ratio 0.75–1.33
+  - `audit_signal_correlations()` in `composites.py` called after each country upsert; logs `[CORR AUDIT] WARN` for flagged pairs
+  - `compute_force_balance()`, `compute_signal_correlation_matrix()`, `monte_carlo_regime_sensitivity()` in `composites.py` power the Weight Audit UI page
+- **Weight Audit page** (`dashboard/weight_audit.py`, route `/weight-audit`): Force Balance bar chart (all countries) + Correlation heatmaps (per country, growth + inflation baskets) + Monte Carlo scatter + donut (500 trials, ±15% importance perturbation)
 
 **:8502 Dash nav structure (as of 2026-06-22):**
 - Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage; nav icons have `dbc.Tooltip` on hover in collapsed state

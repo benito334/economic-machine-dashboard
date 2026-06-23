@@ -4,6 +4,27 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-23 — Weight Audit page (/weight-audit)
+
+**Done:**
+- **New Dash page** `dashboard/weight_audit.py` at `/weight-audit` (nav: Reference → 🔍 Weight Audit). Three panels:
+  - **Force Balance**: clustered bar chart of G_mass vs I_mass for all countries (US/EZ/KR); ratio badge green (0.75–1.33) or red.
+  - **Signal Correlations**: per-country Pearson r heatmaps for growth and inflation baskets separately; |r| ≥ 0.80 cells outlined in orange; flagged pairs table (|r| ≥ 0.70, same-basket "redundant" pairs in red).
+  - **Monte Carlo**: 500-trial ±15% importance perturbation → scatter of (growth_score, inflation_score) outcomes + donut of regime distribution + caption showing % of trials confirming current reading.
+- **New `composites.py` functions** (country-agnostic):
+  - `compute_force_balance(config)` → `(g_mass, i_mass, ratio)`
+  - `compute_signal_correlation_matrix(conn, country, config)` → `(corr_df, growth_ids, inflation_ids)`
+  - `monte_carlo_regime_sensitivity(conn, country, config, n_trials, sigma)` → dict
+- **353/353 tests pass.** Docker rebuilt and live.
+- Committed `3a071c1` and pushed.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- BEA refresh after 2026-06-26 (`python3 -m indicators.pipeline`) clears 3 stale US signals.
+- Phase 3B `indicators/calibrate.py`: country-agnostic weight calibration via supervised regime scoring.
+
+---
+
 ## 2026-06-23 — Signal weight calibration: tier system, force-balance audit, correlation audit
 
 **Done:**
