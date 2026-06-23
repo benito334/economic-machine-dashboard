@@ -438,6 +438,9 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     if removed_future:
         logger.warning("Removed %d future-dated signal rows", removed_future)
 
+    post_ingestion_errors = 0
+    country_summaries: list[tuple[str, dict]] = []
+
     us_comp_config = load_composites_config("US")
 
     # ── US (primary country) — passes 1–4 ────────────────────────────────
@@ -462,8 +465,10 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             print(f"    Growth={gs}  Inflation={is_}  Confidence={cf}  Diseq={ds}")
         else:
             print("  [WARN] No composite snapshots produced")
+            post_ingestion_errors += 1
     except Exception as exc:
         logger.exception("[ERROR] Composites pass [US]: %s", exc)
+        post_ingestion_errors += 1
 
     # ── Passes 5b-5d: Rolling composite variants [US] ─────────────────────
     print("\n─── Passes 5b-5d: Rolling composite variants [US] ─────────────────")
@@ -485,6 +490,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             print(f"  [{force_sfx} force / {diseq_sfx} diseq] Updated {n_upd} composite rows")
     except Exception as exc:
         logger.exception("[ERROR] Rolling composites pass: %s", exc)
+        post_ingestion_errors += 1
 
     # ── Pass 6: Long-Term Debt Stress Indicator [US only] ─────────────────
     print("\n─── Pass 6: Long-Term Debt Stress Indicator [US] ──────────────────")
@@ -502,8 +508,10 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                   f"  retained_weight={rw}  low_coverage={latest_stress.low_coverage}")
         else:
             print("  [WARN] No debt stress snapshots produced")
+            post_ingestion_errors += 1
     except Exception as exc:
         logger.exception("[ERROR] Debt stress pass: %s", exc)
+        post_ingestion_errors += 1
 
     # ── Additional countries from config/countries/ ───────────────────────
     country_dir = _CONFIG_DIR / "countries"
@@ -515,6 +523,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         # Load bindings to build freq_map for composites
         country_bindings = load_bindings(yaml_path)
         country_code = country_bindings[0].country.lower() if country_bindings else yaml_path.stem.split("_")[0]
+        country_results["country"] = country_code.upper()
         freq_map = {f"{country_code}.{b.id}": b.frequency for b in country_bindings if b.verified}
 
         # Composites for this country
@@ -528,6 +537,8 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                     "Create config/countries/%s_composites.yaml to enable.",
                     country_code.upper(), country_code.lower(),
                 )
+                country_results["error"] += 1
+                country_summaries.append((country_code.upper(), country_results))
                 continue
             snaps = compute_composite_history(conn, country_code.upper(), country_comp_config, freq_map=freq_map)
             n_comp = upsert_composites(conn, snaps)
@@ -544,8 +555,11 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                 print(f"    G-signals={latest.n_growth_signals}  I-signals={latest.n_inflation_signals}  LowCov={latest.low_coverage}")
             else:
                 print(f"  [WARN] No composite snapshots produced for {country_code.upper()}")
+                country_results["error"] += 1
         except Exception as exc:
             logger.exception("[ERROR] Composites pass [%s]: %s", country_code.upper(), exc)
+            country_results["error"] += 1
+        country_summaries.append((country_code.upper(), country_results))
 
     # ── Summary ────────────────────────────────────────────────────────────
     print()
@@ -555,6 +569,13 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     total_err   = us_results["error"]
     total_warn  = us_results["sanity_warn"]
     print(f"  [US]  OK: {total_ok}  |  Empty: {total_empty}  |  Errors: {total_err}  |  Sanity warnings: {total_warn}")
+    if post_ingestion_errors:
+        print(f"  [US]  Post-ingestion errors: {post_ingestion_errors}")
+    for code, results in country_summaries:
+        print(
+            f"  [{code}] OK: {results['ok']}  |  Empty: {results['empty']}  "
+            f"|  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}"
+        )
     print(f"  Country files processed: {len(country_yamls)}")
 
     if print_latest:
@@ -567,7 +588,16 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
 
     conn.close()
 
-    if us_results["error"] > 0 or us_results["empty"] > 0:
+    country_failures = sum(
+        results["error"] + results["empty"]
+        for _, results in country_summaries
+    )
+    if (
+        us_results["error"] > 0
+        or us_results["empty"] > 0
+        or post_ingestion_errors > 0
+        or country_failures > 0
+    ):
         sys.exit(1)
 
 
