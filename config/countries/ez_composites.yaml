@@ -1,0 +1,35 @@
+# Euro Area composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+#
+# EZ growth signals come from Eurostat (industrial_prod, retail_sales, unemployment).
+# EZ inflation signals come from FRED ECB/Eurostat (cpi_headline, cpi_core).
+# No PCE, no market breakevens, no JOLTS/PMI — weights reflect this narrower coverage.
+
+growth_score:
+  description: "EZ growth-force composite — Eurostat monthly indicators"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.5
+      importance: 0.80      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.5
+      importance: 0.75      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.55      # TUNABLE
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+
+inflation_score:
+  description: "EZ inflation-force composite — HICP headline + core"
+  indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.60      # TUNABLE — elevated vs US because no PCE equivalent
+      quality_factor: 0.90
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 0.95      # TUNABLE — primary anchor
+      quality_factor: 1.00

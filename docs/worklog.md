@@ -4,6 +4,53 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-22 — Per-country composites config split
+
+**Done:**
+- Split monolithic `config/composites.yaml` into:
+  - `config/composites_policy.yaml` — global methodology (dynamic_weighting, time_decay, per_frequency_ffill_limit, regime_confidence, disequilibrium_score, what_changed)
+  - `config/countries/us_composites.yaml` — US indicator lists (9 growth + 8 inflation)
+  - `config/countries/ez_composites.yaml` — EZ indicator lists (3 growth + 2 inflation)
+  - `config/countries/kr_composites.yaml` — KR indicator lists (3 growth + 3 inflation incl. IMF bridge)
+- Refactored `indicators/composites.py`: `load_composites_config(country="US")` merges policy + country file; `_load_country_composites()` errors loudly if `{cc}_composites.yaml` is missing
+- Updated `indicators/pipeline.py`: US pass loads `load_composites_config("US")`; country loop tries `load_composites_config(country_code.upper())` and skips with warning if no file found
+- Updated `dashboard/charting_data.py`, `dashboard/charting.py`, `dashboard/explorer_data.py`: all replaced direct `composites.yaml` reads with `load_composites_config(country)`
+- `cpi_imf_annual` removed from US composites (it's a KR-only bridge); test updated 18→17 for `test_returns_17_columns`
+- `config/composites.yaml` marked DEPRECATED; no code reads it anymore
+- **349 tests pass**
+
+**Next:**
+- Phase 2 — Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`)
+- EZ current_account_gdp: investigate ECB SDW
+- BEA data refresh (after 2026-06-26)
+
+---
+
+## 2026-06-22 — Eurostat fetcher + data gap resolution (EZ growth signals, KR CPI bridge)
+
+**Done:**
+- **Eurostat JSON stats API fetcher** (`fetch_eurostat_series()`) added to `loader.py`. Fixed `geo=EA` → correct codes (`EA21` for unemployment, `EA20` for industrial prod/retail sales). Fixed `s_adj` filter: `CA` (calendar-adjusted) is the correct value for PCH_SM industrial production — `SCA` returns 0 values for EA20.
+- **`eurostat_params: Optional[dict]`** field added to `CountryBinding` (models.py).
+- **Pass 1.5 (Eurostat)** added to `run_country()` in pipeline.py — sits between FRED and WB passes; applies `raw_scale` before transformation.
+- **IMF `raw_scale` fix** in pipeline Pass 3 — was missing the `raw_scale` division; now consistent with FRED/WB/Eurostat passes.
+- **EZ bindings updated** — 3 stale FRED growth series replaced with live Eurostat bindings:
+  - `growth.industrial_prod` → Eurostat `sts_inpr_m?geo=EA20,nace_r2=B-D,s_adj=CA,unit=PCH_SM` (through 2026-04)
+  - `growth.retail_sales` → Eurostat `sts_trtu_m?geo=EA20,nace_r2=G47,indic_bt=VOL_SLS,s_adj=CA,unit=PCH_SM` (through 2026-04)
+  - `growth.unemployment` → Eurostat `une_rt_m?geo=EA21,s_adj=SA,unit=PC_ACT,sex=T,age=TOTAL` (through 2026-04)
+- **KR IMF CPI bridge** (`PCPIPCH`) added to `kr_bindings.yaml` as `inflation.cpi_imf_annual` (annual, `raw_scale: 100`, `is_proxy: true`). Provides 2025 annual CPI = 2.1% while monthly OECD FRED feed is stale (discontinued Apr 2025).
+- **Composites config updates**:
+  - `min_signals_required`: 4 → 1 (Phase 2 multi-country support; confidence metric captures uncertainty)
+  - `inflation.cpi_imf_annual` added to inflation_score indicator list (weight=0.30, quality=0.70; silently excluded for US/EZ)
+- **Final composite quadrants**: EZ = Inflationary Boom 67% conf (3G+2I); KR = Expansion 25% conf (2G+1I annual bridge); US = Stagflation 40% conf (unchanged).
+- **349 tests pass** (1 count assertion updated for new indicator).
+
+**Next:**
+- Phase 2 country 3: Japan (JP).
+- EZ current_account_gdp: WB EMU has no `BN.CAB.XOKA.GD.ZS` and Eurostat BOP EA aggregate also returns 0 values. Investigate ECB SDW or IMF BOP.
+- BEA refresh (after 2026-06-26) to clear 3 stale US signals.
+
+---
+
 ## 2026-06-22 — Phase 2: Euro Area (EZ) + South Korea (KR) rollout
 
 **Done:**

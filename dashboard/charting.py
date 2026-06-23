@@ -91,13 +91,10 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
 
 # ── Rolling Z-score composite helpers ────────────────────────────────────────
 
-_COMPOSITES_CONFIG_PATH = Path(__file__).parent.parent / "config" / "composites.yaml"
-
-
-def _load_composites_config_cached() -> dict:
-    """Load composites.yaml once per process (config rarely changes)."""
-    import yaml
-    return yaml.safe_load(_COMPOSITES_CONFIG_PATH.read_text()) or {}
+def _load_composites_config_cached(country: str = "US") -> dict:
+    """Load composites config once per process (config rarely changes)."""
+    from indicators.composites import load_composites_config
+    return load_composites_config(country)
 
 
 def _compute_rolling_history(country: str, window: int) -> pd.DataFrame:
@@ -112,7 +109,7 @@ def _compute_rolling_history(country: str, window: int) -> pd.DataFrame:
     """
     from indicators.normalize import zscore_rolling, ZSCORE_CAP_SIGMA
 
-    cfg = _load_composites_config_cached()
+    cfg = _load_composites_config_cached(country)
     values_df = load_composite_signal_values(country)
     if values_df.empty:
         return pd.DataFrame()
@@ -2641,12 +2638,16 @@ def update_regime_chart(
         fig.update_layout(**figure_layout(theme_name, "No composite data"))
         return fig
 
-    # Resolve which columns to use based on rolling window settings
+    # Resolve which columns to use based on rolling window settings.
+    # For non-US countries the pre-computed rolling columns are all null —
+    # fall back to the base column when the rolling column has no data.
     force_sfx = _FORCE_WINDOW_COL.get(zscore_window)
     diseq_sfx = _DISEQ_WINDOW_COL.get(diseq_window)
-    g_col = f"growth_score_{force_sfx}" if force_sfx and f"growth_score_{force_sfx}" in comp.columns else "growth_score"
-    i_col = f"inflation_score_{force_sfx}" if force_sfx and f"inflation_score_{force_sfx}" in comp.columns else "inflation_score"
-    d_col = f"disequilibrium_{diseq_sfx}" if diseq_sfx and f"disequilibrium_{diseq_sfx}" in comp.columns else "disequilibrium_score"
+    def _has_data(df: pd.DataFrame, col: str) -> bool:
+        return col in df.columns and df[col].notna().any()
+    g_col = f"growth_score_{force_sfx}" if force_sfx and _has_data(comp, f"growth_score_{force_sfx}") else "growth_score"
+    i_col = f"inflation_score_{force_sfx}" if force_sfx and _has_data(comp, f"inflation_score_{force_sfx}") else "inflation_score"
+    d_col = f"disequilibrium_{diseq_sfx}" if diseq_sfx and _has_data(comp, f"disequilibrium_{diseq_sfx}") else "disequilibrium_score"
 
     # Derive quadrant from rolling scores when a force window is active
     if force_sfx and g_col != "growth_score":
@@ -2665,8 +2666,8 @@ def update_regime_chart(
     else:
         quadrant_series = comp["quadrant"]
 
-    win_label = f" · rolling {zscore_window}mo" if force_sfx else ""
-    diseq_label = f" · rolling {diseq_window}mo" if diseq_sfx else ""
+    win_label = f" · rolling {zscore_window}mo" if (force_sfx and g_col != "growth_score") else ""
+    diseq_label = f" · rolling {diseq_window}mo" if (diseq_sfx and d_col != "disequilibrium_score") else ""
 
     fig = make_subplots(
         rows=7, cols=1,
@@ -3030,10 +3031,13 @@ def update_scatter_chart(
     comp_filtered = load_composite_history(start_date=start, end_date=end, country=country)
     comp_all = load_composite_history(country=country)
 
-    # Resolve rolling columns
+    # Resolve rolling columns — fall back to base when pre-computed rolling cols
+    # are all-null (non-US countries don't get rolling composite passes).
     force_sfx = _FORCE_WINDOW_COL.get(zscore_window)
-    g_col = f"growth_score_{force_sfx}" if force_sfx and f"growth_score_{force_sfx}" in comp_all.columns else "growth_score"
-    i_col = f"inflation_score_{force_sfx}" if force_sfx and f"inflation_score_{force_sfx}" in comp_all.columns else "inflation_score"
+    def _has_rolling(df: pd.DataFrame, col: str) -> bool:
+        return col in df.columns and df[col].notna().any()
+    g_col = f"growth_score_{force_sfx}" if force_sfx and _has_rolling(comp_all, f"growth_score_{force_sfx}") else "growth_score"
+    i_col = f"inflation_score_{force_sfx}" if force_sfx and _has_rolling(comp_all, f"inflation_score_{force_sfx}") else "inflation_score"
 
     fig = go.Figure()
 
@@ -3211,7 +3215,7 @@ def update_scatter_chart(
         for ann, color in zip(q_annotations, q_colors)
     ]
 
-    _win_sfx = f" ({zscore_window}mo)" if force_sfx else ""
+    _win_sfx = f" ({zscore_window}mo)" if (force_sfx and g_col != "growth_score") else ""
     layout = figure_layout(theme_name)
     layout.update(dict(
         xaxis=dict(title=f"Growth Force Z-Score{_win_sfx}", range=x_range,

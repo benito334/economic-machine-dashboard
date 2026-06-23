@@ -42,12 +42,48 @@ _EXPECTED_DIR: dict[tuple[bool, bool], tuple[str, str]] = {
 }
 
 
-def load_composites_config(path: Path | None = None) -> dict:
-    p = path or (_CONFIG_DIR / "composites.yaml")
+_POLICY_YAML = _CONFIG_DIR / "composites_policy.yaml"
+_COUNTRIES_DIR = _CONFIG_DIR / "countries"
+
+
+def _load_policy(path: Path | None = None) -> dict:
+    p = path or _POLICY_YAML
     with open(p) as f:
-        config = yaml.safe_load(f)
-    _validate_weighting_config(config)
-    return config
+        return yaml.safe_load(f) or {}
+
+
+def _load_country_composites(country: str, path: Path | None = None) -> dict:
+    """Load {cc}_composites.yaml for the given country.  Errors loudly if missing."""
+    if path is not None:
+        p = path
+    else:
+        cc = country.lower()
+        p = _COUNTRIES_DIR / f"{cc}_composites.yaml"
+    if not p.exists():
+        raise FileNotFoundError(
+            f"No composites file for country '{country}': expected {p}. "
+            "Create config/countries/{cc}_composites.yaml with growth_score and inflation_score indicator lists."
+        )
+    with open(p) as f:
+        return yaml.safe_load(f) or {}
+
+
+def load_composites_config(
+    country: str = "US",
+    policy_path: Path | None = None,
+    country_path: Path | None = None,
+) -> dict:
+    """Return merged methodology policy + country indicator lists as one dict.
+
+    Loads config/composites_policy.yaml (global methodology) and
+    config/countries/{cc}_composites.yaml (country-specific indicator lists),
+    then merges them into the single dict shape expected by compute_composite_history.
+    """
+    policy = _load_policy(policy_path)
+    country_cfg = _load_country_composites(country, country_path)
+    merged = {**policy, **country_cfg}
+    _validate_weighting_config(merged)
+    return merged
 
 
 def _validate_weighting_config(config: dict) -> None:

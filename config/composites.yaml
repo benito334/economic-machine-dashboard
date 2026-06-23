@@ -1,11 +1,8 @@
-# Composite score definitions (Phase 1B implementation)
-# Force/momentum weighting defaults follow docs/feedback/force-momentum weighting guidance.md.
-# `importance` is the primary tunable judgement setting (0–1). Change it here and
-# rerun Pass 5 of the pipeline to regenerate every point-in-time snapshot.
-# Nominal raw weight = base_share × importance × quality_factor, then the nominal
-# weights are normalized to 1.0 within Growth and Inflation before dynamic tilts.
-# Indicators with is_stale=true or low_history=true are excluded at runtime.
-# invert: true  → multiply Z-score by -1 before averaging (lower raw = better)
+# DEPRECATED — no longer read by the pipeline or dashboard.
+# Superseded by:
+#   config/composites_policy.yaml         — methodology settings (all countries)
+#   config/countries/{cc}_composites.yaml — per-country indicator lists
+# Kept for reference only. Do not edit.
 
 growth_score:
   description: "Group-weighted Z-score composite of growth-force coincident/leading signals"
@@ -84,6 +81,12 @@ inflation_score:
       base_share: 0.5
       importance: 0.30      # TUNABLE
       quality_factor: 0.90
+    # Bridge signal for Phase 2 countries where only IMF annual CPI is available.
+    # Missing for US/EZ (silently excluded); activates only for KR and future EM.
+    - id: inflation.cpi_imf_annual
+      base_share: 0.5
+      importance: 0.30      # TUNABLE: low-weight proxy; annual resolution limits precision
+      quality_factor: 0.70
 
 # Dynamic force/momentum agreement adjustment.
 # adjusted_weight = nominal_weight × clamp(1 + alpha × sign(force) × momentum_sign)
@@ -117,7 +120,7 @@ time_decay:
 # direction vector agrees with the assigned quadrant label.
 # E.g. if 7/10 growth signals are "rising" → growth_confidence = 0.70.
 regime_confidence:
-  min_signals_required: 4   # refuse to label quadrant if fewer than 4 signals available
+  min_signals_required: 1   # refuse to label quadrant if fewer than 1 signal per force (lowered from 4 for Phase 2 multi-country coverage)
 
 # Disequilibrium score: equal weight over |distance_from_equilibrium| Z-scores
 # across all available structural force lenses. Forces with no data are excluded

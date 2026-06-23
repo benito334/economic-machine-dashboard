@@ -30,6 +30,7 @@ class CountryBinding(BaseModel):
     notes: str = ""
     pre_smooth_window: Optional[int] = None  # H2: rolling-mean window applied to raw series before transformation
     raw_scale: Optional[float] = None  # divide raw fetched values by this factor before transformation (e.g. 100 to convert % → decimal, 1e9 to convert USD → billions)
+    eurostat_params: Optional[dict] = None  # dimension filter dict for Eurostat JSON stats API (provider=Eurostat only)
 
 
 class Signal(BaseModel):

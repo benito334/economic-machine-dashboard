@@ -20,7 +20,7 @@ import yaml
 from dotenv import load_dotenv
 
 from indicators.composites import compute_composite_history, load_composites_config
-from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
@@ -156,16 +156,17 @@ def run_country(
     bindings = load_bindings(yaml_path)
     country_code = bindings[0].country if bindings else yaml_path.stem.split("_")[0].upper()
 
-    fred_bindings    = [b for b in bindings if b.provider == "FRED"       and b.verified]
-    wb_bindings      = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
-    imf_bindings     = [b for b in bindings if b.provider == "IMF"        and b.verified]
-    derived_bindings = [b for b in bindings if b.provider == "derived"    and b.verified]
-    skipped          = [b for b in bindings if not b.verified]
+    fred_bindings     = [b for b in bindings if b.provider == "FRED"       and b.verified]
+    estat_bindings    = [b for b in bindings if b.provider == "Eurostat"   and b.verified]
+    wb_bindings       = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
+    imf_bindings      = [b for b in bindings if b.provider == "IMF"        and b.verified]
+    derived_bindings  = [b for b in bindings if b.provider == "derived"    and b.verified]
+    skipped           = [b for b in bindings if not b.verified]
 
     print(f"\n{'=' * 70}")
     print(f"  Country: {country_code}  ({yaml_path.name})")
-    print(f"  FRED: {len(fred_bindings)}  |  WorldBank: {len(wb_bindings)}  |  IMF: {len(imf_bindings)}  "
-          f"|  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
+    print(f"  FRED: {len(fred_bindings)}  |  Eurostat: {len(estat_bindings)}  |  WorldBank: {len(wb_bindings)}  "
+          f"|  IMF: {len(imf_bindings)}  |  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
     if skipped:
         print(f"    Skipped: {', '.join(b.id for b in skipped)}")
     print('=' * 70)
@@ -231,6 +232,59 @@ def run_country(
             if is_primary:
                 sys.exit(1)
 
+    # ── Pass 1.5: Eurostat series ─────────────────────────────────────────
+    if estat_bindings:
+        print(f"\n─── Pass 1.5: Eurostat series [{country_code}] ──────────────────────────")
+        for binding in estat_bindings:
+            try:
+                raw = fetch_eurostat_series(
+                    binding.series_id,
+                    binding.eurostat_params or {},
+                    frequency=binding.frequency,
+                    force_refresh=force_refresh,
+                )
+                if raw is None or raw.empty:
+                    print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                    results["empty"] += 1
+                    continue
+
+                raw_store[binding.series_id] = raw
+
+                if binding.raw_scale:
+                    raw = raw / binding.raw_scale
+
+                transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+                transformed = transformed.dropna()
+
+                if transformed.empty:
+                    print(f"  [EMPTY after transform] {binding.id}")
+                    results["empty"] += 1
+                    continue
+
+                transformed_store[binding.id] = transformed
+                signals = build_signals(transformed, binding, raw)
+                latest = signals[-1] if signals else None
+
+                if latest:
+                    warns = sanity_check(latest, binding)
+                    for w in warns:
+                        print(f"  [SANITY WARN] {w}")
+                        results["sanity_warn"] += 1
+
+                n = upsert_signals(conn, signals)
+                status = "PROXY" if binding.is_proxy else "OK"
+                latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+                latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+                params_str = ",".join(f"{k}={v}" for k, v in (binding.eurostat_params or {}).items())
+                print(f"  [{status:5}] {binding.id:40s}  {binding.series_id}?{params_str}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
+                results["ok"] += 1
+
+            except Exception as exc:
+                logger.exception("[ERROR] %s: %s", binding.id, exc)
+                results["error"] += 1
+                if is_primary:
+                    sys.exit(1)
+
     # ── Pass 2: WorldBank series ───────────────────────────────────────────
     print(f"\n─── Pass 2: WorldBank series [{country_code}] ─────────────────────────")
     for binding in wb_bindings:
@@ -294,6 +348,9 @@ def run_country(
                 print(f"  [EMPTY] {binding.id} ({binding.series_id})")
                 results["empty"] += 1
                 continue
+
+            if binding.raw_scale:
+                raw = raw / binding.raw_scale
 
             transformed = apply_transformation(raw, binding.transformation, binding.frequency)
             transformed = transformed.dropna()
@@ -381,7 +438,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     if removed_future:
         logger.warning("Removed %d future-dated signal rows", removed_future)
 
-    comp_config = load_composites_config(_CONFIG_DIR / "composites.yaml")
+    us_comp_config = load_composites_config("US")
 
     # ── US (primary country) — passes 1–4 ────────────────────────────────
     us_bindings = load_bindings(_CONFIG_DIR / "us_bindings.yaml")
@@ -391,7 +448,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     print("\n─── Pass 5: Composites engine [US] ────────────────────────────────")
     try:
         freq_map = {f"us.{b.id}": b.frequency for b in us_bindings if b.verified}
-        snapshots = compute_composite_history(conn, "US", comp_config, freq_map=freq_map)
+        snapshots = compute_composite_history(conn, "US", us_comp_config, freq_map=freq_map)
         n_comp      = upsert_composites(conn, snapshots)
         latest_snap = snapshots[-1] if snapshots else None
         if latest_snap:
@@ -419,7 +476,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         freq_map = {f"us.{b.id}": b.frequency for b in us_bindings if b.verified}
         for zscore_col, diseq_w, force_sfx, diseq_sfx in _ROLLING_CONFIGS:
             roll_snaps = compute_composite_history(
-                conn, "US", comp_config, freq_map=freq_map,
+                conn, "US", us_comp_config, freq_map=freq_map,
                 zscore_col=zscore_col, diseq_window=diseq_w,
             )
             n_upd = update_rolling_composites(
@@ -463,7 +520,16 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         # Composites for this country
         print(f"\n─── Pass 5: Composites engine [{country_code.upper()}] ──────────────────────")
         try:
-            snaps = compute_composite_history(conn, country_code.upper(), comp_config, freq_map=freq_map)
+            try:
+                country_comp_config = load_composites_config(country_code.upper())
+            except FileNotFoundError:
+                logger.warning(
+                    "[%s] No composites file found — skipping composite pass. "
+                    "Create config/countries/%s_composites.yaml to enable.",
+                    country_code.upper(), country_code.lower(),
+                )
+                continue
+            snaps = compute_composite_history(conn, country_code.upper(), country_comp_config, freq_map=freq_map)
             n_comp = upsert_composites(conn, snaps)
             latest = snaps[-1] if snaps else None
             if latest:

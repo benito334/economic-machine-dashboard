@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-22:** Phases 1A–1I complete. Phase 2 started: EZ + KR live. **349 tests pass.** 104 signals total (63 US + 22 KR + 19 EZ). Multi-country pipeline with `run_country()` helper; `raw_scale` field on CountryBinding; `_WB_COUNTRY_MAP` in loader.
+**As of 2026-06-22:** Phases 1A–1I complete. Phase 2 started: EZ + KR live with live quadrants. **349 tests pass.** 107 signals total (63 US + 23 KR + 19 EZ + Eurostat feeds). Multi-country pipeline with `run_country()` helper; per-country composites config split (`composites_policy.yaml` + `{cc}_composites.yaml`).
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -102,15 +102,24 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 2 Country rollout | 🔄 **In progress** | EZ ✅ (19 signals) + KR ✅ (22 signals) live; next: Japan |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account is empty (WB EMU lacks `BN.CAB.XOKA.GD.ZS`) — investigate alternate source.
+**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account is empty (WB EMU lacks `BN.CAB.XOKA.GD.ZS` and Eurostat BOP EA aggregate returns 0 values) — investigate ECB SDW.
 
 **Phase 2 architecture notes (as of 2026-06-22):**
 - Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir
 - Internal country codes: `EZ` (signal IDs: `ez.*`), `KR` (signal IDs: `kr.*`), `JP` (signal IDs: `jp.*`)
 - `_WB_COUNTRY_MAP` in `loader.py`: `EZ→EMU`, `KR→KOR`, `JP→JPN`, etc. — handles WB API country codes
-- `raw_scale` field on `CountryBinding`: divide raw fetched value by this factor before transformation; used for OECD FRED `CTGYM`/`GYS`-suffix series (already in YoY% form), e.g. KR CPI (`raw_scale: 100`)
+- `raw_scale` field on `CountryBinding`: divide raw fetched value by this factor before transformation; used for OECD FRED `CTGYM`/`GYS`-suffix series (already in YoY% form), e.g. KR CPI (`raw_scale: 100`). Also applies to IMF signals (PCPIPCH for KR CPI bridge).
 - IMF Datamapper does NOT support `EUR` (Euro area aggregate) — no IMF bindings for EZ
-- `_load_wide` in `composites.py`: fixed empty-input tuple bug (was crashing for countries with no signals)
+- **Eurostat JSON stats API** (`fetch_eurostat_series()` in `loader.py`): provides EZ growth data. Correct geo codes: `EA21` (unemployment), `EA20` (industrial prod, retail sales). Correct adjustment: `s_adj=CA` (calendar) for `PCH_SM` industrial production (NOT `SCA`). Dataset codes: `une_rt_m`, `sts_inpr_m`, `sts_trtu_m`.
+- **KR monthly CPI gap**: OECD FRED feed ended Apr 2025. Bridge via `inflation.cpi_imf_annual` (`PCPIPCH`/KOR, annual, `raw_scale: 100`, `is_proxy: true`). OECD direct SDMX API returns 404 in this env (all endpoints tested). BoK ECOS API requires registration.
+- **Current quadrants**: EZ = Inflationary Boom 67% conf; KR = Expansion 25% conf (single annual inflation bridge); US = Stagflation 40% conf.
+- **Per-country composites config** (added 2026-06-22):
+  - `config/composites_policy.yaml` — global methodology (dynamic_weighting, time_decay, per_frequency_ffill_limit, `min_signals_required=1`, disequilibrium force groups, what_changed)
+  - `config/countries/{cc}_composites.yaml` — per-country indicator lists with weights (growth_score + inflation_score)
+  - `load_composites_config(country="US")` in `composites.py` merges both; **errors loudly** if `{cc}_composites.yaml` is missing
+  - Pipeline skips composite pass with warning if no country file — safe for new countries before file is created
+  - Adding a new country: create both `{cc}_bindings.yaml` AND `{cc}_composites.yaml`
+  - `config/composites.yaml` is now **DEPRECATED** — marked in-file, no code reads it
 
 **:8502 Dash nav structure (as of 2026-06-22):**
 - Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage; nav icons have `dbc.Tooltip` on hover in collapsed state
@@ -268,9 +277,12 @@ indicators_machine/
 ├── .env.example               ← committed; .env is gitignored
 ├── requirements.txt
 ├── config/
-│   ├── us_bindings.yaml       ← US CountryBindings (lenses A–I + fiscal + demo)
-│   ├── composites.yaml        ← composite weights + equilibrium constants
-│   └── countries/             ← per-country binding files (added in Phase 2)
+│   ├── us_bindings.yaml           ← US CountryBindings (lenses A–I + fiscal + demo)
+│   ├── composites_policy.yaml     ← global methodology (decay, weights, confidence, disequilibrium)
+│   ├── composites.yaml            ← DEPRECATED — superseded by the split above
+│   └── countries/                 ← per-country files (added in Phase 2)
+│       ├── {cc}_bindings.yaml     ← CountryBindings for country cc
+│       └── {cc}_composites.yaml   ← composite indicator lists for country cc
 ├── indicators/
 │   ├── models.py              ← IndicatorConcept, CountryBinding, Signal (Pydantic)
 │   ├── loader.py              ← FRED / WB / IMF / OECD fetchers + cache layer

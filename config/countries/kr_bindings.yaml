@@ -94,6 +94,28 @@ bindings:
     sanity_min: -0.05
     sanity_max: 0.15
 
+  # IMF annual CPI % change — carried forward monthly as a bridge signal when
+  # the OECD FRED monthly series (above) is stale. Annual resolution; updated
+  # via IMF WEO (April/October). raw_scale: 100 converts % → decimal.
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.020
+    linkage: "Korea CPI % change (IMF WEO annual). Bridge signal when monthly OECD FRED series is stale; annual resolution limits precision."
+    sanity_min: -0.05
+    sanity_max: 0.20
+
   # ─── Growth (Demand & Output) ───────────────────────────────────────────────
 
   - id: growth.unemployment

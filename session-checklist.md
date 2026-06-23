@@ -35,16 +35,18 @@ Will clear 3 stale signals: current account, NIIP, debt service ratio.
 ## Up next (next session)
 | Priority | Item |
 |---|---|
-| 1 | Phase 2 — Japan (JP): next in rollout order |
-| 2 | EZ current_account_gdp: WB EMU returns empty; try alternate source (OECD/IMF/Eurostat) |
+| 1 | Phase 2 — Japan (JP): create `jp_bindings.yaml` + `jp_composites.yaml` |
+| 2 | EZ current_account_gdp: WB EMU + Eurostat BOP both empty; investigate ECB SDW key format or accept gap |
 | 3 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
+| 4 | KR monthly CPI: OECD FRED discontinued Apr 2025; OECD direct API returns 404; explore BoK ECOS API (requires registration) |
 
 ## Notes for next session
-- 104 signals total (63 US + 22 KR + 19 EZ)
-- Country files live in `config/countries/ez_bindings.yaml`, `config/countries/kr_bindings.yaml`
-- Pipeline auto-discovers `config/countries/*_bindings.yaml` — adding Japan = create `jp_bindings.yaml`
+- 107 signals total (63 US + 23 KR + 19 EZ + Eurostat feeds)
+- **Per-country composites split complete**: `config/composites_policy.yaml` (global) + `config/countries/{cc}_composites.yaml` (per-country)
+- `load_composites_config(country="US")` in composites.py — merges policy + country file; errors loudly if no country file
+- Pipeline skips composites pass with warning if no `{cc}_composites.yaml` found — safe for Japan before file is created
+- Adding Japan = create `jp_bindings.yaml` + `jp_composites.yaml` in `config/countries/`
 - EZ uses `country: EZ` code (maps to WB `EMU`); signals stored as `ez.*.*`
-- KR CPI/retail series have `raw_scale: 100` — already-YoY% OECD FRED series (`CTGYM`/`GYS` suffix)
+- KR CPI/retail series have `raw_scale: 100` — already-YoY% OECD FRED series
 - Dash 4.x uses Radix UI for Slider — class names are `dash-slider-*`, not `rc-slider-*`
-- `_RQ_MAP` is module-level in `charting.py`; stores use `storage_type="local"`
 - :8501 (Streamlit) still running as reference; :8502 is the primary dashboard

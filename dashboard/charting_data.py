@@ -9,7 +9,7 @@ import duckdb
 import pandas as pd
 import yaml
 
-from indicators.composites import normalized_nominal_weights
+from indicators.composites import normalized_nominal_weights, load_composites_config
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
@@ -206,8 +206,6 @@ def available_dates_for_yield_curve() -> list[str]:
 
 # ── Regime Composites — component status ──────────────────────────────────────
 
-_COMPOSITES_YAML = Path(__file__).parent.parent / "config" / "composites.yaml"
-
 # Human-readable labels for composite constituent signal concept IDs
 _COMPOSITE_SIGNAL_LABELS: dict[str, str] = {
     "growth.payrolls":          "Payrolls",
@@ -239,7 +237,7 @@ def load_composite_component_status(
     Columns returned: composite, concept_id, signal_id, label, weight, invert,
     zscore, direction, change_3m, as_of, is_stale, low_history.
     """
-    cfg = yaml.safe_load(_COMPOSITES_YAML.read_text()) or {}
+    cfg = load_composites_config(country)
     country_prefix = country.lower()
 
     rows_meta: list[dict] = []
@@ -472,16 +470,13 @@ def load_change_feed(
     return df
 
 
-_COMPOSITES_YAML = Path(__file__).parent.parent / "config" / "composites.yaml"
-
-
 def load_composite_signal_values(country: str = "US") -> pd.DataFrame:
     """Bulk-load all historical transformed values for growth+inflation composite signals.
 
     Returns a DataFrame with columns: id, as_of, value, frequency.
     Used by the dashboard to recompute force Z-scores with a configurable rolling window.
     """
-    cfg = yaml.safe_load(_COMPOSITES_YAML.read_text()) or {}
+    cfg = load_composites_config(country)
     prefix = country.lower()
     ids: list[str] = []
     for section in ("growth_score", "inflation_score"):

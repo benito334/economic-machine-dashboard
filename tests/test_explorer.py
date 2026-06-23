@@ -332,7 +332,7 @@ class TestCompositeZscoreMatrix:
     def test_returns_17_columns(self):
         from dashboard.explorer_data import load_composite_zscore_matrix
         matrix, meta = load_composite_zscore_matrix()
-        assert len(meta) == 17  # 9 growth + 8 inflation
+        assert len(meta) == 17  # 9 growth + 8 inflation (cpi_imf_annual is KR-only)
         assert matrix.shape[1] == 17
 
     @pytest.mark.integration

@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from indicators.composites import load_composites_config
+
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
 
@@ -323,9 +325,6 @@ def compute_signal_stats(signal_id: str) -> dict:
 
 # ── A2/I2: Composite signal Z-score matrix for correlation + PCA ──────────────
 
-_COMPOSITES_YAML = Path(__file__).parents[1] / "config" / "composites.yaml"
-
-
 def load_composite_zscore_matrix(
     country: str = "US",
     min_obs_fraction: float = 0.7,
@@ -334,9 +333,9 @@ def load_composite_zscore_matrix(
 
     wide_monthly_df: index=monthly as_of, columns=signal_id, values=zscore.
     Rows with fewer than min_obs_fraction * n_signals non-NaN values are dropped.
-    signal_meta: list of {signal_id, label, force} dicts in composites.yaml order.
+    signal_meta: list of {signal_id, label, force} dicts in country composites config order.
     """
-    cfg = yaml.safe_load(_COMPOSITES_YAML.read_text()) or {}
+    cfg = load_composites_config(country)
     country_prefix = country.lower()
 
     signal_meta: list[dict] = []

@@ -334,3 +334,137 @@ def fetch_imf_series(
     series.to_frame().to_parquet(cache)
     logger.debug("[cached] IMF %s/%s → %s (%d obs)", country_iso2, indicator, cache.name, len(series))
     return series
+
+
+# ─── Eurostat JSON stats API ──────────────────────────────────────────────────
+
+_ESTAT_BASE = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+
+
+def _estat_cache_path(dataset: str, params: dict) -> Path:
+    import hashlib
+    import json
+    key = json.dumps(sorted(params.items()))
+    h = hashlib.md5(key.encode()).hexdigest()[:10]
+    return RAW_CACHE_DIR / f"estat_{dataset}_{h}.parquet"
+
+
+def _parse_estat_periods(periods: list) -> pd.DatetimeIndex:
+    """Convert Eurostat period strings to period-end DatetimeIndex."""
+    first = periods[0]
+    if "-Q" in first:
+        return pd.PeriodIndex(periods, freq="Q").to_timestamp(how="end").normalize()
+    elif len(first) == 7 and first[4] == "-":  # YYYY-MM
+        return pd.to_datetime(periods, format="%Y-%m") + pd.offsets.MonthEnd(0)
+    else:  # YYYY annual
+        return pd.to_datetime(periods, format="%Y") + pd.offsets.YearEnd(0)
+
+
+def _decode_eurostat_response(d: dict) -> pd.Series:
+    """Decode Eurostat JSON stats API response to a dated pandas Series.
+
+    Time is always the last dimension. If any non-time dimension has size > 1
+    (caller failed to narrow filters), only the first combination is used.
+    """
+    ids = d.get("id", [])
+    sizes = d.get("size", [])
+    vals = d.get("value", {})
+
+    if not ids or not vals:
+        return pd.Series(dtype=float, name="value")
+
+    n_time = sizes[-1]
+    time_cats = d["dimension"][ids[-1]]["category"]["index"]  # period_str → pos
+    time_by_pos = {v: k for k, v in time_cats.items()}        # pos → period_str
+
+    non_time_product = 1
+    for s in sizes[:-1]:
+        non_time_product *= s
+    if non_time_product > 1:
+        logger.warning(
+            "[Eurostat] %d non-time dimension combinations — using first combination only",
+            non_time_product,
+        )
+
+    records: list[tuple[str, float]] = []
+    for pos_str, val in vals.items():
+        pos = int(pos_str)
+        time_pos = pos % n_time
+        if pos // n_time == 0:  # first combination of non-time dims
+            period = time_by_pos.get(time_pos)
+            if period is not None:
+                records.append((period, float(val)))
+
+    if not records:
+        return pd.Series(dtype=float, name="value")
+
+    periods, values = zip(*sorted(records))
+    dates = _parse_estat_periods(list(periods))
+    series = pd.Series(list(values), index=dates, name="value", dtype=float)
+    series.index.name = "date"
+    return series.sort_index()
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_estat_from_api(dataset: str, params: dict) -> pd.Series:
+    resp = requests.get(
+        f"{_ESTAT_BASE}/{dataset}",
+        params={**params, "lang": "en", "format": "JSON", "sinceTimePeriod": "1999-01"},
+        timeout=40,
+    )
+    resp.raise_for_status()
+    d = resp.json()
+    if not d.get("value"):
+        raise ValueError(
+            f"Empty Eurostat response for {dataset} {params}. "
+            f"Sizes: {dict(zip(d.get('id', []), d.get('size', [])))}"
+        )
+    series = _decode_eurostat_response(d)
+    if series.empty:
+        raise ValueError(f"Decoded empty series for {dataset} {params}")
+    return series
+
+
+def fetch_eurostat_series(
+    dataset: str,
+    params: dict,
+    frequency: str = "M",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """
+    Return a pandas Series for the given Eurostat JSON stats dataset.
+
+    dataset: dataset code (e.g. "une_rt_m", "sts_inpr_m")
+    params: dimension filter dict (e.g. {"geo": "EA21", "s_adj": "SA", ...})
+    Caches to parquet; TTL matches the series frequency.
+    Returns None and logs a warning if the result is empty.
+    """
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _estat_cache_path(dataset, params)
+
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] Eurostat %s", dataset)
+        df = pd.read_parquet(cache)
+        return df["value"]
+
+    logger.info("[Eurostat fetch] %s %s", dataset, params)
+
+    try:
+        series = _fetch_estat_from_api(dataset, params)
+    except Exception as exc:
+        logger.error("[Eurostat] Failed to fetch %s: %s", dataset, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for Eurostat %s", dataset)
+            df = pd.read_parquet(cache)
+            return df["value"]
+        return None
+
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] Eurostat %s → %s (%d obs)", dataset, cache.name, len(series))
+    return series

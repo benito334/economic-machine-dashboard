@@ -73,50 +73,68 @@ bindings:
     sanity_max: 0.12
 
   # ─── Growth (Demand & Output) ───────────────────────────────────────────────
-  # Note: the three FRED series below were discontinued by the OECD in late 2023.
-  # They will be ingested with is_stale=true and excluded from the composite at runtime.
+  # Eurostat JSON stats API replaces stale OECD FRED series (discontinued 2023).
+  # PCH_SM = percent change vs same month prior year (already YoY%).
+  # raw_scale: 100 converts % (2.089) → decimal (0.02089) before normalization.
 
   - id: growth.industrial_prod
-    series_id: EA19PRINTO01IXOBSAM
-    provider: FRED
+    series_id: sts_inpr_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      nace_r2: B-D
+      s_adj: CA
+      unit: PCH_SM
     frequency: M
     force: growth
     lead_lag: coincident
-    transformation: yoy_pct
+    transformation: level
     units: yoy_pct
+    raw_scale: 100
     country: EZ
     source_tier: free
     vintage_available: false
     is_proxy: false
     verified: true
     equilibrium: 0.020
-    linkage: "Euro area industrial production index YoY. Manufacturing-heavy EA makes this a key cyclical barometer."
+    linkage: "Euro area industrial production YoY (Eurostat, B-D excl. energy, calendar-adjusted). Manufacturing-heavy EA makes this a key cyclical barometer."
     sanity_min: -0.25
     sanity_max: 0.25
-    notes: "OECD FRED series discontinued ~2023-10. Stale until replaced by Eurostat direct feed."
 
   - id: growth.retail_sales
-    series_id: EA19SLRTTO01IXOBSAM
-    provider: FRED
+    series_id: sts_trtu_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      nace_r2: G47
+      indic_bt: VOL_SLS
+      s_adj: CA
+      unit: PCH_SM
     frequency: M
     force: growth
     lead_lag: coincident
-    transformation: yoy_pct
+    transformation: level
     units: yoy_pct
+    raw_scale: 100
     country: EZ
     source_tier: free
     vintage_available: false
     is_proxy: false
     verified: true
     equilibrium: 0.020
-    linkage: "Euro area retail sales volume index YoY. Measures household spending momentum."
+    linkage: "Euro area retail trade volume YoY (Eurostat G47, calendar-adjusted). Measures household spending momentum."
     sanity_min: -0.20
     sanity_max: 0.20
-    notes: "OECD FRED series discontinued ~2023-10. Stale until replaced by Eurostat direct feed."
 
   - id: growth.unemployment
-    series_id: LRHUTTTTEZM156S
-    provider: FRED
+    series_id: une_rt_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA21
+      s_adj: SA
+      unit: PC_ACT
+      sex: T
+      age: TOTAL
     frequency: M
     force: growth
     lead_lag: lagging
@@ -128,10 +146,9 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: 7.5
-    linkage: "Euro area harmonised unemployment rate (%). Higher structural unemployment than US due to labour market rigidities."
+    linkage: "Euro area harmonised unemployment rate % (Eurostat, EA21, seasonally adjusted). Higher structural unemployment than US due to labour market rigidities."
     sanity_min: 3.0
     sanity_max: 30.0
-    notes: "OECD FRED series discontinued 2023-01. Stale until replaced by Eurostat direct feed."
 
   - id: growth.rnd_intensity
     series_id: GB.XPD.RSDV.GD.ZS

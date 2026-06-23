@@ -1,0 +1,41 @@
+# South Korea composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+#
+# KR growth signals come from FRED/WB (industrial_prod, retail_sales, unemployment).
+# KR inflation: cpi_headline + cpi_core from FRED/WB; cpi_imf_annual as annual bridge
+# (OECD FRED monthly feed ended Apr 2025; IMF PCPIPCH/KOR bridges through 2025).
+# No PCE, no market breakevens — weights reflect narrower coverage.
+
+growth_score:
+  description: "KR growth-force composite — FRED/WB monthly indicators"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.5
+      importance: 0.80      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.5
+      importance: 0.75      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.55      # TUNABLE
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+
+inflation_score:
+  description: "KR inflation-force composite — FRED/WB CPI + IMF annual bridge"
+  indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.60      # TUNABLE — elevated vs US because no PCE equivalent
+      quality_factor: 0.90
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 0.95      # TUNABLE — primary anchor when available
+      quality_factor: 1.00
+    # Annual IMF bridge — activates when monthly signals are stale (post-Apr 2025)
+    - id: inflation.cpi_imf_annual
+      base_share: 0.5
+      importance: 0.30      # TUNABLE: low weight; annual resolution limits precision
+      quality_factor: 0.70

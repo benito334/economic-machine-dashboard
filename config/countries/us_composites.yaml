@@ -1,0 +1,86 @@
+# US composite indicator lists — which signals enter Growth and Inflation scores.
+# Methodology params (weights, decay, confidence) live in config/composites_policy.yaml.
+#
+# `importance` is the primary tunable judgement setting (0–1).
+# Nominal raw weight = base_share × importance × quality_factor, then normalized to 1.0
+# within each basket at runtime. Indicators with is_stale=true or low_history=true are
+# excluded at runtime.
+# invert: true  → multiply Z-score by -1 before averaging (lower raw = better)
+
+growth_score:
+  description: "Group-weighted Z-score composite of growth-force coincident/leading signals"
+  indicators:
+    - id: growth.payrolls
+      base_share: 0.5
+      importance: 0.90      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.industrial_prod
+      base_share: 0.5
+      importance: 0.80      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.5
+      importance: 0.75      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.real_pce
+      base_share: 0.5
+      importance: 0.70      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.capacity_util
+      base_share: 1.0
+      importance: 0.65      # TUNABLE
+      quality_factor: 0.90
+    - id: growth.job_openings
+      base_share: 0.5
+      importance: 0.85      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.pmi_proxy
+      base_share: 0.5
+      importance: 0.80      # TUNABLE
+      quality_factor: 0.95
+    - id: growth.labor_force_part
+      base_share: 0.5
+      importance: 0.60      # TUNABLE
+      quality_factor: 0.90
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.55      # TUNABLE
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+  # Excluded from composite (structural frequency): growth.productivity, growth.tfp, growth.rnd_intensity
+
+inflation_score:
+  description: "Weighted Z-score composite of inflation-force signals"
+  indicators:
+    - id: inflation.pce_core
+      base_share: 1.0
+      importance: 0.95      # TUNABLE
+      quality_factor: 1.00
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 0.95      # TUNABLE
+      quality_factor: 1.00
+    - id: inflation.wages
+      base_share: 0.5
+      importance: 0.30      # TUNABLE
+      quality_factor: 0.85
+    - id: inflation.breakeven_5y
+      base_share: 0.5
+      importance: 0.25      # TUNABLE
+      quality_factor: 0.90
+    - id: inflation.breakeven_10y
+      base_share: 0.5
+      importance: 0.25      # TUNABLE
+      quality_factor: 0.90
+    - id: inflation.cpi_headline
+      base_share: 0.5
+      importance: 0.20      # TUNABLE
+      quality_factor: 0.90
+    - id: inflation.crude_oil
+      base_share: 0.5
+      importance: 0.10      # TUNABLE
+      quality_factor: 0.85
+    - id: inflation.ppi_broad
+      base_share: 0.5
+      importance: 0.30      # TUNABLE
+      quality_factor: 0.90
