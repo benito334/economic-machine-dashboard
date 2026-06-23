@@ -19,7 +19,11 @@ import pandas as pd
 import yaml
 from dotenv import load_dotenv
 
-from indicators.composites import compute_composite_history, load_composites_config
+from indicators.composites import (
+    audit_signal_correlations,
+    compute_composite_history,
+    load_composites_config,
+)
 from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.models import CountryBinding, Signal
@@ -547,6 +551,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         freq_map = {f"us.{b.id}": b.frequency for b in us_bindings if b.verified}
         snapshots = compute_composite_history(conn, "US", us_comp_config, freq_map=freq_map)
         n_comp      = upsert_composites(conn, snapshots)
+        audit_signal_correlations(conn, "US", us_comp_config)
         latest_snap = snapshots[-1] if snapshots else None
         if latest_snap:
             q   = latest_snap.quadrant or "?"
@@ -636,6 +641,7 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
                 continue
             snaps = compute_composite_history(conn, country_code.upper(), country_comp_config, freq_map=freq_map)
             n_comp = upsert_composites(conn, snaps)
+            audit_signal_correlations(conn, country_code.upper(), country_comp_config)
             latest = snaps[-1] if snaps else None
             if latest:
                 q   = latest.quadrant or "?"

@@ -353,10 +353,12 @@ def test_inflation_config_uses_bound_ppi_signal():
 def test_breakeven_guidance_defaults():
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["inflation_score"]["indicators"]}
-    for signal_id in ("inflation.breakeven_5y", "inflation.breakeven_10y"):
-        assert by_id[signal_id]["base_share"] == 0.5
-        assert by_id[signal_id]["importance"] == 0.25
-        assert by_id[signal_id]["quality_factor"] == 0.90
+    assert by_id["inflation.breakeven_5y"]["base_share"] == 0.5
+    assert by_id["inflation.breakeven_5y"]["importance"] == 0.25   # CONTEXT — market expectations anchor
+    assert by_id["inflation.breakeven_5y"]["quality_factor"] == 0.90
+    assert by_id["inflation.breakeven_10y"]["base_share"] == 0.5
+    assert by_id["inflation.breakeven_10y"]["importance"] == 0.20  # VOLATILE — correlated with 5y (r~0.90)
+    assert by_id["inflation.breakeven_10y"]["quality_factor"] == 0.90
 
 
 # ── G1: Labour-market group weights ──────────────────────────────────────────
@@ -365,15 +367,15 @@ def test_growth_importance_guidance_defaults():
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["growth_score"]["indicators"]}
     expected = {
-        "growth.payrolls": 0.90,
-        "growth.industrial_prod": 0.80,
-        "growth.retail_sales": 0.75,
-        "growth.real_pce": 0.70,
-        "growth.capacity_util": 0.65,
-        "growth.job_openings": 0.85,
-        "growth.pmi_proxy": 0.80,
-        "growth.labor_force_part": 0.60,
-        "growth.unemployment": 0.55,
+        "growth.payrolls": 0.90,        # PRIMARY
+        "growth.industrial_prod": 0.80,  # PRIMARY
+        "growth.retail_sales": 0.75,     # STRONG
+        "growth.real_pce": 0.65,         # STRONG — correlated with retail_sales (r=0.80)
+        "growth.capacity_util": 0.65,    # STRONG
+        "growth.job_openings": 0.85,     # PRIMARY
+        "growth.pmi_proxy": 0.80,        # PRIMARY
+        "growth.labor_force_part": 0.60, # STRONG
+        "growth.unemployment": 0.45,     # CONTEXT — lagging indicator
     }
     assert {signal_id: by_id[signal_id]["importance"] for signal_id in expected} == expected
 
@@ -382,14 +384,14 @@ def test_inflation_importance_guidance_defaults():
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["inflation_score"]["indicators"]}
     expected = {
-        "inflation.pce_core": 0.95,
-        "inflation.cpi_core": 0.95,
-        "inflation.wages": 0.30,
-        "inflation.breakeven_5y": 0.25,
-        "inflation.breakeven_10y": 0.25,
-        "inflation.cpi_headline": 0.20,
-        "inflation.crude_oil": 0.10,
-        "inflation.ppi_broad": 0.30,
+        "inflation.pce_core": 0.95,      # PRIMARY — Fed mandate measure
+        "inflation.cpi_core": 0.65,      # STRONG — correlated with pce_core (r~0.92); was 0.95
+        "inflation.wages": 0.30,         # CONTEXT
+        "inflation.breakeven_5y": 0.25,  # CONTEXT
+        "inflation.breakeven_10y": 0.20, # VOLATILE — correlated with 5y (r~0.90); was 0.25
+        "inflation.cpi_headline": 0.20,  # VOLATILE
+        "inflation.crude_oil": 0.10,     # VOLATILE
+        "inflation.ppi_broad": 0.30,     # CONTEXT
     }
     assert {signal_id: by_id[signal_id]["importance"] for signal_id in expected} == expected
 
@@ -401,10 +403,10 @@ def test_guidance_nominal_weights_are_normalized_after_quality():
 
     assert sum(growth.values()) == pytest.approx(1.0)
     assert sum(inflation.values()) == pytest.approx(1.0)
-    assert growth["growth.capacity_util"] > growth["growth.payrolls"]
-    assert inflation["inflation.pce_core"] == pytest.approx(
-        inflation["inflation.cpi_core"]
-    )
+    # payrolls is now the top growth signal (PRIMARY, importance=0.90)
+    assert growth["growth.payrolls"] > growth["growth.capacity_util"]
+    # pce_core outweighs cpi_core after redundancy reduction (0.95 vs 0.65 importance)
+    assert inflation["inflation.pce_core"] > inflation["inflation.cpi_core"]
     assert inflation["inflation.pce_core"] > inflation["inflation.crude_oil"]
 
 

@@ -166,6 +166,142 @@ def age_weight_fraction(age_months: float, half_life_months: float = 3.0) -> flo
     return float(0.5 ** (age / float(half_life_months)))
 
 
+# ── Weight audit helpers ──────────────────────────────────────────────────────
+
+def _log_force_balance(country: str, growth_cfg: list[dict], inflation_cfg: list[dict]) -> None:
+    """Log the pre-normalization weight mass for growth vs inflation baskets.
+
+    Fires a WARNING when one basket outweighs the other by >33% (ratio outside
+    0.75–1.33). This catches cases where adding new signals tilts the composite
+    toward one regime type without a matching addition on the other side.
+
+    Runs once per country per pipeline pass — zero DB access needed.
+    """
+    def _basket_mass(indicators: list[dict]) -> float:
+        return sum(
+            float(ind.get("base_share", 1.0))
+            * float(ind.get("importance", 1.0))
+            * float(ind.get("quality_factor", 1.0))
+            for ind in indicators
+        )
+
+    g_mass = _basket_mass(growth_cfg)
+    i_mass = _basket_mass(inflation_cfg)
+    ratio = g_mass / i_mass if i_mass > 0 else float("inf")
+    balanced = 0.75 <= ratio <= 1.33
+
+    if balanced:
+        logger.info(
+            "[BALANCE] %s  G_mass=%.3f  I_mass=%.3f  ratio=%.2f  OK",
+            country, g_mass, i_mass, ratio,
+        )
+    else:
+        heavier = "inflation" if ratio < 1.0 else "growth"
+        logger.warning(
+            "[BALANCE] %s  G_mass=%.3f  I_mass=%.3f  ratio=%.2f  "
+            "WARN — %s basket is disproportionately heavier. "
+            "Adjust base_share/importance or add signals on the lighter side.",
+            country, g_mass, i_mass, ratio, heavier,
+        )
+
+
+def audit_signal_correlations(
+    conn,
+    country: str,
+    config: dict,
+    threshold: float = 0.80,
+    min_periods: int = 36,
+) -> list[dict]:
+    """Compute pairwise Z-score correlations across all composite signals for a country.
+
+    Logs and returns pairs with |r| >= threshold. High within-basket correlation
+    signals redundancy — the weaker signal's importance should be reduced
+    (anti-redundancy rule: secondary importance ≤ 40% of primary's).
+
+    Country-agnostic: works for any {cc}_composites.yaml configuration.
+
+    Args:
+        conn: DuckDB connection.
+        country: Two-letter internal country code (e.g. "EZ", "US", "KR").
+        config: Loaded composites config (from load_composites_config).
+        threshold: Pearson |r| above which a pair is flagged (default 0.80).
+        min_periods: Minimum overlapping observations required to compute r (default 36).
+
+    Returns:
+        List of dicts with keys: country, signal_a, signal_b, r, same_basket, n_periods.
+    """
+    country_prefix = country.lower()
+    growth_cfg = config["growth_score"]["indicators"]
+    inflation_cfg = config["inflation_score"]["indicators"]
+
+    growth_ids = [f"{country_prefix}.{ind['id']}" for ind in growth_cfg]
+    inflation_ids = [f"{country_prefix}.{ind['id']}" for ind in inflation_cfg]
+    all_ids = list(dict.fromkeys(growth_ids + inflation_ids))
+
+    if len(all_ids) < 2:
+        return []
+
+    placeholders = ", ".join(["?"] * len(all_ids))
+    df = conn.execute(
+        f"SELECT id, as_of, zscore FROM signals WHERE id IN ({placeholders}) ORDER BY as_of",
+        all_ids,
+    ).df()
+    if df.empty:
+        logger.info("[CORR AUDIT] %s: no signal data in DB; skipping.", country)
+        return []
+
+    wide = df.pivot(index="as_of", columns="id", values="zscore")
+    wide.index = pd.to_datetime(wide.index)
+    wide = wide.sort_index()
+
+    corr = wide.corr(min_periods=min_periods)
+
+    growth_set = set(growth_ids)
+    inflation_set = set(inflation_ids)
+
+    pairs: list[dict] = []
+    ids = corr.columns.tolist()
+    for i, id_a in enumerate(ids):
+        for id_b in ids[i + 1:]:
+            r = corr.loc[id_a, id_b]
+            if pd.isna(r) or abs(r) < threshold:
+                continue
+            same_basket = (
+                (id_a in growth_set and id_b in growth_set)
+                or (id_a in inflation_set and id_b in inflation_set)
+            )
+            n = int(wide[[id_a, id_b]].dropna().shape[0])
+            pairs.append({
+                "country": country,
+                "signal_a": id_a,
+                "signal_b": id_b,
+                "r": round(float(r), 3),
+                "same_basket": same_basket,
+                "n_periods": n,
+            })
+
+    if pairs:
+        sorted_pairs = sorted(pairs, key=lambda x: abs(x["r"]), reverse=True)
+        logger.warning(
+            "[CORR AUDIT] %s: %d high-correlation pair(s) found (|r|>=%.2f). "
+            "Consider reducing importance of the secondary signal.",
+            country, len(pairs), threshold,
+        )
+        for p in sorted_pairs:
+            basket_tag = "SAME BASKET" if p["same_basket"] else "cross-basket"
+            logger.warning(
+                "  [%s]  r=%+.3f  n=%d  %s  ↔  %s",
+                basket_tag, p["r"], p["n_periods"], p["signal_a"], p["signal_b"],
+            )
+    else:
+        logger.info(
+            "[CORR AUDIT] %s: no pairs above |r|=%.2f — no redundancy detected.",
+            country, threshold,
+        )
+
+    return pairs
+
+
 def build_formula_catalog(config: dict | None = None) -> list[dict[str, object]]:
     """Describe the live composite formulas using their active runtime settings.
 
@@ -416,6 +552,9 @@ def compute_composite_history(
 
     force_groups = _build_force_groups(conn, country, config)
     diseq_ids    = list(dict.fromkeys(sid for ids in force_groups.values() for sid in ids))
+
+    # ── Force-balance audit (logs WARNING if one basket outweighs the other >33%) ──
+    _log_force_balance(country, growth_cfg, inflation_cfg)
 
     # ── Configurable nominal + dynamic weighting ─────────────────────────────
     growth_nominal = normalized_nominal_weights(growth_cfg)
