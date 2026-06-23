@@ -244,19 +244,18 @@ _LENS_ABOUT: dict[str, str] = {
         "These are lagging — they confirm what already happened."
     ),
     "A · Growth Force": (
-        "Real economic output and labour-market strength. The Growth Score composite "
-        "is an equal-weight mean Z-score across 9 of these signals "
-        "(Unemployment is inverted — lower unemployment = stronger growth). "
+        "Real economic output and labour-market strength. Composite signals are importance-weighted "
+        "Z-scores (Unemployment is inverted — lower = stronger growth). "
         "A positive score means the economy is running above its long-run average."
     ),
     "B · Inflation Force": (
-        "Price pressures across consumers, producers, and financial markets. The Inflation Score "
-        "uses full weight for core measures (PCE, CPI, Wages, Breakevens) and half weight "
-        "for commodity/headline items (Crude Oil, Headline CPI) to reduce short-term noise."
+        "Price pressures across consumers, producers, and financial markets. Core measures "
+        "(CPI/HICP ex-food-energy, Wages) carry higher importance weights; volatile components "
+        "(energy, food, headline) carry lower weight to reduce short-term noise."
     ),
     "C · Monetary Policy & Rates": (
-        "The price and quantity of money set by the Federal Reserve. "
-        "Fed Funds and real yields tell you how tight or loose policy is; "
+        "The price and quantity of money set by the central bank. "
+        "The policy rate and real yields reveal how tight or loose conditions are; "
         "the balance sheet reflects QE/QT."
     ),
     "D · Credit, Debt & Fiscal": (
@@ -266,18 +265,18 @@ _LENS_ABOUT: dict[str, str] = {
     ),
     "E · Risk Premiums": (
         "The extra return investors demand for holding risky or longer-duration assets. "
-        "The yield curve (10Y−2Y, 10Y−3M) is a leading recession indicator — inversion has "
-        "preceded every US recession since 1970."
+        "The yield curve slope is a leading recession indicator; "
+        "credit spreads reflect market-priced default risk."
     ),
     "F · External & Trade": (
-        "How the economy relates to the rest of the world via trade flows. "
-        "The current account deficit means the US imports more than it exports and must "
-        "attract foreign capital to balance."
+        "How the economy relates to the rest of the world via trade and capital flows. "
+        "The current account balance shows whether the economy is a net borrower or lender "
+        "with the rest of the world."
     ),
     "G · Capital Flows & Currency": (
-        "Cross-border investment and the value of the dollar. "
+        "Cross-border investment and the value of the currency in real terms. "
         "FDI inflows signal long-term foreign confidence; the Real Effective Exchange Rate (REER) "
-        "shows competitiveness."
+        "shows competitiveness vs. trading partners."
     ),
     "H · Governance & Political Risk": (
         "Institutional quality, rule of law, and political stability (World Bank WGI scores). "
@@ -568,37 +567,39 @@ _BY_ID: dict[str, dict] = {e["signal_id"]: e for e in _CATALOG}
 # ── Layout ────────────────────────────────────────────────────────────────────
 
 def _series_selector() -> dbc.Card:
-    """Build the left-sidebar series checklist grouped by lens."""
-    groups = []
-    for group_name, entries in _GROUPS.items():
-        options = [
-            {"label": e["label"], "value": e["signal_id"], "title": e.get("description", "")}
-            for e in entries
-        ]
-        groups.append(
-            html.Div([
-                html.P(group_name, className="text-muted small mb-1 mt-2 fw-semibold"),
-                dcc.Checklist(
-                    id={"type": "group-checklist", "group": group_name},
-                    options=options,
-                    value=[],
-                    inputStyle={"marginRight": "6px"},
-                    labelStyle={"display": "block", "fontSize": "0.82rem", "marginBottom": "3px"},
-                ),
-            ])
-        )
-
+    """Build the left-sidebar shell; content is populated by update_series_selector callback."""
     return dbc.Card(
         dbc.CardBody([
             html.H6("Series", className="mb-0"),
             html.Hr(className="my-2"),
-            html.Div(id="series-selector-body", children=groups, style={"overflowY": "auto", "maxHeight": "78vh"}),
+            html.Div(id="series-selector-body", children=[], style={"overflowY": "auto", "maxHeight": "78vh"}),
             html.Hr(className="my-2"),
             dbc.Button("Clear all", id="btn-clear-all", color="secondary", size="sm", className="w-100 mb-1"),
         ]),
         className="h-100",
         style={"minWidth": "220px", "maxWidth": "240px"},
     )
+
+
+def _build_series_groups_us() -> list:
+    """Static US series groups from the chart_series.yaml catalog."""
+    groups = []
+    for group_name, entries in _GROUPS.items():
+        options = [
+            {"label": e["label"], "value": e["signal_id"], "title": e.get("description", "")}
+            for e in entries
+        ]
+        groups.append(html.Div([
+            html.P(group_name, className="text-muted small mb-1 mt-2 fw-semibold"),
+            dcc.Checklist(
+                id={"type": "group-checklist", "group": group_name},
+                options=options,
+                value=[],
+                inputStyle={"marginRight": "6px"},
+                labelStyle={"display": "block", "fontSize": "0.82rem", "marginBottom": "3px"},
+            ),
+        ]))
+    return groups
 
 
 def _time_controls() -> html.Div:
@@ -1265,7 +1266,7 @@ app.layout = html.Div([
     # Settings: disequilibrium rolling window (0 = full history)
     dcc.Store(id="diseq-window-store",   data=0, storage_type="local"),
     # Active country (Phase 2 multi-country support)
-    dcc.Store(id="country-store",        data="US"),
+    dcc.Store(id="country-store",        data="US", storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
     html.Div(id="theme-dummy",           style={"display": "none"}),
@@ -1609,14 +1610,63 @@ app.clientside_callback(
 # ── Callbacks — aggregate selected series ─────────────────────────────────────
 
 @callback(
-    Output("selected-series", "data"),
-    [Input({"type": "group-checklist", "group": dash.ALL}, "value"),
-     Input("btn-clear-all", "n_clicks")],
+    Output("series-selector-body", "children"),
+    Input("country-store", "data"),
     prevent_initial_call=False,
 )
-def aggregate_selected(group_values: list[list[str]], _clear: Any) -> list[str]:
+def update_series_selector(country: str) -> list:
+    """Populate the chart overlay series sidebar for the selected country."""
+    from dashboard.data_dashboard import _SIGNAL_NAMES as _DN
+    from dashboard.data_dashboard import _FORCE_LABELS as _FL
+    country = (country or "US").upper()
+    if country == "US":
+        return _build_series_groups_us()
+    # Dynamic: build groups from signals table for non-US country
+    try:
+        con = duckdb.connect(str(DB_PATH), read_only=True)
+        df = con.execute(
+            "SELECT id, force FROM signals WHERE country = ? "
+            "QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1 "
+            "ORDER BY force, id",
+            [country],
+        ).df()
+        con.close()
+    except Exception:
+        return [html.Div("Could not load signals.", className="text-muted small")]
+    if df.empty:
+        return [html.Div(f"No signals found for {country}.", className="text-muted small")]
+    groups = []
+    for force in df["force"].unique():
+        force_df = df[df["force"] == force]
+        group_name = _FL.get(force, force.replace("_", " ").title())
+        options = []
+        for _, row in force_df.iterrows():
+            concept = ".".join(row["id"].split(".")[1:])
+            label = _DN.get(concept, concept.split(".")[-1].replace("_", " ").title())
+            options.append({"label": label, "value": row["id"]})
+        groups.append(html.Div([
+            html.P(group_name, className="text-muted small mb-1 mt-2 fw-semibold"),
+            dcc.Checklist(
+                id={"type": "group-checklist", "group": group_name},
+                options=options,
+                value=[],
+                inputStyle={"marginRight": "6px"},
+                labelStyle={"display": "block", "fontSize": "0.82rem", "marginBottom": "3px"},
+            ),
+        ]))
+    return groups
+
+
+@callback(
+    Output("selected-series", "data"),
+    [Input({"type": "group-checklist", "group": dash.ALL}, "value"),
+     Input("btn-clear-all", "n_clicks"),
+     Input("country-store", "data")],
+    prevent_initial_call=False,
+)
+def aggregate_selected(group_values: list[list[str]], _clear: Any, _country: Any) -> list[str]:
     triggered = dash.callback_context.triggered_id
-    if triggered == "btn-clear-all":
+    if triggered == "btn-clear-all" or triggered == "country-store":
         return []
     result = []
     for vals in (group_values or []):
@@ -1691,10 +1741,27 @@ def update_overlay_chart(
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
 
+    from dashboard.data_dashboard import _SIGNAL_NAMES as _DN
+    from dashboard.data_dashboard import _FORCE_LABELS as _FL
+
+    def _entry_for(sid: str) -> dict:
+        if sid in _BY_ID:
+            return _BY_ID[sid]
+        # Non-US signal not in the catalog: build a minimal entry on the fly
+        parts = sid.split(".")
+        concept = ".".join(parts[1:]) if len(parts) >= 2 else sid
+        force = parts[1] if len(parts) >= 3 else "other"
+        return {
+            "label": _DN.get(concept, parts[-1].replace("_", " ").title()),
+            "default_pane": _FL.get(force, force.title()),
+            "units": "",
+            "value_col": "value",
+        }
+
     # Group selected series by their default_pane
     pane_series: dict[str, list[str]] = defaultdict(list)
     for sid in selected_ids:
-        entry = _BY_ID.get(sid, {})
+        entry = _entry_for(sid)
         pane = entry.get("default_pane", "other")
         pane_series[pane].append(sid)
 
@@ -1712,7 +1779,7 @@ def update_overlay_chart(
     color_idx = 0
     for row_idx, pane in enumerate(panes, start=1):
         for sid in pane_series[pane]:
-            entry = _BY_ID.get(sid, {})
+            entry = _entry_for(sid)
             df = load_signal_history(
                 sid,
                 value_col=entry.get("value_col", "value"),
@@ -1735,7 +1802,7 @@ def update_overlay_chart(
                 col=1,
             )
         # Y-axis label per pane
-        units_in_pane = {_BY_ID.get(s, {}).get("units", "") for s in pane_series[pane]}
+        units_in_pane = {_entry_for(s).get("units", "") for s in pane_series[pane]}
         y_title = " / ".join(u for u in units_in_pane if u) or ""
         fig.update_yaxes(title_text=y_title, row=row_idx, col=1)
 
@@ -1780,14 +1847,24 @@ def populate_yc_dates(_trigger: Any) -> tuple[list[dict], str, list[dict]]:
     Output("yield-curve-chart", "figure"),
     [Input("yc-date-picker", "value"),
      Input("yc-date-compare", "value"),
-     Input("theme-store", "data")],
+     Input("theme-store", "data"),
+     Input("country-store", "data")],
     prevent_initial_call=False,
 )
 def update_yield_curve(
     date_primary: str,
     date_compare: str,
     theme_name: str = DEFAULT_THEME,
+    country: str = "US",
 ) -> go.Figure:
+    country = (country or "US").upper()
+    if country != "US":
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(
+            theme_name,
+            f"Yield Curve — US Treasury data only  ·  {country} term structure not yet available",
+        ))
+        return fig
     if not date_primary:
         fig = go.Figure()
         fig.update_layout(**figure_layout(theme_name, "Select a date"))
@@ -1942,6 +2019,12 @@ def _regime_info_children(
     )
     n_g        = int(row.get("n_growth_signals", 0) or 0)
     n_i        = int(row.get("n_inflation_signals", 0) or 0)
+    # Dynamic totals from the live composites config (not hardcoded US counts)
+    if comp_df is not None and not comp_df.empty:
+        n_g_total = len(comp_df[comp_df["composite"] == "growth"])
+        n_i_total = len(comp_df[comp_df["composite"] == "inflation"])
+    else:
+        n_g_total, n_i_total = 9, 8
     q_color    = _QUADRANT_COLOR.get(quadrant, "#888")
     muted      = {"color": "var(--muted-color)"}
 
@@ -2067,8 +2150,8 @@ def _regime_info_children(
             _group(
                 f"Force Z-Scores{'  ·  rolling ' + str(rw) + 'mo' if use_rolling else ''}",
                 [
-                    _val_block("Growth",    g_score, _GROWTH_COLOR,    f"{n_g}/9 signals"),
-                    _val_block("Inflation", i_score, _INFLATION_COLOR, f"{n_i}/8 signals"),
+                    _val_block("Growth",    g_score, _GROWTH_COLOR,    f"{n_g}/{n_g_total} signals"),
+                    _val_block("Inflation", i_score, _INFLATION_COLOR, f"{n_i}/{n_i_total} signals"),
                 ],
             ),
 
@@ -2563,24 +2646,35 @@ def update_regime_info(
     force_sfx = _FORCE_WINDOW_COL.get(zscore_window)
     if force_sfx:
         rg_col, ri_col = f"growth_score_{force_sfx}", f"inflation_score_{force_sfx}"
-        rg = selected.get(rg_col)
-        ri = selected.get(ri_col)
-        rolling["g_score"] = float(rg) if rg is not None and not pd.isna(rg) else None
-        rolling["i_score"] = float(ri) if ri is not None and not pd.isna(ri) else None
-        if idx > 0:
-            prev = comp.iloc[idx - 1]
-            prev_rg = prev.get(rg_col)
-            prev_ri = prev.get(ri_col)
-            if rolling["g_score"] is not None and prev_rg is not None and not pd.isna(prev_rg):
-                rolling["g_delta"] = rolling["g_score"] - float(prev_rg)
-            if rolling["i_score"] is not None and prev_ri is not None and not pd.isna(prev_ri):
-                rolling["i_delta"] = rolling["i_score"] - float(prev_ri)
+        # Only use rolling columns if this country has pre-computed data
+        has_rolling = rg_col in comp.columns and comp[rg_col].notna().any()
+        if has_rolling:
+            rg = selected.get(rg_col)
+            ri = selected.get(ri_col)
+            rolling["g_score"] = float(rg) if rg is not None and not pd.isna(rg) else None
+            rolling["i_score"] = float(ri) if ri is not None and not pd.isna(ri) else None
+            if idx > 0:
+                prev = comp.iloc[idx - 1]
+                prev_rg = prev.get(rg_col)
+                prev_ri = prev.get(ri_col)
+                if rolling["g_score"] is not None and prev_rg is not None and not pd.isna(prev_rg):
+                    rolling["g_delta"] = rolling["g_score"] - float(prev_rg)
+                if rolling["i_score"] is not None and prev_ri is not None and not pd.isna(prev_ri):
+                    rolling["i_delta"] = rolling["i_score"] - float(prev_ri)
+        else:
+            # Rolling pre-computation not available for this country; fall back to full history
+            rolling["window"] = 0
 
     # ── Rolling disequilibrium (from pre-computed DB columns) ─────────────────
     diseq_sfx = _DISEQ_WINDOW_COL.get(diseq_window)
     if diseq_sfx:
-        rd = selected.get(f"disequilibrium_{diseq_sfx}")
-        rolling["diseq_score"] = float(rd) if rd is not None and not pd.isna(rd) else None
+        diseq_col = f"disequilibrium_{diseq_sfx}"
+        has_diseq = diseq_col in comp.columns and comp[diseq_col].notna().any()
+        if has_diseq:
+            rd = selected.get(diseq_col)
+            rolling["diseq_score"] = float(rd) if rd is not None and not pd.isna(rd) else None
+        else:
+            rolling["diseq_window"] = 0
 
     comp_df = load_composite_component_status(
         country=country, as_of=str(selected["as_of"])
@@ -3701,10 +3795,19 @@ def _build_debt_stress_info(
     Output("debt-stress-info-box", "children"),
     [Input("date-range", "data"),
      Input("theme-store", "data"),
+     Input("country-store", "data"),
      Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
-def update_debt_stress_info(date_range: dict, theme_name: str, _trigger: Any = None) -> list:
+def update_debt_stress_info(date_range: dict, theme_name: str, country: str = "US", _trigger: Any = None) -> list:
+    country = (country or "US").upper()
+    if country != "US":
+        return [html.Div(
+            f"Long-Term Debt Stress model is US-only — component series (household debt, "
+            f"corporate debt, federal deficit, interest payments) are FRED-sourced US data. "
+            f"A {country}-equivalent composite is pending research.",
+            style={"color": "var(--muted-color)", "fontSize": "0.85rem", "padding": "20px 0"},
+        )]
     end = (date_range or {}).get("end")
     df = load_debt_stress_history(country="US", end_date=end)
     latest = df.iloc[-1] if not df.empty else None
@@ -3718,19 +3821,25 @@ def update_debt_stress_info(date_range: dict, theme_name: str, _trigger: Any = N
     Output("debt-stress-chart", "figure"),
     [Input("date-range", "data"),
      Input("theme-store", "data"),
+     Input("country-store", "data"),
      Input("page-trigger", "data")],
     prevent_initial_call=False,
 )
 def update_debt_stress_chart(
     date_range: dict,
     theme_name: str = DEFAULT_THEME,
+    country: str = "US",
     _trigger: Any = None,
 ) -> go.Figure:
+    country = (country or "US").upper()
+    theme_name = theme_name or DEFAULT_THEME
+    if country != "US":
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, f"Debt Stress — US-only model  ·  {country} not yet available"))
+        return fig
     start = (date_range or {}).get("start")
     end   = (date_range or {}).get("end")
     df = load_debt_stress_history(country="US", start_date=start, end_date=end)
-
-    theme_name = theme_name or DEFAULT_THEME
 
     if df.empty:
         fig = go.Figure()

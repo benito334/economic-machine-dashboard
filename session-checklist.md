@@ -17,36 +17,38 @@
 ### BEA data refresh — due 2026-06-26
 Run after June 26 to pick up BEA Q1 2026 data:
 ```
-python3 -m indicators.pipeline --latest
+python3 -m indicators.pipeline
 ```
-Will clear 3 stale signals: current account, NIIP, debt service ratio.
+Will clear 3 stale US signals: current account, NIIP, debt service ratio.
+
+### EA current account — accepted gap
+All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidance/EU_singals_guidance.md` for full investigation table. Resolution requires ECB Data License or manual Eurostat bulk download. Accept gap for now — Global Overview shows dash for EZ current account column.
 
 ---
 
-## Completed this session (2026-06-22)
-- Global Overview + Data Dashboard + sort/filter/reset (see prior entry)
-- **Phase 2 EZ + KR rollout**: 19 EZ signals + 22 KR signals live in DuckDB (104 total)
-- `raw_scale` field on CountryBinding for already-YoY% FRED series (KR CPI, retail sales)
-- `_WB_COUNTRY_MAP` in loader.py for WB API country code mapping (EZ→EMU, KR→KOR, etc.)
-- Multi-country pipeline: `run_country()` helper + country loop over `config/countries/*.yaml`
-- `_load_wide` composites bug fix: empty-input tuple unpacking crash fixed
-- 349 tests pass; Docker rebuilt; EZ+KR visible in Global Overview table
+## Completed this session (2026-06-23)
+- **Data Explorer country-awareness**: all 6 callbacks wired to `country-store`; signal table resets on country switch
+- **ECB SDW fetcher**: `fetch_ecb_series()` in `loader.py`; Pass 1.6 in `pipeline.py`; `"FLOW/KEY"` series_id format
+- **7 new EZ bindings**: employment growth, construction prod, capacity util (Eurostat); BTP-Bund spread via ECB IRS; fiscal budget balance (Eurostat quarterly); HICP energy + food sources corrected to FRED index series (monthly through current)
+- **EZ composites**: growth 3→6, inflation 4→6; latest Inflationary Boom 58% conf
+- **EZ Global Overview**: `ez.master.gdp_level_bn` (WB `NY.GDP.MKTP.CD`, 16,485B USD 2024) + `ez.credit.gov_debt_gdp` (Eurostat `gov_10dd_edpt1`, 87.8% 2025) now live
+- **Regime History + Global Overview signal counts fixed**: dynamic from composites engine
+- **Guidance doc updated**: `docs/Guidance/EU_singals_guidance.md` — all signals reviewed; CA investigation table added; HICP energy/food source correction noted
+- **EZ: 34 signals live** (was 19); **353 tests pass**; Docker rebuilt
 
 ## Up next (next session)
 | Priority | Item |
 |---|---|
-| 1 | Phase 2 — Japan (JP): create `jp_bindings.yaml` + `jp_composites.yaml` |
-| 2 | EZ current_account_gdp: WB EMU + Eurostat BOP both empty; investigate ECB SDW key format or accept gap |
-| 3 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
-| 4 | KR monthly CPI: OECD FRED discontinued Apr 2025; OECD direct API returns 404; explore BoK ECOS API (requires registration) |
+| 1 | Phase 2 — Japan (JP): `config/countries/jp_bindings.yaml` + `jp_composites.yaml` |
+| 2 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
+| 3 | KR monthly CPI: BoK ECOS API (requires registration) is the only remaining free source; OECD FRED discontinued Apr 2025 |
 
 ## Notes for next session
-- 107 signals total (63 US + 23 KR + 19 EZ + Eurostat feeds)
-- **Per-country composites split complete**: `config/composites_policy.yaml` (global) + `config/countries/{cc}_composites.yaml` (per-country)
-- `load_composites_config(country="US")` in composites.py — merges policy + country file; errors loudly if no country file
-- Pipeline skips composites pass with warning if no `{cc}_composites.yaml` found — safe for Japan before file is created
-- Adding Japan = create `jp_bindings.yaml` + `jp_composites.yaml` in `config/countries/`
-- EZ uses `country: EZ` code (maps to WB `EMU`); signals stored as `ez.*.*`
-- KR CPI/retail series have `raw_scale: 100` — already-YoY% OECD FRED series
-- Dash 4.x uses Radix UI for Slider — class names are `dash-slider-*`, not `rc-slider-*`
-- :8501 (Streamlit) still running as reference; :8502 is the primary dashboard
+- **119 signals total** (63 US + 34 EZ + 22 KR)
+- EZ now 34 signals: 3 FRED growth (stale/historical), 9 Eurostat, 2 ECB IRS, 3 derived, 1 WB GDP, 1 Eurostat debt, 10 WB structural, 5 FRED monetary/currency
+- Per-country composites split: `config/composites_policy.yaml` (global) + `config/countries/{cc}_composites.yaml` (per-country)
+- Adding Japan: create `jp_bindings.yaml` + `jp_composites.yaml` in `config/countries/`; pipeline auto-discovers
+- EZ: `gov_10dd_edpt1` (annual debt) requires NO `s_adj` dim; `gov_10q_ggnfa` (quarterly fiscal balance) uses `s_adj=NSA`
+- Eurostat `bop_c6_q` always 413 even with all dims — too large for JSON API; not usable for EA current account
+- ECB SDW IRS flow key format: `FREQ.COUNTRY.MATURITY.RATE_TYPE.ISSUANCE.RATING.CURRENCY.IND.COUNTERPARTY`
+- :8502 is primary dashboard (Dash); :8501 is Streamlit reference only

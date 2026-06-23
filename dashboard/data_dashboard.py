@@ -118,6 +118,15 @@ _SIGNAL_NAMES: dict[str, str] = {
     "demo.urbanization":           "Urbanization Rate",
     "demo.labor_force_part_wb":    "Labor Force Part. (WB)",
     "climate.disaster_loss":       "Disaster Losses / GDP",
+    # EZ-specific / multi-country signals (added 2026-06-23)
+    "inflation.ppi":               "PPI (Producer Prices)",
+    "inflation.wages_lci":         "Wages & Salaries (LCI)",
+    "inflation.hicp_energy":       "HICP Energy",
+    "inflation.hicp_food":         "HICP Food",
+    "policy.central_bank_assets":  "Central Bank Assets",
+    "policy.yield_spread":         "Yield Spread (10Y − Policy Rate)",
+    # KR-specific
+    "inflation.cpi_imf_annual":    "CPI Inflation (IMF Annual)",
 }
 
 _FREQ_LABELS: dict[str, str] = {
@@ -132,13 +141,21 @@ _NEXT_DAYS: dict[str, int] = {
 
 # ── YAML metadata ─────────────────────────────────────────────────────────────
 
-def _load_binding_meta() -> dict[str, dict]:
-    path = _CONFIG_DIR / "us_bindings.yaml"
+def _load_binding_meta(country: str = "US") -> dict[str, dict]:
+    cc = (country or "US").upper()
+    cc_path = _CONFIG_DIR / "countries" / f"{cc.lower()}_bindings.yaml"
+    root_path = _CONFIG_DIR / f"{cc.lower()}_bindings.yaml"
+    if cc_path.exists():
+        path = cc_path
+    elif root_path.exists():
+        path = root_path
+    else:
+        path = _CONFIG_DIR / "us_bindings.yaml"
     with open(path) as f:
         cfg = yaml.safe_load(f)
-    country = cfg.get("country", "US").lower()
+    prefix = cc.lower()
     return {
-        f"{country}.{b['id']}": {
+        f"{prefix}.{b['id']}": {
             "frequency": b.get("frequency", "?"),
             "source_tier": b.get("source_tier", "free"),
         }
@@ -148,16 +165,16 @@ def _load_binding_meta() -> dict[str, dict]:
 
 # ── DB query ──────────────────────────────────────────────────────────────────
 
-def _load_signals() -> pd.DataFrame:
+def _load_signals(country: str = "US") -> pd.DataFrame:
     con = duckdb.connect(_DB, read_only=True)
     df = con.execute("""
         SELECT id, force, as_of, value, units, source, provider,
                is_stale, low_history, is_proxy, vintage_available, is_constructed
         FROM signals
-        WHERE country = 'US'
+        WHERE country = ?
         QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1
         ORDER BY force, id
-    """).df()
+    """, [(country or "US").upper()]).df()
     con.close()
     return df
 
@@ -435,21 +452,14 @@ def _build_summary(df: pd.DataFrame, total_all: int, active_filters: int) -> lis
 # ── Layout shell ──────────────────────────────────────────────────────────────
 
 def get_layout() -> html.Div:
-    meta = _load_binding_meta()
-    df = _load_signals()
-
-    # Force dropdown options
-    forces_present = sorted(df["force"].unique())
+    # Static options — callback fills the table and updates description per country
     force_opts = [{"label": "All Forces", "value": ""}] + [
         {"label": _FORCE_LABELS.get(f, f.title()), "value": f}
-        for f in _FORCE_ORDER if f in forces_present
+        for f in _FORCE_ORDER
     ]
-
-    # Frequency dropdown options
-    freqs_present = {meta.get(r["id"], {}).get("frequency", "") for _, r in df.iterrows()} - {""}
     freq_opts = [{"label": "All Frequencies", "value": ""}] + [
         {"label": _FREQ_LABELS.get(f, f), "value": f}
-        for f in ["D", "W", "M", "Q", "A"] if f in freqs_present
+        for f in ["D", "W", "M", "Q", "A"]
     ]
 
     dd_style = {
@@ -513,8 +523,8 @@ def get_layout() -> html.Div:
             html.H4("Data Feed Monitor",
                     style={"marginBottom": "2px", "fontSize": "1.1rem"}),
             html.P(
-                "All 63 ingested signals. Grouped by force. "
-                "Click a column header to sort. Sorting switches to flat view.",
+                id="dd-description",
+                children="Signals grouped by force. Click a column header to sort; sorting switches to flat view.",
                 style={"color": "var(--muted-color)", "fontSize": "0.74rem",
                        "marginBottom": "12px"},
             ),
@@ -543,31 +553,35 @@ def get_layout() -> html.Div:
 def register_callbacks(app) -> None:
     @app.callback(
         [
-            Output(_TBODY_ID,   "children"),
-            Output(_SUMMARY_ID, "children"),
-            Output(_SORT_STORE, "data"),
-            Output(_THEAD_ID,   "children"),
+            Output(_TBODY_ID,       "children"),
+            Output(_SUMMARY_ID,     "children"),
+            Output(_SORT_STORE,     "data"),
+            Output(_THEAD_ID,       "children"),
+            Output("dd-description","children"),
         ],
         [
-            Input(_SEARCH_ID, "value"),
-            Input(_FORCE_ID,  "value"),
-            Input(_STATUS_ID, "value"),
-            Input(_FREQ_ID,   "value"),
+            Input(_SEARCH_ID,          "value"),
+            Input(_FORCE_ID,           "value"),
+            Input(_STATUS_ID,          "value"),
+            Input(_FREQ_ID,            "value"),
             *[Input(f"dd-hdr-{c}", "n_clicks") for c in _SORTABLE],
-            Input(_RESET_BTN, "n_clicks"),
+            Input(_RESET_BTN,          "n_clicks"),
+            Input("country-store",     "data"),
         ],
         State(_SORT_STORE, "data"),
         prevent_initial_call=False,
     )
     def _update(*args):
-        n_filters = 4
-        filter_vals = list(args[:n_filters])          # search, force, status, freq
+        n_inputs = 4 + len(_SORTABLE) + 2   # search/force/status/freq + headers + reset + country
+        country: str = (args[n_inputs - 1] or "US").upper()
         sort_state: dict = args[-1] or {"col": None, "dir": "asc"}
-        search, force_filter, status_filter, freq_filter = filter_vals
+        search, force_filter, status_filter, freq_filter = args[0], args[1], args[2], args[3]
 
-        # Resolve sort column from which header was clicked
+        # Resolve sort column from which header was clicked; reset on country switch
         triggered = ctx.triggered_id or ""
-        if triggered == _RESET_BTN:
+        if triggered == "country-store":
+            sort_state = {"col": None, "dir": "asc"}
+        elif triggered == _RESET_BTN:
             sort_state = {"col": None, "dir": "asc"}
         elif isinstance(triggered, str) and triggered.startswith("dd-hdr-"):
             new_col = triggered[len("dd-hdr-"):]
@@ -577,8 +591,8 @@ def register_callbacks(app) -> None:
                 new_dir = "asc"
             sort_state = {"col": new_col, "dir": new_dir}
 
-        df = _load_signals()
-        meta = _load_binding_meta()
+        df = _load_signals(country)
+        meta = _load_binding_meta(country)
         total_all = len(df)
 
         # ── Filters ────────────────────────────────────────────────────────
@@ -615,7 +629,15 @@ def register_callbacks(app) -> None:
             status_filter not in ("all", None, ""),
         ])
 
+        country_label = {"US": "United States", "EZ": "Euro Area", "KR": "South Korea"}.get(
+            country, country
+        )
+        description = (
+            f"{total_all} signals for {country_label}. "
+            "Grouped by force. Click a column header to sort; sorting switches to flat view."
+        )
+
         tbody    = _build_tbody(df, meta, sort_state)
         summary  = _build_summary(df, total_all, active_filters)
         header   = _build_header(sort_state)
-        return tbody, summary, sort_state, header
+        return tbody, summary, sort_state, header, description

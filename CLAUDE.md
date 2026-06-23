@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-22:** Phases 1A–1I complete. Phase 2 started: EZ + KR live with live quadrants. **349 tests pass.** 107 signals total (63 US + 23 KR + 19 EZ + Eurostat feeds). Multi-country pipeline with `run_country()` helper; per-country composites config split (`composites_policy.yaml` + `{cc}_composites.yaml`).
+**As of 2026-06-23:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). ECB SDW fetcher live (Pass 1.6). EZ composites 6/6 growth + 6/6 inflation. Global Overview shows EZ GDP (16,485B USD 2024) + Debt/GDP (87.8% 2025). EA current account gap documented as unresolvable from free APIs.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -99,18 +99,20 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 1G Methodology improvements | ✅ **Done** | Configurable force importance/quality weights, momentum-agreement tilt, 3-month half-life decay, point-in-time weight audit; 349 tests pass |
 | 1H TradingView system | ✅ **Done** | FastAPI :8004 + nginx :8503 (ADR-007 Option B); 4-tab SPA: Charts, Macro Table, Regime step controls, Yield Curve |
 | 1I :8502 UI consolidation | ✅ **Done** | Global Overview table + Data Dashboard (sticky header, sort/filter/reset); methodology audit + formula clipboard + confidence fix + slider amber + date block + tooltips all complete |
-| 2 Country rollout | 🔄 **In progress** | EZ ✅ (19 signals) + KR ✅ (22 signals) live; next: Japan |
+| 2 Country rollout | 🔄 **In progress** | EZ ✅ (34 signals, 6G+6I composites) + KR ✅ (22 signals) live; next: Japan |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account is empty (WB EMU lacks `BN.CAB.XOKA.GD.ZS` and Eurostat BOP EA aggregate returns 0 values) — investigate ECB SDW.
+**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is closed — all free API sources exhausted, documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
 
-**Phase 2 architecture notes (as of 2026-06-22):**
+**Phase 2 architecture notes (as of 2026-06-23):**
 - Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir
 - Internal country codes: `EZ` (signal IDs: `ez.*`), `KR` (signal IDs: `kr.*`), `JP` (signal IDs: `jp.*`)
 - `_WB_COUNTRY_MAP` in `loader.py`: `EZ→EMU`, `KR→KOR`, `JP→JPN`, etc. — handles WB API country codes
-- `raw_scale` field on `CountryBinding`: divide raw fetched value by this factor before transformation; used for OECD FRED `CTGYM`/`GYS`-suffix series (already in YoY% form), e.g. KR CPI (`raw_scale: 100`). Also applies to IMF signals (PCPIPCH for KR CPI bridge).
+- `raw_scale` field on `CountryBinding`: divide raw fetched value by this factor before transformation; used for OECD FRED `CTGYM`/`GYS`-suffix series (already in YoY% form), e.g. KR CPI (`raw_scale: 100`). Also applies to IMF signals and WB `NY.GDP.MKTP.CD` (1e9 for billions).
 - IMF Datamapper does NOT support `EUR` (Euro area aggregate) — no IMF bindings for EZ
-- **Eurostat JSON stats API** (`fetch_eurostat_series()` in `loader.py`): provides EZ growth data. Correct geo codes: `EA21` (unemployment), `EA20` (industrial prod, retail sales). Correct adjustment: `s_adj=CA` (calendar) for `PCH_SM` industrial production (NOT `SCA`). Dataset codes: `une_rt_m`, `sts_inpr_m`, `sts_trtu_m`.
+- **Eurostat JSON stats API** (`fetch_eurostat_series()` in `loader.py`): provides EZ growth data. Correct geo codes: `EA21` (unemployment), `EA20` (industrial prod, retail sales, construction, capacity util, fiscal). Correct adjustment: `s_adj=CA` (calendar) for PCH_SM series; `s_adj=SCA` returns empty for EA20 in `sts_copr_m`. Dataset codes: `une_rt_m`, `sts_inpr_m`, `sts_trtu_m`, `sts_copr_m`, `ei_bsin_q_r2`, `namq_10_pe`, `gov_10q_ggnfa`, `gov_10dd_edpt1`.
+- **ECB SDW fetcher** (`fetch_ecb_series(flow, key)` in `loader.py`): SDMX-JSON 1.0 API (`data-api.ecb.europa.eu`). `series_id` in bindings is `"FLOW/KEY"` format (e.g. `"IRS/M.DE.L.L40.CI.0000.EUR.N.Z"`). Pass 1.6 in pipeline. IRS flow = Long-term Interest Rate Statistics (Maastricht yields). BOP/BP6/BPS flows return HTTP 400 in this env.
+- **EZ current account**: all free API sources exhausted — WB EMU (null), ECB flows (400/404), FRED (no EA series), Eurostat `bop_c6_q` (413 regardless of params), IMF (empty for all EA codes). Documented in `docs/Guidance/EU_singals_guidance.md`. Not solvable without ECB Data License.
 - **KR monthly CPI gap**: OECD FRED feed ended Apr 2025. Bridge via `inflation.cpi_imf_annual` (`PCPIPCH`/KOR, annual, `raw_scale: 100`, `is_proxy: true`). OECD direct SDMX API returns 404 in this env (all endpoints tested). BoK ECOS API requires registration.
 - **Current quadrants**: EZ = Inflationary Boom 67% conf; KR = Expansion 25% conf (single annual inflation bridge); US = Stagflation 40% conf.
 - **Per-country composites config** (added 2026-06-22):

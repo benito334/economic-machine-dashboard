@@ -468,3 +468,104 @@ def fetch_eurostat_series(
     series.to_frame().to_parquet(cache)
     logger.debug("[cached] Eurostat %s → %s (%d obs)", dataset, cache.name, len(series))
     return series
+
+
+# ── ECB Statistical Data Warehouse (SDMX-JSON 1.0) ───────────────────────────
+
+_ECB_BASE = "https://data-api.ecb.europa.eu/service/data"
+
+
+def _ecb_cache_path(flow: str, key: str) -> Path:
+    import hashlib
+    h = hashlib.md5(f"{flow}/{key}".encode()).hexdigest()[:10]
+    return RAW_CACHE_DIR / f"ecb_{flow}_{h}.parquet"
+
+
+def _decode_ecb_response(d: dict) -> pd.Series:
+    """Decode ECB SDMX-JSON 1.0 response (single series) to a dated pandas Series."""
+    struct = d.get("structure", {})
+    obs_dims = struct.get("dimensions", {}).get("observation", [])
+    if not obs_dims:
+        return pd.Series(dtype=float, name="value")
+    periods = [v["id"] for v in obs_dims[0].get("values", [])]
+
+    dataset = d.get("dataSets", [{}])[0]
+    series_dict = dataset.get("series", {})
+    if not series_dict:
+        return pd.Series(dtype=float, name="value")
+    # Use the first series (single-country key returns exactly one)
+    series_data = next(iter(series_dict.values()))
+    obs = series_data.get("observations", {})
+
+    records: list[tuple[str, float]] = []
+    for pos_str, val_list in obs.items():
+        pos = int(pos_str)
+        if pos < len(periods) and val_list and val_list[0] is not None:
+            records.append((periods[pos], float(val_list[0])))
+
+    if not records:
+        return pd.Series(dtype=float, name="value")
+
+    periods_sorted, values = zip(*sorted(records))
+    dates = _parse_estat_periods(list(periods_sorted))  # YYYY-MM → month-end works here
+    return pd.Series(list(values), index=dates, name="value", dtype=float).sort_index()
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_ecb_from_api(flow: str, key: str, start_period: str = "2000-01") -> pd.Series:
+    resp = requests.get(
+        f"{_ECB_BASE}/{flow}/{key}",
+        params={"startPeriod": start_period, "format": "jsondata"},
+        timeout=40,
+    )
+    resp.raise_for_status()
+    d = resp.json()
+    series = _decode_ecb_response(d)
+    if series.empty:
+        raise ValueError(f"Empty ECB response for {flow}/{key}")
+    return series
+
+
+def fetch_ecb_series(
+    flow: str,
+    key: str,
+    start_period: str = "2000-01",
+    frequency: str = "M",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """
+    Fetch a single time series from the ECB Statistical Data Warehouse SDMX-JSON API.
+
+    flow: ECB data flow (e.g. "IRS")
+    key: dimension key string (e.g. "M.DE.L.L40.CI.0000.EUR.N.Z")
+    Caches to parquet; returns None and logs on failure.
+    """
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _ecb_cache_path(flow, key)
+
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] ECB %s/%s", flow, key)
+        df = pd.read_parquet(cache)
+        return df["value"]
+
+    logger.info("[ECB fetch] %s/%s", flow, key)
+
+    try:
+        series = _fetch_ecb_from_api(flow, key, start_period)
+    except Exception as exc:
+        logger.error("[ECB] Failed to fetch %s/%s: %s", flow, key, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for ECB %s/%s", flow, key)
+            df = pd.read_parquet(cache)
+            return df["value"]
+        return None
+
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] ECB %s/%s → %s (%d obs)", flow, key, cache.name, len(series))
+    return series

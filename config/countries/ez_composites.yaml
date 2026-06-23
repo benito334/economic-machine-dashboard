@@ -2,11 +2,17 @@
 # Methodology params live in config/composites_policy.yaml.
 #
 # EZ growth signals come from Eurostat (industrial_prod, retail_sales, unemployment).
-# EZ inflation signals come from FRED ECB/Eurostat (cpi_headline, cpi_core).
-# No PCE, no market breakevens, no JOLTS/PMI — weights reflect this narrower coverage.
+# EZ inflation signals: HICP headline + core (anchors) + PPI + wages + energy + food (context).
+# No PCE, no market breakevens, no JOLTS/PMI — weights reflect the Eurostat-only feed.
+#
+# Inflation signal additions (2026-06-23):
+#   ppi        — leading cost-push upstream indicator (monthly)
+#   wages_lci  — wage-push / services persistence (quarterly)
+#   hicp_energy — volatile energy component; large EA import dependence (monthly)
+#   hicp_food  — food component; supplementary context (monthly)
 
 growth_score:
-  description: "EZ growth-force composite — Eurostat monthly indicators"
+  description: "EZ growth-force composite — Eurostat monthly/quarterly indicators"
   indicators:
     - id: growth.industrial_prod
       base_share: 0.5
@@ -21,15 +27,43 @@ growth_score:
       importance: 0.55      # TUNABLE
       quality_factor: 0.90
       invert: true          # lower unemployment = better growth
+    - id: growth.employment_growth
+      base_share: 0.4
+      importance: 0.50      # TUNABLE — quarterly; supplements unemployment; lagging
+      quality_factor: 0.85
+    - id: growth.construction_prod
+      base_share: 0.3
+      importance: 0.45      # TUNABLE — monthly but volatile; sensitive to weather
+      quality_factor: 0.85
+    - id: growth.capacity_util
+      base_share: 0.4
+      importance: 0.60      # TUNABLE — quarterly; leading indicator of capex/hiring
+      quality_factor: 0.90
 
 inflation_score:
-  description: "EZ inflation-force composite — HICP headline + core"
+  description: "EZ inflation-force composite — HICP anchors + upstream + cost-push signals"
   indicators:
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 0.95      # TUNABLE — primary anchor; persistent EA services inflation
+      quality_factor: 1.00
     - id: inflation.cpi_headline
       base_share: 1.0
       importance: 0.60      # TUNABLE — elevated vs US because no PCE equivalent
       quality_factor: 0.90
-    - id: inflation.cpi_core
-      base_share: 1.0
-      importance: 0.95      # TUNABLE — primary anchor
-      quality_factor: 1.00
+    - id: inflation.wages_lci
+      base_share: 0.7
+      importance: 0.70      # TUNABLE — cost-push driver; quarterly, slightly down-weighted
+      quality_factor: 0.90
+    - id: inflation.ppi
+      base_share: 0.5
+      importance: 0.55      # TUNABLE — leading upstream signal; volatile, lower weight
+      quality_factor: 0.85
+    - id: inflation.hicp_energy
+      base_share: 0.3
+      importance: 0.40      # TUNABLE — volatile; large EA exposure; supplementary context
+      quality_factor: 0.85
+    - id: inflation.hicp_food
+      base_share: 0.3
+      importance: 0.35      # TUNABLE — supplementary; global commodity passthrough
+      quality_factor: 0.80

@@ -4,6 +4,52 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-23 — EZ signal expansion (cont.) — ECB fetcher, GDP, Debt/GDP, CA investigation
+
+**Done:**
+- **Data Explorer country-awareness** (`dashboard/explorer.py`): all 6 callbacks now accept `country-store` as `Input` or `State`. Signal table resets `selected_rows` on country switch. `load_signal_overview(country)` and `load_composite_zscore_matrix(country)` called with selected country throughout.
+- **ECB SDW fetcher** (`indicators/loader.py` + `indicators/pipeline.py`): `fetch_ecb_series(flow, key)` added — SDMX-JSON 1.0, parquet cache, TTL-based refresh, same retry/error pattern as Eurostat. Pass 1.6 (ECB) added to `run_country()`: parses `series_id` as `"FLOW/KEY"`, e.g. `"IRS/M.DE.L.L40.CI.0000.EUR.N.Z"`.
+- **7 new EZ bindings** (`config/countries/ez_bindings.yaml`):
+  - `growth.employment_growth` — Eurostat `namq_10_pe` (EA20, SCA, EMP_DC, PCH_SM_PER, Q). `raw_scale: 100`.
+  - `growth.construction_prod` — Eurostat `sts_copr_m` (EA20, F, s_adj=CA, PCH_SM, M). `raw_scale: 100`. Key finding: `SCA` returns empty; `CA` works.
+  - `growth.capacity_util` — Eurostat `ei_bsin_q_r2` (EA20, BS-ICU-PC, SA, Q). Level in %, no raw_scale.
+  - `fiscal.budget_balance_gdp` — Eurostat `gov_10q_ggnfa` (EA20, B9, S13, PC_GDP, Q). Annual `gov_10dd_edpt1` is EDP-procedure data only; quarterly net lending via `gov_10q_ggnfa`.
+  - `credit.yield_de_10y` / `credit.yield_it_10y` — ECB SDW IRS flow (M). Correct flow for Maastricht-criterion 10Y yields; BOP flow returns 400.
+  - `credit.btp_bund_spread` — derived (IT − DE); 317 monthly obs, latest May 2026 = 79.4 bps.
+- **EZ HICP energy/food sources corrected**: `prc_hicp_manr` publishes Mean Annual Rate and stops at Dec of prior year — switched to FRED index series with `yoy_pct` transform: `CP0450EZ19M086NEST` (electricity/gas) and `CP0100EZ19M086NEST` (food). Both through May 2026.
+- **EZ composites re-run**: growth 3→6 signals, inflation 4→6 signals. `ez_composites.yaml` updated. Latest (May 2026): Inflationary Boom, Growth=+0.242, Inflation=+0.666, Confidence=58%.
+- **Regime History / Global Overview signal counts fixed**: `n_growth_signals` and `n_inflation_signals` now reflect live signal count from composites engine, not hardcoded values.
+- **`ez.master.gdp_level_bn`** — WB `NY.GDP.MKTP.CD` (EMU, annual). `raw_scale: 1e9` converts USD → billions. 35 obs; 2024 = 16,485B USD. Global Overview "GDP" column now populated for EZ.
+- **`ez.credit.gov_debt_gdp`** — Eurostat `gov_10dd_edpt1` (EA20, GD, S13, PC_GDP, annual). 27 obs; 2025 = 87.8% GDP. Global Overview "Debt/GDP" now populated for EZ.
+- **EA current account — exhaustive investigation, no free source found**: WB EMU (`BN.CAB.XOKA.GD.ZS`) all null; ECB BOP/BP6/BPS/ECB_BOP1/BOP_BNT all HTTP 400 or 404; FRED series don't exist or cut off 2012; Eurostat `bop_c6_q` always 413 (dataset too large even with all dims specified); IMF Datamapper empty for all EA codes. Fully documented in `docs/Guidance/EU_singals_guidance.md` — slot stays in bindings, returns empty, Global Overview shows dash.
+- **EZ now 34 signals live** (was 19). **353 tests pass.**
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- BEA refresh after 2026-06-26 (`python3 -m indicators.pipeline`) clears 3 stale US signals.
+- EZ current_account_gdp: only option left is a paid ECB Data License or manual Eurostat bulk download. Accept gap for now.
+
+---
+
+## 2026-06-23 — EZ signal expansion + country-aware Data Dashboard
+
+**Done:**
+- Added 4 new Eurostat bindings to `config/countries/ez_bindings.yaml`: `inflation.ppi` (PPI), `inflation.wages_lci` (LCI wages, quarterly), `inflation.hicp_energy`, `inflation.hicp_food`. Also 2 derived: `policy.real_yield_10y`, `policy.yield_spread`.
+- Added derived dispatch cases for `policy.real_yield_10y` and `policy.yield_spread` in `indicators/pipeline.py`.
+- Expanded `config/countries/ez_composites.yaml` inflation_score from 2 → 6 signals (cpi_core + cpi_headline + wages_lci + ppi + hicp_energy + hicp_food).
+- Added EZ signal display labels to `_COMPOSITE_SIGNAL_LABELS` in `dashboard/charting_data.py` (ppi, wages_lci, hicp_energy, hicp_food) — fixes force component table for EZ.
+- Added EZ + KR signal names to `_SIGNAL_NAMES` in `dashboard/data_dashboard.py`.
+- Made Data Dashboard fully country-aware: `_load_binding_meta(country)` and `_load_signals(country)` parameterized; layout uses static force/freq options; callback reads `country-store` and passes it through; sort resets on country switch; description shows country name + signal count.
+- `country-store` in `charting.py` changed to `storage_type="local"` — country selection persists over browser refresh.
+- **353 tests pass** (4 new from EZ signal additions earlier in session).
+
+**Next:**
+- Run pipeline to ingest new EZ signals into DuckDB (`python3 -m indicators.pipeline` for EZ).
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- BEA data refresh (after 2026-06-26) will clear 3 stale US signals.
+
+---
+
 ## 2026-06-22 — Per-country composites config split
 
 **Done:**

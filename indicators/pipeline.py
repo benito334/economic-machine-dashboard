@@ -20,7 +20,7 @@ import yaml
 from dotenv import load_dotenv
 
 from indicators.composites import compute_composite_history, load_composites_config
-from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
@@ -123,6 +123,43 @@ def compute_derived(
         result = ratio.resample("QE").last()
         return result.dropna()
 
+    if bid == "policy.real_yield_10y":
+        # Nominal 10Y yield (%) − HICP headline YoY (decimal → %) → real yield in %
+        yield_10y = transformed_store.get("policy.yield_10y")        # M pct_level (%)
+        cpi_hl = transformed_store.get("inflation.cpi_headline")     # M yoy_pct (decimal)
+        if yield_10y is None or cpi_hl is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        y_m = yield_10y.resample("ME").last()
+        c_m = (cpi_hl * 100.0).resample("ME").last()
+        combined = pd.concat([y_m, c_m], axis=1, join="inner")
+        combined.columns = ["y", "c"]
+        return (combined["y"] - combined["c"]).dropna()
+
+    if bid == "policy.yield_spread":
+        # 10Y government yield (%) − central bank policy rate (%) → term premium proxy
+        yield_10y = transformed_store.get("policy.yield_10y")        # M pct_level (%)
+        policy_rate = transformed_store.get("policy.fed_funds_target")  # D pct_level (%)
+        if yield_10y is None or policy_rate is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        r_m = policy_rate.resample("ME").last()
+        y_m = yield_10y.resample("ME").last()
+        combined = pd.concat([y_m, r_m], axis=1, join="inner")
+        combined.columns = ["y", "r"]
+        return (combined["y"] - combined["r"]).dropna()
+
+    if bid == "credit.btp_bund_spread":
+        # Italian BTP 10Y minus German Bund 10Y (both in % pct_level)
+        it_yield = transformed_store.get("credit.yield_it_10y")
+        de_yield = transformed_store.get("credit.yield_de_10y")
+        if it_yield is None or de_yield is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        combined = pd.concat([it_yield, de_yield], axis=1, join="inner")
+        combined.columns = ["it", "de"]
+        return (combined["it"] - combined["de"]).dropna()
+
     logger.warning("[derived] Unknown derived binding id: %s", bid)
     return None
 
@@ -158,6 +195,7 @@ def run_country(
 
     fred_bindings     = [b for b in bindings if b.provider == "FRED"       and b.verified]
     estat_bindings    = [b for b in bindings if b.provider == "Eurostat"   and b.verified]
+    ecb_bindings      = [b for b in bindings if b.provider == "ECB"        and b.verified]
     wb_bindings       = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
     imf_bindings      = [b for b in bindings if b.provider == "IMF"        and b.verified]
     derived_bindings  = [b for b in bindings if b.provider == "derived"    and b.verified]
@@ -165,7 +203,8 @@ def run_country(
 
     print(f"\n{'=' * 70}")
     print(f"  Country: {country_code}  ({yaml_path.name})")
-    print(f"  FRED: {len(fred_bindings)}  |  Eurostat: {len(estat_bindings)}  |  WorldBank: {len(wb_bindings)}  "
+    print(f"  FRED: {len(fred_bindings)}  |  Eurostat: {len(estat_bindings)}  |  ECB: {len(ecb_bindings)}  "
+          f"|  WorldBank: {len(wb_bindings)}  "
           f"|  IMF: {len(imf_bindings)}  |  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
     if skipped:
         print(f"    Skipped: {', '.join(b.id for b in skipped)}")
@@ -277,6 +316,61 @@ def run_country(
                 latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
                 params_str = ",".join(f"{k}={v}" for k, v in (binding.eurostat_params or {}).items())
                 print(f"  [{status:5}] {binding.id:40s}  {binding.series_id}?{params_str}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
+                results["ok"] += 1
+
+            except Exception as exc:
+                logger.exception("[ERROR] %s: %s", binding.id, exc)
+                results["error"] += 1
+                if is_primary:
+                    sys.exit(1)
+
+    # ── Pass 1.6: ECB SDW series ──────────────────────────────────────────
+    if ecb_bindings:
+        print(f"\n─── Pass 1.6: ECB SDW series [{country_code}] ──────────────────────────")
+        for binding in ecb_bindings:
+            try:
+                # series_id encodes flow/key (e.g. "IRS/M.DE.L.L40.CI.0000.EUR.N.Z")
+                if not binding.series_id or "/" not in binding.series_id:
+                    raise ValueError(f"ECB binding {binding.id} series_id must be 'FLOW/KEY'")
+                flow, key = binding.series_id.split("/", 1)
+                raw = fetch_ecb_series(
+                    flow,
+                    key,
+                    frequency=binding.frequency,
+                    force_refresh=force_refresh,
+                )
+                if raw is None or raw.empty:
+                    print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                    results["empty"] += 1
+                    continue
+
+                raw_store[binding.series_id] = raw
+
+                if binding.raw_scale:
+                    raw = raw / binding.raw_scale
+
+                transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+                transformed = transformed.dropna()
+
+                if transformed.empty:
+                    print(f"  [EMPTY after transform] {binding.id}")
+                    results["empty"] += 1
+                    continue
+
+                transformed_store[binding.id] = transformed
+                signals = build_signals(transformed, binding, raw)
+                latest = signals[-1] if signals else None
+
+                if latest:
+                    warns = sanity_check(latest, binding)
+                    for w in warns:
+                        print(f"  [SANITY WARN] {w}")
+                        results["sanity_warn"] += 1
+
+                n = upsert_signals(conn, signals)
+                latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+                latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+                print(f"  [OK   ] {binding.id:40s}  {binding.series_id}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
                 results["ok"] += 1
 
             except Exception as exc:

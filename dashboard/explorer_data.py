@@ -17,11 +17,13 @@ RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all
 
 # ── Signal overview (all 59 signals, one row each) ────────────────────────────
 
-def load_signal_overview() -> pd.DataFrame:
+def load_signal_overview(country: str = "US") -> pd.DataFrame:
     """
-    Return one row per US signal containing the latest snapshot values plus
-    aggregate statistics.  Used to populate the signal browser table.
+    Return one row per signal for the given country containing the latest
+    snapshot values plus aggregate statistics.  Used to populate the signal
+    browser table.
     """
+    cc = (country or "US").upper()
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = con.execute("""
@@ -29,7 +31,7 @@ def load_signal_overview() -> pd.DataFrame:
                 SELECT *,
                        ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) AS rn
                 FROM signals
-                WHERE country = 'US'
+                WHERE country = ?
             ),
             stats AS (
                 SELECT id,
@@ -37,7 +39,7 @@ def load_signal_overview() -> pd.DataFrame:
                        MIN(as_of) AS first_obs,
                        MAX(as_of) AS last_obs
                 FROM signals
-                WHERE country = 'US'
+                WHERE country = ?
                 GROUP BY id
             )
             SELECT
@@ -68,7 +70,7 @@ def load_signal_overview() -> pd.DataFrame:
             JOIN stats s ON l.id = s.id
             WHERE l.rn = 1
             ORDER BY l.force, l.id
-        """).df()
+        """, [cc, cc]).df()
     finally:
         con.close()
 

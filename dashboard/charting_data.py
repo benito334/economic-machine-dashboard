@@ -225,6 +225,11 @@ _COMPOSITE_SIGNAL_LABELS: dict[str, str] = {
     "inflation.cpi_headline":   "CPI Headline",
     "inflation.crude_oil":      "Crude Oil",
     "inflation.ppi_broad":      "PPI Broad",
+    # EZ-specific signals (added 2026-06-23)
+    "inflation.ppi":            "PPI (Producer Prices)",
+    "inflation.wages_lci":      "Wages & Salaries (LCI)",
+    "inflation.hicp_energy":    "HICP Energy",
+    "inflation.hicp_food":      "HICP Food",
 }
 
 

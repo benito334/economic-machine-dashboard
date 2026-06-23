@@ -367,12 +367,14 @@ def register_callbacks(app: dash.Dash) -> None:
 
     # 1. Populate + filter overview table
     @app.callback(
-        Output("exp-signal-table", "data"),
+        [Output("exp-signal-table", "data"),
+         Output("exp-signal-table", "selected_rows")],
         [Input("exp-force-filter", "value"),
-         Input("exp-flag-filter", "value")],
+         Input("exp-flag-filter", "value"),
+         Input("country-store", "data")],
     )
-    def update_signal_table(force_filter: str, flag_filter: str) -> list[dict]:
-        df = load_signal_overview()
+    def update_signal_table(force_filter: str, flag_filter: str, country: str) -> tuple:
+        df = load_signal_overview(country or "US")
         if force_filter and force_filter != "all":
             df = df[df["force"] == force_filter]
         if flag_filter == "stale":
@@ -385,7 +387,7 @@ def register_callbacks(app: dash.Dash) -> None:
             df = df[df["abs_zscore"] > 2]
         elif flag_filter == "clean":
             df = df[~df["is_stale"] & ~df["is_proxy"] & ~df["low_history"] & (df["abs_zscore"] <= 2)]
-        return _format_overview(df)
+        return _format_overview(df), []
 
     # 2. Track selected signal
     @app.callback(
@@ -404,11 +406,12 @@ def register_callbacks(app: dash.Dash) -> None:
     @app.callback(
         Output("exp-detail-header", "children"),
         Input("exp-selected-signal", "data"),
+        State("country-store", "data"),
     )
-    def update_header(signal_id: Optional[str]) -> list:
+    def update_header(signal_id: Optional[str], country: str) -> list:
         if not signal_id:
             return _placeholder_header()
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         row = overview[overview["id"] == signal_id]
         if row.empty:
             return _placeholder_header()
@@ -453,8 +456,9 @@ def register_callbacks(app: dash.Dash) -> None:
          Output("exp-stat-obs", "children")],
         [Input("exp-selected-signal", "data"),
          Input("theme-store", "data")],
+        State("country-store", "data"),
     )
-    def update_ts(signal_id: Optional[str], theme_name: str = DEFAULT_THEME) -> tuple:
+    def update_ts(signal_id: Optional[str], theme_name: str = DEFAULT_THEME, country: str = "US") -> tuple:
         fl = {**figure_layout(theme_name), "margin": {"l": 55, "r": 20, "t": 35, "b": 30}}
         fl["title"] = {"text": "Select a signal", "x": 0.5}
         empty_fig = go.Figure()
@@ -469,7 +473,7 @@ def register_callbacks(app: dash.Dash) -> None:
 
         detail = detail.sort_values("as_of")
         stats = compute_signal_stats(signal_id)
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         r = overview[overview["id"] == signal_id]
         equil = float(r["equilibrium_estimate"].iloc[0]) if not r.empty else None
         units = r["units"].iloc[0] if not r.empty else ""
@@ -625,12 +629,13 @@ def register_callbacks(app: dash.Dash) -> None:
          Output("exp-flags-card", "children"),
          Output("exp-gaps-content", "children")],
         Input("exp-selected-signal", "data"),
+        State("country-store", "data"),
     )
-    def update_quality(signal_id: Optional[str]) -> tuple:
+    def update_quality(signal_id: Optional[str], country: str) -> tuple:
         if not signal_id:
             return html.P("Select a signal.", className="text-muted small"), html.Div(), html.Div()
 
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         r_df = overview[overview["id"] == signal_id]
         if r_df.empty:
             return html.P("Not found.", className="text-muted small"), html.Div(), html.Div()
@@ -702,12 +707,13 @@ def register_callbacks(app: dash.Dash) -> None:
     @app.callback(
         Output("exp-raw-content", "children"),
         Input("exp-selected-signal", "data"),
+        State("country-store", "data"),
     )
-    def update_raw_compare(signal_id: Optional[str]) -> Any:
+    def update_raw_compare(signal_id: Optional[str], country: str) -> Any:
         if not signal_id:
             return html.P("Select a signal.", className="text-muted small")
 
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         r_df = overview[overview["id"] == signal_id]
         if r_df.empty:
             return html.P("Signal not found.", className="text-muted small")
@@ -818,15 +824,16 @@ def _register_analysis_callbacks(app: dash.Dash) -> None:
          Output("exp-pca-chart",  "figure")],
         [Input("exp-detail-tabs", "active_tab"),
          Input("theme-store",     "data")],
+        State("country-store", "data"),
         prevent_initial_call=False,
     )
-    def update_composite_analysis(active_tab: str, theme_name: str):
+    def update_composite_analysis(active_tab: str, theme_name: str, country: str):
         _empty = go.Figure()
         _empty.update_layout(**figure_layout(theme_name or DEFAULT_THEME))
         if active_tab != "exp-tab-analysis":
             return _empty, _empty
 
-        matrix, signal_meta = load_composite_zscore_matrix()
+        matrix, signal_meta = load_composite_zscore_matrix(country or "US")
         if matrix.empty:
             _empty.update_layout(**figure_layout(theme_name or DEFAULT_THEME, "No data"))
             return _empty, _empty
