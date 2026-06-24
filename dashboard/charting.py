@@ -2307,6 +2307,20 @@ def _regime_info_children(
             if isinstance(force_audit, dict):
                 _audit_by_signal.update(force_audit)
 
+        def _sem_z_color(z_val, f: str, inv: bool = False) -> str:
+            """Green = economically good for the force, red = bad, grey = neutral."""
+            if z_val is None or (isinstance(z_val, float) and pd.isna(z_val)):
+                return "#666"
+            adj = -float(z_val) if inv else float(z_val)
+            if f == "inflation":
+                adj = -adj
+            mag = min(abs(adj) / 3.0, 1.0)
+            if mag < 0.07:
+                return "#666"
+            a = 0.35 + 0.65 * mag
+            return (f"rgba(92, 186, 138, {a:.2f})" if adj > 0
+                    else f"rgba(232, 115, 76, {a:.2f})")
+
         def _section(force: str, total: int, color: str) -> list:
             df_f = comp_df[comp_df["composite"] == force].copy()
             rows = []
@@ -2351,6 +2365,7 @@ def _regime_info_children(
                 if z_missing:
                     z_cell = html.Td("—", style={**td_mono, "color": "#555", "textAlign": "right"})
                 else:
+                    z_clr = _sem_z_color(z, force, invert)
                     bar_w = min(abs(float(z)) / 2.5 * 80, 80)
                     z_cell = html.Td(
                         html.Div(
@@ -2359,11 +2374,11 @@ def _regime_info_children(
                             children=[
                                 html.Div(style={
                                     "width": f"{bar_w:.0f}px", "height": "6px",
-                                    "backgroundColor": color, "borderRadius": "2px",
-                                    "opacity": "0.6", "flexShrink": "0",
+                                    "backgroundColor": z_clr, "borderRadius": "2px",
+                                    "opacity": "0.7", "flexShrink": "0",
                                 }),
                                 html.Span(f"{float(z):+.2f}",
-                                          style={"color": color, "fontFamily": "monospace",
+                                          style={"color": z_clr, "fontFamily": "monospace",
                                                  "fontSize": "0.82rem"}),
                             ],
                         ),
@@ -2378,7 +2393,13 @@ def _regime_info_children(
                     positive_dir = "falling" if (force == "growth" and invert) else "rising"
                     is_positive = (direction == positive_dir)
                     arrow = "↑" if direction == "rising" else "↓"
-                    dir_color = color if is_positive else "#666"
+                    # Semantic: good direction=green for growth, red for inflation; bad=opposite
+                    if force == "growth":
+                        dir_color = "#5CBA8A" if is_positive else "#E8734C"
+                    elif force == "inflation":
+                        dir_color = "#E8734C" if is_positive else "#5CBA8A"
+                    else:
+                        dir_color = color if is_positive else "#666"
                     invert_note = " (inv)" if invert else ""
                     dir_cell_content = html.Span(
                         f"{arrow} {direction}{invert_note}",
