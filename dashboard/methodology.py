@@ -260,10 +260,12 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Provider", "Scope", "Auth"],
                         [
-                            ["FRED (St. Louis Fed)", "US macro — GDP, PCE, payrolls, rates, spreads, TIPS breakevens", "FRED_API_KEY env var"],
-                            ["World Bank API v2",    "Cross-country annual — trade, FDI, debt, demographics, R&D", "None"],
-                            ["IMF DataMapper",       "Cross-country annual — fiscal balances, structural indicators", "None"],
-                            ["OECD SDMX REST",       "Cross-country — harmonised CPI, unemployment (planned)", "None"],
+                            ["FRED (St. Louis Fed)",  "US macro — GDP, PCE, payrolls, rates, spreads, TIPS breakevens", "FRED_API_KEY env var"],
+                            ["World Bank API v2",     "Cross-country annual — trade, FDI, debt, demographics, R&D", "None"],
+                            ["IMF DataMapper",        "Cross-country annual — fiscal balances, structural indicators", "None"],
+                            ["Eurostat JSON stats API", "Euro area — industrial production, retail sales, unemployment, capacity, fiscal (monthly/quarterly)", "None"],
+                            ["ECB SDW (SDMX-JSON 1.0)", "Euro area — Maastricht long-term interest rates (IRS flow)", "None"],
+                            ["OECD SDMX REST",        "Cross-country — harmonised CPI, unemployment; some endpoints 404 in this env", "None"],
                         ]
                     )],
                 )),
@@ -273,10 +275,18 @@ def get_layout() -> html.Div:
                 _table(
                     ["Provider", "Scope", "Auth"],
                     [
-                        ["FRED (St. Louis Fed)", "US macro — GDP, PCE, payrolls, rates, spreads, TIPS breakevens", "FRED_API_KEY env var"],
-                        ["World Bank API v2",   "Cross-country annual — trade, FDI, debt, demographics, R&D", "None"],
-                        ["IMF DataMapper",      "Cross-country annual — fiscal balances, structural indicators", "None"],
-                        ["OECD SDMX REST",      "Cross-country — harmonised CPI, unemployment (planned)", "None"],
+                        ["FRED (St. Louis Fed)",    "US macro — GDP, PCE, payrolls, rates, spreads, TIPS breakevens", "FRED_API_KEY env var"],
+                        ["World Bank API v2",       "Cross-country annual — trade, FDI, debt, demographics, R&D", "None"],
+                        ["IMF DataMapper",          "Cross-country annual — fiscal balances, structural indicators", "None"],
+                        ["Eurostat JSON stats API", "Euro area — industrial production, retail sales, unemployment, "
+                                                    "capacity utilisation, fiscal Q flows.  "
+                                                    "Correct geo codes: EA21 (unemployment), EA20 (all others).",
+                         "None"],
+                        ["ECB SDW (SDMX-JSON 1.0)", "Euro area — Maastricht long-term interest rates.  "
+                                                     "series_id format: FLOW/KEY (e.g. IRS/M.DE.L.L40.CI.0000.EUR.N.Z).  "
+                                                     "BOP/current-account flows return HTTP 400 and are unresolvable from free APIs.",
+                         "None"],
+                        ["OECD SDMX REST",          "Partially available; some country/dataset endpoints return 404 in this env.", "None"],
                     ]
                 ),
                 _sub("Idempotency"),
@@ -360,15 +370,29 @@ def get_layout() -> html.Div:
                         "provides the most stable baseline. The trade-off is that history from "
                         "the 1970s stagflation or the Great Moderation anchors what 'normal' "
                         "looks like.",
-                        "Rolling-window mode (sidebar sliders or ⚙ Settings): Z_rolling = "
-                        "clip((x − μ_N) / σ_N, −4, 4) where μ_N and σ_N are computed over the "
-                        "most recent N months (36/48/60 m). Rolling G/I scores are pre-computed "
-                        "at pipeline time and stored alongside the baseline scores.",
+                        "Independent rolling windows — Growth and Inflation have separate sliders: "
+                        "Growth: Full / 36m / 48m / 60m. "
+                        "Inflation: Full / 60m / 90m / 120m. "
+                        "Inflation uses longer windows because price levels are slower-moving "
+                        "structural processes; a 60m growth window and a 90m inflation window "
+                        "may be appropriate simultaneously. "
+                        "Both sliders are persisted in localStorage and work on any page.",
+                        "Rolling Z-scores are pre-computed at pipeline time for all window variants "
+                        "and stored as zscore_36m...zscore_120m on the signals table. "
+                        "The Force Component Inputs table (Regime History) and Signals page "
+                        "per-signal Z-bars both reflect the active slider selection.",
                         "Outlier cap: Z-scores are clipped to ±4σ. COVID-era extremes in payrolls "
                         "and GDP would otherwise reach ±20+.",
                         "Low-history flag: signals with fewer than 15 observations are flagged "
                         "low_history=True and excluded from composites.",
                     ],
+                    tables=[(
+                        ["Force", "Available windows", "Pre-computed DB columns", "Rationale"],
+                        [
+                            ["Growth",    "Full / 36m / 48m / 60m",   "zscore_36m, zscore_48m, zscore_60m",          "3–5 year window captures a full business cycle"],
+                            ["Inflation", "Full / 60m / 90m / 120m",  "zscore_60m, zscore_90m, zscore_120m",         "Longer lookback suits slower structural price trends"],
+                        ]
+                    )],
                     formulas=[F("Component Z-score")],
                 )),
                 _p("The Force Z-score answers: 'how far is this indicator from its historical "
@@ -381,16 +405,38 @@ def get_layout() -> html.Div:
                    "The trade-off is that history from the 1970s stagflation or the Great "
                    "Moderation anchors what 'normal' looks like, which can make the post-2021 "
                    "inflation regime appear less extreme than it was relative to recent decades."),
-                _sub("Rolling-window mode (sidebar sliders or ⚙ Settings)"),
-                _p("Z_rolling = clip( (x − μ_N) / σ_N , −4, 4 )  where μ_N and σ_N are "
-                   "computed over the most recent N months.  Recommended window: 36–60 months "
-                   "(3–5 years).  This makes the score more responsive to structural regime "
-                   "changes — for example, treating the low-inflation 2010s as the baseline "
-                   "rather than the inflationary 1970s-80s.  "
-                   "Rolling G/I scores are pre-computed at pipeline time for 36 m, 48 m, and "
-                   "60 m windows and stored alongside the baseline scores."),
-                _note("Guidance: force Z-scores should use 36–60 months for monthly data; "
-                      "momentum Z-scores should use 6–12 months."),
+                _sub("Independent rolling windows"),
+                _p("Growth and Inflation have separate lookback controls so they can be "
+                   "calibrated independently.  The Growth slider (Full / 36m / 48m / 60m) "
+                   "controls the X-axis of the scatter plot, the Growth Force Z chart, and the "
+                   "Growth rows in the component table.  The Inflation slider (Full / 60m / 90m / "
+                   "120m) controls the Y-axis and Inflation rows.  Both persist in localStorage "
+                   "across page navigation."),
+                _table(
+                    ["Force", "Available windows", "Pre-computed DB columns", "Rationale"],
+                    [
+                        ["Growth",    "Full / 36m / 48m / 60m",
+                         "zscore_36m, zscore_48m, zscore_60m (signals table); "
+                         "growth_score_36m/48m/60m (composites table)",
+                         "3–5 year window captures a full business cycle; "
+                         "shorter = more regime-sensitive, longer = more stable"],
+                        ["Inflation", "Full / 60m / 90m / 120m",
+                         "zscore_60m, zscore_90m, zscore_120m (signals table); "
+                         "inflation_score_60m/90m/120m (composites table)",
+                         "Price levels are slower-moving structural processes; "
+                         "longer windows prevent misreading cyclical dips as regime changes"],
+                    ]
+                ),
+                _note("Per-signal Z-bars in the Force Component Inputs table (Regime History) "
+                      "and the Signals page update live when the sliders change.  "
+                      "Composite-level scores (scatter plot axes, force score strip) also update.  "
+                      "Regime quadrant re-derives from the active rolling scores when either window is set."),
+                _sub("Rolling Z formula"),
+                _p("Z_rolling = clip( (x − μ_N) / σ_N , −4, 4 )  where μ_N and σ_N are the "
+                   "mean and standard deviation over the most recent N months (with "
+                   "min_periods = N/2 so values appear before the window fully fills).  "
+                   "Pre-computed at pipeline time for all variants; no live recomputation on render."),
+                _note("Guidance: 36–60m for Growth (monthly data); 60–120m for Inflation."),
                 _sub("Outlier cap"),
                 _p("Z-scores are clipped to ±4σ.  COVID-era extremes in payrolls and GDP "
                    "would otherwise reach ±20+, which would overwhelm the composite.  "
@@ -466,8 +512,9 @@ def get_layout() -> html.Div:
                     "6 · Dynamic Force Weighting",
                     [
                         "Each composite component carries a configured nominal weight plus two "
-                        "dynamic adjustments applied at runtime. All parameters are tunable in "
-                        "config/composites.yaml.",
+                        "dynamic adjustments applied at runtime. Global methodology parameters "
+                        "are in config/composites_policy.yaml. Per-country signal lists and "
+                        "importance values are in config/countries/{cc}_composites.yaml.",
                         "Nominal weight: w_cfg = base_share × importance × quality_factor, "
                         "then normalised to sum to 1.0 within each force basket. base_share is "
                         "a per-signal anchor multiplier: 1.0 = anchor (2× pre-normalisation "
@@ -504,8 +551,10 @@ def get_layout() -> html.Div:
                     formulas=[F("Configured component weight"), F("Observation-age decay")],
                 )),
                 _p("Each composite component carries a configured nominal weight plus two "
-                   "dynamic adjustments applied at runtime.  All parameters are tunable in "
-                   "config/composites.yaml."),
+                   "dynamic adjustments applied at runtime.  Global methodology parameters "
+                   "(decay, momentum, confidence, disequilibrium) are in "
+                   "config/composites_policy.yaml.  Per-country signal lists and importance "
+                   "values are in config/countries/{cc}_composites.yaml."),
                 _sub("Nominal weight"),
                 _p("w_cfg = base_share × importance × quality_factor, then normalised to "
                    "sum to 1.0 within each force basket.  "
@@ -866,24 +915,64 @@ def get_layout() -> html.Div:
                 _copy_btn(_section_text(
                     "11 · Country Coverage & Rollout",
                     [
-                        "Current coverage: United States only (Phase 1). Phase 2 will roll out "
-                        "Eurozone first, then Japan, UK, South Korea, China, India, Brazil, "
-                        "Saudi Arabia, and Russia.",
+                        "Current coverage (Phase 2 in progress): US (63 signals), "
+                        "Eurozone (34 signals), South Korea (22 signals). "
+                        "Japan is next; then UK, China, India, Brazil, Saudi Arabia, Russia.",
+                        "Country files: config/countries/{cc}_bindings.yaml (signal bindings) "
+                        "+ config/countries/{cc}_composites.yaml (composite indicator lists). "
+                        "The pipeline auto-discovers all *_bindings.yaml in this directory.",
                         "Each country requires: binding instantiation → series ID verification "
                         "against the provider's metadata endpoint → spot-check vs. a public "
                         "reference → vintage_available set honestly → human sign-off. "
                         "No country is considered active until all checks pass.",
+                        "Known data gaps (EZ): current account balance is unavailable from any "
+                        "free API (ECB BOP flows return HTTP 400/404; Eurostat bop_c6_q returns "
+                        "413; FRED/IMF have no EA aggregate). Documented; dash shown in Global Overview.",
                         "NBS China and Rosstat/CBR Russia automated pulls are deferred; "
                         "World Bank / IMF harmonised data will be used with explicit gap flags.",
                     ],
+                    tables=[(
+                        ["Country", "Code", "Signals", "Status", "Key data sources"],
+                        [
+                            ["United States", "US", "63", "✅ Live", "FRED, World Bank, IMF, OECD"],
+                            ["Eurozone",      "EZ", "34", "✅ Live (current account gap)", "Eurostat JSON, ECB SDW, World Bank, IMF"],
+                            ["South Korea",   "KR", "22", "✅ Live (CPI proxy bridge)", "FRED OECD series, World Bank, IMF"],
+                            ["Japan",         "JP", "—",  "🔄 Next", "FRED, World Bank, IMF"],
+                        ]
+                    )],
                 )),
-                _p("Current coverage: United States only (Phase 1).  Phase 2 will roll out "
-                   "Eurozone first, then Japan, UK, South Korea, China, India, Brazil, "
-                   "Saudi Arabia, and Russia."),
+                _p("Current coverage (Phase 2 in progress): United States (63 signals), "
+                   "Eurozone (34 signals), South Korea (22 signals).  "
+                   "Japan is next; then UK, China, India, Brazil, Saudi Arabia, Russia."),
+                _table(
+                    ["Country", "Code", "Signals", "Status", "Key data sources"],
+                    [
+                        ["United States", "US", "63", "✅ Live", "FRED, World Bank, IMF, OECD"],
+                        ["Eurozone",      "EZ", "34", "✅ Live (current account gap)",
+                         "Eurostat JSON stats API (industrial prod, retail, unemployment, "
+                         "fiscal); ECB SDW SDMX (long-term interest rates); World Bank; IMF"],
+                        ["South Korea",   "KR", "22", "✅ Live (annual CPI proxy)",
+                         "FRED OECD series; World Bank; IMF DataMapper; "
+                         "monthly CPI bridged via IMF annual PCPIPCH (OECD direct feed ended Apr 2025)"],
+                        ["Japan",         "JP", "—",  "🔄 Next", "FRED, World Bank, IMF"],
+                    ]
+                ),
                 _p("Each country requires: binding instantiation → series ID verification "
                    "against the provider's metadata endpoint → spot-check vs. a public "
                    "reference → vintage_available set honestly → human sign-off.  "
                    "No country is considered active until all checks pass."),
+                _sub("Country file architecture"),
+                _p("config/composites_policy.yaml holds the global methodology (decay, momentum "
+                   "tilt, confidence, disequilibrium force groups).  Per-country files "
+                   "config/countries/{cc}_bindings.yaml and config/countries/{cc}_composites.yaml "
+                   "hold signal bindings and composite indicator lists.  The pipeline auto-discovers "
+                   "all *_bindings.yaml in that directory.  Adding a new country: create both files, "
+                   "then run the pipeline."),
+                _sub("Known data gaps"),
+                _note("EZ current account: unavailable from any free API. "
+                      "ECB BOP/BP6/BPS flows return HTTP 400/404; Eurostat bop_c6_q returns 413 "
+                      "regardless of parameters; FRED and IMF have no EA aggregate.  "
+                      "Documented in docs/Guidance/EU_singals_guidance.md; dash shown in Global Overview."),
                 _note("NBS China and Rosstat/CBR Russia automated pulls are deferred; "
                       "World Bank / IMF harmonised data will be used with explicit gap flags."),
             ], title="11 · Country Coverage & Rollout"),
@@ -1091,7 +1180,7 @@ def get_layout() -> html.Div:
                         ["ADF stationarity tests on debt ratios (B3)", "Planned — diagnostic only"],
                         ["Rolling-window sensitivity grid (C3, K1)",   "Phase 3 back-test"],
                         ["Expanding-window Z-scores for back-test (C4)", "Phase 3 back-test"],
-                        ["OLS weight calibration (I1)",        "Deferred — overfitting risk before Phase 3"],
+                        ["OLS weight calibration (I1)",        "✅ Live — indicators/calibrate.py; advisory, user confirms changes via Importance Editor"],
                         ["Dynamic momentum windows (D2)",      "Phase 3 — requires regime labels as input"],
                     ]
                 ),
