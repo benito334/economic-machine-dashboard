@@ -427,7 +427,14 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     inflation_window = int(inflation_window or 0)
 
     # ── Composite data (Growth / Inflation) ───────────────────────────────────
-    comp_df = load_composite_component_status(country)
+    g_sfx = _SIGNALS_GROWTH_WINDOW_COL.get(zscore_window)
+    i_sfx = _SIGNALS_INFLATION_WINDOW_COL.get(inflation_window)
+    g_zcol = f"zscore_{g_sfx}" if g_sfx else "zscore"
+    i_zcol = f"zscore_{i_sfx}" if i_sfx else "zscore"
+
+    comp_df = load_composite_component_status(
+        country, g_zscore_col=g_zcol, i_zscore_col=i_zcol,
+    )
 
     g_z = i_z = None
     audit_by_signal: dict = {}
@@ -435,15 +442,12 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
         hist = load_composite_history(country=country)
         if not hist.empty:
             row = hist.iloc[-1]
-            # Growth: use rolling window if available
-            g_sfx = _SIGNALS_GROWTH_WINDOW_COL.get(zscore_window)
+            # Composite-level Z: use rolling col if available
             g_roll_col = f"growth_score_{g_sfx}" if g_sfx else None
             if g_roll_col and g_roll_col in hist.columns and pd.notna(row.get(g_roll_col)):
                 g_z = float(row[g_roll_col])
             else:
                 g_z = float(row["growth_score"]) if pd.notna(row.get("growth_score")) else None
-            # Inflation: use rolling window if available
-            i_sfx = _SIGNALS_INFLATION_WINDOW_COL.get(inflation_window)
             i_roll_col = f"inflation_score_{i_sfx}" if i_sfx else None
             if i_roll_col and i_roll_col in hist.columns and pd.notna(row.get(i_roll_col)):
                 i_z = float(row[i_roll_col])

@@ -2791,8 +2791,12 @@ def update_regime_info(
         else:
             rolling["diseq_window"] = 0
 
+    # Per-signal Z-score col: use rolling col when window is active
+    _g_zcol = f"zscore_{g_sfx}" if g_sfx else "zscore"
+    _i_zcol = f"zscore_{i_sfx}" if i_sfx else "zscore"
     comp_df = load_composite_component_status(
-        country=country, as_of=str(selected["as_of"])
+        country=country, as_of=str(selected["as_of"]),
+        g_zscore_col=_g_zcol, i_zscore_col=_i_zcol,
     )
     stale_dict = _parse_stress_components(selected.get("stale_signals") or "")
     try:

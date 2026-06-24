@@ -237,11 +237,18 @@ _COMPOSITE_SIGNAL_LABELS: dict[str, str] = {
 def load_composite_component_status(
     country: str = "US",
     as_of: Optional[str] = None,
+    g_zscore_col: str = "zscore",
+    i_zscore_col: str = "zscore",
 ) -> pd.DataFrame:
     """Return the as-of signal snapshot for each regime composite component.
 
     Columns returned: composite, concept_id, signal_id, label, weight, invert,
     zscore, direction, change_3m, as_of, is_stale, low_history.
+
+    g_zscore_col / i_zscore_col: which signals-table column to use as the Z-score
+    for growth and inflation signals respectively (e.g. "zscore_36m", "zscore_60m").
+    Defaults to "zscore" (full-history).  The returned "zscore" column always holds
+    the appropriate rolling value so downstream code needs no changes.
     """
     cfg = load_composites_config(country)
     country_prefix = country.lower()
@@ -271,6 +278,14 @@ def load_composite_component_status(
     signal_ids = [r["signal_id"] for r in rows_meta]
     placeholders = ",".join("?" * len(signal_ids))
 
+    # Build SELECT list — always include base zscore; add rolling cols if requested
+    extra_cols: set[str] = set()
+    if g_zscore_col != "zscore":
+        extra_cols.add(g_zscore_col)
+    if i_zscore_col != "zscore":
+        extra_cols.add(i_zscore_col)
+    extra_select = "".join(f", {col}" for col in sorted(extra_cols))
+
     cutoff_clause = "AND as_of <= ?" if as_of else ""
     inner_params = signal_ids + ([as_of] if as_of else [])
     outer_params = signal_ids + ([as_of] if as_of else [])
@@ -278,7 +293,7 @@ def load_composite_component_status(
     try:
         df = con.execute(
             f"""
-            SELECT id, as_of, zscore, direction, change_3m, is_stale, low_history
+            SELECT id, as_of, zscore{extra_select}, direction, change_3m, is_stale, low_history
             FROM signals
             WHERE id IN ({placeholders})
               {cutoff_clause}
@@ -297,12 +312,20 @@ def load_composite_component_status(
     df["as_of"] = pd.to_datetime(df["as_of"])
     sig_map = df.set_index("id").to_dict("index")
 
+    # Map composite → which zscore column to read
+    _zscore_col_for = {"growth": g_zscore_col, "inflation": i_zscore_col}
+
     result_rows = []
     for meta in rows_meta:
         sig = sig_map.get(meta["signal_id"], {})
+        col = _zscore_col_for.get(meta["composite"], "zscore")
+        # Use the rolling col if available; fall back to base zscore
+        z_val = sig.get(col)
+        if z_val is None or (isinstance(z_val, float) and pd.isna(z_val)):
+            z_val = sig.get("zscore")
         result_rows.append({
             **meta,
-            "zscore":      sig.get("zscore"),
+            "zscore":      z_val,
             "direction":   sig.get("direction"),
             "change_3m":   sig.get("change_3m"),
             "as_of":       sig.get("as_of"),
