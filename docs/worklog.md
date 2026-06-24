@@ -4,6 +4,24 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-24 — Methodology page audit + per-signal Z-bar window fix
+
+**Done:**
+- **Fix: per-signal Z-bars now update with slider changes** — `load_composite_component_status()` gained `g_zscore_col`/`i_zscore_col` params; fetches the appropriate rolling column (e.g. `zscore_36m`) from the signals table and substitutes it into the returned `zscore` field. Both `update_regime_info` (Force Component Inputs table in Regime History) and `render_signals` (/signals page) pass the active col names derived from their window stores.
+- **Methodology page audit** (`dashboard/methodology.py`) — updated five sections:
+  - **Section 2** (Data Sources): Added Eurostat JSON stats API + ECB SDW SDMX-JSON rows; noted EA20/EA21 geo codes, IRS SDMX format, BOP 400 limitation.
+  - **Section 4** (Force Z-Score): Documented independent Growth/Inflation windows (Growth Full/36/48/60m; Inflation Full/60/90/120m); added table of pre-computed DB columns per force; noted per-signal Z-bar live update behaviour.
+  - **Section 6** (Dynamic Force Weighting): Replaced stale `config/composites.yaml` reference with `composites_policy.yaml` + `countries/{cc}_composites.yaml` split.
+  - **Section 11** (Country Coverage): Replaced "US only (Phase 1)" with current live status (US 63 signals, EZ 34, KR 22); added country table with data sources and known gaps; documented file architecture and EZ current account gap.
+  - **Section 13** (Deferred Items): Fixed visible table OLS calibration row from "Deferred" to "✅ Live".
+- **353/353 tests pass.** Docker rebuilt; HTTP 200.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- Run `python3 -m indicators.pipeline` after 2026-06-26 (BEA Q1 2026 release clears 3 stale US signals).
+
+---
+
 ## 2026-06-24 — Inflation Z-Score window separation + Signals page reformatting
 
 **Done:**

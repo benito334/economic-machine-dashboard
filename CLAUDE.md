@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-23:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Weight Audit page enhanced: blank-graph bugs fixed, Re-run button, Importance Editor, GDP-Regression Calibration (indicators/calibrate.py), weight_change_log DuckDB table, Weight History page (/weight-history). EA current account gap documented as unresolvable from free APIs.
+**As of 2026-06-24:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Signals page (/signals) live — 5-force breakdown with 8-column Force Component Inputs table. Separate Growth / Inflation Z-score windows (Growth Full/36/48/60m; Inflation Full/60/90/120m) with independent sliders persisted in localStorage; per-signal Z-bars in Force Component Inputs table and Signals page update live with slider changes. New DB columns: zscore_90m/120m (signals), inflation_score_90m/120m (composites). Methodology page updated: Sections 2, 4, 6, 11, 13 reflect current state.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -102,7 +102,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 2 Country rollout | 🔄 **In progress** | EZ ✅ (34 signals, 6G+6I composites) + KR ✅ (22 signals) live; next: Japan |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is closed — all free API sources exhausted, documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
+**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is unresolvable from free APIs — documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
 
 **Phase 2 architecture notes (as of 2026-06-23):**
 - Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir
