@@ -57,9 +57,46 @@ All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidanc
 ## Up next (next session)
 | Priority | Item |
 |---|---|
-| 1 | Phase 2 — Japan (JP): `config/countries/jp_bindings.yaml` + `jp_composites.yaml` |
-| 2 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
-| 3 | KR monthly CPI: BoK ECOS API (requires registration) is the only remaining free source; OECD FRED discontinued Apr 2025 |
+| 1 | **Signals page** — new Indicators nav page `/signals` (see spec below) |
+| 2 | Phase 2 — Japan (JP): `config/countries/jp_bindings.yaml` + `jp_composites.yaml` |
+| 3 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
+| 4 | KR monthly CPI: BoK ECOS API (requires registration) is the only remaining free source |
+
+### Signals page — detailed spec
+
+**Route:** `/signals`  
+**Nav:** "📡 Signals" link under the existing "Indicators" group in `dashboard/charting.py`  
+**File:** `dashboard/signals_page.py` (new)
+
+**Layout:** Five force sections rendered as accordion or stacked cards:
+`Growth · Inflation · Interest Rate · Credit · Volatility`
+
+Each section has a **header row** showing:
+- Force name
+- Composite Z-Score for that force (weighted mean of component Z-scores, same calculation as `composites.py` but read from the `composites` table's `growth_score` / `inflation_score` columns where available; Rate/Credit/Volatility computed on the fly as unweighted mean of their signals' Z-scores)
+- Composite Momentum score (mean of `change_1m` direction across signals in the force)
+
+Each section body mirrors `_build_lens_table()` from `charting.py` (lines 401–530):
+- Columns: Indicator | Value | Dir | Pct | Z | Quality
+- Same colour coding: percentile badges, Z-score colour, direction arrows, stale/proxy badges
+- Per-signal sparkline (same approach as existing lens tables)
+
+**Signal sources per force** (use `country-store` to pick country):
+
+| Force | Signals in DB |
+|---|---|
+| Growth | All signals where `force = 'growth'` for the country (same as existing Regime Map lens tables) |
+| Inflation | All signals where `force = 'inflation'` |
+| Interest Rate | `us.policy.real_fed_funds`, `us.policy.real_yield_10y`, `us.policy.fed_funds`, `us.policy.yield_2y`, `us.policy.yield_10y` (US); `ez.policy.real_yield_10y`, `ez.policy.yield_10y`, `ez.policy.yield_spread` (EZ); `kr.policy.yield_10y` (KR) — query by `force = 'policy'` and filter to rate/yield signals |
+| Credit | `us.premium.credit_spread_corp`, `us.premium.high_yield_spread`, `us.credit.bank_loans`, `us.credit.lending_standards`, `us.credit.household_debt_gdp`, `us.credit.gov_debt_gdp` (US); `ez.credit.*` (EZ); `kr.credit.*` (KR) — query `force IN ('credit', 'premium')` |
+| Volatility | VIXCLS (US only, from raw cache via `indicators/regime_classifier._load_vix()`); show "N/A" for EZ/KR |
+
+**Implementation notes:**
+- Reuse `_build_lens_table()` from `charting.py` directly — import or extract to a shared helper in `dashboard/shared.py`
+- Section header composite Z: for Growth/Inflation read from latest `composites` row for the selected date. For Rate/Credit/Volatility compute `mean(zscore)` across the force's signals (exclude NaN, exclude stale)
+- Section header Momentum: `+` if majority of signals have `direction = 'rising'`, `−` if `falling`, `→` if mixed
+- Country-aware: responds to `country-store`; date-aware: responds to the same date selector used by Regime Map (or defaults to latest)
+- No new DB tables needed — reads from existing `signals` table
 
 ## Notes for next session
 - **119 signals total** (63 US + 34 EZ + 22 KR)
