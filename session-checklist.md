@@ -26,7 +26,11 @@ All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidanc
 
 ---
 
-## Completed 2026-06-24
+## Completed 2026-06-24 — session 2
+- **Regime Classifier blank graphs fixed**: `_placeholder_fig()` set on all three `dcc.Graph` components; chart callbacks return placeholder instead of `PreventUpdate` when store empty
+- **Guidance docs reorganised**: consumed files moved to `docs/Guidance/Used/`; `Backtesting_Indicator_imporvements.md` is the active Phase 3 planning doc
+
+## Completed 2026-06-24 — session 1
 - **Monte Carlo blank graphs fixed**: `titlefont` deprecated in Plotly v5 → `title={"text":..., "font":{...}}` in `_mc_scatter` (both axes) and force balance bar chart Y-axis
 - **Importance Editor copy button**: `dcc.Clipboard` top-right of Section 4; TSV callback auto-updates on any table change
 

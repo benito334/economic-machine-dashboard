@@ -28,6 +28,24 @@ from store.store import get_connection
 
 logger = logging.getLogger(__name__)
 
+
+def _placeholder_fig(msg: str = "Click ▶ Run Classifier to generate results") -> go.Figure:
+    fig = go.Figure()
+    fig.add_annotation(
+        text=msg, x=0.5, y=0.5, xref="paper", yref="paper",
+        showarrow=False, font={"size": 13, "color": "#555e6d"},
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        height=220,
+    )
+    return fig
+
+
 _Q_COLORS = {
     "Expansion":               "#5CBA8A",
     "Inflationary Boom":       "#E8734C",
@@ -188,6 +206,7 @@ def get_layout() -> html.Div:
                 "Credit and spread signals are inverted so that +1 always means "
                 "favourable / expanding conditions."),
             dcc.Graph(id="rc-flag-heatmap", config={"displayModeBar": False},
+                      figure=_placeholder_fig(),
                       style={"marginBottom": "24px"}),
 
             # Section 2: Threshold Quadrant
@@ -195,6 +214,7 @@ def get_layout() -> html.Div:
                 "Quadrant derived from Growth × Inflation flags only, matching the "
                 "composites engine's 4-season taxonomy. Transitional = either flag is 0."),
             dcc.Graph(id="rc-quadrant-chart", config={"displayModeBar": False},
+                      figure=_placeholder_fig(),
                       style={"marginBottom": "24px"}),
 
             # Section 3: Comparison
@@ -203,6 +223,7 @@ def get_layout() -> html.Div:
                 "are flagged below the chart. Agreement rate is computed over the "
                 "overlapping period where both have a definitive label."),
             dcc.Graph(id="rc-comparison-chart", config={"displayModeBar": False},
+                      figure=_placeholder_fig(),
                       style={"marginBottom": "12px"}),
             html.Div(id="rc-agreement-summary", style={
                 "fontSize": "0.82rem", "color": "var(--muted-color)",
@@ -332,7 +353,7 @@ def run_classifier(n_clicks, country, lookback, upper, lower,
 )
 def update_flag_heatmap(results, theme_name):
     if not results:
-        raise PreventUpdate
+        return _placeholder_fig()
     theme_name = theme_name or DEFAULT_THEME
     t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     df = pd.DataFrame(results["records"])
@@ -416,7 +437,7 @@ def update_flag_heatmap(results, theme_name):
 )
 def update_quadrant_chart(results, theme_name):
     if not results:
-        raise PreventUpdate
+        return _placeholder_fig()
     theme_name = theme_name or DEFAULT_THEME
     t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     df = pd.DataFrame(results["records"])
@@ -479,7 +500,7 @@ def update_quadrant_chart(results, theme_name):
 )
 def update_comparison(results, theme_name, country):
     if not results:
-        raise PreventUpdate
+        return _placeholder_fig(), ""
     theme_name = theme_name or DEFAULT_THEME
     t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     country = (country or "US").upper()

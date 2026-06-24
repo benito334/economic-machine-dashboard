@@ -809,3 +809,13 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Smoke test (US, 10yr lookback):** 517 months 1983–2026. 2020-04 → Disinflationary Slowdown ✅, 2021-06 → Inflationary Boom ✅. EZ: 336 months.
 
 **Next session:** Phase 2 Japan rollout. BEA refresh after 2026-06-26.
+
+---
+
+## 2026-06-24 — Regime Classifier: placeholder fix + guidance doc reorganisation
+
+**Done:**
+- Fixed blank graphs on `/regime-classifier` page: `dcc.Graph` components initialise with `_placeholder_fig()` ("Click ▶ Run Classifier to generate results") instead of empty white boxes. Chart callbacks also return placeholder instead of `PreventUpdate` when store is empty.
+- Reorganised `docs/Guidance/`: consumed guidance docs moved to `docs/Guidance/Used/`; `Backtesting_Indicator_imporvements.md` is the active working document for Phase 3.
+
+**Files changed:** `dashboard/regime_classifier_page.py`, `docs/Guidance/` structure.
