@@ -1,0 +1,107 @@
+# US composite indicator lists — which signals enter Growth and Inflation scores.
+# Methodology params (weights, decay, confidence) live in config/composites_policy.yaml.
+#
+# `importance` is the primary tunable judgement setting (0–1).
+# Nominal raw weight = base_share × importance × quality_factor, then normalized to 1.0
+# within each basket at runtime. Indicators with is_stale=true or low_history=true are
+# excluded at runtime.
+# invert: true  → multiply Z-score by -1 before averaging (lower raw = better)
+#
+# ── Weight-setting principles (docs/Guidance/signal_weight_guidance.md) ──────
+# These importance values are INFORMED PRIORS. Phase 3B (indicators/calibrate.py)
+# will replace them with back-tested, cross-validated values.
+#
+# Importance tiers:
+#   PRIMARY   (0.85–1.00): non-redundant anchors; drive the composite
+#   STRONG    (0.60–0.84): reliable supplementary; some correlation to primary
+#   CONTEXT   (0.30–0.59): adds marginal info; volatile, lagging, or redundant
+#   VOLATILE  (0.10–0.29): high noise or annual-only; included but not drivers
+#
+# Anti-redundancy rule: if [CORR AUDIT] flags two same-basket signals with
+#   |r| > 0.80, the secondary signal's importance should be ≤40% of primary's.
+# Force-balance rule: total weight mass (base_share × importance × quality_factor)
+#   across growth signals should be within 33% of inflation basket mass.
+#
+# US-specific notes:
+#   - pce_core is the Fed's mandate measure; cpi_core is correlated (r~0.92) but
+#     not independent. Reduced cpi_core to STRONG tier to avoid double-counting.
+#   - breakeven_5y and breakeven_10y are correlated (r~0.90); 10yr reduced to VOLATILE.
+#   - unemployment is lagging; reduced from 0.55 to 0.45 per guidance hierarchy.
+
+growth_score:
+  description: "Group-weighted Z-score composite of growth-force coincident/leading signals"
+  indicators:
+    - id: growth.payrolls
+      base_share: 0.5
+      importance: 0.90      # PRIMARY — most reliable US labor market signal; non-redundant
+      quality_factor: 0.95
+    - id: growth.industrial_prod
+      base_share: 0.5
+      importance: 0.80      # PRIMARY — output anchor; broad manufacturing coverage
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.5
+      importance: 0.75      # STRONG — consumer demand proxy; correlated with real_pce
+      quality_factor: 0.95
+    - id: growth.real_pce
+      base_share: 0.4
+      importance: 0.65      # STRONG — correlated with retail_sales (r=0.80); slightly reduced
+      quality_factor: 0.95
+    - id: growth.capacity_util
+      base_share: 0.5
+      importance: 0.65      # STRONG — forward-looking slack removal signal
+      quality_factor: 0.90
+    - id: growth.job_openings
+      base_share: 0.5
+      importance: 0.85      # PRIMARY — JOLTS openings; leading labor demand signal
+      quality_factor: 0.95
+    - id: growth.pmi_proxy
+      base_share: 0.5
+      importance: 0.80      # PRIMARY — composite activity; broad real-time coverage
+      quality_factor: 0.95
+    - id: growth.labor_force_part
+      base_share: 0.4
+      importance: 0.60      # STRONG — structural; reduced base_share to respect structural nature
+      quality_factor: 0.90
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — lagging indicator; reduced from 0.55 per guidance
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+  # Excluded from composite (structural frequency): growth.productivity, growth.tfp, growth.rnd_intensity
+
+inflation_score:
+  description: "Weighted Z-score composite of inflation-force signals"
+  indicators:
+    - id: inflation.pce_core
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — Fed mandate measure; non-redundant anchor
+      quality_factor: 1.00
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 0.65      # STRONG — correlated with pce_core (r~0.92); reduced from 0.95
+      quality_factor: 1.00
+    - id: inflation.wages
+      base_share: 0.5
+      importance: 0.30      # CONTEXT — adds wage-push signal; services persistence
+      quality_factor: 0.85
+    - id: inflation.breakeven_5y
+      base_share: 0.5
+      importance: 0.25      # CONTEXT — market-based expectations; forward-looking
+      quality_factor: 0.90
+    - id: inflation.breakeven_10y
+      base_share: 0.5
+      importance: 0.20      # VOLATILE — correlated with breakeven_5y (r~0.90); 5yr preferred
+      quality_factor: 0.90
+    - id: inflation.cpi_headline
+      base_share: 0.5
+      importance: 0.20      # VOLATILE — largely captured by pce_core; kept for breadth
+      quality_factor: 0.90
+    - id: inflation.crude_oil
+      base_share: 0.5
+      importance: 0.10      # VOLATILE — energy pass-through; extreme noise
+      quality_factor: 0.85
+    - id: inflation.ppi_broad
+      base_share: 0.5
+      importance: 0.30      # CONTEXT — upstream cost-push; leads CPI by 2-3 months
+      quality_factor: 0.90

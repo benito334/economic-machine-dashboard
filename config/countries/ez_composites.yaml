@@ -1,0 +1,83 @@
+# Euro Area composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+#
+# ── Weight-setting principles (docs/Guidance/signal_weight_guidance.md) ──────
+# These importance values are INFORMED PRIORS — grounded in the guidance doc's
+# empirical hierarchy. Phase 3B (indicators/calibrate.py) will replace these
+# with back-tested, cross-validated values for each country.
+#
+# Importance tiers:
+#   PRIMARY   (0.85–1.00): non-redundant anchors; drive the composite
+#   STRONG    (0.60–0.84): reliable supplementary; some correlation to primary
+#   CONTEXT   (0.30–0.59): adds marginal info; volatile, lagging, or redundant
+#   VOLATILE  (0.10–0.29): high noise or annual-only; included but not drivers
+#
+# Anti-redundancy rule: if [CORR AUDIT] flags two same-basket signals with
+#   |r| > 0.80, the secondary signal's importance should be ≤40% of primary's.
+# Force-balance rule: total weight mass (base_share × importance × quality_factor)
+#   across growth signals should be within 33% of inflation basket mass.
+#   The [BALANCE] log in Pass 5 flags violations automatically.
+#
+# EZ-specific notes:
+#   - No PMI data (paywall), no PCE equivalent. Industrial prod is the primary
+#     growth anchor; the others provide cyclical breadth.
+#   - Wages (LCI) are the key EA inflation persistence signal — ECB watches this
+#     more than headline; weight accordingly.
+#   - Energy/food are explicitly volatile; keep at VOLATILE tier.
+
+growth_score:
+  description: "EZ growth-force composite — Eurostat monthly/quarterly indicators"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.7
+      importance: 0.80      # PRIMARY — strongest coincident output signal for EA; base_share raised for balance
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.65
+      importance: 0.70      # STRONG — correlated with industrial prod; base_share raised for balance
+      quality_factor: 0.95
+    - id: growth.capacity_util
+      base_share: 0.6
+      importance: 0.65      # STRONG — leading/forward-looking; base_share raised for balance
+      quality_factor: 0.90
+    - id: growth.employment_growth
+      base_share: 0.4
+      importance: 0.35      # CONTEXT — correlated with capacity_util (r=0.85); reduced per anti-redundancy
+      quality_factor: 0.85
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — lagging indicator; reduced from 0.55 per guidance
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+    - id: growth.construction_prod
+      base_share: 0.3
+      importance: 0.35      # CONTEXT — less reliable across EA member states; reduced from 0.45
+      quality_factor: 0.85
+
+inflation_score:
+  description: "EZ inflation-force composite — HICP anchors + upstream + cost-push signals"
+  indicators:
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 1.00      # PRIMARY — HICP ex-food/energy; ECB medium-term target anchor
+      quality_factor: 1.00
+    - id: inflation.wages_lci
+      base_share: 0.7
+      importance: 0.75      # STRONG — wage-push / services persistence; ECB's key watch signal
+      quality_factor: 0.90
+    - id: inflation.ppi
+      base_share: 0.5
+      importance: 0.55      # STRONG — leading upstream cost-push; adds independent signal
+      quality_factor: 0.85
+    - id: inflation.cpi_headline
+      base_share: 0.7
+      importance: 0.45      # CONTEXT — correlated with core (r=0.80); base_share reduced to match tier
+      quality_factor: 0.90
+    - id: inflation.hicp_energy
+      base_share: 0.3
+      importance: 0.20      # VOLATILE — correlated with ppi (r=0.95); reduced per anti-redundancy rule
+      quality_factor: 0.85
+    - id: inflation.hicp_food
+      base_share: 0.3
+      importance: 0.20      # VOLATILE — supplementary commodity passthrough; reduced from 0.35
+      quality_factor: 0.80

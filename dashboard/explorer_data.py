@@ -6,28 +6,24 @@ from pathlib import Path
 from typing import Optional
 
 import duckdb
+import numpy as np
 import pandas as pd
+import yaml
+
+from indicators.composites import load_composites_config
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
 
-# Days since last update that constitutes staleness, by inferred frequency
-_STALE_THRESHOLDS = {
-    "daily": 5,
-    "weekly": 14,
-    "monthly": 50,
-    "quarterly": 120,
-    "annual": 400,
-}
-
-
 # ── Signal overview (all 59 signals, one row each) ────────────────────────────
 
-def load_signal_overview() -> pd.DataFrame:
+def load_signal_overview(country: str = "US") -> pd.DataFrame:
     """
-    Return one row per US signal containing the latest snapshot values plus
-    aggregate statistics.  Used to populate the signal browser table.
+    Return one row per signal for the given country containing the latest
+    snapshot values plus aggregate statistics.  Used to populate the signal
+    browser table.
     """
+    cc = (country or "US").upper()
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = con.execute("""
@@ -35,7 +31,7 @@ def load_signal_overview() -> pd.DataFrame:
                 SELECT *,
                        ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) AS rn
                 FROM signals
-                WHERE country = 'US'
+                WHERE country = ?
             ),
             stats AS (
                 SELECT id,
@@ -43,7 +39,7 @@ def load_signal_overview() -> pd.DataFrame:
                        MIN(as_of) AS first_obs,
                        MAX(as_of) AS last_obs
                 FROM signals
-                WHERE country = 'US'
+                WHERE country = ?
                 GROUP BY id
             )
             SELECT
@@ -74,7 +70,7 @@ def load_signal_overview() -> pd.DataFrame:
             JOIN stats s ON l.id = s.id
             WHERE l.rn = 1
             ORDER BY l.force, l.id
-        """).df()
+        """, [cc, cc]).df()
     finally:
         con.close()
 
@@ -111,7 +107,7 @@ def _infer_freq_label(signal_id: str) -> str:
     force = signal_id.split(".")[1] if signal_id.count(".") >= 1 else ""
     if force in daily_forces and "balance_sheet" not in signal_id and "monetary_base" not in signal_id:
         return "daily"
-    if "breakeven" in signal_id or "bank_loans" in signal_id:
+    if "breakeven" in signal_id:
         return "daily"
     # Weekly
     if "bank_loans" in signal_id or "balance_sheet" in signal_id:
@@ -327,3 +323,94 @@ def compute_signal_stats(signal_id: str) -> dict:
     keys = ["obs_count", "min_val", "max_val", "mean_val", "std_val", "median_val",
             "first_obs", "last_obs", "stale_count", "outlier_count"]
     return dict(zip(keys, row)) if row else {}
+
+
+# ── A2/I2: Composite signal Z-score matrix for correlation + PCA ──────────────
+
+def load_composite_zscore_matrix(
+    country: str = "US",
+    min_obs_fraction: float = 0.7,
+) -> tuple[pd.DataFrame, list[dict]]:
+    """Return (wide_monthly_df, signal_meta) for the composite signal set.
+
+    wide_monthly_df: index=monthly as_of, columns=signal_id, values=zscore.
+    Rows with fewer than min_obs_fraction * n_signals non-NaN values are dropped.
+    signal_meta: list of {signal_id, label, force} dicts in country composites config order.
+    """
+    cfg = load_composites_config(country)
+    country_prefix = country.lower()
+
+    signal_meta: list[dict] = []
+    for comp_name in ("growth_score", "inflation_score"):
+        force = comp_name.split("_")[0]
+        for ind in cfg.get(comp_name, {}).get("indicators", []):
+            concept_id = ind["id"]
+            signal_meta.append({
+                "signal_id": f"{country_prefix}.{concept_id}",
+                "label":     concept_id.split(".")[-1].replace("_", " ").title(),
+                "force":     force,
+            })
+
+    if not signal_meta:
+        return pd.DataFrame(), []
+
+    signal_ids   = [m["signal_id"] for m in signal_meta]
+    placeholders = ", ".join("?" * len(signal_ids))
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            f"SELECT id, as_of, zscore FROM signals WHERE id IN ({placeholders}) ORDER BY id, as_of",
+            signal_ids,
+        ).df()
+    finally:
+        con.close()
+
+    if df.empty:
+        return pd.DataFrame(), signal_meta
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    pivot = df.pivot(index="as_of", columns="id", values="zscore")
+    pivot = pivot.reindex(columns=signal_ids)
+    monthly = pivot.resample("ME").last().ffill(limit=3)
+
+    min_valid = int(len(signal_ids) * min_obs_fraction)
+    monthly = monthly.dropna(thresh=min_valid)
+
+    return monthly, signal_meta
+
+
+def compute_pca(matrix: pd.DataFrame) -> dict:
+    """Run PCA on the signal Z-score matrix via numpy SVD.
+
+    Returns dict with:
+      explained_variance_ratio: array of shape (n_components,)
+      loadings: array of shape (n_components, n_signals)  — each row is one PC
+      n_obs: number of observations used
+    """
+    if matrix.empty or matrix.shape[0] < 2 or matrix.shape[1] < 2:
+        raise ValueError("PCA requires at least two observations and two signals")
+
+    # Mean-impute partially missing columns.  A wholly missing column has no
+    # information, but retaining it as zeros preserves the signal/loadings
+    # alignment expected by the chart while giving it a zero loading.
+    filled = matrix.copy()
+    for col in filled.columns:
+        mean = filled[col].mean()
+        filled[col] = filled[col].fillna(0.0 if pd.isna(mean) else mean)
+
+    X = filled.values.astype(float)
+    if not np.isfinite(X).all():
+        raise ValueError("PCA input contains non-finite values")
+    X_centered = X - X.mean(axis=0)
+
+    U, S, Vt = np.linalg.svd(X_centered, full_matrices=False)
+    total_variance = float((S ** 2).sum())
+    if total_variance <= np.finfo(float).eps:
+        raise ValueError("PCA input has no measurable variance")
+    var_ratio = (S ** 2) / total_variance
+
+    return {
+        "explained_variance_ratio": var_ratio,
+        "loadings": Vt,
+        "n_obs": len(X),
+    }

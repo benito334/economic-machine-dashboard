@@ -63,3 +63,13 @@ def compute_momentum(series: pd.Series, frequency: str) -> tuple[pd.Series, pd.S
 
 def momentum_periods(frequency: str) -> tuple[int, int, int]:
     return _MOMENTUM_PERIODS.get(frequency, (1, 3, 12))
+
+
+def months_to_periods(months: int, frequency: str) -> int:
+    """Convert a month-count window to native observation count for a given frequency.
+
+    Example: 48 months → 48 M obs, 16 Q obs, 4 A obs.
+    Minimum 4 observations to ensure meaningful statistics.
+    """
+    ppy = _YOY_PERIODS.get(frequency, 12)
+    return max(4, round(months * ppy / 12))

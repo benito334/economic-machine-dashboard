@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from indicators.models import CountryBinding, Signal
-from indicators.transform import compute_momentum
+from indicators.transform import compute_momentum, months_to_periods
 
 _LOW_HISTORY_THRESHOLD = 15  # fewer obs → set low_history=True
 
@@ -28,14 +28,37 @@ _STALE_THRESHOLDS: dict[str, timedelta] = {
     "A": timedelta(days=600),
 }
 
-_DIRECTION_THRESHOLD = 1e-9  # treat anything smaller as flat
+_DIRECTION_THRESHOLD = 1e-9       # fallback when series_std is unavailable
+_DIRECTION_STD_FRACTION = 0.10    # C1: change must exceed 10% of 1σ to be directional
+ZSCORE_CAP_SIGMA = 4.0             # C1: clip outliers beyond ±4σ before Z-scoring
+
+
+def zscore_rolling(series: pd.Series, window: int) -> pd.Series:
+    """Rolling Z-score over the given window, capped at ±4σ (C1).
+
+    Used when the force Z-score look-back is set to a finite window in settings.
+    min_periods = window // 2 so values are returned before the window fully fills.
+    """
+    s = series.copy()
+    half = max(1, window // 2)
+    roll_mean = s.rolling(window, min_periods=half).mean()
+    roll_std  = s.rolling(window, min_periods=half).std(ddof=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        z = (s - roll_mean) / roll_std
+    return z.clip(lower=-ZSCORE_CAP_SIGMA, upper=ZSCORE_CAP_SIGMA)
 
 
 def _zscore_series(s: pd.Series) -> pd.Series:
+    """Z-score capped at ±4σ to prevent outlier distortion (C1).
+
+    Computing mean/std first, then capping the resulting Z-score, guarantees the
+    output is always in [-4, 4] regardless of the raw distribution shape.
+    """
     mu, std = s.mean(), s.std(ddof=1)
     if std == 0 or np.isnan(std):
         return pd.Series(0.0, index=s.index)
-    return (s - mu) / std
+    z = (s - mu) / std
+    return z.clip(lower=-ZSCORE_CAP_SIGMA, upper=ZSCORE_CAP_SIGMA)
 
 
 def _percentile_series(s: pd.Series) -> pd.Series:
@@ -43,12 +66,24 @@ def _percentile_series(s: pd.Series) -> pd.Series:
     return s.rank(pct=True, method="average") - (0.5 / len(s))
 
 
-def _direction(change_3m: Optional[float]) -> str:
+def _direction(change_3m: Optional[float], series_std: Optional[float] = None) -> str:
+    """Direction flag with variance-based significance threshold (E1).
+
+    When series_std is provided, the 3-month change must exceed 10% of one
+    historical standard deviation to be called rising/falling.  This avoids
+    labelling near-zero drift on low-volatility series as directional.
+    Falls back to the fixed 1e-9 epsilon when series_std is unavailable.
+    """
     if change_3m is None or np.isnan(change_3m):
         return "flat"
-    if change_3m > _DIRECTION_THRESHOLD:
+    threshold = (
+        series_std * _DIRECTION_STD_FRACTION
+        if series_std is not None and series_std > 0
+        else _DIRECTION_THRESHOLD
+    )
+    if change_3m > threshold:
         return "rising"
-    if change_3m < -_DIRECTION_THRESHOLD:
+    if change_3m < -threshold:
         return "falling"
     return "flat"
 
@@ -84,6 +119,20 @@ def build_signals(
     zscores = _zscore_series(clean)
     percentiles = _percentile_series(clean)
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
+    series_std = float(clean.std(ddof=1)) if n > 1 else None
+
+    # Pre-compute rolling Z-scores for all configurable look-back windows
+    _ROLLING_MONTHS = [12, 18, 24, 36, 48, 60, 90, 120]
+    rolling_zs: dict[str, pd.Series] = {
+        f"zscore_{m}m": zscore_rolling(clean, months_to_periods(m, binding.frequency))
+        for m in _ROLLING_MONTHS
+    }
+
+    # D1: percentile-rank change_3m within its own valid history
+    c3m_pcts = pd.Series(np.nan, index=c3m.index)
+    _c3m_valid = c3m.dropna()
+    if not _c3m_valid.empty:
+        c3m_pcts.loc[_c3m_valid.index] = _percentile_series(_c3m_valid).values
 
     country_namespace = binding.country.lower()
     signal_id = f"{country_namespace}.{binding.id}"
@@ -127,9 +176,18 @@ def build_signals(
                 change_1m=_f(c1m.iloc[i]),
                 change_3m=c3m_float,
                 change_12m=_f(c12m.iloc[i]),
-                direction=_direction(c3m_float),
+                momentum_percentile=_f(c3m_pcts.iloc[i]),
+                direction=_direction(c3m_float, series_std),
                 equilibrium_estimate=binding.equilibrium,
                 distance_from_equilibrium=dist,
+                zscore_12m=_f(rolling_zs["zscore_12m"].iloc[i]),
+                zscore_18m=_f(rolling_zs["zscore_18m"].iloc[i]),
+                zscore_24m=_f(rolling_zs["zscore_24m"].iloc[i]),
+                zscore_36m=_f(rolling_zs["zscore_36m"].iloc[i]),
+                zscore_48m=_f(rolling_zs["zscore_48m"].iloc[i]),
+                zscore_60m=_f(rolling_zs["zscore_60m"].iloc[i]),
+                zscore_90m=_f(rolling_zs["zscore_90m"].iloc[i]),
+                zscore_120m=_f(rolling_zs["zscore_120m"].iloc[i]),
                 is_proxy=binding.is_proxy,
                 is_constructed=binding.is_constructed,
                 is_stale=_is_stale(obs, binding.frequency, is_latest),

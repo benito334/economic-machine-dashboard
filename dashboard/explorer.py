@@ -17,9 +17,11 @@ from plotly.subplots import make_subplots
 
 from dashboard.explorer_data import (
     compare_raw_vs_processed,
+    compute_pca,
     compute_signal_stats,
     detect_gaps,
     flag_anomalies,
+    load_composite_zscore_matrix,
     load_raw_cache_series,
     load_signal_detail,
     load_signal_overview,
@@ -316,6 +318,28 @@ def get_layout() -> html.Div:
                             html.Div(id="exp-raw-content"),
                         ], className="pt-2"),
                     ]),
+
+                    dbc.Tab(label="📊 Composite Analysis", tab_id="exp-tab-analysis", children=[
+                        html.Div([
+                            html.Small(
+                                "Pearson correlation matrix and PCA for the 17 composite "
+                                "regime signals (9 growth + 8 inflation). "
+                                "Computed on monthly Z-score history. "
+                                "Highly correlated signals (|r| > 0.8) may warrant weight review.",
+                                className="text-muted d-block mb-2",
+                            ),
+                            dcc.Graph(
+                                id="exp-corr-chart",
+                                config={"displayModeBar": True},
+                                style={"height": "52vh"},
+                            ),
+                            dcc.Graph(
+                                id="exp-pca-chart",
+                                config={"displayModeBar": True},
+                                style={"height": "32vh"},
+                            ),
+                        ], className="pt-2"),
+                    ]),
                 ]),
             ], width=7),
         ], className="pt-2"),
@@ -343,12 +367,14 @@ def register_callbacks(app: dash.Dash) -> None:
 
     # 1. Populate + filter overview table
     @app.callback(
-        Output("exp-signal-table", "data"),
+        [Output("exp-signal-table", "data"),
+         Output("exp-signal-table", "selected_rows")],
         [Input("exp-force-filter", "value"),
-         Input("exp-flag-filter", "value")],
+         Input("exp-flag-filter", "value"),
+         Input("country-store", "data")],
     )
-    def update_signal_table(force_filter: str, flag_filter: str) -> list[dict]:
-        df = load_signal_overview()
+    def update_signal_table(force_filter: str, flag_filter: str, country: str) -> tuple:
+        df = load_signal_overview(country or "US")
         if force_filter and force_filter != "all":
             df = df[df["force"] == force_filter]
         if flag_filter == "stale":
@@ -361,7 +387,7 @@ def register_callbacks(app: dash.Dash) -> None:
             df = df[df["abs_zscore"] > 2]
         elif flag_filter == "clean":
             df = df[~df["is_stale"] & ~df["is_proxy"] & ~df["low_history"] & (df["abs_zscore"] <= 2)]
-        return _format_overview(df)
+        return _format_overview(df), []
 
     # 2. Track selected signal
     @app.callback(
@@ -380,11 +406,12 @@ def register_callbacks(app: dash.Dash) -> None:
     @app.callback(
         Output("exp-detail-header", "children"),
         Input("exp-selected-signal", "data"),
+        State("country-store", "data"),
     )
-    def update_header(signal_id: Optional[str]) -> list:
+    def update_header(signal_id: Optional[str], country: str) -> list:
         if not signal_id:
             return _placeholder_header()
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         row = overview[overview["id"] == signal_id]
         if row.empty:
             return _placeholder_header()
@@ -429,11 +456,13 @@ def register_callbacks(app: dash.Dash) -> None:
          Output("exp-stat-obs", "children")],
         [Input("exp-selected-signal", "data"),
          Input("theme-store", "data")],
+        State("country-store", "data"),
     )
-    def update_ts(signal_id: Optional[str], theme_name: str = DEFAULT_THEME) -> tuple:
+    def update_ts(signal_id: Optional[str], theme_name: str = DEFAULT_THEME, country: str = "US") -> tuple:
         fl = {**figure_layout(theme_name), "margin": {"l": 55, "r": 20, "t": 35, "b": 30}}
+        fl["title"] = {"text": "Select a signal", "x": 0.5}
         empty_fig = go.Figure()
-        empty_fig.update_layout(**fl, title={"text": "Select a signal", "x": 0.5})
+        empty_fig.update_layout(**fl)
         blank = ("—",) * 6
         if not signal_id:
             return (empty_fig,) + blank
@@ -444,7 +473,7 @@ def register_callbacks(app: dash.Dash) -> None:
 
         detail = detail.sort_values("as_of")
         stats = compute_signal_stats(signal_id)
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         r = overview[overview["id"] == signal_id]
         equil = float(r["equilibrium_estimate"].iloc[0]) if not r.empty else None
         units = r["units"].iloc[0] if not r.empty else ""
@@ -527,28 +556,13 @@ def register_callbacks(app: dash.Dash) -> None:
 
         return (
             fig,
-            _fmt(stats.get("obs_count")),  # latest → show obs count in "Latest" card
+            _fmt(detail["value"].iloc[-1]),
             _fmt(stats.get("mean_val")),
             _fmt(stats.get("min_val")),
             _fmt(stats.get("max_val")),
             _fmt(stats.get("std_val")),
             str(int(stats.get("obs_count", 0))),
         )
-
-    # 4b. Latest stat card should show latest value, not obs count
-    @app.callback(
-        Output("exp-stat-latest", "children"),
-        Input("exp-selected-signal", "data"),
-        prevent_initial_call=True,
-    )
-    def update_latest_card(signal_id: Optional[str]) -> str:
-        if not signal_id:
-            return "—"
-        detail = load_signal_detail(signal_id, limit=1)
-        if detail.empty:
-            return "—"
-        v = detail["value"].iloc[0]
-        return f"{v:.4f}" if pd.notna(v) else "—"
 
     # 5. Observations table
     @app.callback(
@@ -615,12 +629,13 @@ def register_callbacks(app: dash.Dash) -> None:
          Output("exp-flags-card", "children"),
          Output("exp-gaps-content", "children")],
         Input("exp-selected-signal", "data"),
+        State("country-store", "data"),
     )
-    def update_quality(signal_id: Optional[str]) -> tuple:
+    def update_quality(signal_id: Optional[str], country: str) -> tuple:
         if not signal_id:
             return html.P("Select a signal.", className="text-muted small"), html.Div(), html.Div()
 
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         r_df = overview[overview["id"] == signal_id]
         if r_df.empty:
             return html.P("Not found.", className="text-muted small"), html.Div(), html.Div()
@@ -692,12 +707,13 @@ def register_callbacks(app: dash.Dash) -> None:
     @app.callback(
         Output("exp-raw-content", "children"),
         Input("exp-selected-signal", "data"),
+        State("country-store", "data"),
     )
-    def update_raw_compare(signal_id: Optional[str]) -> Any:
+    def update_raw_compare(signal_id: Optional[str], country: str) -> Any:
         if not signal_id:
             return html.P("Select a signal.", className="text-muted small")
 
-        overview = load_signal_overview()
+        overview = load_signal_overview(country or "US")
         r_df = overview[overview["id"] == signal_id]
         if r_df.empty:
             return html.P("Signal not found.", className="text-muted small")
@@ -783,6 +799,9 @@ def register_callbacks(app: dash.Dash) -> None:
             style={"color": color, "fontFamily": "monospace"},
         )
 
+    # 9. Composite Analysis (A2/I2)
+    _register_analysis_callbacks(app)
+
 
 def _meta_item(label: str, value: str) -> dbc.ListGroupItem:
     return dbc.ListGroupItem(
@@ -790,3 +809,142 @@ def _meta_item(label: str, value: str) -> dbc.ListGroupItem:
         style={"backgroundColor": "transparent", "border": "none",
                "borderBottom": "1px solid var(--border-color)", "padding": "3px 0"},
     )
+
+
+# ── A2/I2: Composite Analysis callbacks ───────────────────────────────────────
+
+def _register_analysis_callbacks(app: dash.Dash) -> None:
+    import numpy as np
+    from plotly.subplots import make_subplots
+
+    _FORCE_BORDER = {"growth": "#4C9BE8", "inflation": "#E8734C"}
+
+    @app.callback(
+        [Output("exp-corr-chart", "figure"),
+         Output("exp-pca-chart",  "figure")],
+        [Input("exp-detail-tabs", "active_tab"),
+         Input("theme-store",     "data")],
+        State("country-store", "data"),
+        prevent_initial_call=False,
+    )
+    def update_composite_analysis(active_tab: str, theme_name: str, country: str):
+        _empty = go.Figure()
+        _empty.update_layout(**figure_layout(theme_name or DEFAULT_THEME))
+        if active_tab != "exp-tab-analysis":
+            return _empty, _empty
+
+        matrix, signal_meta = load_composite_zscore_matrix(country or "US")
+        if matrix.empty:
+            _empty.update_layout(**figure_layout(theme_name or DEFAULT_THEME, "No data"))
+            return _empty, _empty
+
+        short_labels  = [m["label"]  for m in signal_meta]
+        forces        = [m["force"]  for m in signal_meta]
+        border_colors = [_FORCE_BORDER.get(f, "#888") for f in forces]
+
+        # ── Correlation heatmap ───────────────────────────────────────────────
+        filled = matrix.copy()
+        for col in filled.columns:
+            mean = filled[col].mean()
+            filled[col] = filled[col].fillna(0.0 if pd.isna(mean) else mean)
+        corr   = filled.corr().values
+
+        corr_fig = go.Figure(go.Heatmap(
+            z=corr,
+            x=short_labels,
+            y=short_labels,
+            colorscale="RdBu_r",
+            zmid=0, zmin=-1, zmax=1,
+            text=[[f"{v:.2f}" for v in row] for row in corr],
+            texttemplate="%{text}",
+            textfont={"size": 8},
+            hovertemplate="%{y} × %{x}: %{z:.2f}<extra></extra>",
+            colorbar={"len": 0.9, "thickness": 12},
+        ))
+        # Divider line between growth (9) and inflation (8) signals
+        n_growth = sum(1 for m in signal_meta if m["force"] == "growth")
+        corr_fig.add_shape(type="line",
+            x0=n_growth - 0.5, x1=n_growth - 0.5, y0=-0.5, y1=len(signal_meta) - 0.5,
+            line={"color": "#ffffff", "width": 1.5, "dash": "dot"},
+        )
+        corr_fig.add_shape(type="line",
+            x0=-0.5, x1=len(signal_meta) - 0.5, y0=n_growth - 0.5, y1=n_growth - 0.5,
+            line={"color": "#ffffff", "width": 1.5, "dash": "dot"},
+        )
+        corr_fig.update_layout(
+            **figure_layout(theme_name or DEFAULT_THEME,
+                            f"Composite Signal Correlation Matrix  ·  {len(matrix)} months"),
+            height=520,
+            margin={"l": 130, "r": 80, "t": 50, "b": 120},
+        )
+
+        # ── PCA ───────────────────────────────────────────────────────────────
+        try:
+            pca = compute_pca(matrix)
+        except ValueError as exc:
+            pca_fig = go.Figure()
+            pca_fig.update_layout(
+                **figure_layout(theme_name or DEFAULT_THEME, "PCA unavailable"),
+                height=320,
+            )
+            pca_fig.add_annotation(
+                text=str(exc), x=0.5, y=0.5, xref="paper", yref="paper",
+                showarrow=False,
+            )
+            return corr_fig, pca_fig
+        var_r   = pca["explained_variance_ratio"]
+        loadings = pca["loadings"]
+        n_obs   = pca["n_obs"]
+        n_show  = min(10, len(var_r))
+
+        pca_fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=[
+                "Explained Variance by PC",
+                "PC1 & PC2 Loadings per Signal",
+            ],
+            column_widths=[0.30, 0.70],
+        )
+
+        # Scree bar + cumulative line
+        pca_fig.add_trace(go.Bar(
+            x=[f"PC{i+1}" for i in range(n_show)],
+            y=var_r[:n_show] * 100,
+            marker_color="#4C9BE8",
+            showlegend=False,
+            hovertemplate="PC%{x}: %{y:.1f}%<extra></extra>",
+        ), row=1, col=1)
+        pca_fig.add_trace(go.Scatter(
+            x=[f"PC{i+1}" for i in range(n_show)],
+            y=np.cumsum(var_r[:n_show]) * 100,
+            mode="lines+markers",
+            line={"color": "#E8734C", "width": 1.5},
+            marker={"size": 5},
+            name="Cumulative",
+            hovertemplate="Cumulative: %{y:.1f}%<extra></extra>",
+        ), row=1, col=1)
+        pca_fig.update_yaxes(title_text="% variance", range=[0, 110], row=1, col=1)
+
+        # Loadings heatmap (PC1 + PC2 × all 17 signals)
+        pca_fig.add_trace(go.Heatmap(
+            z=loadings[:2],
+            x=short_labels,
+            y=["PC1", "PC2"],
+            colorscale="RdBu_r",
+            zmid=0,
+            text=[[f"{v:.2f}" for v in row] for row in loadings[:2]],
+            texttemplate="%{text}",
+            textfont={"size": 8},
+            hovertemplate="%{y} · %{x}: %{z:.2f}<extra></extra>",
+            showscale=False,
+        ), row=1, col=2)
+
+        pca_fig.update_layout(
+            **figure_layout(theme_name or DEFAULT_THEME,
+                            f"PCA  ·  {n_obs} observations  ·  "
+                            f"PC1+PC2 = {(var_r[0]+var_r[1])*100:.1f}% variance"),
+            height=320,
+            margin={"l": 55, "r": 20, "t": 50, "b": 90},
+        )
+
+        return corr_fig, pca_fig

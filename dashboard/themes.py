@@ -59,6 +59,11 @@ DEFAULT_THEME = "carbon"
 
 def _build_css_vars() -> dict[str, dict]:
     """Build per-theme dicts of CSS custom property name → value for clientside use."""
+    _slider_accent = {
+        "carbon": "#E8A317",   # warm amber — readable on dark charcoal
+        "slate":  "#F4C842",   # brighter gold — pops on slate blue-grey
+        "dawn":   "#4C6EF5",   # indigo — visible on light background
+    }
     result: dict[str, dict] = {}
     for key, t in THEMES.items():
         result[key] = {
@@ -71,6 +76,7 @@ def _build_css_vars() -> dict[str, dict]:
             "--cell-bg": t["cell_bg"],
             "--grid-color": t["grid_color"],
             "--series-label-color": t["series_label_color"],
+            "--slider-accent": _slider_accent.get(key, "#E8A317"),
             # Bootstrap 5 CSS vars (used by dbc components)
             "--bs-body-bg": t["page_bg"],
             "--bs-body-color": t["font_color"],

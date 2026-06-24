@@ -1,0 +1,58 @@
+# Composite methodology policy — global settings that apply to ALL countries.
+# Indicator lists (growth_score / inflation_score) live in
+# config/countries/{cc}_composites.yaml and are country-specific.
+#
+# Change values here and rerun Pass 5 of the pipeline to regenerate all
+# country snapshots with the new methodology.
+
+# Dynamic force/momentum agreement adjustment.
+# adjusted_weight = nominal_weight × clamp(1 + alpha × sign(force) × momentum_sign)
+dynamic_weighting:
+  enabled: true
+  momentum_alpha: 0.50        # TUNABLE: agreement → 1.5×, disagreement → 0.5×
+  min_multiplier: 0.10        # TUNABLE safety floor
+  max_multiplier: 1.50        # TUNABLE safety cap
+  force_zero_epsilon: 0.05    # TUNABLE: |Z| below this is treated as neutral
+
+# L2: Per-frequency forward-fill caps.  Monthly signals are released every month so 3
+# months of fill is already generous; quarterly at 9 months (3 release cycles); annual
+# at 15 months (≈12 months data lag + 3 months grace).  Daily defaults to 1 month.
+per_frequency_ffill_limit:
+  D: 1
+  M: 3
+  Q: 9
+  A: 15
+  default: 13   # fallback for unknown frequencies
+
+# Exponential age decay from the guidance document.
+# decay = 0.5 ^ (age_months / half_life_months), so a three-month-old observation
+# has half its fresh-data weight. Per-frequency carry caps above still hard-drop
+# observations beyond the permitted publication window.
+time_decay:
+  enabled: true
+  half_life_months: 3.0       # TUNABLE
+  hard_drop_months: 12        # TUNABLE global ceiling; frequency caps may drop sooner
+
+# Regime quadrant confidence: fraction of contributing signals whose
+# direction vector agrees with the assigned quadrant label.
+# E.g. if 7/10 growth signals are "rising" → growth_confidence = 0.70.
+regime_confidence:
+  min_signals_required: 1   # refuse to label quadrant if fewer than 1 signal per force
+
+# Disequilibrium score: equal weight over |distance_from_equilibrium| Z-scores
+# across all available structural force lenses. Forces with no data are excluded
+# from the denominator; a low_coverage flag fires if fewer than 3 lenses are present.
+disequilibrium_score:
+  forces:
+    - debt_money:    [credit, policy]          # Lens C + D
+    - internal_order: [governance]             # Lens H  (Phase 1A-ii)
+    - external_order: [external, capital, currency]  # Lens F + G (Phase 1A-ii)
+    - climate:       [climate]                 # Lens I (deferred)
+    - technology:    [growth.productivity, growth.tfp, growth.rnd_intensity]
+  min_forces_required: 3
+
+# What-Changed feed thresholds (used by dashboard)
+what_changed:
+  weekly_delta_threshold_zscore: 0.25   # highlight if Z-score moved > 0.25 in 7 days
+  exclude_frequencies: [Q, A]           # quarterly/annual series excluded from weekly feed
+  quarterly_delta_threshold_zscore: 0.50

@@ -48,7 +48,7 @@ There are currently **59 active US signals** spanning 10 force lenses (A–I):
 | I | Fiscal | FRED, World Bank, IMF | A | 5 |
 | — | Demographics | World Bank | A | 4 |
 
-The composite scores (Growth + Inflation) use a **subset of 16 monthly/daily signals** from Lenses A and B only. The disequilibrium score draws on the full 59-signal universe grouped into five structural force groups. See Sections 4 and 7 below.
+The composite scores (Growth + Inflation) use a **subset of 17 monthly/daily signals** from Lenses A and B only. The disequilibrium score draws on the full 59-signal universe grouped into five structural force groups. See Sections 4 and 7 below.
 
 ---
 
@@ -136,12 +136,13 @@ This direction flag is used in the **Confidence Score** calculation (Section 6).
 
 ### 3.6 Forward-Fill Policy
 
-Raw series arrive at different frequencies (daily, weekly, monthly, quarterly, annual). To build a consistent monthly composite history, all signals are resampled to month-end and **forward-filled up to 13 months**. This means:
+Raw series arrive at different frequencies (daily, weekly, monthly, quarterly, annual). To build a consistent monthly composite history, reliable signals are resampled to month-end and forward-filled only within a frequency-specific carry cap:
 
-- A quarterly GDP figure (e.g., dated 2026-01-01 for Q1 2026) will be carried forward for up to 13 monthly composite snapshots, until a newer observation replaces it.
-- The `is_stale` flag on the underlying Signal record tracks whether the series has gone beyond its expected release window — but forward-fill still occurs regardless of staleness (the staleness flag is informational, not exclusionary).
+- Daily: 1 month; monthly: 3 months; quarterly: 9 months; annual: 15 months.
+- Signals flagged `low_history` are excluded. A signal flagged `is_stale` stops contributing from the month of its latest stale observation, so an old release cannot silently drive the current composite.
+- Within the allowed carry window, effective weight decays with a three-month half-life rather than remaining constant.
 
-**Code:** `indicators/composites.py` → `_load_wide()` with `ffill_limit=13`
+**Code:** `indicators/composites.py` → `_load_wide()`, `age_weight_fraction()`
 
 ---
 
@@ -151,32 +152,39 @@ Raw series arrive at different frequencies (daily, weekly, monthly, quarterly, a
 
 The Growth Score uses **9 coincident and leading indicators** from Lens A (Growth force). Structural-frequency signals (TFP, R&D intensity, productivity) are explicitly excluded because their annual/lagging nature would distort a monthly composite.
 
-| Signal ID | Description | Frequency | Weight | Inverted? |
-|:----------|:------------|:----------|-------:|:---------:|
-| `growth.payrolls` | Nonfarm payrolls YoY% | Monthly | 1.0 | No |
-| `growth.industrial_prod` | Industrial production YoY% | Monthly | 1.0 | No |
-| `growth.retail_sales` | Advance retail sales YoY% | Monthly | 1.0 | No |
-| `growth.real_pce` | Real personal consumption YoY% | Monthly | 1.0 | No |
-| `growth.capacity_util` | Capacity utilisation (level) | Monthly | 1.0 | No |
-| `growth.job_openings` | JOLTS job openings (level) | Monthly | 1.0 | No |
-| `growth.pmi_proxy` | Philly Fed Business Outlook Index | Monthly | 1.0 | No |
-| `growth.labor_force_part` | Labour force participation rate | Monthly | 1.0 | No |
-| `growth.unemployment` | Unemployment rate (level) | Monthly | 1.0 | **Yes** |
+| Signal ID | Description | Base share | Importance | Quality | Inverted? |
+|:----------|:------------|-----------:|-----------:|--------:|:---------:|
+| `growth.payrolls` | Nonfarm payrolls YoY% | 0.5 | 0.90 | 0.95 | No |
+| `growth.industrial_prod` | Industrial production YoY% | 0.5 | 0.80 | 0.95 | No |
+| `growth.retail_sales` | Advance retail sales YoY% | 0.5 | 0.75 | 0.95 | No |
+| `growth.real_pce` | Real personal consumption YoY% | 0.5 | 0.70 | 0.95 | No |
+| `growth.capacity_util` | Capacity utilisation (level) | 1.0 | 0.65 | 0.90 | No |
+| `growth.job_openings` | JOLTS job openings (level) | 0.5 | 0.85 | 0.95 | No |
+| `growth.pmi_proxy` | Philly Fed Business Outlook Index | 0.5 | 0.80 | 0.95 | No |
+| `growth.labor_force_part` | Labour force participation rate | 0.5 | 0.60 | 0.90 | No |
+| `growth.unemployment` | Unemployment rate (level) | 0.5 | 0.55 | 0.90 | **Yes** |
 
 The unemployment rate is **inverted** (multiplied by −1 before averaging) because a falling unemployment rate is a positive growth signal. All other signals are positively oriented.
 
 ### 4.2 Calculation Formula
 
-For each monthly snapshot:
+For each monthly snapshot, nominal configuration weights are first computed and normalized within the force basket:
 
 ```
-Growth Score = Σ (Z_i × w_i × sign_i) / Σ w_i
+raw_i = base_share_i × importance_i × quality_i
+config_weight_i = raw_i / Σ raw
 ```
 
-where the sum is over all signals with a non-NaN Z-score at that date, and:
-- `Z_i` is the Z-score of signal i
-- `w_i` is the weight (all 1.0 currently)
-- `sign_i` is −1 if `invert=True`, else +1
+The point-in-time effective weight then combines force/momentum agreement and age decay:
+
+```
+momentum_multiplier_i = clamp(1 + α × sign(force_i) × momentum_sign_i, 0.1, 1.5)
+decay_i = 0.5 ^ (age_months_i / 3)
+effective_weight_i = config_weight_i × momentum_multiplier_i × decay_i
+Growth Score = Σ (signed_Z_i × effective_weight_i) / Σ effective_weight_i
+```
+
+The default `α` is 0.5: agreement produces 1.5×, conflict 0.5×, and a neutral force or momentum produces 1.0×. Unemployment is inverted for both force and momentum orientation. All importance values and global dynamic-weight settings are editable in `config/composites.yaml`.
 
 Signals with NaN Z-scores (no data available yet) are excluded and their weight is dropped from the denominator. This means the score is always a weighted average of available signals — partial data does not collapse the score to zero.
 
@@ -190,26 +198,25 @@ Signals with NaN Z-scores (no data available yet) are excluded and their weight 
 
 ### 5.1 Indicator Selection
 
-The Inflation Score uses **7 active signals** from Lens B (Inflation force). Two signals receive half-weight to reduce the influence of volatile commodity prices:
+The Inflation Score uses **8 active signals** from Lens B (Inflation force):
 
-| Signal ID | Description | Frequency | Weight | Rationale |
-|:----------|:------------|:----------|-------:|:----------|
-| `inflation.pce_core` | Core PCE YoY% | Monthly | 1.0 | Fed's official target; most persistent |
-| `inflation.cpi_core` | Core CPI YoY% | Monthly | 1.0 | Broadest consumer basket; high public salience |
-| `inflation.wages` | Average hourly earnings YoY% | Monthly | 1.0 | Wage-price spiral driver; services inflation anchor |
-| `inflation.breakeven_5y` | 5Y TIPS breakeven (level) | Daily | 1.0 | Market's near-term inflation expectation |
-| `inflation.breakeven_10y` | 10Y TIPS breakeven (level) | Daily | 1.0 | Long-run inflation anchoring signal |
-| `inflation.cpi_headline` | Headline CPI YoY% | Monthly | **0.5** | Correlated with core but adds commodity noise |
-| `inflation.crude_oil` | WTI crude oil YoY% | Daily | **0.5** | Leading indicator but highly volatile |
-
-> **Note:** `inflation.commodity_index` appears in the config as a 0.5-weight slot but is not currently bound to a series — it will activate when a commodity index binding is added in a future phase.
+| Signal ID | Description | Base share | Importance | Quality |
+|:----------|:------------|-----------:|-----------:|--------:|
+| `inflation.pce_core` | Core PCE YoY% | 1.0 | 0.95 | 1.00 |
+| `inflation.cpi_core` | Core CPI YoY% | 1.0 | 0.95 | 1.00 |
+| `inflation.wages` | Average hourly earnings YoY% | 0.5 | 0.30 | 0.85 |
+| `inflation.breakeven_5y` | 5Y TIPS breakeven (level) | 0.5 | 0.25 | 0.90 |
+| `inflation.breakeven_10y` | 10Y TIPS breakeven (level) | 0.5 | 0.25 | 0.90 |
+| `inflation.cpi_headline` | Headline CPI YoY% | 0.5 | 0.20 | 0.90 |
+| `inflation.crude_oil` | WTI crude oil YoY% | 0.5 | 0.10 | 0.85 |
+| `inflation.ppi_broad` | Producer Price Index YoY% | 0.5 | 0.30 | 0.90 |
 
 ### 5.2 Calculation Formula
 
-Identical structure to the Growth Score, without inversion:
+The same nominal-weight, momentum-tilt, and age-decay formula is used without inversion:
 
 ```
-Inflation Score = Σ (Z_i × w_i) / Σ w_i
+Inflation Score = Σ (Z_i × effective_weight_i) / Σ effective_weight_i
 ```
 
 **Code:** `indicators/composites.py` → `compute_composite_history()`, lines 178–190
@@ -298,7 +305,7 @@ The growth and inflation fractions are averaged with equal weight, so neither fo
 | 0.25–0.50 | Weak — signals are mixed; regime transition may be underway |
 | < 0.25 | Very weak — signals actively contradict the label |
 
-At the current reading (June 2026): **45%** — the Stagflation label is assigned but just over half the signals are pointing in the "wrong" direction, consistent with the Growth Score being only marginally negative (−0.048).
+At the current reading (June 2026): **36%** — the Stagflation label is assigned but the directional signals remain mixed, consistent with the Growth Score remaining near zero (−0.079).
 
 ---
 
@@ -306,7 +313,7 @@ At the current reading (June 2026): **45%** — the Stagflation label is assigne
 
 ### 8.1 What It Measures
 
-The Disequilibrium Score answers: *"Across all economic forces, how far is this economy from its own historical norms?"*
+The Disequilibrium Score answers: *"Across all economic forces, how far is this economy from its declared equilibrium levels?"*
 
 Unlike the regime quadrant (which only cares about direction), disequilibrium is a magnitude signal. It tells you whether the economy is in a state of extremes — either very good or very bad — across multiple dimensions simultaneously. A high disequilibrium score increases the probability of a regime transition because extreme readings tend to mean-revert.
 
@@ -332,16 +339,16 @@ For each monthly snapshot:
 
 1. For each force group with at least one non-NaN signal:
    ```
-   group_score = mean( |Z_i| ) for all signals i in the group with a valid Z-score
+   group_score = mean( |standardized_equilibrium_distance_i| )
    ```
-   Taking the **absolute value** of Z-scores means both high and low extremes count equally.
+   Each raw `distance_from_equilibrium` is divided by that signal's historical standard deviation. Taking its **absolute value** means displacement on either side of equilibrium counts equally.
 
 2. The disequilibrium score is the mean across all contributing group scores:
    ```
    Disequilibrium = mean( group_score_1, group_score_2, ... )
    ```
 
-> **Important nuance:** The Z-scores used here are the signal Z-scores (how far the signal is from its historical mean), *not* the `distance_from_equilibrium` field stored in the Signal record. The `distance_from_equilibrium` is the raw-value distance from a manually-declared theoretical equilibrium (e.g., "the equilibrium unemployment rate is 4%"). The disequilibrium score uses the Z-score, which is a purely empirical measure of "how unusual is this reading relative to its own history."
+> **Important nuance:** Declared equilibria are model assumptions (for example, a 4% unemployment rate), not observed constants. Standardization makes heterogeneous raw distances comparable but does not eliminate uncertainty in those assumptions.
 
 **Code:** `indicators/composites.py` → `compute_composite_history()`, lines 234–245
 
@@ -379,7 +386,7 @@ Signal records (59 per month-end, stored in DuckDB)
     │   ├── _load_wide("direction")     → monthly direction matrix
     │   │
     │   ├── Growth Score               → weighted avg of 9 Z-scores (invert unemployment)
-    │   ├── Inflation Score            → weighted avg of 7 Z-scores
+    │   ├── Inflation Score            → dynamic weighted avg of 8 Z-scores
     │   ├── Regime Quadrant            → sign(Growth) × sign(Inflation)
     │   ├── Confidence                 → direction-agreement fraction
     │   └── Disequilibrium Score       → mean( mean(|Z|) per force group )
@@ -395,44 +402,44 @@ CompositeSnapshot records (558 months stored in DuckDB, 1980-present)
 ### 10.1 Z-Scores Relative to Own History, Not a Theoretical Neutral
 The sign boundary (zero) means "above or below this series' own historical average." This is empirical, not structural. For example, if US payrolls growth averaged 1.5% YoY for 40 years, a reading of 1.0% scores negative — even though 1% payroll growth is perfectly healthy in absolute terms. This is intentional: the diagnostic question is "are conditions better or worse than normal?" not "are conditions good?"
 
-### 10.2 Equal Weights
-All growth indicators carry weight 1.0. This is the simplest defensible prior when there is genuine uncertainty about which signal is most predictive. The config (`composites.yaml`) accepts per-indicator weight overrides without code changes. No empirical optimization of weights has been done — doing so risks overfitting to the historical period.
+### 10.2 Judgement-Based Dynamic Weights
+The importance and quality defaults are transparent priors from the force/momentum weighting guidance, not empirically optimized coefficients. Momentum agreement and age decay make weights state-dependent. This improves responsiveness and auditability but can concentrate the normalized contribution in a highly important signal when its momentum is reinforced while peers conflict. The Regime History component table exposes config weight, effective weight, and the active multiplier/decay tags so this concentration is visible.
 
 ### 10.3 Full-History Z-Scores (Look-Ahead Bias in Backtests)
 Z-scores are computed against the full available history, including future data relative to any historical snapshot. This means a 1995 Z-score "knows" what 2008 or 2020 looked like. For the display/diagnostic purpose of Phase 1, this is acceptable. Phase 3 will implement expanding-window Z-scores for proper backtesting.
 
-### 10.4 Forward-Fill Policy
-Quarterly signals (GDP, productivity, credit metrics) are carried forward into monthly composites for up to 13 months. In practice this means the regime quadrant can be driven by a GDP observation that is up to 3 quarters old. During the 13-month window the signal is treated as if it holds its last value — a common convention in macroeconomic nowcasting but one that can lag true turning points.
+### 10.4 Forward-Fill and Decay Policy
+Frequency-specific carry caps prevent indefinite forward filling. Within those caps, weight halves every three months of age. This is a modelling prior that should be sensitivity-tested; it does not replace real-time vintage data or provider release timestamps.
 
 ### 10.5 Confidence Can Mislead Near Boundaries
 When the Growth or Inflation Score is very close to zero (e.g., −0.05), the assigned quadrant label is sensitive to small data revisions. A confidence reading below 50% in this situation is the natural signal — the label is technically correct but fragile. Users should interpret the composite score value alongside the quadrant label.
 
-### 10.6 Disequilibrium Uses Value Z-Scores, Not Declared Equilibrium Distances
-The disequilibrium score measures "how unusual is this reading relative to its own history?" Each signal's `equilibrium_estimate` (a manually-declared theoretical neutral, e.g., 4% unemployment) is stored and displayed but is **not** used in disequilibrium scoring. This avoids sensitivity to the accuracy of the declared equilibria, at the cost of losing information about *directional* displacement from a theoretical long-run neutral.
+### 10.6 Disequilibrium Uses Standardized Equilibrium Distances
+The disequilibrium score uses each signal's `distance_from_equilibrium`, standardized by its own historical variability. This honors the declared theoretical neutral while allowing values in different units to be combined. Results remain sensitive to the quality of those declared equilibria.
 
 ### 10.7 Coverage Gaps
 Five governance signals (World Bank WGI) are currently deferred — the WGI `.EST` API endpoint was removed from the World Bank v2 API. This means `internal_order` contributes no data to the disequilibrium score. The `low_coverage` flag fires if fewer than 3 of 5 force groups contribute data.
 
 ---
 
-## 11. Current US Readings (as of 2026-06-19)
+## 11. Current US Readings (as of 2026-06-21)
 
 | Metric | Value | Interpretation |
 |:-------|:------|:---------------|
 | **Regime** | Stagflation | Growth below norm, inflation above norm |
-| **Growth Score** | −0.048 | Barely below historical average; near the boundary |
-| **Inflation Score** | +0.305 | Meaningfully above historical average |
-| **Confidence** | 45% | Weak — signals are mixed, especially on growth side |
-| **Disequilibrium** | 0.82 | Moderate; driven by historic interest payments and debt levels |
+| **Growth Score** | −0.079 | Below historical average; still near the boundary |
+| **Inflation Score** | +0.399 | Meaningfully above historical average |
+| **Confidence** | 36% | Weak — signals are mixed, especially on growth side |
+| **Disequilibrium** | 0.702 | Moderate displacement from declared equilibria |
 | Growth signals active | 9 of 9 | Full coverage |
-| Inflation signals active | 7 of 8 | `commodity_index` slot not yet bound |
+| Inflation signals active | 8 of 8 | Full configured coverage |
 | Force groups (Diseq.) | 3 of 5 | `governance` and `climate` deferred |
 
 ### Narrative
 
-The US is technically in Stagflation — growth Z-scores are slightly negative while inflation Z-scores are positive. However the borderline Growth Score (−0.048) means this is a weak classification, and the 45% confidence confirms that nearly half the growth signals are still trending in the "wrong" direction for Stagflation (i.e., still rising). The economy has been in the Stagflation quadrant since March 2023, preceded by an Inflationary Boom period from mid-2021 through early 2023.
+The US is technically in Stagflation — dynamically weighted growth Z-scores are slightly negative while inflation Z-scores are positive. The near-boundary Growth Score and 36% confidence make this a fragile classification; component effective weights should be inspected before attributing the result to a particular driver.
 
-The moderate disequilibrium score of 0.82 is worth noting: the main outliers are `fiscal.interest_payments` (Z=+4.0, 99th percentile — a historic high) and `credit.gov_debt_gdp` (Z=+1.78, 98th percentile). These are structural imbalances that do not immediately change the regime quadrant but increase the probability of a non-linear adjustment at some point.
+The disequilibrium reading reflects standardized displacement from each signal's declared equilibrium. Component contributions should be inspected before attributing the aggregate to particular forces.
 
 ---
 
@@ -441,8 +448,10 @@ The moderate disequilibrium score of 0.82 is worth noting: the main outliers are
 All tunable parameters live in `config/composites.yaml`. No code changes are needed to:
 
 - Add or remove signals from the Growth or Inflation composite
-- Change signal weights (e.g., give core PCE 2.0× weight)
-- Change the forward-fill limit (`ffill_limit` in `_load_wide`)
+- Change each signal's 0–1 `importance` setting while retaining the documented defaults
+- Change base shares and fixed data-quality factors
+- Tune momentum sensitivity/caps (`dynamic_weighting`) and the age-decay half-life (`time_decay`)
+- Change per-frequency carry limits (`per_frequency_ffill_limit`)
 - Change the minimum signals required for a quadrant label (`min_signals_required`)
 - Reorganise the disequilibrium force groups
 

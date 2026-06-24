@@ -1,47 +1,120 @@
-Add a long‑term “Debt‑to‑Income Stress Gauge”
+# Long-Term Debt Stress Indicator
 
-To capture the long‑term cycle you need a measure of the structural debt burden relative to the economy’s capacity to generate income. The most direct metric is Debt‑to‑GDP, but you should enrich it with several complementary forces:
-Force 	What it captures 	How to calculate / source
-Debt‑to‑GDP ratio 	Total debt buildup 	Central‑bank or IMF data (gross debt / nominal GDP)
-Debt service / GDP 	Cost of servicing debt 	(Interest payments + principal repayments) / GDP
-Fiscal balance‑to‑GDP 	Government fiscal drag 	(Deficit / GDP)
-Pension/health‑care liabilities 	Non‑financial obligations that act like debt 	OECD or national‑budget reports
-Real interest‑rate trend 	Monetary environment over the long horizon 	Policy rate minus inflation, averaged over several years
-Productivity growth 	Potential output per worker 	Labor‑productivity series, adjusted for technology
+## Purpose
 
-A composite Long‑Term Stress Index could be built as a weighted sum of these forces, with higher weights on the debt‑to‑GDP and debt‑service ratios because they directly affect cash‑flow constraints. The index is typically expressed in Z‑score terms so you can compare it to historical norms.
-3. Combine the two layers into a single framework
+The indicator measures whether public and private debt burdens are becoming harder to service from the income available to borrowers. Higher values mean greater stress. It is a monitoring indicator, not a default-probability model or a claim that any debt level is intrinsically unsustainable.
 
-The two indices are not independent; the short‑term health index often moves faster than the long‑term stress gauge, but the long‑term gauge sets the ceiling for how far the short‑term index can stay positive. A practical rule of thumb:
+## Components
 
-    If Short‑Term Health > 0.5 and Long‑Term Stress < 0 → you are in the “late‑expansion” phase of the short‑term cycle while the long‑term debt load is still manageable.
-    If Short‑Term Health < 0 and Long‑Term Stress > 0 → you are likely entering the “late‑deleveraging” phase of the long‑term cycle; even a modest short‑term slowdown can be amplified by the structural debt squeeze.
-    If both are positive → the short‑term cycle is strong but the long‑term debt burden is building; watch for the point where the long‑term gauge starts to rise sharply.
-    If both are negative → you are in a deep contraction; the short‑term downturn may be driven by the long‑term debt crisis.
+All components are converted to quarterly frequency and standardized before aggregation.
 
-4. Practical steps to construct the calculator
+| Component | Weight | Stress direction | Source already available |
+|---|---:|---|---|
+| Government plus household debt / GDP | 0.25 | Higher increases stress | `us.credit.gov_debt_gdp`, `us.credit.household_debt_gdp` |
+| Corporate debt / GDP | 0.15 | Higher increases stress | Raw FRED `BCNSDODNS` level divided by raw nominal GDP |
+| Household debt-service ratio | 0.20 | Higher increases stress | `us.credit.debt_service_ratio` (`TDSP`) |
+| Federal interest outlays / GDP | 0.15 | Higher increases stress | Raw `FYOINT` divided by raw nominal GDP |
+| Primary fiscal balance / GDP | 0.10 | Higher reduces stress | `us.fiscal.primary_balance_gdp` |
+| Structural balance / potential GDP | 0.05 | Higher reduces stress | `us.fiscal.structural_balance` |
+| Government revenue / GDP | 0.10 | Higher reduces stress | `us.fiscal.govt_revenue_gdp` |
+| **Total** | **1.00** | | |
 
-    Gather data – Use reliable sources (Federal Reserve Economic Data, World Bank, IMF, OECD). Pull monthly real GDP growth, policy rate, core CPI, and quarterly debt‑to‑GDP, debt‑service, fiscal balance, and pension/health‑care liabilities.
-    Annualize and smooth – Convert all series to an annual rate (e.g., YoY growth). Apply a 12‑month moving average to each to reduce seasonal noise.
-    Compute real components – Subtract inflation from nominal rates to get real policy rate; subtract inflation from nominal debt‑service numbers to get real debt‑service cost.
-    Standardize – Convert each series to a Z‑score using a rolling 10‑year window. This makes the components comparable across time and across countries.
-    Build the indices –
-        Short‑Term Health = (Real GDP growth Z‑score – Real policy‑rate Z‑score) – Core‑inflation Z‑score.
-        Long‑Term Stress = Weighted sum of Debt‑to‑GDP Z‑score, Debt‑service‑to‑GDP Z‑score, Fiscal‑balance‑to‑GDP Z‑score, and Liability‑to‑GDP Z‑score.
-    Add momentum – Calculate month‑over‑month change for each component and overlay it on the index to see where the trend is heading.
-    Interpret – Plot the two indices on a scatter‑plot or a two‑axis chart. The quadrant positions give a quick visual cue to the regime you’re in.
+The first component intentionally covers government and household leverage; corporate leverage remains separate so its contribution is visible. This is not a complete all-sector debt total because it does not include every financial-sector liability.
 
-5. Why this matters for decision making
+## Important data definitions
 
-    Diversification – When the long‑term stress gauge is rising, you want assets that perform well in a high‑debt, low‑growth environment (real assets, inflation‑linked bonds, defensive equities). When the short‑term health index is strong, you can tilt toward riskier, growth‑oriented assets, but keep a buffer for the long‑term outlook.
-    Risk parity – Allocate risk, not capital, based on how much each asset class contributes to overall portfolio volatility. The two indices help you adjust the risk budget: lower risk weight to assets that are vulnerable to a tightening long‑term debt environment.
-    Dynamic rebalancing – As the short‑term index moves, rebalance within the risk‑parity framework; as the long‑term index crosses a threshold (e.g., debt‑to‑GDP Z‑score > +1), shift a portion of the portfolio to “all‑weather” positions that are robust across regimes.
+- `BCNSDODNS` is a corporate debt **level in millions of dollars** in the raw FRED cache, while `GDP` is in billions. Convert the numerator to billions before division. The processed `us.credit.corporate_debt` signal is its year-over-year growth rate, so the ratio must be constructed from the raw level rather than reconstructed by compounding growth.
+- Raw nominal GDP (`GDP`) is already downloaded. The processed `us.master.gdp_nominal` signal is a year-over-year growth rate and cannot serve as the denominator.
+- `TDSP` directly measures household required debt payments relative to disposable personal income. It should be used directly, not inverted or combined with federal fiscal flows.
+- `FYFSD` is the federal surplus/deficit, a borrowing flow. It is not principal repayment and must not be added to interest outlays as “debt service.”
+- `FYFSD` and `FYOINT` are annual fiscal-year series reported in millions of dollars, not quarterly series in billions. If `FYOINT` is divided by quarterly GDP, convert units and align the annual fiscal-year observation explicitly.
+- Primary and structural balances are signed so that a larger surplus reduces stress. Government revenue also reduces stress. Their signs must therefore be inverted in the final stress formula.
+- Do not introduce guessed FRED identifiers. Any additional level series must be verified against provider metadata before it is added to the bindings.
 
-6. Caveats and best practices
+## Frequency alignment
 
-    Data lag – Debt‑to‑GDP and liability data are often quarterly; use the latest available estimate but remember there is a lag in the signal.
-    Structural breaks – Major policy changes (e.g., new fiscal rules, major monetary reforms) can shift the relationship between the variables; revisit the weights periodically.
-    Geopolitical and natural‑event shocks – Wars, pandemics, climate events can accelerate the transition from one regime to another; treat the indices as a baseline, not a crystal ball.
-    Continuous refinement – Treat the calculator as a living system. Run back‑tests, compare its signals to actual market outcomes, and adjust the weights or smoothing parameters as you learn.
+Use quarter-end dates as the common grid.
 
-By anchoring your analysis in these two complementary gauges—one that watches the immediate business‑cycle pulse and another that monitors the deeper debt‑building tide—you can see where the economy sits in the short‑term cycle and how that position is being constrained or amplified by the long‑term debt dynamics. The result is a clearer, more systematic view of the macro environment, which is the foundation for any robust, diversified investment approach.
+- Quarterly series retain their published quarter.
+- Annual fiscal and cross-country series are currently aligned by observation period and then carried forward. Actual publication timestamps are not yet stored, so this history must not be treated as a real-time vintage backtest.
+- Never interpolate annual observations into quarters that predate publication.
+- Phase 3 must add availability-date and vintage metadata before historical results can be interpreted as information that was genuinely known at the time.
+- Report component coverage and staleness alongside the indicator. Do not silently substitute a stale component.
+
+## Standardization
+
+For each component, calculate a trailing 10-year Z-score using only information before the current observation:
+
+```python
+def rolling_z(series, window=40, min_periods=20):
+    prior = series.shift(1)
+    return (series - prior.rolling(window, min_periods=min_periods).mean()) / \
+           prior.rolling(window, min_periods=min_periods).std()
+```
+
+Annual inputs have fewer independent observations than quarterly inputs even after forward filling. Their Z-scores should therefore be calculated on the native annual series and then carried forward, or use an explicitly documented annual window. Repeating one annual value four times must not make it count as four independent observations.
+
+## Formula
+
+```text
+DebtStress =
+    0.25 × z(government debt/GDP + household debt/GDP)
+  + 0.15 × z(corporate debt/GDP)
+  + 0.20 × z(household debt-service ratio)
+  + 0.15 × z(federal interest outlays/GDP)
+  - 0.10 × z(primary fiscal balance/GDP)
+  - 0.05 × z(structural balance/potential GDP)
+  - 0.10 × z(government revenue/GDP)
+```
+
+If a component is unavailable or stale, renormalize the available absolute weights only when a documented minimum-coverage rule is met. The output must expose both the number of active components and the retained weight. It should not fall back from corporate debt/GDP to corporate debt growth without identifying the result as a different model variant.
+
+## Interpretation
+
+The raw score is measured in weighted standard deviations. Initial display bands may be used for exploration, but they are not validated risk thresholds:
+
+| Score | Descriptive band |
+|---:|---|
+| below -0.5 | Below-normal stress |
+| -0.5 to 0.5 | Near historical norm |
+| 0.5 to 1.0 | Elevated stress |
+| above 1.0 | High relative stress |
+
+Before using these bands for decisions, backtest the indicator against known tightening, recession, deleveraging, and fiscal-stress episodes. Test weight sensitivity, real-time vintages, publication lags, and whether each component adds information beyond the others.
+
+## Implementation in this project
+
+1. Add a derived-series module that reads the existing raw caches and Signal table through the current DuckDB pipeline.
+2. Construct corporate debt/GDP and federal interest/GDP with explicit unit conversion and availability dates.
+3. Align native-frequency inputs without look-ahead and calculate native-frequency trailing Z-scores.
+4. Aggregate with the fixed signs and weights above, enforcing minimum coverage and staleness rules.
+5. Store the component contributions and final score in DuckDB so the result is auditable.
+6. Add unit tests for units, signs, publication timing, missing components, weight renormalization, and look-ahead prevention.
+7. Add a dashboard view only after the historical output and component contributions pass review.
+
+## Known limitations
+
+- Debt ratios measure balance-sheet burden, while the service ratios measure current cash-flow pressure; combining them is useful but not a structural causal model.
+- Federal interest outlays are annual and respond slowly to market-rate changes because debt reprices over time.
+- Cross-source annual fiscal series may use different accounting conventions and revision schedules.
+- Rolling Z-scores describe deviation from recent history, not absolute sustainability.
+- The initial weights are transparent priors. They require robustness testing before production use.
+- Historical inputs are latest-revised and period-dated. The statistical `shift(1)` guard prevents a value from entering its own normalization window, but it does not solve publication-lag or revision look-ahead bias.
+
+## Dealing with Stale Data Sources
+
+When a data source becomes stale, the system should treat it as a signal that its reliability has been compromised. In a principled, cycle‑aware framework, you don’t simply drop the series outright; you first assess how long the lag is and what impact it would have on the overall picture.
+
+- **Detect staleness:** Compare the latest observation period with the expected release schedule. If the gap exceeds one quarter for quarterly series or one year for annual series, flag the value as stale.
+
+- **Quantify uncertainty:** Reduce stale-component weights with the configured exponential half-life. Older data still informs the long-term trend, but with diminished influence.
+
+- **Apply a fallback rule:** Carry the latest valid observation only to the configured horizon. Optional rolling-mean or linear-trend extrapolation exists behind a disabled-by-default configuration gate.
+
+- **Rebalance weights:** Renormalize active effective weights when minimum coverage is met. Below the coverage threshold, emit a null score rather than a synthetic baseline.
+
+- **Signal the condition:** Store stale and extrapolated component IDs with their lags, and surface low coverage in both dashboards.
+
+- **Review and refresh:** Recompute after each source release and audit the component-level contribution table.
+
+By treating staleness as a systematic, quantifiable risk rather than an automatic exclusion, the machine preserves the integrity of its cause‑effect mapping across cycles while maintaining robustness. This approach aligns with the principle that a well‑diversified, principle‑driven system should be resilient to imperfect information, adjusting incentives and feedback loops dynamically as the quality of inputs evolves.

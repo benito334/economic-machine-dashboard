@@ -1,0 +1,765 @@
+# Euro Area (EZ) indicator bindings — Phase 2
+# Country code: EZ (our internal code; WB uses EMU; ECB/Eurostat use EA19/EA20)
+# All vintage_available: false — no point-in-time API for EA.
+# Note: IMF Datamapper does NOT support EUR/EA aggregate → no IMF bindings.
+# Note: FRED EA growth series (industrial_prod, retail_sales, unemployment) are stale
+#       as of 2023; they will be ingested and flagged is_stale=true by the pipeline.
+# Equilibrium values in transformed units:
+#   yoy_pct → decimal  (0.020 = 2.0%)
+#   level rate/yield → % level (2.0 = 2.0%)
+#   level index → natural (100.0)
+#   level pct_gdp → % (e.g. 1.0 = 1% of GDP)
+
+country: EZ
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  # WB NY.GDP.MKTP.CD returns current USD (e.g. 16.5T for EA 2024).
+  # raw_scale: 1000000000 divides by 1e9 → billions USD for Global Overview column.
+  - id: master.gdp_level_bn
+    series_id: NY.GDP.MKTP.CD
+    provider: WorldBank
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    raw_scale: 1000000000
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Euro area nominal GDP in billions USD (World Bank, current prices). Used in Global Overview size column."
+    sanity_min: 5000.0
+    sanity_max: 50000.0
+
+  - id: master.gdp_real
+    series_id: CLVMNACSCAB1GQEA19
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "Euro area real GDP growth (chain-linked volumes). Structural growth headwind vs US from demographics and productivity gap."
+    sanity_min: -0.15
+    sanity_max: 0.15
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+
+  # Verified Eurostat params (2026-06-23):
+  #   ppi:        sts_inpp_m   geo=EA20, nace_r2=B-D, unit=PCH_SM, s_adj=NSA  → 196 obs, Apr 2026=3.9%
+  #   wages_lci:  lc_lci_r2_q  geo=EA, nace_r2=B-S, lcstruct=D11, s_adj=SCA, unit=PCH_SM → 65 obs, Q1 2026=3.4%
+  #   hicp_energy: prc_hicp_manr geo=EA, coicop=NRG  → 192 obs, Dec 2025=-1.9%
+  #   hicp_food:   prc_hicp_manr geo=EA, coicop=FOOD → 192 obs, Dec 2025=2.5%
+  # All return % YoY values; raw_scale: 100 converts to decimal.
+
+  - id: inflation.cpi_headline
+    series_id: CP0000EZ19M086NEST
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "HICP all items (2015=100). ECB primary mandate target: 2% over the medium term."
+    sanity_min: -0.02
+    sanity_max: 0.15
+
+  - id: inflation.cpi_core
+    series_id: 00XEFDEZ19M086NEST
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "HICP excluding food and energy. More persistent component that ECB watches for underlying price pressures."
+    sanity_min: -0.02
+    sanity_max: 0.12
+
+  - id: inflation.ppi
+    series_id: sts_inpp_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      nace_r2: B-D
+      unit: PCH_SM
+      s_adj: NSA
+    frequency: M
+    force: inflation
+    lead_lag: leading
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Euro area industrial producer prices YoY (Eurostat sts_inpp_m, B-D mining & manufacturing). Leads consumer prices by 2-3 months; upstream cost-push signal."
+    sanity_min: -0.30
+    sanity_max: 0.40
+
+  - id: inflation.wages_lci
+    series_id: lc_lci_r2_q
+    provider: Eurostat
+    eurostat_params:
+      geo: EA
+      nace_r2: B-S
+      lcstruct: D11
+      s_adj: SCA
+      unit: PCH_SM
+    frequency: Q
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.025
+    linkage: "Euro area wages and salaries YoY (Eurostat LCI, B-S industry/construction/services, seasonally and calendar adjusted). Wage-push inflation driver; key persistence signal in EA services sector."
+    sanity_min: -0.05
+    sanity_max: 0.15
+
+  # Switched from Eurostat prc_hicp_manr (stops at Dec of prior year — annual avg rate) to
+  # FRED index series with yoy_pct transform. FRED publishes these through current month.
+  # CP0450EZ19M086NEST = HICP: Electricity, gas and other fuels, EZ19, 2015=100 (proxy for NRG)
+  - id: inflation.hicp_energy
+    series_id: CP0450EZ19M086NEST
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Euro area HICP electricity, gas and other fuels YoY (FRED CP0450EZ19M086NEST, index 2015=100). Proxy for the NRG special aggregate; EA energy import dependence drives large swings."
+    sanity_min: -0.50
+    sanity_max: 0.80
+
+  # CP0100EZ19M086NEST = HICP: Food and non-alcoholic beverages, EZ19, 2015=100
+  - id: inflation.hicp_food
+    series_id: CP0100EZ19M086NEST
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Euro area HICP food and non-alcoholic beverages YoY (FRED CP0100EZ19M086NEST, index 2015=100). Global commodity prices and EU agricultural policy transmit food inflation."
+    sanity_min: -0.10
+    sanity_max: 0.25
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+  # Eurostat JSON stats API replaces stale OECD FRED series (discontinued 2023).
+  # PCH_SM = percent change vs same month prior year (already YoY%).
+  # raw_scale: 100 converts % (2.089) → decimal (0.02089) before normalization.
+
+  # Employment growth (quarterly, namq_10_pe).
+  # lfsi_emp_m does NOT exist (404). Correct quarterly source is national accounts.
+  # PCH_SM_PER = % change vs same quarter prior year (persons). raw_scale: 100 → decimal.
+  - id: growth.employment_growth
+    series_id: namq_10_pe
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      s_adj: SCA
+      na_item: EMP_DC
+      unit: PCH_SM_PER
+    frequency: Q
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.010
+    linkage: "Euro area total employment YoY % (Eurostat national accounts, EA20, SCA). Domestic concept employment — lagging cyclical indicator; captures broad labor-force expansion."
+    sanity_min: -0.10
+    sanity_max: 0.10
+
+  # Construction production index (monthly, sts_copr_m).
+  # geo=EA20; nace_r2=F (total construction); s_adj=CA (calendar adjusted — SCA returns empty).
+  - id: growth.construction_prod
+    series_id: sts_copr_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      nace_r2: F
+      s_adj: CA
+      unit: PCH_SM
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Euro area construction production YoY % (Eurostat sts_copr_m, total construction F, calendar-adjusted). Sensitive to housing demand, fiscal investment, and credit conditions."
+    sanity_min: -0.30
+    sanity_max: 0.30
+
+  # Capacity utilisation — manufacturing (quarterly, ei_bsin_q_r2).
+  # Correct dataset for EA capacity utilization: ei_bsin_q_r2, indic=BS-ICU-PC.
+  # ei_bsco_q was wrong (consumer survey); ei_bscu_q returns 404. Correct geo=EA20.
+  # Returns level in % (e.g. 83.0); transformation=level, no raw_scale.
+  - id: growth.capacity_util
+    series_id: ei_bsin_q_r2
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      indic: BS-ICU-PC
+      s_adj: SA
+    frequency: Q
+    force: growth
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 81.0
+    linkage: "Euro area manufacturing capacity utilisation % (Eurostat/DG-ECFIN Business Survey, EA20, SA). Leading indicator of growth inflection; above 83% historically signals overheating."
+    sanity_min: 60.0
+    sanity_max: 95.0
+
+  - id: growth.industrial_prod
+    series_id: sts_inpr_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      nace_r2: B-D
+      s_adj: CA
+      unit: PCH_SM
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Euro area industrial production YoY (Eurostat, B-D excl. energy, calendar-adjusted). Manufacturing-heavy EA makes this a key cyclical barometer."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
+  - id: growth.retail_sales
+    series_id: sts_trtu_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      nace_r2: G47
+      indic_bt: VOL_SLS
+      s_adj: CA
+      unit: PCH_SM
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Euro area retail trade volume YoY (Eurostat G47, calendar-adjusted). Measures household spending momentum."
+    sanity_min: -0.20
+    sanity_max: 0.20
+
+  - id: growth.unemployment
+    series_id: une_rt_m
+    provider: Eurostat
+    eurostat_params:
+      geo: EA21
+      s_adj: SA
+      unit: PC_ACT
+      sex: T
+      age: TOTAL
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 7.5
+    linkage: "Euro area harmonised unemployment rate % (Eurostat, EA21, seasonally adjusted). Higher structural unemployment than US due to labour market rigidities."
+    sanity_min: 3.0
+    sanity_max: 30.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "R&D expenditure as % of GDP for the Euro area. Structural indicator of innovation capacity and long-run productivity."
+    sanity_min: 0.0
+    sanity_max: 8.0
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.fed_funds_target
+    series_id: ECBDFR
+    provider: FRED
+    frequency: D
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "ECB deposit facility rate — the primary policy rate signal since 2014. Used in the Global Overview table as the headline EA interest rate."
+    sanity_min: -1.0
+    sanity_max: 15.0
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01EZM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "Euro area 10-year government bond yield. Blend of member state yields; reflects sovereign spread and ECB policy transmission."
+    sanity_min: -1.0
+    sanity_max: 15.0
+
+  - id: policy.central_bank_assets
+    series_id: ECBASSETSW
+    provider: FRED
+    frequency: W
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: millions_eur
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4000000.0
+    linkage: "ECB total balance sheet assets (millions EUR). QE expansion drives yield compression; QT signals tightening of financial conditions."
+    sanity_min: 500000.0
+    sanity_max: 12000000.0
+
+  - id: policy.real_yield_10y
+    series_id: derived
+    provider: derived
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.5
+    linkage: "Real 10-year Bund yield (IRLTLT01EZM156N minus HICP headline YoY). Negative real rates = financial repression; rising real rates tighten financial conditions across the EA."
+    sanity_min: -8.0
+    sanity_max: 8.0
+
+  - id: policy.yield_spread
+    series_id: derived
+    provider: derived
+    frequency: M
+    force: policy
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
+    equilibrium: 1.0
+    linkage: "10-year government yield minus ECB deposit facility rate (term premium proxy). Inversion signals policy overtightening; steep positive spread = accommodative curve."
+    sanity_min: -5.0
+    sanity_max: 8.0
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBXMBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2010eq100
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Euro area real effective exchange rate (BIS, 2010=100). Above 100 = real appreciation; weakens export competitiveness."
+    sanity_min: 70.0
+    sanity_max: 150.0
+
+  # ─── External & Trade (WorldBank / EMU) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.0
+    linkage: "Euro area current account balance as % of GDP. EA runs a structural surplus driven by Germany; sharp deterioration signals energy terms-of-trade shock."
+    sanity_min: -10.0
+    sanity_max: 10.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 25.0
+    linkage: "Exports of goods and services as % of GDP. EA is far more open than US; export weakness directly hits GDP."
+    sanity_min: 5.0
+    sanity_max: 60.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 25.0
+    linkage: "Imports of goods and services as % of GDP. High energy import dependence makes the EA current account sensitive to commodity prices."
+    sanity_min: 5.0
+    sanity_max: 60.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "FDI net inflows as % of GDP. Sustained inflows indicate investment attractiveness; reversals can signal confidence shocks."
+    sanity_min: -10.0
+    sanity_max: 20.0
+
+  # ─── Credit (Sovereign Spread) ────────────────────────────────────────────
+  # ECB IRS flow (SDMX-JSON): 10Y government bond yields, harmonised Maastricht
+  # convergence criterion yields. series_id format: "FLOW/KEY".
+  # DE yield: start 2010-01, 197 monthly obs through May 2026.
+  # IT yield: same structure. Spread (IT-DE) computed as derived signal.
+
+  - id: credit.yield_de_10y
+    series_id: "IRS/M.DE.L.L40.CI.0000.EUR.N.Z"
+    provider: ECB
+    frequency: M
+    force: credit
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "German 10-year Bund yield (ECB IRS, harmonised Maastricht yield). EA risk-free rate benchmark; inverse of ECB accommodation."
+    sanity_min: -1.0
+    sanity_max: 12.0
+
+  - id: credit.yield_it_10y
+    series_id: "IRS/M.IT.L.L40.CI.0000.EUR.N.Z"
+    provider: ECB
+    frequency: M
+    force: credit
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.5
+    linkage: "Italian BTP 10-year yield (ECB IRS, harmonised Maastricht yield). Higher volatility than Bund; reflects EA fragmentation risk and sovereign fiscal stress."
+    sanity_min: -1.0
+    sanity_max: 15.0
+
+  - id: credit.btp_bund_spread
+    series_id: derived
+    provider: derived
+    frequency: M
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    is_constructed: true
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "Italian BTP minus German Bund 10-year spread (% pct_level). EA fragmentation gauge; rising spread signals stress in peripheral sovereign markets and strains ECB monetary transmission."
+    sanity_min: -0.5
+    sanity_max: 8.0
+
+  # Annual government debt / GDP (Eurostat EDP procedure data, gov_10dd_edpt1).
+  # geo=EA20, na_item=GD (gross debt), sector=S13 (general government), unit=PC_GDP.
+  # Annual only — no quarterly equivalent with full EA aggregate.
+  # Confirmed 87.8% for 2025 (Eurostat, Dec 2025 observation).
+  - id: credit.gov_debt_gdp
+    series_id: gov_10dd_edpt1
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      na_item: GD
+      sector: S13
+      unit: PC_GDP
+    frequency: A
+    force: credit
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 60.0
+    linkage: "Euro area general government gross debt as % of GDP (Eurostat/EDP, ESA 2010 Maastricht criterion). EA aggregate masks large dispersion (DE~60% vs IT/GR >130%). SGP ceiling is 60%."
+    sanity_min: 30.0
+    sanity_max: 200.0
+
+  # ─── Fiscal ────────────────────────────────────────────────────────────────
+
+  # Quarterly fiscal balance for EA (gov_10q_ggnfa, net lending B9 / GDP).
+  # Note: gov_10dd_edpt1 is annual-only (EDP procedure). Use gov_10q_ggnfa for quarterly.
+  # IMF Datamapper does not support EUR/EA aggregate, so no IMF structural balance.
+  # Values are % of GDP (e.g. -2.5 meaning -2.5%); negative = deficit.
+  - id: fiscal.budget_balance_gdp
+    series_id: gov_10q_ggnfa
+    provider: Eurostat
+    eurostat_params:
+      geo: EA20
+      na_item: B9
+      sector: S13
+      unit: PC_GDP
+      s_adj: NSA
+    frequency: Q
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -2.0
+    linkage: "Euro area general government net lending/borrowing as % of GDP (Eurostat, ESA 2010 B.9). Negative = deficit; SGP target is -3% ceiling. Fiscal space indicator for future stimulus capacity."
+    sanity_min: -15.0
+    sanity_max: 5.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 45.0
+    linkage: "General government revenue as % of GDP. EA governments have substantially higher revenue ratios than the US, reflecting larger welfare states."
+    sanity_min: 20.0
+    sanity_max: 60.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Euro area total population (World Bank). Used in Global Overview; divide by 1,000,000 for display in millions."
+    sanity_min: 100000000.0
+    sanity_max: 1000000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.2
+    linkage: "Annual population growth rate %. EA faces persistent demographic headwind; near-zero or negative growth compresses long-run potential."
+    sanity_min: -2.0
+    sanity_max: 3.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 55.0
+    linkage: "Age dependency ratio (dependents per 100 working-age). EA's aging population will raise pension and healthcare fiscal burdens."
+    sanity_min: 20.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 58.0
+    linkage: "ILO-modeled labor force participation rate (% population 15+). Lower than US/KR; structural slack in some member states."
+    sanity_min: 30.0
+    sanity_max: 90.0

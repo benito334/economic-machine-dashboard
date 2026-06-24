@@ -5,8 +5,16 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from indicators.models import Signal
-from store.store import delete_future_signals, get_connection, init_schema, query_latest, query_series, upsert_signals
+from indicators.models import DebtStressSnapshot, Signal
+from store.store import (
+    delete_future_signals,
+    get_connection,
+    init_schema,
+    query_latest,
+    query_series,
+    upsert_debt_stress,
+    upsert_signals,
+)
 
 
 @pytest.fixture
@@ -77,6 +85,25 @@ class TestUpsertSignals:
         assert count == 1
         val = conn.execute("SELECT value FROM signals").fetchone()[0]
         assert abs(val - 0.030) < 1e-10
+
+
+class TestUpsertDebtStress:
+    def test_replaces_same_quarter_and_rejects_future(self, conn):
+        current = date.today()
+        quarter_start = date(current.year, ((current.month - 1) // 3) * 3 + 1, 1)
+        future = date(current.year + 1, 3, 31)
+        upsert_debt_stress(conn, [
+            DebtStressSnapshot(country="US", as_of=quarter_start, stress_score=0.1),
+        ])
+        inserted = upsert_debt_stress(conn, [
+            DebtStressSnapshot(country="US", as_of=current, stress_score=0.2),
+            DebtStressSnapshot(country="US", as_of=future, stress_score=9.0),
+        ])
+        rows = conn.execute(
+            "SELECT as_of, stress_score FROM debt_stress_snapshots ORDER BY as_of"
+        ).fetchall()
+        assert inserted == 1
+        assert rows == [(current, 0.2)]
 
     def test_empty_list_returns_zero(self, conn):
         assert upsert_signals(conn, []) == 0

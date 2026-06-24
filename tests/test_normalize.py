@@ -7,6 +7,7 @@ import pytest
 
 from indicators.models import CountryBinding
 from indicators.normalize import _direction, _is_stale, _percentile_series, _zscore_series, build_signals, sanity_check
+from indicators.transform import _MOMENTUM_PERIODS, _YOY_PERIODS
 
 
 def _binding(**kwargs) -> CountryBinding:
@@ -41,9 +42,11 @@ class TestZscoreSeries:
         z = _zscore_series(s)
         assert abs(z.mean()) < 1e-10
 
-    def test_unit_std(self):
+    def test_unit_std_without_outliers(self):
+        """For a series within ±4σ no capping occurs, so std == 1."""
         s = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
         z = _zscore_series(s)
+        # max raw Z for [1..5] is ±sqrt(2) ≈ 1.41 — well within ±4 cap
         assert abs(z.std(ddof=1) - 1.0) < 1e-10
 
     def test_constant_series_returns_zeros(self):
@@ -191,6 +194,108 @@ class TestBuildSignals:
         sigs = build_signals(s, b)
         non_latest_stale = [sig for sig in sigs[:-1] if sig.is_stale]
         assert non_latest_stale == []
+
+
+# ── C1: Winsorisation ─────────────────────────────────────────────────────────
+
+class TestZscoreWinsorise:
+    def test_extreme_spike_is_capped_at_4(self):
+        """A massive spike must be capped at exactly ±4 in Z-score space."""
+        base = pd.Series(np.linspace(0.0, 1.0, 100))
+        spike = base.copy()
+        spike.iloc[50] = 1000.0
+        z = _zscore_series(spike)
+        assert z.iloc[50] == 4.0  # capped, not beyond
+
+    def test_negative_spike_is_capped_at_minus_4(self):
+        base = pd.Series(np.linspace(0.0, 1.0, 100))
+        spike = base.copy()
+        spike.iloc[10] = -1000.0
+        z = _zscore_series(spike)
+        assert z.iloc[10] == -4.0
+
+    def test_all_values_within_cap(self):
+        """Z-scores must always be in [-4, 4]."""
+        rng = np.random.default_rng(0)
+        s = pd.Series(rng.normal(0, 1, 200))
+        s.iloc[::20] = rng.choice([-100, 100], size=10)  # inject spikes
+        z = _zscore_series(s)
+        assert (z >= -4.0).all() and (z <= 4.0).all()
+
+    def test_clean_series_mean_zero(self):
+        """A clean symmetric series has mean Z ≈ 0."""
+        s = pd.Series([-2.0, -1.0, 0.0, 1.0, 2.0])
+        z = _zscore_series(s)
+        assert abs(z.mean()) < 1e-10
+
+
+# ── E1: Variance-based direction threshold ────────────────────────────────────
+
+class TestDirectionWithStd:
+    def test_tiny_change_vs_large_std_is_flat(self):
+        """Change of 0.05 against std=10 is 0.5% of σ — below 10% threshold → flat."""
+        assert _direction(0.05, series_std=10.0) == "flat"
+
+    def test_significant_positive_change_is_rising(self):
+        assert _direction(2.0, series_std=10.0) == "rising"
+
+    def test_significant_negative_change_is_falling(self):
+        assert _direction(-2.0, series_std=10.0) == "falling"
+
+    def test_no_std_falls_back_to_epsilon(self):
+        """When series_std is None, old 1e-9 epsilon applies — any non-zero change is directional."""
+        assert _direction(0.001, series_std=None) == "rising"
+        assert _direction(-0.001, series_std=None) == "falling"
+
+    def test_zero_std_falls_back_to_epsilon(self):
+        assert _direction(0.001, series_std=0.0) == "rising"
+
+    def test_boundary_at_threshold(self):
+        """Change exactly at 10% of σ is just above flat (> not >=)."""
+        std = 10.0
+        threshold = std * 0.10  # = 1.0
+        assert _direction(threshold + 1e-10, series_std=std) == "rising"
+        assert _direction(threshold, series_std=std) == "flat"
+
+
+class TestMomentumPercentile:
+    """D1: change_3m is percentile-ranked within its own valid history."""
+
+    def test_momentum_percentile_populated(self):
+        s = _monthly_series(30)
+        sigs = build_signals(s, _binding())
+        # First 3 obs have no c3m (NaN) → None; the rest should be populated
+        with_c3m = [sig for sig in sigs if sig.change_3m is not None]
+        assert all(sig.momentum_percentile is not None for sig in with_c3m)
+
+    def test_momentum_percentile_range(self):
+        s = _monthly_series(30)
+        sigs = build_signals(s, _binding())
+        pcts = [sig.momentum_percentile for sig in sigs if sig.momentum_percentile is not None]
+        assert all(0.0 <= p <= 1.0 for p in pcts)
+
+    def test_rising_series_top_half(self):
+        """A steadily accelerating series has its latest change_3m near the top."""
+        vals = np.cumsum(np.linspace(0.001, 0.005, 36))
+        s = pd.Series(vals, index=pd.date_range("2021", periods=36, freq="MS"))
+        sigs = build_signals(s, _binding())
+        latest = sigs[-1]
+        assert latest.momentum_percentile is not None
+        assert latest.momentum_percentile > 0.5
+
+    def test_no_c3m_gives_none(self):
+        """Series shorter than 3 periods can have no valid c3m → momentum_percentile None."""
+        s = pd.Series([0.01, 0.02], index=pd.date_range("2024-01", periods=2, freq="MS"))
+        sigs = build_signals(s, _binding())
+        assert all(sig.momentum_percentile is None for sig in sigs)
+
+    def test_monotone_ranks(self):
+        """On a linearly accelerating series, percentile ranks are monotonically increasing."""
+        vals = [i ** 2 * 0.001 for i in range(40)]
+        s = pd.Series(vals, index=pd.date_range("2020", periods=40, freq="MS"))
+        sigs = build_signals(s, _binding())
+        pcts = [sig.momentum_percentile for sig in sigs if sig.momentum_percentile is not None]
+        assert pcts == sorted(pcts)
 
 
 class TestSanityCheck:

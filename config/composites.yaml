@@ -1,61 +1,130 @@
-# Composite score definitions (Phase 1B implementation)
-# ADR-005: equal weights by default; override here without code changes.
-# Indicators with is_stale=true or low_history=true are excluded at runtime.
-# invert: true  → multiply Z-score by -1 before averaging (lower raw = better)
+# DEPRECATED — no longer read by the pipeline or dashboard.
+# Superseded by:
+#   config/composites_policy.yaml         — methodology settings (all countries)
+#   config/countries/{cc}_composites.yaml — per-country indicator lists
+# Kept for reference only. Do not edit.
 
 growth_score:
-  description: "Equal-weight Z-score composite of growth-force coincident/leading signals"
+  description: "Group-weighted Z-score composite of growth-force coincident/leading signals"
   indicators:
     - id: growth.payrolls
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.90      # TUNABLE
+      quality_factor: 0.95
     - id: growth.industrial_prod
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.80      # TUNABLE
+      quality_factor: 0.95
     - id: growth.retail_sales
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.75      # TUNABLE
+      quality_factor: 0.95
     - id: growth.real_pce
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.70      # TUNABLE
+      quality_factor: 0.95
     - id: growth.capacity_util
-      weight: 1.0
+      base_share: 1.0
+      importance: 0.65      # TUNABLE
+      quality_factor: 0.90
     - id: growth.job_openings
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.85      # TUNABLE
+      quality_factor: 0.95
     - id: growth.pmi_proxy
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.80      # TUNABLE
+      quality_factor: 0.95
     - id: growth.labor_force_part
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.60      # TUNABLE
+      quality_factor: 0.90
     - id: growth.unemployment
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.55      # TUNABLE
+      quality_factor: 0.90
       invert: true          # lower unemployment = better growth
   # Excluded from composite (structural frequency): growth.productivity, growth.tfp, growth.rnd_intensity
 
 inflation_score:
-  description: "Equal-weight Z-score composite of inflation-force signals"
+  description: "Weighted Z-score composite of inflation-force signals"
   indicators:
     - id: inflation.pce_core
-      weight: 1.0
+      base_share: 1.0
+      importance: 0.95      # TUNABLE
+      quality_factor: 1.00
     - id: inflation.cpi_core
-      weight: 1.0
+      base_share: 1.0
+      importance: 0.95      # TUNABLE
+      quality_factor: 1.00
     - id: inflation.wages
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.30      # TUNABLE
+      quality_factor: 0.85
     - id: inflation.breakeven_5y
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.25      # TUNABLE
+      quality_factor: 0.90
     - id: inflation.breakeven_10y
-      weight: 1.0
+      base_share: 0.5
+      importance: 0.25      # TUNABLE
+      quality_factor: 0.90
     - id: inflation.cpi_headline
-      weight: 0.5           # half-weight: correlated with core, adds commodity noise
+      base_share: 0.5
+      importance: 0.20      # TUNABLE
+      quality_factor: 0.90
     - id: inflation.crude_oil
-      weight: 0.5           # half-weight: leading but volatile
-    - id: inflation.commodity_index
-      weight: 0.5           # half-weight (included when available)
+      base_share: 0.5
+      importance: 0.10      # TUNABLE
+      quality_factor: 0.85
+    - id: inflation.ppi_broad
+      base_share: 0.5
+      importance: 0.30      # TUNABLE
+      quality_factor: 0.90
+    # Bridge signal for Phase 2 countries where only IMF annual CPI is available.
+    # Missing for US/EZ (silently excluded); activates only for KR and future EM.
+    - id: inflation.cpi_imf_annual
+      base_share: 0.5
+      importance: 0.30      # TUNABLE: low-weight proxy; annual resolution limits precision
+      quality_factor: 0.70
+
+# Dynamic force/momentum agreement adjustment.
+# adjusted_weight = nominal_weight × clamp(1 + alpha × sign(force) × momentum_sign)
+dynamic_weighting:
+  enabled: true
+  momentum_alpha: 0.50        # TUNABLE: agreement → 1.5×, disagreement → 0.5×
+  min_multiplier: 0.10        # TUNABLE safety floor
+  max_multiplier: 1.50        # TUNABLE safety cap
+  force_zero_epsilon: 0.05    # TUNABLE: |Z| below this is treated as neutral
+
+# L2: Per-frequency forward-fill caps.  Monthly signals are released every month so 3
+# months of fill is already generous; quarterly at 9 months (3 release cycles); annual
+# at 15 months (≈12 months data lag + 3 months grace).  Daily defaults to 1 month.
+per_frequency_ffill_limit:
+  D: 1
+  M: 3
+  Q: 9
+  A: 15
+  default: 13   # fallback for unknown frequencies
+
+# Exponential age decay from the guidance document.
+# decay = 0.5 ^ (age_months / half_life_months), so a three-month-old observation
+# has half its fresh-data weight. Per-frequency carry caps above still hard-drop
+# observations beyond the permitted publication window.
+time_decay:
+  enabled: true
+  half_life_months: 3.0       # TUNABLE
+  hard_drop_months: 12        # TUNABLE global ceiling; frequency caps may drop sooner
 
 # Regime quadrant confidence: fraction of contributing signals whose
 # direction vector agrees with the assigned quadrant label.
 # E.g. if 7/10 growth signals are "rising" → growth_confidence = 0.70.
 regime_confidence:
-  min_signals_required: 4   # refuse to label quadrant if fewer than 4 signals available
+  min_signals_required: 1   # refuse to label quadrant if fewer than 1 signal per force (lowered from 4 for Phase 2 multi-country coverage)
 
 # Disequilibrium score: equal weight over |distance_from_equilibrium| Z-scores
-# across all five structural force lenses. Forces with no data contribute 0
-# but reduce the denominator; a low_coverage flag fires if < 3 of 5 lenses present.
+# across all available structural force lenses. Forces with no data are excluded
+# from the denominator; a low_coverage flag fires if fewer than 3 lenses are present.
 disequilibrium_score:
   forces:
     - debt_money:    [credit, policy]          # Lens C + D

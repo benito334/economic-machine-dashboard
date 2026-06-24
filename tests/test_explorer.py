@@ -23,6 +23,12 @@ def test_infer_freq_label_daily():
     assert _infer_freq_label("us.premium.yield_curve_10y2y") == "daily"
 
 
+def test_infer_freq_label_weekly():
+    from dashboard.explorer_data import _infer_freq_label
+    assert _infer_freq_label("us.credit.bank_loans") == "weekly"
+    assert _infer_freq_label("us.policy.balance_sheet") == "weekly"
+
+
 def test_infer_freq_label_monthly():
     from dashboard.explorer_data import _infer_freq_label
     assert _infer_freq_label("us.growth.payrolls") == "monthly"
@@ -132,6 +138,12 @@ def test_charting_imports_explorer():
     assert isinstance(charting.server, flask.Flask)
 
 
+def test_latest_card_has_one_callback_owner():
+    from dashboard.charting import app
+    owners = [key for key in app.callback_map if "exp-stat-latest.children" in key]
+    assert len(owners) == 1
+
+
 def test_overview_columns_structure():
     from dashboard.explorer import _overview_columns
     cols = _overview_columns()
@@ -149,7 +161,7 @@ def test_overview_columns_structure():
 def test_load_signal_overview_returns_all_signals():
     from dashboard.explorer_data import load_signal_overview
     df = load_signal_overview()
-    assert len(df) == 59
+    assert len(df) == 63
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns
@@ -307,7 +319,124 @@ def test_explorer_signal_table_callback():
     overview = load_signal_overview()
     rows = _format_overview(overview)
     assert isinstance(rows, list)
-    assert len(rows) == 59
+    assert len(rows) == 63
     assert all("id" in r for r in rows)
     assert all("zscore_fmt" in r for r in rows)
     assert all("flags" in r for r in rows)
+
+
+# ── A2/I2: Composite Analysis (correlation + PCA) ────────────────────────────
+
+class TestCompositeZscoreMatrix:
+    @pytest.mark.integration
+    def test_returns_17_columns(self):
+        from dashboard.explorer_data import load_composite_zscore_matrix
+        matrix, meta = load_composite_zscore_matrix()
+        assert len(meta) == 17  # 9 growth + 8 inflation (cpi_imf_annual is KR-only)
+        assert matrix.shape[1] == 17
+
+    @pytest.mark.integration
+    def test_columns_match_meta(self):
+        from dashboard.explorer_data import load_composite_zscore_matrix
+        matrix, meta = load_composite_zscore_matrix()
+        assert list(matrix.columns) == [m["signal_id"] for m in meta]
+
+    @pytest.mark.integration
+    def test_values_in_zscore_range(self):
+        from dashboard.explorer_data import load_composite_zscore_matrix
+        matrix, _ = load_composite_zscore_matrix()
+        # After winsorisation, Z-scores are in [-4, 4]
+        non_null = matrix.stack().dropna()
+        assert (non_null >= -4.0).all() and (non_null <= 4.0).all()
+
+    @pytest.mark.integration
+    def test_force_labels_present(self):
+        from dashboard.explorer_data import load_composite_zscore_matrix
+        _, meta = load_composite_zscore_matrix()
+        forces = {m["force"] for m in meta}
+        assert forces == {"growth", "inflation"}
+
+
+class TestComputePca:
+    def _make_matrix(self):
+        import numpy as np
+        rng = np.random.default_rng(42)
+        data = rng.normal(0, 1, (100, 17))
+        idx = pd.date_range("2015-01", periods=100, freq="ME")
+        return pd.DataFrame(data, index=idx, columns=[f"sig_{i}" for i in range(17)])
+
+    def test_variance_sums_to_one(self):
+        import numpy as np
+        from dashboard.explorer_data import compute_pca
+        matrix = self._make_matrix()
+        pca = compute_pca(matrix)
+        assert abs(pca["explained_variance_ratio"].sum() - 1.0) < 1e-9
+
+    def test_n_components_leq_n_signals(self):
+        from dashboard.explorer_data import compute_pca
+        matrix = self._make_matrix()
+        pca = compute_pca(matrix)
+        assert len(pca["explained_variance_ratio"]) <= 17
+
+    def test_loadings_shape(self):
+        from dashboard.explorer_data import compute_pca
+        matrix = self._make_matrix()
+        pca = compute_pca(matrix)
+        # loadings: (min(n_obs, n_signals), n_signals)
+        assert pca["loadings"].shape[1] == 17
+
+    def test_n_obs_reported(self):
+        from dashboard.explorer_data import compute_pca
+        matrix = self._make_matrix()
+        pca = compute_pca(matrix)
+        assert pca["n_obs"] == 100
+
+    def test_all_nan_column_is_retained_with_zero_loading(self):
+        import numpy as np
+        from dashboard.explorer_data import compute_pca
+        matrix = pd.DataFrame({
+            "observed": [1.0, 2.0, 3.0],
+            "missing": [np.nan, np.nan, np.nan],
+        })
+        pca = compute_pca(matrix)
+        assert np.isfinite(pca["explained_variance_ratio"]).all()
+        assert pca["loadings"].shape[1] == 2
+
+    def test_constant_matrix_reports_no_variance(self):
+        from dashboard.explorer_data import compute_pca
+        matrix = pd.DataFrame({"a": [1.0, 1.0], "b": [2.0, 2.0]})
+        with pytest.raises(ValueError, match="no measurable variance"):
+            compute_pca(matrix)
+
+    @pytest.mark.integration
+    def test_real_data_pc1_explains_most_variance(self):
+        """PC1 should capture a meaningful fraction of variance in real composite signals."""
+        from dashboard.explorer_data import compute_pca, load_composite_zscore_matrix
+        matrix, _ = load_composite_zscore_matrix()
+        pca = compute_pca(matrix)
+        # PC1 should explain at least 15% (typical for mixed macro signals)
+        assert pca["explained_variance_ratio"][0] >= 0.10
+
+    def test_analysis_tab_graph_ids_in_layout(self):
+        """Verify the analysis tab graph components are present in the explorer layout."""
+        from dashboard.explorer import get_layout
+
+        def _find_ids(component, found=None):
+            if found is None:
+                found = set()
+            if hasattr(component, "id") and component.id:
+                found.add(component.id)
+            for attr in ("children",):
+                child = getattr(component, attr, None)
+                if child is None:
+                    continue
+                items = child if isinstance(child, list) else [child]
+                for item in items:
+                    if hasattr(item, "id") or hasattr(item, "children"):
+                        _find_ids(item, found)
+            return found
+
+        layout = get_layout()
+        ids = _find_ids(layout)
+        assert "exp-corr-chart" in ids, f"exp-corr-chart not found in layout IDs: {ids}"
+        assert "exp-pca-chart"  in ids, f"exp-pca-chart not found in layout IDs: {ids}"

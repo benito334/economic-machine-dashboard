@@ -9,6 +9,8 @@ import duckdb
 import pandas as pd
 import yaml
 
+from indicators.composites import normalized_nominal_weights, load_composites_config
+
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
 _CHART_SERIES_YAML = Path(__file__).parent.parent / "config" / "chart_series.yaml"
@@ -18,59 +20,25 @@ _CHART_SERIES_YAML = Path(__file__).parent.parent / "config" / "chart_series.yam
 
 def load_catalog() -> tuple[list[dict], list[dict]]:
     """Return (series_list, yield_curve_maturities) from chart_series.yaml."""
-    raw = yaml.safe_load(_CHART_SERIES_YAML.read_text())
-    maturities = raw.pop("yield_curve_maturities", [])
-    series = [item for item in raw.values() if isinstance(item, list)]
-    # yaml.safe_load with a list-of-dicts at root returns them flattened
-    # Re-load cleanly: the yaml is a list of dicts + one mapping key
-    raw2 = yaml.safe_load(_CHART_SERIES_YAML.read_text())
-    maturities2 = raw2.pop("yield_curve_maturities", [])
-    flat = []
-    for v in raw2.values():
-        if isinstance(v, list):
-            flat.extend(v)
-    return flat, maturities2
+    doc = yaml.safe_load(_CHART_SERIES_YAML.read_text()) or {}
+    if not isinstance(doc, dict):
+        raise ValueError("chart_series.yaml must contain a top-level mapping")
+    return doc.get("series", []), doc.get("yield_curve_maturities", [])
 
 
 def _load_catalog_raw() -> tuple[list[dict], list[dict]]:
     """Parse chart_series.yaml into (series_entries, maturity_entries)."""
-    text = _CHART_SERIES_YAML.read_text()
-    # Split at the yield_curve_maturities key — parse the whole doc as YAML
-    # and separate the special key from the series list
-    doc = yaml.safe_load(text)
-    if isinstance(doc, list):
-        # No yield_curve_maturities key in this version — shouldn't happen
-        return doc, []
-    if isinstance(doc, dict):
-        maturities = doc.pop("yield_curve_maturities", [])
-        series = list(doc.values())
-        if series and isinstance(series[0], list):
-            series = series[0]
-        return series, maturities
-    return [], []
+    return load_catalog()
 
 
 def load_series_catalog() -> list[dict]:
     """Return the flat list of chartable series from chart_series.yaml."""
-    text = _CHART_SERIES_YAML.read_text()
-    # The yaml file is a list of series dicts followed by a mapping key.
-    # We use a two-pass parse: collect list items then the mapping.
-    import re
-    # Strip the yield_curve_maturities block before parsing as a list
-    clean = re.sub(r"\nyield_curve_maturities:.*", "", text, flags=re.DOTALL)
-    return yaml.safe_load(clean) or []
+    return load_catalog()[0]
 
 
 def load_yield_curve_maturities() -> list[dict]:
     """Return the yield_curve_maturities list from chart_series.yaml."""
-    text = _CHART_SERIES_YAML.read_text()
-    import re
-    m = re.search(r"\nyield_curve_maturities:(.*)", text, flags=re.DOTALL)
-    if not m:
-        return []
-    block = "yield_curve_maturities:" + m.group(1)
-    result = yaml.safe_load(block)
-    return result.get("yield_curve_maturities", []) if result else []
+    return load_catalog()[1]
 
 
 # ── Signal history ────────────────────────────────────────────────────────────
@@ -140,22 +108,28 @@ def load_multi_signal_history(
 def load_composite_history(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    country: str = "US",
 ) -> pd.DataFrame:
-    """Return the composites table with columns: as_of, growth_score, inflation_score, quadrant."""
+    """Return point-in-time composite scores, rolling variants, and component-weight audit."""
     con = duckdb.connect(str(DB_PATH), read_only=True)
     try:
-        clauses = []
-        params: list = []
+        clauses = ["country = ?"]
+        params: list = [country]
         if start_date:
             clauses.append("as_of >= ?")
             params.append(start_date)
         if end_date:
             clauses.append("as_of <= ?")
             params.append(end_date)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        where = "WHERE " + " AND ".join(clauses)
         df = con.execute(
             f"SELECT as_of, growth_score, inflation_score, quadrant, confidence, "
-            f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces "
+            f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces, stale_signals, "
+            f"growth_momentum, inflation_momentum, weight_audit, "
+            f"growth_score_36m, growth_score_48m, growth_score_60m, "
+            f"inflation_score_36m, inflation_score_48m, inflation_score_60m, "
+            f"inflation_score_90m, inflation_score_120m, "
+            f"disequilibrium_12m, disequilibrium_18m, disequilibrium_24m "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()
@@ -229,3 +203,353 @@ def available_dates_for_yield_curve() -> list[str]:
     if s is None or s.empty:
         return []
     return [d.strftime("%Y-%m-%d") for d in sorted(s.dropna().index)]
+
+
+# ── Regime Composites — component status ──────────────────────────────────────
+
+# Human-readable labels for composite constituent signal concept IDs
+_COMPOSITE_SIGNAL_LABELS: dict[str, str] = {
+    "growth.payrolls":          "Payrolls",
+    "growth.industrial_prod":   "Industrial Production",
+    "growth.retail_sales":      "Retail Sales",
+    "growth.real_pce":          "Real PCE",
+    "growth.capacity_util":     "Capacity Utilisation",
+    "growth.job_openings":      "Job Openings (JOLTS)",
+    "growth.pmi_proxy":         "PMI Proxy",
+    "growth.labor_force_part":  "Labor Force Participation",
+    "growth.unemployment":      "Unemployment",
+    "inflation.pce_core":       "Core PCE",
+    "inflation.cpi_core":       "Core CPI",
+    "inflation.wages":          "Wages",
+    "inflation.breakeven_5y":   "5Y Breakeven",
+    "inflation.breakeven_10y":  "10Y Breakeven",
+    "inflation.cpi_headline":   "CPI Headline",
+    "inflation.crude_oil":      "Crude Oil",
+    "inflation.ppi_broad":      "PPI Broad",
+    # EZ-specific signals (added 2026-06-23)
+    "inflation.ppi":            "PPI (Producer Prices)",
+    "inflation.wages_lci":      "Wages & Salaries (LCI)",
+    "inflation.hicp_energy":    "HICP Energy",
+    "inflation.hicp_food":      "HICP Food",
+}
+
+
+def load_composite_component_status(
+    country: str = "US",
+    as_of: Optional[str] = None,
+    g_zscore_col: str = "zscore",
+    i_zscore_col: str = "zscore",
+) -> pd.DataFrame:
+    """Return the as-of signal snapshot for each regime composite component.
+
+    Columns returned: composite, concept_id, signal_id, label, weight, invert,
+    zscore, direction, change_3m, as_of, is_stale, low_history.
+
+    g_zscore_col / i_zscore_col: which signals-table column to use as the Z-score
+    for growth and inflation signals respectively (e.g. "zscore_36m", "zscore_60m").
+    Defaults to "zscore" (full-history).  The returned "zscore" column always holds
+    the appropriate rolling value so downstream code needs no changes.
+    """
+    cfg = load_composites_config(country)
+    country_prefix = country.lower()
+
+    rows_meta: list[dict] = []
+    for comp_name in ("growth_score", "inflation_score"):
+        force = comp_name.split("_")[0]  # "growth" or "inflation"
+        indicators = cfg.get(comp_name, {}).get("indicators", [])
+        nominal_weights = normalized_nominal_weights(indicators) if indicators else {}
+        for ind in indicators:
+            concept_id = ind["id"]
+            rows_meta.append({
+                "composite":  force,
+                "concept_id": concept_id,
+                "signal_id":  f"{country_prefix}.{concept_id}",
+                "label":      _COMPOSITE_SIGNAL_LABELS.get(concept_id, concept_id.split(".")[-1].replace("_", " ").title()),
+                "weight":     float(nominal_weights[concept_id]),
+                "base_share": float(ind.get("base_share", ind.get("weight", 1.0))),
+                "importance": float(ind.get("importance", 1.0)),
+                "quality_factor": float(ind.get("quality_factor", 1.0)),
+                "invert":     bool(ind.get("invert", False)),
+            })
+
+    if not rows_meta:
+        return pd.DataFrame()
+
+    signal_ids = [r["signal_id"] for r in rows_meta]
+    placeholders = ",".join("?" * len(signal_ids))
+
+    # Build SELECT list — always include base zscore; add rolling cols if requested
+    extra_cols: set[str] = set()
+    if g_zscore_col != "zscore":
+        extra_cols.add(g_zscore_col)
+    if i_zscore_col != "zscore":
+        extra_cols.add(i_zscore_col)
+    extra_select = "".join(f", {col}" for col in sorted(extra_cols))
+
+    cutoff_clause = "AND as_of <= ?" if as_of else ""
+    inner_params = signal_ids + ([as_of] if as_of else [])
+    outer_params = signal_ids + ([as_of] if as_of else [])
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            f"""
+            SELECT id, as_of, zscore{extra_select}, direction, change_3m, is_stale, low_history
+            FROM signals
+            WHERE id IN ({placeholders})
+              {cutoff_clause}
+              AND (id, as_of) IN (
+                  SELECT id, MAX(as_of) FROM signals
+                  WHERE id IN ({placeholders})
+                    {cutoff_clause}
+                  GROUP BY id
+              )
+            """,
+            outer_params + inner_params,
+        ).df()
+    finally:
+        con.close()
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    sig_map = df.set_index("id").to_dict("index")
+
+    # Map composite → which zscore column to read
+    _zscore_col_for = {"growth": g_zscore_col, "inflation": i_zscore_col}
+
+    result_rows = []
+    for meta in rows_meta:
+        sig = sig_map.get(meta["signal_id"], {})
+        col = _zscore_col_for.get(meta["composite"], "zscore")
+        # Use the rolling col if available; fall back to base zscore
+        z_val = sig.get(col)
+        if z_val is None or (isinstance(z_val, float) and pd.isna(z_val)):
+            z_val = sig.get("zscore")
+        result_rows.append({
+            **meta,
+            "zscore":      z_val,
+            "direction":   sig.get("direction"),
+            "change_3m":   sig.get("change_3m"),
+            "as_of":       sig.get("as_of"),
+            "is_stale":    bool(sig.get("is_stale", False)),
+            "low_history": bool(sig.get("low_history", False)),
+        })
+
+    return pd.DataFrame(result_rows)
+
+
+# ── Long-Term Debt Stress ─────────────────────────────────────────────────────
+
+# Maps each component ID to the underlying signal IDs in the signals table.
+# Derived components (built from raw FRED parquet) have empty lists.
+_COMPONENT_SIGNAL_SUFFIXES: dict[str, list[str]] = {
+    "gov_household_debt_gdp": ["credit.gov_debt_gdp", "credit.household_debt_gdp"],
+    "corporate_debt_gdp": [],
+    "household_debt_service": ["credit.debt_service_ratio"],
+    "federal_interest_gdp": [],
+    "primary_balance_gdp": ["fiscal.primary_balance_gdp"],
+    "structural_balance": ["fiscal.structural_balance"],
+    "govt_revenue_gdp": ["fiscal.govt_revenue_gdp"],
+}
+
+_COMPONENT_RAW_FRED_MAP: dict[str, list[str]] = {
+    "corporate_debt_gdp": ["BCNSDODNS", "GDP"],
+    "federal_interest_gdp": ["FYOINT", "GDP"],
+}
+
+
+def load_debt_stress_component_dates(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> dict[str, Optional[pd.Timestamp]]:
+    """Return the last as_of date per debt-stress component from the signals table.
+
+    For components that use multiple underlying signals, the *earliest* (most
+    restrictive) last-date is returned. Components derived purely from raw FRED
+    parquet (no signal record) return None.
+    """
+    prefix = country.lower()
+    signal_map = {
+        cid: [f"{prefix}.{suffix}" for suffix in suffixes]
+        for cid, suffixes in _COMPONENT_SIGNAL_SUFFIXES.items()
+    }
+    all_ids = [sid for sids in signal_map.values() for sid in sids]
+
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        placeholders = ",".join("?" * len(all_ids))
+        cutoff_clause = "AND as_of <= ?" if as_of else ""
+        params = all_ids + ([as_of] if as_of else [])
+        df = con.execute(
+            f"SELECT id, MAX(as_of) AS last_as_of FROM signals "
+            f"WHERE id IN ({placeholders}) {cutoff_clause} GROUP BY id",
+            params,
+        ).df()
+    finally:
+        con.close()
+
+    signal_dates: dict[str, pd.Timestamp] = {}
+    for _, row in df.iterrows():
+        signal_dates[row["id"]] = pd.Timestamp(row["last_as_of"])
+
+    result: dict[str, Optional[pd.Timestamp]] = {}
+    cutoff = pd.Timestamp(as_of) if as_of else None
+    for cid, sids in signal_map.items():
+        if not sids:
+            raw_dates: list[pd.Timestamp] = []
+            for fred_id in _COMPONENT_RAW_FRED_MAP.get(cid, []):
+                series = _read_fred_parquet(fred_id)
+                if series is None or series.empty:
+                    continue
+                eligible = series.index[series.index <= cutoff] if cutoff is not None else series.index
+                if len(eligible):
+                    raw_dates.append(pd.Timestamp(eligible[-1]))
+            result[cid] = min(raw_dates) if raw_dates else None
+        else:
+            dates = [signal_dates[sid] for sid in sids if sid in signal_dates]
+            result[cid] = min(dates) if dates else None
+    return result
+
+
+def load_debt_stress_history(
+    country: str = "US",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return all debt_stress_snapshots for one country within the optional date window."""
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        clauses = ["country = ?"]
+        params: list = [country]
+        if start_date:
+            clauses.append("as_of >= ?")
+            params.append(start_date)
+        if end_date:
+            clauses.append("as_of <= ?")
+            params.append(end_date)
+        where = " AND ".join(clauses)
+        df = con.execute(
+            f"SELECT * FROM debt_stress_snapshots WHERE {where} ORDER BY as_of",
+            params,
+        ).df()
+    finally:
+        con.close()
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    return df
+
+
+# ── Signal overview helpers (for Regime Map panels) ───────────────────────────
+
+def load_latest_signals(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return each signal's most-recent observation at an optional as-of date."""
+    reference_date = as_of or pd.Timestamp.today().date().isoformat()
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            """
+            SELECT *
+            FROM signals
+            WHERE country = ? AND as_of <= ?
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1
+            ORDER BY force, id
+            """,
+            [country, reference_date],
+        ).df()
+    finally:
+        con.close()
+    return df
+
+
+def load_change_feed(
+    country: str = "US",
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return recent signals ranked by change from their actual prior observation."""
+    import datetime
+    reference_date = pd.Timestamp(as_of).date() if as_of else datetime.date.today()
+    cutoff = (reference_date - datetime.timedelta(days=120)).isoformat()
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            """
+            WITH ranked AS (
+                SELECT id, force, lead_lag, as_of, value, zscore, direction,
+                       ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) AS rn
+                FROM signals
+                WHERE country = ? AND as_of <= ?
+            ),
+            latest AS (SELECT * FROM ranked WHERE rn = 1),
+            prior  AS (SELECT * FROM ranked WHERE rn = 2)
+            SELECT
+                l.id, l.force, l.lead_lag, l.as_of, l.value, l.zscore, l.direction,
+                p.zscore  AS prior_zscore,
+                p.as_of   AS prior_as_of,
+                ABS(l.zscore - COALESCE(p.zscore, l.zscore)) AS zscore_delta
+            FROM latest l
+            LEFT JOIN prior p ON l.id = p.id
+            WHERE l.lead_lag IN ('leading', 'coincident') AND l.as_of >= ?
+            ORDER BY zscore_delta DESC
+            """,
+            [country, reference_date.isoformat(), cutoff],
+        ).df()
+    finally:
+        con.close()
+    return df
+
+
+def load_composite_signal_values(country: str = "US") -> pd.DataFrame:
+    """Bulk-load all historical transformed values for growth+inflation composite signals.
+
+    Returns a DataFrame with columns: id, as_of, value, frequency.
+    Used by the dashboard to recompute force Z-scores with a configurable rolling window.
+    """
+    cfg = load_composites_config(country)
+    prefix = country.lower()
+    ids: list[str] = []
+    for section in ("growth_score", "inflation_score"):
+        for ind in cfg.get(section, {}).get("indicators", []):
+            ids.append(f"{prefix}.{ind['id']}")
+
+    if not ids:
+        return pd.DataFrame()
+
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        placeholders = ",".join(["?"] * len(ids))
+        df = con.execute(
+            f"SELECT id, as_of, value FROM signals "
+            f"WHERE id IN ({placeholders}) ORDER BY id, as_of",
+            ids,
+        ).df()
+    finally:
+        con.close()
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    return df.dropna(subset=["value"])
+
+
+def load_all_signal_histories(
+    country: str = "US",
+    n_months: int = 36,
+    as_of: Optional[str] = None,
+) -> pd.DataFrame:
+    """Bulk-load value history for all signals (used for sparkline generation)."""
+    import datetime
+    reference_date = pd.Timestamp(as_of).date() if as_of else datetime.date.today()
+    cutoff = (reference_date - datetime.timedelta(days=n_months * 31)).isoformat()
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            """
+            SELECT id, as_of, value
+            FROM signals
+            WHERE country = ? AND as_of >= ? AND as_of <= ?
+            ORDER BY id, as_of
+            """,
+            [country, cutoff, reference_date.isoformat()],
+        ).df()
+    finally:
+        con.close()
+    return df

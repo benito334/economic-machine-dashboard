@@ -16,6 +16,7 @@
     --cell-bg:             #1c1c1c;
     --grid-color:          #2d2d2d;
     --series-label-color:  #aaaaaa;
+    --slider-accent:       #E8A317;   /* warm amber default (carbon dark) */
 }
 
 /* Page background — Bootstrap sets body bg via --bs-body-bg; we also set it
@@ -94,6 +95,378 @@ hr {
     color: var(--muted-color) !important;
     border-color: var(--border-color) !important;
 }
+
+/* Sidebar window sliders — Dash 4.x uses dash-slider-* (Radix UI), not rc-slider-* */
+.sidebar-slider {
+    padding: 0 4px !important;
+}
+/* Mark labels */
+.sidebar-slider .dash-slider-mark {
+    font-size: 0.62rem !important;
+    color: var(--font-color) !important;
+}
+/* Hide hover tooltip */
+.sidebar-slider .dash-slider-tooltip {
+    display: none !important;
+}
+/* Track background — subtle tint of accent color */
+.sidebar-slider .dash-slider-track {
+    background-color: color-mix(in srgb, var(--slider-accent) 22%, transparent) !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+/* Filled range — solid accent */
+.sidebar-slider .dash-slider-range {
+    background-color: var(--slider-accent) !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+/* Thumb — narrow vertical bar, centered on the track by Radix */
+.sidebar-slider .dash-slider-thumb {
+    width: 5px !important;
+    height: 18px !important;
+    border-radius: 3px !important;
+    background-color: var(--slider-accent) !important;
+    border: none !important;
+    box-shadow: none !important;
+    cursor: ew-resize !important;
+    /* Do NOT override top/transform — Radix centers the thumb on the track.
+       Overriding those properties shifts the thumb relative to the mark-label
+       space below the track, causing visible misalignment. */
+}
+.sidebar-slider .dash-slider-thumb:hover,
+.sidebar-slider .dash-slider-thumb:focus {
+    filter: brightness(1.25) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--slider-accent) 30%, transparent) !important;
+}
+.sidebar-slider .dash-slider-thumb[data-state="active"] {
+    filter: brightness(1.35) !important;
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--slider-accent) 35%, transparent) !important;
+}
+
+/* ── Collapsible sidebar ─────────────────────────────────────────────────── */
+#sidebar-container {
+    transition: width 0.18s ease;
+    display: flex;
+    flex-direction: column;
+}
+#sidebar-container.sidebar-collapsed {
+    width: 48px !important;
+    min-width: 48px !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-text {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-section-label {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-sliders {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed hr {
+    margin: 4px 6px !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-nav-link {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    justify-content: center !important;
+}
+#sidebar-container.sidebar-collapsed .sidebar-header {
+    justify-content: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+#sidebar-container.sidebar-collapsed .country-full {
+    display: none !important;
+}
+#sidebar-container.sidebar-collapsed .country-collapsed {
+    display: block !important;
+}
+.country-collapsed {
+    display: none;
+}
+.sidebar-nav-link {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Formula card copy button */
+.formula-copy-btn:hover {
+    opacity: 1 !important;
+    color: var(--font-color) !important;
+}
+
+/* ── Global Overview Table ───────────────────────────────────────────────── */
+.ov-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+.ov-th-country, .ov-th-num {
+    color: var(--muted-color);
+    font-weight: 500;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    padding: 8px 14px 10px;
+    border-bottom: 2px solid var(--border-color);
+    white-space: nowrap;
+    text-transform: uppercase;
+}
+.ov-th-num { text-align: right; }
+.ov-th-sub {
+    font-size: 0.60rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    margin-top: 2px;
+    text-transform: none;
+    opacity: 0.75;
+}
+.ov-country-name {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--font-color);
+    font-weight: 400;
+    white-space: nowrap;
+}
+.ov-cell-num {
+    padding: 8px 14px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+.ov-cell-default { color: var(--font-color); }
+.ov-cell-date {
+    font-size: 0.63rem;
+    color: var(--muted-color);
+    opacity: 0.7;
+}
+.ov-cell-missing {
+    padding: 8px 14px;
+    text-align: right;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--muted-color);
+    opacity: 0.4;
+}
+.ov-row:hover .ov-country-name,
+.ov-row:hover .ov-cell-num,
+.ov-row:hover .ov-cell-missing {
+    background-color: var(--card-bg);
+}
+/* Color-coded value classes */
+.ov-cell-warn { color: #E8853A !important; }
+.ov-cell-high { color: #4C9BE8 !important; }
+.ov-cell-pos  { color: #5CB85C !important; }
+.ov-legend-label {
+    font-size: 0.72rem;
+    color: var(--muted-color);
+    margin-right: 16px;
+}
+
+/* ── Data Dashboard Table ────────────────────────────────────────────────── */
+
+/* Scrollable wrapper — sticky header requires overflow on parent */
+.dd-scroll-wrapper {
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+/* Filter bar inputs */
+.dd-search-input {
+    width: 100%;
+    background-color: var(--card-bg) !important;
+    color: var(--font-color) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    outline: none;
+}
+.dd-search-input:focus {
+    border-color: var(--slider-accent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--slider-accent) 20%, transparent);
+}
+.dd-dropdown .Select-control,
+.dd-dropdown .dropdown {
+    background-color: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--font-color) !important;
+}
+
+.dd-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+/* Sticky header — must have solid background to cover scrolling rows */
+.dd-table thead tr th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--header-bg);
+    /* inset shadow replaces border-bottom so it travels with sticky cell */
+    box-shadow: inset 0 -2px 0 var(--border-color);
+}
+
+.dd-th {
+    color: var(--muted-color);
+    font-weight: 500;
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 9px 12px 10px;
+    white-space: nowrap;
+}
+.dd-th-r { text-align: right; }
+
+/* Sortable column headers */
+.dd-th-sort { padding: 0 !important; }
+.dd-col-btn {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--muted-color);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 9px 12px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.12s;
+}
+.dd-col-btn:hover { color: var(--font-color); }
+.dd-th-active .dd-col-btn { color: var(--slider-accent); }
+.dd-sort-icon { opacity: 0.5; font-size: 0.75em; }
+.dd-th-active .dd-sort-icon { opacity: 1; color: var(--slider-accent); }
+
+/* Group header rows */
+.dd-group-header {
+    padding: 8px 12px 6px;
+    background-color: var(--header-bg);
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+.dd-group-label {
+    font-size: 0.70rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--font-color);
+}
+.dd-group-count {
+    font-size: 0.62rem;
+    color: var(--muted-color);
+    margin-left: 8px;
+}
+
+/* Signal rows */
+.dd-row td {
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+.dd-row:hover td { background-color: var(--card-bg); }
+.dd-row-issue td { border-left: 2px solid transparent; }
+.dd-row-issue:hover td { border-left-color: #E8853A; }
+
+.dd-cell-name  { color: var(--font-color); white-space: nowrap; }
+.dd-cell-series { white-space: nowrap; }
+.dd-cell-val   { text-align: right; font-variant-numeric: tabular-nums;
+                  color: var(--font-color); white-space: nowrap; }
+.dd-cell-date  { white-space: nowrap; }
+.dd-cell-date-main { color: var(--font-color); font-size: 0.80rem; }
+.dd-cell-date-ago  { color: var(--muted-color); font-size: 0.63rem; }
+.dd-cell-freq  { color: var(--muted-color); white-space: nowrap; }
+.dd-cell-prov  { color: var(--muted-color); white-space: nowrap; }
+.dd-cell-next  { color: var(--muted-color); white-space: nowrap;
+                  font-variant-numeric: tabular-nums; }
+.dd-cell-badges { white-space: nowrap; }
+.dd-cell-empty {
+    padding: 20px 12px;
+    color: var(--muted-color);
+    font-style: italic;
+    text-align: center;
+}
+
+/* Series chip */
+.dd-series-chip {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 0.72rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background-color: var(--header-bg);
+    color: var(--muted-color);
+    border: 1px solid var(--border-color);
+}
+
+/* Status badges */
+.dd-badge {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid;
+    margin-right: 4px;
+    white-space: nowrap;
+}
+.dd-badge-ok    { color: #5CB85C; border-color: #5CB85C;
+                   background: color-mix(in srgb, #5CB85C 12%, transparent); }
+.dd-badge-stale { color: #E8853A; border-color: #E8853A;
+                   background: color-mix(in srgb, #E8853A 12%, transparent); }
+.dd-badge-due   { color: #E8A317; border-color: #E8A317;
+                   background: color-mix(in srgb, #E8A317 12%, transparent); }
+.dd-badge-info  { color: #4C9BE8; border-color: #4C9BE8;
+                   background: color-mix(in srgb, #4C9BE8 12%, transparent); }
+.dd-badge-muted { color: var(--muted-color); border-color: var(--border-color);
+                   background: transparent; }
+
+/* Reset sort button */
+.dd-reset-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--muted-color);
+    font-size: 0.72rem;
+    padding: 5px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.12s, border-color 0.12s;
+}
+.dd-reset-btn:hover {
+    color: var(--slider-accent);
+    border-color: var(--slider-accent);
+}
+
+/* Summary bar */
+.dd-summary {
+    font-size: 0.78rem;
+    margin-bottom: 10px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background-color: var(--header-bg);
+    border: 1px solid var(--border-color);
+    display: inline-block;
+}
+.dd-summary-total { color: var(--font-color); font-weight: 600; }
+.dd-summary-ok    { color: #5CB85C; }
+.dd-summary-warn  { color: #E8853A; }
+.dd-summary-sep   { color: var(--muted-color); margin: 0 4px; }
+
+/* Legend */
+.dd-legend { font-size: 0.72rem; }
+.dd-legend-sep { color: var(--muted-color); margin-right: 12px; }
 
 /* DataTable filter/pagination inputs */
 .dash-table-container .dash-filter input,
