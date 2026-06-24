@@ -201,7 +201,7 @@ def render_signals(country_data, page_trigger):
     if page and page != "/signals":
         return no_update
 
-    country = (country_data or {}).get("country", "US").upper()
+    country = str(country_data or "US").upper()
 
     # ── Load signals ──────────────────────────────────────────────────────────
     signals = load_latest_signals(country)
