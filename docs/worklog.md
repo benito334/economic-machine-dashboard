@@ -791,3 +791,21 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - **Importance Editor copy button**: `dcc.Clipboard` added to Section 4 header (top-right). Content callback converts table rows to TSV (Signal, Basket, base_share, importance, Tier, quality_factor, Raw Weight) on every table update — paste directly into a spreadsheet. Content updates automatically on country switch, reset, or applied calibration.
 
 **Files changed:** `dashboard/weight_audit.py`
+
+---
+
+## 2026-06-24 — Threshold-Based Regime Classifier (Phase 3 analysis tool)
+
+**Done:**
+- `indicators/regime_classifier.py` (new): standalone `classify_regimes_threshold()` function — 5-dimension hard Z-score threshold classifier (Growth · Inflation · Rate · Credit · Volatility). Signal map per country (US/EZ/KR) with inversion flags for spread-based credit signals. Independent rolling Z-score (not from pipeline's pre-computed column). GDP quarterly fill: forward-fill or decay-weighted (Z-score decays toward 0 between releases with configurable half-life). VIX loaded from raw parquet cache or FRED fetch (US only, gracefully skipped if unavailable).
+- `dashboard/regime_classifier_page.py` (new): full Dash page at `/regime-classifier`. Config panel: lookback dropdown (5/10/20yr), upper/lower threshold inputs, GDP fill toggle (ffill/decay) with conditional halflife slider, credit signal dropdown (BAA Spread / Gov Debt-GDP), Run button. Three result sections: (1) dimension flag heatmap, (2) threshold quadrant step chart, (3) comparison vs composites engine with agreement rate metric.
+- `dashboard/charting.py`: new "Analysis" nav group + import + page function + `_PAGE_MAP` entry.
+
+**Signal map:**
+- US: growth=`us.master.gdp_real`, inflation=`us.inflation.cpi_headline`, rate=`us.policy.real_fed_funds`, credit=[`us.premium.credit_spread_corp`|`us.credit.gov_debt_gdp`], volatility=VIXCLS
+- EZ: growth=`ez.master.gdp_real`, inflation=`ez.inflation.cpi_headline`, rate=`ez.policy.real_yield_10y`, credit=[`ez.credit.btp_bund_spread`|`ez.credit.gov_debt_gdp`]
+- KR: growth=`kr.master.gdp_real`, inflation=`kr.inflation.cpi_headline`, rate=`kr.policy.yield_10y`, credit=`kr.credit.gov_debt_gdp`
+
+**Smoke test (US, 10yr lookback):** 517 months 1983–2026. 2020-04 → Disinflationary Slowdown ✅, 2021-06 → Inflationary Boom ✅. EZ: 336 months.
+
+**Next session:** Phase 2 Japan rollout. BEA refresh after 2026-06-26.
