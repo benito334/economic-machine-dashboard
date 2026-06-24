@@ -203,13 +203,28 @@ def get_layout() -> html.Div:
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "28px 0 20px 0"}),
 
         # ── Section 4: Importance Editor ─────────────────────────────────────
-        _section_header("4 — Importance Editor",
-                        "Edit signal importance values for the selected country. "
-                        "Importance is clamped to 0.10 – 1.00. "
-                        "Tier and Raw Weight update as you type. "
-                        "Save writes back to config/{cc}_composites.yaml (preserving comments) "
-                        "and re-runs all audit panels above. "
-                        "Run the pipeline separately to apply changes to composite history."),
+        html.Div([
+            _section_header("4 — Importance Editor",
+                            "Edit signal importance values for the selected country. "
+                            "Importance is clamped to 0.10 – 1.00. "
+                            "Tier and Raw Weight update as you type. "
+                            "Save writes back to config/{cc}_composites.yaml (preserving comments) "
+                            "and re-runs all audit panels above. "
+                            "Run the pipeline separately to apply changes to composite history."),
+            dcc.Clipboard(
+                id="wa-editor-copy-btn",
+                content="",
+                title="Copy table as TSV",
+                style={
+                    "position": "absolute", "top": "0", "right": "0",
+                    "fontSize": "0.75rem", "padding": "3px 9px",
+                    "background": "var(--card-bg)",
+                    "color": "var(--muted-color)",
+                    "border": "1px solid var(--border-color)",
+                    "borderRadius": "4px", "cursor": "pointer",
+                },
+            ),
+        ], style={"position": "relative"}),
 
         dash_table.DataTable(
             id="wa-editor-table",
@@ -486,7 +501,7 @@ def update_force_balance(_, theme_name: str, _run=None):
             "gridcolor": t["grid_color"],
         },
         yaxis={
-            "title": "Mass", "titlefont": {"size": 9},
+            "title": {"text": "Mass", "font": {"size": 9}},
             "gridcolor": t["grid_color"],
             "range": [0, max_mass * 1.35],
         },
@@ -786,10 +801,10 @@ def _mc_scatter(
     fig.update_layout(**figure_layout(theme_name, "Monte Carlo Trials"))
     fig.update_layout(
         height=340,
-        xaxis={"title": "Growth Score", "range": xr, "zeroline": False,
-               "gridcolor": t["grid_color"], "titlefont": {"size": 9}},
-        yaxis={"title": "Inflation Score", "range": yr, "zeroline": False,
-               "gridcolor": t["grid_color"], "titlefont": {"size": 9}},
+        xaxis={"title": {"text": "Growth Score", "font": {"size": 9}},
+               "range": xr, "zeroline": False, "gridcolor": t["grid_color"]},
+        yaxis={"title": {"text": "Inflation Score", "font": {"size": 9}},
+               "range": yr, "zeroline": False, "gridcolor": t["grid_color"]},
         legend={"font": {"size": 8}, "y": 1.1, "orientation": "h"},
         margin={"l": 55, "r": 15, "t": 40, "b": 40},
         hovermode="closest",
@@ -837,6 +852,32 @@ def _no_data_msg(msg: str) -> html.P:
 
 
 # ── Editor callbacks ──────────────────────────────────────────────────────────
+
+_EDITOR_COLS = [
+    ("Signal",         "label"),
+    ("Basket",         "basket"),
+    ("base_share",     "base_share"),
+    ("importance",     "importance"),
+    ("Tier",           "tier"),
+    ("quality_factor", "quality_factor"),
+    ("Raw Weight",     "raw_weight"),
+]
+
+
+@callback(
+    Output("wa-editor-copy-btn", "content"),
+    Input("wa-editor-table", "data"),
+    prevent_initial_call=False,
+)
+def _update_editor_clipboard(rows):
+    if not rows:
+        return ""
+    header = "\t".join(h for h, _ in _EDITOR_COLS)
+    lines = [header]
+    for row in rows:
+        lines.append("\t".join(str(row.get(k, "")) for _, k in _EDITOR_COLS))
+    return "\n".join(lines)
+
 
 @callback(
     [Output("wa-editor-table",    "data"),

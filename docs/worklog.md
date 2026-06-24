@@ -781,3 +781,13 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Current state:** 353 tests pass. 119 signals (63 US + 34 EZ + 22 KR). Docker rebuilt clean, :8502 HTTP 200.
 
 **Next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). BEA refresh available after 2026-06-26.
+
+---
+
+## 2026-06-24 — Bug fixes: Monte Carlo graphs + Importance Editor copy button
+
+**Done:**
+- **Monte Carlo blank graphs fixed**: `titlefont` is a deprecated Plotly v4 property — removed in v5. Two axes in `_mc_scatter` (Growth Score, Inflation Score) and the Y-axis in the force balance bar chart used it, causing a silent `ValueError` that killed the callback. Fixed to `title={"text": ..., "font": {...}}` in all three places.
+- **Importance Editor copy button**: `dcc.Clipboard` added to Section 4 header (top-right). Content callback converts table rows to TSV (Signal, Basket, base_share, importance, Tier, quality_factor, Raw Weight) on every table update — paste directly into a spreadsheet. Content updates automatically on country switch, reset, or applied calibration.
+
+**Files changed:** `dashboard/weight_audit.py`

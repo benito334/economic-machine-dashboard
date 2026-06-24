@@ -26,6 +26,10 @@ All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidanc
 
 ---
 
+## Completed 2026-06-24
+- **Monte Carlo blank graphs fixed**: `titlefont` deprecated in Plotly v5 → `title={"text":..., "font":{...}}` in `_mc_scatter` (both axes) and force balance bar chart Y-axis
+- **Importance Editor copy button**: `dcc.Clipboard` top-right of Section 4; TSV callback auto-updates on any table change
+
 ## Completed this session (2026-06-23) — session 2
 - **Weight Audit blank graphs fixed**: split `update_layout()` calls to avoid duplicate `margin` kwarg; `_hex_alpha()` helper converts 8-digit hex to `rgba()` for Plotly compatibility
 - **Re-run button**: `wa-run-store` dcc.Store; clicking ↺ Re-run re-triggers all three audit panels on demand
