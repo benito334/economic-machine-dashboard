@@ -4,6 +4,27 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-24 — Signals page (/signals) — 5-force signal breakdown
+
+**Done:**
+- **New page** `dashboard/signals_page.py` at `/signals` (nav: Indicators → 📡 Signals).
+  - Five collapsible sections: Growth · Inflation · Interest Rate · Credit · Volatility.
+  - Each section header shows force name, composite Z-score, and majority-direction momentum arrow.
+  - Growth/Inflation Z pulled from `composites` table; Rate/Credit/Volatility computed as unweighted mean of constituent signal Z-scores.
+  - Section body: same Indicator/Value/Dir/Pct/Z/Quality table as Regime Map lens drill-downs.
+  - Rate section: `force='policy'`, excludes balance-sheet/monetary-base signals (US) and wrongly-mapped fed_funds_target (EZ).
+  - Credit section: `force IN ('credit','premium')` — covers spreads, debt ratios, lending standards, yield curves.
+  - Volatility section: VIX (US only, 120-month rolling Z), loaded from raw cache; empty for EZ/KR.
+- **New shared module** `dashboard/shared_components.py` — extracted force-table helpers (`build_force_table`, `_DIR_ARROW`, `_concept_label`, `_zscore_color`, `_fmt_value`) for reuse.
+- `charting.py`: added import, nav entry under Indicators group, `_page_signals()`, `/signals` in `_PAGE_MAP`.
+- **353/353 tests pass.** Docker rebuilt at `:8502`; `/signals` returns HTTP 200.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- BEA refresh after 2026-06-26 (`python3 -m indicators.pipeline`) clears 3 stale US signals.
+
+---
+
 ## 2026-06-23 — Weight Audit page (/weight-audit)
 
 **Done:**

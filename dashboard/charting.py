@@ -49,6 +49,7 @@ from dashboard import methodology as _methodology
 from dashboard import weight_audit as _weight_audit
 from dashboard import weight_history as _weight_history
 from dashboard import regime_classifier_page as _regime_classifier
+from dashboard import signals_page as _signals_page
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -768,6 +769,7 @@ def _left_nav() -> html.Div:
             _nl("📍", "Regime Map",     "/regime-map",     nav_id="navlnk-regime-map"),
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
+            _nl("📡", "Signals",        "/signals",        nav_id="navlnk-signals"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Data ──────────────────────────────────────────────────────────────
@@ -923,6 +925,10 @@ def _page_weight_history() -> html.Div:
 
 def _page_regime_classifier() -> html.Div:
     return _regime_classifier.get_layout()
+
+
+def _page_signals() -> html.Div:
+    return _signals_page.get_layout()
 
 
 def _page_yield_curve() -> html.Div:
@@ -1599,6 +1605,7 @@ _PAGE_MAP = {
     "/weight-audit":        _page_weight_audit,
     "/weight-history":      _page_weight_history,
     "/regime-classifier":   _page_regime_classifier,
+    "/signals":             _page_signals,
 }
 
 

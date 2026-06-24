@@ -54,13 +54,16 @@ All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidanc
 - **Guidance doc updated**: `docs/Guidance/EU_singals_guidance.md` — all signals reviewed; CA investigation table added; HICP energy/food source correction noted
 - **EZ: 34 signals live** (was 19); **353 tests pass**; Docker rebuilt
 
+## Completed 2026-06-24 — session 3
+- **Signals page** (`/signals`) live: 5-force breakdown (Growth/Inflation/Rate/Credit/Volatility), per-section composite Z + momentum header, force tables matching Regime Map; `dashboard/shared_components.py` extracted for reuse.
+- 353/353 tests pass; Docker rebuilt.
+
 ## Up next (next session)
 | Priority | Item |
 |---|---|
-| 1 | **Signals page** — new Indicators nav page `/signals` (see spec below) |
-| 2 | Phase 2 — Japan (JP): `config/countries/jp_bindings.yaml` + `jp_composites.yaml` |
-| 3 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
-| 4 | KR monthly CPI: BoK ECOS API (requires registration) is the only remaining free source |
+| 1 | Phase 2 — Japan (JP): `config/countries/jp_bindings.yaml` + `jp_composites.yaml` |
+| 2 | BEA refresh (after 2026-06-26): `python3 -m indicators.pipeline` clears 3 stale US signals |
+| 3 | KR monthly CPI: BoK ECOS API (requires registration) is the only remaining free source |
 
 ### Signals page — detailed spec
 
