@@ -32,6 +32,7 @@ from indicators.transform import apply_transformation
 from store.store import (
     delete_future_signals, get_connection, init_schema,
     upsert_signals, upsert_composites, update_rolling_composites,
+    update_inflation_rolling,
     upsert_debt_stress, query_latest,
 )
 
@@ -589,6 +590,27 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             print(f"  [{force_sfx} force / {diseq_sfx} diseq] Updated {n_upd} composite rows")
     except Exception as exc:
         logger.exception("[ERROR] Rolling composites pass: %s", exc)
+        post_ingestion_errors += 1
+
+    # ── Passes 5e-5f: Inflation-only rolling windows (90m / 120m) [US] ────
+    print("\n─── Passes 5e-5f: Inflation-only rolling variants [US] ─────────────")
+    _INFLATION_ROLLING_CONFIGS = [
+        ("zscore_90m",  "90m"),
+        ("zscore_120m", "120m"),
+    ]
+    try:
+        freq_map = {f"us.{b.id}": b.frequency for b in us_bindings if b.verified}
+        for zscore_col, force_sfx in _INFLATION_ROLLING_CONFIGS:
+            roll_snaps = compute_composite_history(
+                conn, "US", us_comp_config, freq_map=freq_map,
+                zscore_col=zscore_col, diseq_window=0,
+            )
+            n_upd = update_inflation_rolling(
+                conn, roll_snaps, force_suffix=force_sfx,
+            )
+            print(f"  [inflation {force_sfx}] Updated {n_upd} composite rows")
+    except Exception as exc:
+        logger.exception("[ERROR] Inflation rolling passes (90m/120m): %s", exc)
         post_ingestion_errors += 1
 
     # ── Pass 6: Long-Term Debt Stress Indicator [US only] ─────────────────

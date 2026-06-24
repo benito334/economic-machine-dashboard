@@ -4,6 +4,32 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-24 — Inflation Z-Score window separation + Signals page reformatting
+
+**Done:**
+- **Separate Growth / Inflation Z-score lookback windows** — Growth keeps Full/36m/48m/60m slider; Inflation gets a new independent slider: Full / 60m / 90m / 120m.
+  - New `inflation-window-store` (`dcc.Store`, `storage_type="local"`) + sidebar "Inflation Z-Score Window" slider (`id=inflation-window-slider`) + Settings modal mirror.
+  - New `_INFLATION_WINDOW_COL = {60:"60m", 90:"90m", 120:"120m"}` constant in `charting.py`.
+  - Three sync callbacks wire sidebar ↔ modal ↔ store for inflation window (matches pattern used for growth window).
+  - `update_regime_info`: added `Input("inflation-window-store")`, now resolves `g_sfx` and `i_sfx` independently; `rolling` dict carries separate `window` + `inflation_window` keys.
+  - `update_regime_chart`: same input added; subplot title labels encode `G:Xmo / I:Ymo` for independent windows; quadrant re-derives from combined rolling g/i cols.
+  - `update_scatter_chart`: same; axis titles show independent window suffixes.
+  - `render_signals` (signals page): added `Input("zscore-window-store")` + `Input("inflation-window-store")`; resolves Growth/Inflation Z independently from rolling cols.
+- **New DB columns** — `zscore_90m`, `zscore_120m` in signals table; `inflation_score_90m`, `inflation_score_120m` in composites table.
+  - `indicators/models.py`: `zscore_90m`, `zscore_120m` Optional fields.
+  - `indicators/normalize.py`: `_ROLLING_MONTHS = [12,18,24,36,48,60,90,120]` — computes new columns.
+  - `store/store.py`: DDL + migration + `update_inflation_rolling()` function.
+  - `dashboard/charting_data.py`: SELECT includes `inflation_score_90m`, `inflation_score_120m`.
+  - `indicators/pipeline.py`: Passes 5e-5f write 90m/120m inflation composites (558 US rows).
+- **Signals page reformatted** to Regime History "Force Component Inputs" table style (8 columns: Signal / Importance / Config Wt / Eff Wt / Last Data / Z-bar / Momentum / Status).
+- **353/353 tests pass.** Docker rebuilt; HTTP 200 at `:8502`.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- BEA refresh after 2026-06-26 (`python3 -m indicators.pipeline`) clears 3 stale US signals.
+
+---
+
 ## 2026-06-24 — Signals page (/signals) — 5-force signal breakdown
 
 **Done:**

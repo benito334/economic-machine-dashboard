@@ -122,7 +122,7 @@ def build_signals(
     series_std = float(clean.std(ddof=1)) if n > 1 else None
 
     # Pre-compute rolling Z-scores for all configurable look-back windows
-    _ROLLING_MONTHS = [12, 18, 24, 36, 48, 60]
+    _ROLLING_MONTHS = [12, 18, 24, 36, 48, 60, 90, 120]
     rolling_zs: dict[str, pd.Series] = {
         f"zscore_{m}m": zscore_rolling(clean, months_to_periods(m, binding.frequency))
         for m in _ROLLING_MONTHS
@@ -186,6 +186,8 @@ def build_signals(
                 zscore_36m=_f(rolling_zs["zscore_36m"].iloc[i]),
                 zscore_48m=_f(rolling_zs["zscore_48m"].iloc[i]),
                 zscore_60m=_f(rolling_zs["zscore_60m"].iloc[i]),
+                zscore_90m=_f(rolling_zs["zscore_90m"].iloc[i]),
+                zscore_120m=_f(rolling_zs["zscore_120m"].iloc[i]),
                 is_proxy=binding.is_proxy,
                 is_constructed=binding.is_constructed,
                 is_stale=_is_stale(obs, binding.frequency, is_latest),

@@ -405,18 +405,26 @@ def get_layout() -> html.Div:
 
 # ── Callback ──────────────────────────────────────────────────────────────────
 
+_SIGNALS_INFLATION_WINDOW_COL = {60: "60m", 90: "90m", 120: "120m"}
+_SIGNALS_GROWTH_WINDOW_COL   = {36: "36m", 48: "48m", 60: "60m"}
+
+
 @callback(
     Output("signals-content", "children"),
-    [Input("country-store", "data"),
-     Input("page-trigger",  "data")],
+    [Input("country-store",          "data"),
+     Input("page-trigger",           "data"),
+     Input("zscore-window-store",    "data"),
+     Input("inflation-window-store", "data")],
     prevent_initial_call=False,
 )
-def render_signals(country_data, page_trigger):
+def render_signals(country_data, page_trigger, zscore_window=0, inflation_window=0):
     page = (page_trigger or {}).get("page", "")
     if page and page != "/signals":
         return no_update
 
     country = str(country_data or "US").upper()
+    zscore_window    = int(zscore_window    or 0)
+    inflation_window = int(inflation_window or 0)
 
     # ── Composite data (Growth / Inflation) ───────────────────────────────────
     comp_df = load_composite_component_status(country)
@@ -427,8 +435,20 @@ def render_signals(country_data, page_trigger):
         hist = load_composite_history(country=country)
         if not hist.empty:
             row = hist.iloc[-1]
-            g_z = float(row["growth_score"])    if pd.notna(row.get("growth_score"))    else None
-            i_z = float(row["inflation_score"]) if pd.notna(row.get("inflation_score")) else None
+            # Growth: use rolling window if available
+            g_sfx = _SIGNALS_GROWTH_WINDOW_COL.get(zscore_window)
+            g_roll_col = f"growth_score_{g_sfx}" if g_sfx else None
+            if g_roll_col and g_roll_col in hist.columns and pd.notna(row.get(g_roll_col)):
+                g_z = float(row[g_roll_col])
+            else:
+                g_z = float(row["growth_score"]) if pd.notna(row.get("growth_score")) else None
+            # Inflation: use rolling window if available
+            i_sfx = _SIGNALS_INFLATION_WINDOW_COL.get(inflation_window)
+            i_roll_col = f"inflation_score_{i_sfx}" if i_sfx else None
+            if i_roll_col and i_roll_col in hist.columns and pd.notna(row.get(i_roll_col)):
+                i_z = float(row[i_roll_col])
+            else:
+                i_z = float(row["inflation_score"]) if pd.notna(row.get("inflation_score")) else None
             wa_raw = row.get("weight_audit")
             if wa_raw:
                 raw = json.loads(wa_raw) if isinstance(wa_raw, str) else wa_raw

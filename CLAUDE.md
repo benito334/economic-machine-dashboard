@@ -143,7 +143,9 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - Confidence metric: always DB directional-agreement fraction; rolling quadrant-consistency override removed (was trivially 100% in multi-year Stagflation)
 - Browser back/forward supported via `dcc.Location`; `page-trigger` store guarantees callback ordering
 - **Dash 4.x note**: Slider CSS uses `dash-slider-*` class names (Radix UI), NOT `rc-slider-*`
-- `_RQ_MAP` is module-level in `charting.py`; `zscore-window-store`/`diseq-window-store` use `storage_type="local"`
+- `_RQ_MAP` is module-level in `charting.py`; `zscore-window-store`/`diseq-window-store`/`inflation-window-store` use `storage_type="local"`
+- **Separate Growth / Inflation Z-score windows** (added 2026-06-24): Growth = Full/36m/48m/60m (`zscore-window-store`, `_FORCE_WINDOW_COL`); Inflation = Full/60m/90m/120m (`inflation-window-store`, `_INFLATION_WINDOW_COL`). Both are independent — scatter X-axis uses growth col, Y-axis uses inflation col. New DB columns: `zscore_90m`, `zscore_120m` (signals); `inflation_score_90m`, `inflation_score_120m` (composites). Pipeline Passes 5e-5f populate them.
+- **Signals page** (`dashboard/signals_page.py`, route `/signals`): 5 collapsible sections (Growth / Inflation / Interest Rate / Credit / Volatility); 8-column Force Component Inputs table (Signal / Importance / Config Wt / Eff Wt / Last Data / Z-bar / Momentum / Status); Growth and Inflation Z reflect their respective rolling window stores.
 
 ---
 

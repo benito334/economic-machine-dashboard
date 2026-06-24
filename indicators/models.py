@@ -60,6 +60,8 @@ class Signal(BaseModel):
     zscore_36m: Optional[float] = None
     zscore_48m: Optional[float] = None
     zscore_60m: Optional[float] = None
+    zscore_90m: Optional[float] = None
+    zscore_120m: Optional[float] = None
     is_constructed: bool = False
     is_proxy: bool = False
     is_stale: bool = False
