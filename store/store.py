@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import duckdb
 import pandas as pd
@@ -68,10 +68,27 @@ def get_connection(db_path: Path = DB_PATH) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(str(db_path))
 
 
+_CREATE_WEIGHT_CHANGE_LOG = """
+CREATE TABLE IF NOT EXISTS weight_change_log (
+    log_id      BIGINT    NOT NULL,
+    changed_at  TIMESTAMP NOT NULL,
+    country     VARCHAR   NOT NULL,
+    signal_id   VARCHAR   NOT NULL,
+    basket      VARCHAR   NOT NULL,
+    old_importance DOUBLE NOT NULL,
+    new_importance DOUBLE NOT NULL,
+    delta       DOUBLE    NOT NULL,
+    reason      VARCHAR   DEFAULT '',
+    source      VARCHAR   DEFAULT 'manual'
+)
+"""
+
+
 def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
     conn.execute(_CREATE_COMPOSITES)
     conn.execute(_CREATE_DEBT_STRESS)
+    conn.execute(_CREATE_WEIGHT_CHANGE_LOG)
     # Migrations for databases created by earlier releases.
     conn.execute(
         "ALTER TABLE debt_stress_snapshots "
@@ -456,3 +473,79 @@ def query_debt_stress_history(
     return conn.execute(
         "SELECT * FROM debt_stress_snapshots WHERE country = ? ORDER BY as_of", [country]
     ).df()
+
+
+def log_weight_changes(
+    conn: duckdb.DuckDBPyConnection,
+    changes: list[dict],
+    reason: str = "",
+    source: str = "manual",
+) -> int:
+    """Insert rows into weight_change_log.
+
+    Each entry in `changes` must have:
+        country, signal_id, basket, old_importance, new_importance
+    """
+    if not changes:
+        return 0
+
+    # Determine next log_id
+    result = conn.execute("SELECT COALESCE(MAX(log_id), 0) FROM weight_change_log").fetchone()
+    next_id = (result[0] if result else 0) + 1
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for i, c in enumerate(changes):
+        old = float(c["old_importance"])
+        new = float(c["new_importance"])
+        if round(abs(new - old), 4) < 0.001:
+            continue
+        rows.append((
+            next_id + i,
+            now,
+            c["country"],
+            c["signal_id"],
+            c.get("basket", ""),
+            old,
+            new,
+            round(new - old, 4),
+            reason or "",
+            source,
+        ))
+
+    if not rows:
+        return 0
+
+    conn.executemany(
+        """INSERT INTO weight_change_log
+           (log_id, changed_at, country, signal_id, basket,
+            old_importance, new_importance, delta, reason, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        rows,
+    )
+    return len(rows)
+
+
+def query_weight_change_log(
+    conn: duckdb.DuckDBPyConnection,
+    country: Optional[str] = None,
+) -> pd.DataFrame:
+    if country:
+        return conn.execute(
+            "SELECT * FROM weight_change_log WHERE country = ? ORDER BY changed_at DESC",
+            [country],
+        ).df()
+    return conn.execute(
+        "SELECT * FROM weight_change_log ORDER BY changed_at DESC"
+    ).df()
+
+
+def update_weight_change_reason(
+    conn: duckdb.DuckDBPyConnection,
+    log_id: int,
+    reason: str,
+) -> None:
+    conn.execute(
+        "UPDATE weight_change_log SET reason = ? WHERE log_id = ?",
+        [reason, log_id],
+    )

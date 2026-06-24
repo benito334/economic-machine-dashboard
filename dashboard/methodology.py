@@ -475,6 +475,12 @@ def get_layout() -> html.Div:
                         "capacity_util (1.0); all others (0.5). Inflation: pce_core and "
                         "cpi_core (1.0); all others (0.5). importance is the primary judgement "
                         "dial (0–1). quality_factor reflects data quality concerns.",
+                        "Importance tiers: PRIMARY (0.85–1.00) — non-redundant anchors that "
+                        "drive the composite; STRONG (0.60–0.84) — reliable supplementary "
+                        "signals; CONTEXT (0.30–0.59) — marginal info, volatile or lagging; "
+                        "VOLATILE (0.10–0.29) — high noise or annual-only, present but not "
+                        "drivers. These are informed priors; Phase 3B calibrate.py will "
+                        "optimize them against historical regime labels.",
                         "Momentum agreement tilt: w_momentum = clip(1 + α × sign(Z_adj) × "
                         "direction_sign, m_min, m_max). When the force Z-score and 3-month "
                         "direction agree, the weight is boosted up to 1.5×. When they conflict, "
@@ -486,6 +492,15 @@ def get_layout() -> html.Div:
                         "Effective weight: w_eff = w_cfg × w_momentum × w_decay, renormalised "
                         "over the active signal set.",
                     ],
+                    tables=[(
+                        ["Tier", "importance range", "Role"],
+                        [
+                            ["PRIMARY",  "0.85 – 1.00", "Non-redundant anchor; drives the composite"],
+                            ["STRONG",   "0.60 – 0.84", "Reliable supplementary; some correlation to primary"],
+                            ["CONTEXT",  "0.30 – 0.59", "Marginal info; volatile, lagging, or redundant"],
+                            ["VOLATILE", "0.10 – 0.29", "High noise or annual-only; present but not a driver"],
+                        ]
+                    )],
                     formulas=[F("Configured component weight"), F("Observation-age decay")],
                 )),
                 _p("Each composite component carries a configured nominal weight plus two "
@@ -503,6 +518,30 @@ def get_layout() -> html.Div:
                    "quality_factor reflects data quality concerns — lower for proxy or "
                    "indirect measures."),
                 _inline_formula(F("Configured component weight")),
+                _sub("Importance tiers"),
+                _p("importance values are grouped into four named tiers to make calibration "
+                   "decisions explicit and consistent across countries:"),
+                _table(
+                    ["Tier", "importance range", "Role"],
+                    [
+                        ["PRIMARY",  "0.85 – 1.00",
+                         "Non-redundant anchors; drive the composite.  "
+                         "E.g. pce_core (inflation), payrolls (growth)."],
+                        ["STRONG",   "0.60 – 0.84",
+                         "Reliable supplementary signals; some correlation to primary.  "
+                         "E.g. cpi_core (correlated with pce_core, r≈0.92 → demoted from PRIMARY)."],
+                        ["CONTEXT",  "0.30 – 0.59",
+                         "Adds marginal information; volatile, lagging, or partly redundant.  "
+                         "E.g. wages_eci, breakeven_5y."],
+                        ["VOLATILE", "0.10 – 0.29",
+                         "High noise or annual-only; included for breadth but not a driver.  "
+                         "E.g. breakeven_10y (r≈0.90 vs breakeven_5y → capped at VOLATILE), "
+                         "ppi_broad."],
+                    ]
+                ),
+                _note("These are informed priors — judgement calls based on economic theory and "
+                      "observed correlations. Phase 3B (indicators/calibrate.py) will optimize "
+                      "them against historical regime labels."),
                 _sub("Momentum agreement tilt"),
                 _p("w_momentum = clip( 1 + α × sign(Z_adj) × direction_sign , m_min, m_max ).  "
                    "When the force Z-score and 3-month direction agree (both positive or both "
@@ -849,11 +888,186 @@ def get_layout() -> html.Div:
                       "World Bank / IMF harmonised data will be used with explicit gap flags."),
             ], title="11 · Country Coverage & Rollout"),
 
-            # 12 ── Deferred & Out of Scope ─────────────────────────────────────
+            # 12 ── Weight Calibration & Audit ─────────────────────────────────
             dbc.AccordionItem([
                 _copy_btn(_section_text(
-                    "12 · Deferred Items",
-                    [],
+                    "12 · Weight Calibration & Audit",
+                    [
+                        "Three audit calculations check that configured importance values are "
+                        "internally consistent. They are accessible on the Weight Audit page "
+                        "(/weight-audit) and can be re-triggered at any time with the Re-run button.",
+                        "Force Balance — checks that the total pre-normalisation weight mass of "
+                        "the Growth basket and Inflation basket are roughly equal. "
+                        "Mass = Σ(base_share × importance × quality_factor) for each basket. "
+                        "Target ratio G/I: 0.75 – 1.33. "
+                        "Triggered automatically on every pipeline Pass 5 (composites run) "
+                        "and logged as [BALANCE] INFO or [BALANCE] WARN per country.",
+                        "Correlation Audit — computes pairwise Pearson r of monthly Z-score "
+                        "histories for all signals in each basket. Pairs with |r| > 0.80 in the "
+                        "same basket violate the anti-redundancy rule: the secondary signal's "
+                        "importance must be reduced to ≤40% of the primary's to avoid "
+                        "double-counting correlated information. "
+                        "Triggered automatically on pipeline Pass 5 after each country upsert "
+                        "and logged as [CORR AUDIT] INFO or [CORR AUDIT] WARN.",
+                        "Monte Carlo Sensitivity — holds the latest Z-scores fixed and perturbs "
+                        "each signal's importance by N(0, 15%) multiplicatively across 500 trials, "
+                        "recomputing growth and inflation scores each time. The scatter cloud and "
+                        "donut chart show the resulting regime label distribution. "
+                        "On-demand only — not run in the pipeline. "
+                        "How to interpret: if ≥80% of trials confirm the base reading, the "
+                        "regime label is robust to weight uncertainty. If the cloud straddles a "
+                        "boundary or the donut splits across two regimes, the reading is fragile "
+                        "and should be qualified (e.g. note low confidence or near-zero scores). "
+                        "Current output is informational — the action is to manually review and "
+                        "adjust importance values in {cc}_composites.yaml for signals that are "
+                        "pulling the scatter toward the wrong quadrant. Phase 3B (calibrate.py) "
+                        "will automate importance optimization against historical regime labels.",
+                    ],
+                    tables=[(
+                        ["Audit", "Trigger", "Output", "Action threshold"],
+                        [
+                            ["Force Balance",
+                             "Pipeline Pass 5 (auto) + Weight Audit page (on-demand)",
+                             "[BALANCE] log line; Weight Audit bar chart",
+                             "G/I ratio outside 0.75–1.33 → adjust base_share or importance"],
+                            ["Correlation Audit",
+                             "Pipeline Pass 5 after each country upsert (auto) + Weight Audit page",
+                             "[CORR AUDIT] log line; heatmap + flagged-pairs table",
+                             "|r| > 0.80 same basket → secondary importance ≤ 40% of primary"],
+                            ["Monte Carlo",
+                             "Weight Audit page only (on-demand)",
+                             "Scatter + donut (500 trials, ±15% importance)",
+                             "< 80% same-quadrant confirmation → review importance values"],
+                        ]
+                    )],
+                )),
+                _p("Three audit calculations verify that configured importance values are "
+                   "internally consistent.  All three are accessible on the Weight Audit "
+                   "page (/weight-audit) and can be re-triggered at any time with the "
+                   "↺ Re-run button."),
+                _sub("1 — Force Balance"),
+                _p("Checks that the total pre-normalisation weight mass of the Growth basket "
+                   "and Inflation basket are roughly equal.  "
+                   "Mass = Σ(base_share × importance × quality_factor) for each basket.  "
+                   "Target ratio G/I: 0.75 – 1.33.  A ratio outside this range means one "
+                   "force has been over-configured relative to the other before normalisation."),
+                _note("Trigger: runs automatically on every pipeline Pass 5 (composites run), "
+                      "logged as [BALANCE] INFO (OK) or [BALANCE] WARN (out of range) per country.  "
+                      "Also computed on-demand when the Weight Audit page loads or Re-run is clicked."),
+                _p("Action: if the ratio is out of range, adjust base_share or importance on "
+                   "the lighter basket's signals, or add signals to it."),
+                _sub("2 — Correlation Audit"),
+                _p("Computes pairwise Pearson r of monthly Z-score histories for all signals "
+                   "in each basket.  The anti-redundancy rule requires that for any same-basket "
+                   "pair with |r| > 0.80, the secondary signal's importance must be ≤ 40% of "
+                   "the primary's.  Without this constraint, two highly correlated signals "
+                   "each at PRIMARY importance would effectively double-count the same "
+                   "macroeconomic signal."),
+                _note("Trigger: runs automatically on pipeline Pass 5 after each country upsert "
+                      "(audit_signal_correlations()), logged as [CORR AUDIT] WARN for flagged pairs.  "
+                      "Full matrix computed on-demand in Weight Audit page with min_periods=24 months."),
+                _p("Action: for each flagged pair, identify which signal is the primary anchor "
+                   "and reduce the secondary's importance.  Examples applied: cpi_core→STRONG "
+                   "(was PRIMARY, r≈0.92 with pce_core); breakeven_10y→VOLATILE "
+                   "(r≈0.90 with breakeven_5y)."),
+                _sub("3 — Monte Carlo Sensitivity"),
+                _p("Holds the latest Z-scores fixed and perturbs each signal's importance by "
+                   "N(0, 15%) multiplicatively across 500 trials, recomputing normalised growth "
+                   "and inflation scores each time.  The results show how much the regime label "
+                   "depends on the specific importance values chosen."),
+                _note("Trigger: on-demand only — not part of the pipeline.  Runs when the "
+                      "Weight Audit page loads or Re-run is clicked (~1–2 seconds for 500 trials)."),
+                _p("How to interpret the outputs:"),
+                _table(
+                    ["Output", "What it shows", "Healthy reading"],
+                    [
+                        ["Scatter cloud",
+                         "Each dot is one trial; colour = quadrant. "
+                         "A tight cluster means the composite is stable across weight uncertainty.",
+                         "Cloud contained within one quadrant"],
+                        ["Donut chart",
+                         "Percentage of trials landing in each regime label.",
+                         "≥ 80% in the base quadrant"],
+                        ["Caption %",
+                         "Share of trials confirming the unperturbed (base) quadrant.",
+                         "≥ 80% confirms a robust reading; < 60% is fragile"],
+                    ]
+                ),
+                _p("How to act on the output: a fragile reading (scatter straddling a boundary, "
+                   "donut split across two regimes) means the current regime label is sensitive "
+                   "to weight assumptions.  Inspect which signals are near zero and whether "
+                   "their importance tier is justified.  Adjust importance in "
+                   "config/countries/{cc}_composites.yaml and re-run."),
+                _note("Current use: informational + manual config tuning."),
+                _table(
+                    ["Audit", "Trigger", "Output", "Action threshold"],
+                    [
+                        ["Force Balance",
+                         "Pipeline Pass 5 (auto) + Weight Audit on-demand",
+                         "Bar chart + [BALANCE] log",
+                         "G/I ratio outside 0.75–1.33"],
+                        ["Correlation Audit",
+                         "Pipeline Pass 5 (auto) + Weight Audit on-demand",
+                         "Heatmap + flagged-pairs table + [CORR AUDIT] log",
+                         "|r| > 0.80 in same basket"],
+                        ["Monte Carlo",
+                         "Weight Audit on-demand only",
+                         "Scatter + donut (500 trials, ±15%)",
+                         "< 80% same-quadrant confirmation"],
+                    ]
+                ),
+                _sub("4 — Importance Editor"),
+                _p("The Weight Audit page (/weight-audit) provides an in-browser editor for "
+                   "signal importance values. All signals for the selected country are shown in "
+                   "a table with their current importance, tier, base_share, and quality_factor. "
+                   "Editing the importance column immediately updates the live G/I ratio preview. "
+                   "A mandatory Reason field must be filled before saving — every change is "
+                   "written to both the YAML file (config/countries/{cc}_composites.yaml) and "
+                   "the weight_change_log table in DuckDB."),
+                _note("Trigger: manual only — the user edits values and clicks Save. "
+                      "YAML comment annotations (tier labels, CORR AUDIT flags) are preserved "
+                      "line-by-line; PyYAML is not used to avoid stripping inline comments."),
+                _sub("5 — GDP-Regression Calibration (Growth basket)"),
+                _p("The calibration tool (indicators/calibrate.py) regresses each growth signal's "
+                   "Z-score against the real GDP Z-score ({cc}.master.gdp_real) using OLS "
+                   "to derive empirically grounded importance weights. "
+                   "Monthly signals are resampled to quarterly mean before regression. "
+                   "Signals with an invert=True flag are negated so all betas are directionally "
+                   "consistent with GDP."),
+                _p("Methodology:"),
+                _table(
+                    ["Step", "Detail"],
+                    [
+                        ["OLS",              "linregress(signal_z_quarterly, gdp_z_quarterly)"],
+                        ["Positive filter",  "Signals with β ≤ 0 receive no recommendation — "
+                                             "user decides whether to adjust manually (Option B)"],
+                        ["Normalise",        "Positive betas → contribution_share = β / Σ(β⁺)"],
+                        ["Scale",            "contribution_share / max_share × 0.95, floor 0.10 "
+                                             "→ maps naturally onto the PRIMARY–VOLATILE importance range"],
+                        ["Output",           "Table: β, R², p-value, contribution_share, "
+                                             "recommended_imp, current_importance, Δ"],
+                    ]
+                ),
+                _note("The regression is advisory — results are displayed in the UI and the user "
+                      "chooses which signals to update. 'Apply Selected' populates the Importance "
+                      "Editor for review; the user then confirms with Save. "
+                      "Minimum 20 common quarterly observations required to run regression on a signal."),
+                _sub("6 — Weight Change History"),
+                _p("Every importance change saved from the editor is logged to the "
+                   "weight_change_log DuckDB table with: timestamp, country, signal, basket, "
+                   "old value, new value, delta, source (manual / regression), and user reason. "
+                   "The Weight History page (/weight-history) presents this log as a browsable, "
+                   "filterable table. The Reason column is editable — click Save Notes to "
+                   "update or add reasoning at any time after the fact."),
+                _note("This log is the audit trail for all human judgement calls on importance. "
+                      "It is stored in DuckDB and persists across sessions and container rebuilds."),
+            ], title="12 · Weight Calibration & Audit"),
+
+            # 13 ── Deferred & Out of Scope ─────────────────────────────────────
+            dbc.AccordionItem([
+                _copy_btn(_section_text(
+                    "13 · Deferred Items",
+                    ["Items deferred out of the current scope."],
                     tables=[(
                         ["Item", "Status"],
                         [
@@ -863,7 +1077,7 @@ def get_layout() -> html.Div:
                             ["ADF stationarity tests on debt ratios (B3)", "Planned — diagnostic only"],
                             ["Rolling-window sensitivity grid (C3, K1)",   "Phase 3 back-test"],
                             ["Expanding-window Z-scores for back-test (C4)", "Phase 3 back-test"],
-                            ["OLS weight calibration (I1)",        "Deferred — overfitting risk before Phase 3"],
+                            ["OLS weight calibration (I1)",        "✅ Live — indicators/calibrate.py; advisory, user confirms changes"],
                             ["Dynamic momentum windows (D2)",      "Phase 3 — requires regime labels as input"],
                         ]
                     )],
@@ -881,7 +1095,7 @@ def get_layout() -> html.Div:
                         ["Dynamic momentum windows (D2)",      "Phase 3 — requires regime labels as input"],
                     ]
                 ),
-            ], title="12 · Deferred Items"),
+            ], title="13 · Deferred Items"),
 
         ], start_collapsed=True, always_open=True),
 

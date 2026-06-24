@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-23:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Signal weight calibration complete (tier system + force balance + cross-correlation audit). Weight Audit page live at `/weight-audit`. EA current account gap documented as unresolvable from free APIs.
+**As of 2026-06-23:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Weight Audit page enhanced: blank-graph bugs fixed, Re-run button, Importance Editor, GDP-Regression Calibration (indicators/calibrate.py), weight_change_log DuckDB table, Weight History page (/weight-history). EA current account gap documented as unresolvable from free APIs.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -102,7 +102,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 2 Country rollout | 🔄 **In progress** | EZ ✅ (34 signals, 6G+6I composites) + KR ✅ (22 signals) live; next: Japan |
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
-**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is closed — all free API sources exhausted, documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash. Phase 3B `indicators/calibrate.py` (supervised weight calibration via regime back-scoring) is the next planned infrastructure item.
+**To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Also run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is closed — all free API sources exhausted, documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
 
 **Phase 2 architecture notes (as of 2026-06-23):**
 - Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir
@@ -128,7 +128,9 @@ Currently: US series via FRED API only. All other countries use latest-revised d
   - Force-balance rule: `_log_force_balance()` in `composites.py` logs `[BALANCE]` INFO/WARN per country per Pass 5 run; target ratio 0.75–1.33
   - `audit_signal_correlations()` in `composites.py` called after each country upsert; logs `[CORR AUDIT] WARN` for flagged pairs
   - `compute_force_balance()`, `compute_signal_correlation_matrix()`, `monte_carlo_regime_sensitivity()` in `composites.py` power the Weight Audit UI page
-- **Weight Audit page** (`dashboard/weight_audit.py`, route `/weight-audit`): Force Balance bar chart (all countries) + Correlation heatmaps (per country, growth + inflation baskets) + Monte Carlo scatter + donut (500 trials, ±15% importance perturbation)
+- **Weight Audit page** (`dashboard/weight_audit.py`, route `/weight-audit`): Force Balance bar chart (all countries) + Correlation heatmaps (per country, growth + inflation baskets) + Monte Carlo scatter + donut (500 trials, ±15% importance perturbation) + Re-run button + **Importance Editor** (edit importance inline, live G/I ratio preview, reason field, save to YAML + DB) + **GDP-Regression Calibration** (`indicators/calibrate.py`; OLS each growth signal against `{cc}.master.gdp_real`, β≤0 → no recommendation, positive betas scaled to [0.10, 0.95]; "Apply Selected" populates editor for user confirmation)
+- **Weight History page** (`dashboard/weight_history.py`, route `/weight-history`): table of all importance changes from `weight_change_log` DuckDB table; editable Reason column; country filter; Save Notes persists reasons
+- **weight_change_log DuckDB table**: log_id, changed_at, country, signal_id, basket, old_importance, new_importance, delta, reason, source (manual/regression); written on every editor save; `log_weight_changes()`, `query_weight_change_log()`, `update_weight_change_reason()` in `store/store.py`
 
 **:8502 Dash nav structure (as of 2026-06-22):**
 - Left sidebar: country selector dropdown + vertical pill nav (Data / Indicators groups) + **Z-Score Window slider** (Full/36m/48m/60m) + **Disequilibrium Window slider** (Full/12m/18m/24m) — both persisted in localStorage; nav icons have `dbc.Tooltip` on hover in collapsed state
@@ -136,7 +138,8 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 - **Data group pages**: `🌐 Global Overview` (`/overview`) — TE-style cross-country macro table (9 columns, color-coded, date-stamped); `📋 Data Dashboard` (`/data-dashboard`) — 63-signal feed monitor with sticky header, sortable columns, filter bar, status badges, ↺ Reset Sort
 - **Data Dashboard sort**: clicking column header toggles asc/desc; Status column sort key: 0=stale→5=OK; flat when sorted, grouped by force when no sort active
 - Regime Map page: scatter (55vh, data-driven zoom with 15% buffer) + What Changed + Conflicts + Signal Drill-Downs (10 lens accordions) + Data-Quality Log; Force Components title bar amber (`var(--slider-accent)`); selected date shows "Month Year / X months ago" block
-- Methodology page: each section has inline formulas + full-section `dcc.Clipboard` copy; formulas embedded from live catalog (`build_formula_catalog()` + `build_debt_stress_formula_catalog()`)
+- Methodology page: each section has inline formulas + full-section `dcc.Clipboard` copy; formulas embedded from live catalog (`build_formula_catalog()` + `build_debt_stress_formula_catalog()`); Section 12 covers importance tiers, GDP regression calibration, importance editor, weight history
+- **Reference group pages**: `📖 Methodology` (`/methodology`); `🔍 Weight Audit` (`/weight-audit`); `📝 Weight History` (`/weight-history`)
 - Confidence metric: always DB directional-agreement fraction; rolling quadrant-consistency override removed (was trivially 100% in multi-year Stagflation)
 - Browser back/forward supported via `dcc.Location`; `page-trigger` store guarantees callback ordering
 - **Dash 4.x note**: Slider CSS uses `dash-slider-*` class names (Radix UI), NOT `rc-slider-*`

@@ -26,7 +26,17 @@ All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidanc
 
 ---
 
-## Completed this session (2026-06-23)
+## Completed this session (2026-06-23) — session 2
+- **Weight Audit blank graphs fixed**: split `update_layout()` calls to avoid duplicate `margin` kwarg; `_hex_alpha()` helper converts 8-digit hex to `rgba()` for Plotly compatibility
+- **Re-run button**: `wa-run-store` dcc.Store; clicking ↺ Re-run re-triggers all three audit panels on demand
+- **Importance Editor (Weight Audit Section 4)**: inline editable DataTable for all signals; live G/I ratio preview; reason field; saves to YAML + `weight_change_log` DuckDB table
+- **GDP-Regression Calibration (Weight Audit Section 5)**: `indicators/calibrate.py`; OLS each growth signal against `{cc}.master.gdp_real`; positive betas scaled to [0.10, 0.95]; β≤0 → no recommendation; "Apply Selected" populates editor
+- **weight_change_log table**: DDL + `log_weight_changes()` / `query_weight_change_log()` / `update_weight_change_reason()` in `store/store.py`
+- **Weight History page** (`/weight-history`): `dashboard/weight_history.py`; table + editable Reason column + Save Notes; wired into charting.py nav + `_PAGE_MAP`
+- **Methodology Section 12 expanded**: importance tier table, GDP regression methodology, importance editor docs, weight history docs; deferred table updated (OLS calibration now live)
+- **CLAUDE.md + worklog.md + session-checklist.md updated**
+
+## Completed this session (2026-06-23) — session 1
 - **Data Explorer country-awareness**: all 6 callbacks wired to `country-store`; signal table resets on country switch
 - **ECB SDW fetcher**: `fetch_ecb_series()` in `loader.py`; Pass 1.6 in `pipeline.py`; `"FLOW/KEY"` series_id format
 - **7 new EZ bindings**: employment growth, construction prod, capacity util (Eurostat); BTP-Bund spread via ECB IRS; fiscal budget balance (Eurostat quarterly); HICP energy + food sources corrected to FRED index series (monthly through current)

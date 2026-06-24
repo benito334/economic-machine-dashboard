@@ -750,3 +750,34 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - `EIA_API_KEY` required for commodity data (Lens B / crude oil) — lower priority, Phase 1A can proceed without it if crude oil is fetched via FRED `DCOILWTICO` (no key needed via FRED).
 
 ---
+
+---
+
+## 2026-06-23 — Session: Weight Audit enhancements + Weight History page
+
+**Done:**
+
+### Bug fixes
+- Fixed blank graphs on Weight Audit page (`/weight-audit`): two separate Plotly bugs:
+  1. `figure_layout()` returns `margin`/`xaxis`/`yaxis` keys — callers were passing duplicates → split into two sequential `update_layout()` calls across all four chart functions
+  2. Plotly rejects 8-digit hex colors (`#RRGGBBAA`) — added `_hex_alpha()` helper to convert to `rgba(r,g,b,a)` format
+
+### New features shipped
+1. **Re-run button** on Weight Audit page — triggers force balance, correlation heatmaps, and Monte Carlo on demand without a page reload
+2. **Importance Editor (Section 4)** — editable DataTable showing all signals for the selected country with importance, tier, base_share, quality_factor; live G/I ratio preview recalculates as values are edited; Reset and Save buttons; Reason text input before save
+3. **GDP-Regression Calibration (Section 5)** — `indicators/calibrate.py`: OLS of each growth signal's quarterly Z-score against `{cc}.master.gdp_real`; positive betas normalized to contribution shares then scaled to [0.10, 0.95]; β ≤ 0 signals get no recommendation (Option B — user decides); results table shown in UI with recommended importance and Δ from current; "Apply Selected to Editor" button populates editor for review before save
+4. **Weight Change Log** — `weight_change_log` table added to DuckDB (log_id, changed_at, country, signal_id, basket, old/new importance, delta, reason, source); every save from the editor writes a row; `log_weight_changes()`, `query_weight_change_log()`, `update_weight_change_reason()` in `store/store.py`
+5. **Weight History page** (`/weight-history`) — new `dashboard/weight_history.py`; table of all importance changes, editable Reason column, Save Notes button, country filter; wired into charting.py nav and `_PAGE_MAP`
+6. **Methodology page** — Section 12 expanded with importance tier table, GDP regression calibration subsection; row in deferred table updated (OLS calibration now live)
+
+**Files changed:**
+- `indicators/calibrate.py` — NEW
+- `store/store.py` — `weight_change_log` DDL + 3 new functions
+- `dashboard/weight_audit.py` — Re-run store, editor section, calibration section, `_hex_alpha()`, split `update_layout()` calls
+- `dashboard/weight_history.py` — NEW
+- `dashboard/methodology.py` — expanded Section 12, updated Section 13 deferred table
+- `dashboard/charting.py` — import + nav link + page function + `_PAGE_MAP` entry for weight-history
+
+**Current state:** 353 tests pass. 119 signals (63 US + 34 EZ + 22 KR). Docker rebuilt clean, :8502 HTTP 200.
+
+**Next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). BEA refresh available after 2026-06-26.
