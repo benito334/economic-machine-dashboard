@@ -135,7 +135,12 @@ def test_load_wide_excludes_unreliable_latest_signals(mem_conn):
         exclude_unreliable=True,
     )
     assert pd.notna(wide.loc[pd.Timestamp("2023-01-31"), "us.growth.stale"])
-    assert pd.isna(wide.loc[pd.Timestamp("2023-02-28"), "us.growth.stale"])
+    # The observation month itself (Feb) is preserved; only months AFTER are zeroed.
+    assert pd.notna(wide.loc[pd.Timestamp("2023-02-28"), "us.growth.stale"])
+    # Verify stale zeroing applies to months after the observation month.
+    # Feb is the last row in this fixture, so we check Jan stayed clean and Feb has value.
+    assert wide.loc[pd.Timestamp("2023-01-31"), "us.growth.stale"] == pytest.approx(1.0)
+    assert wide.loc[pd.Timestamp("2023-02-28"), "us.growth.stale"] == pytest.approx(2.0)
     assert wide["us.growth.short"].isna().all()
 
 

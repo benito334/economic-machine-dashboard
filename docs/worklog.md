@@ -4,6 +4,21 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-25 — Composites stale-exclusion fix + signal QAQC
+
+**Done:**
+- **Fix: `_load_wide(exclude_unreliable=True)` now preserves the observation month for stale signals** (`indicators/composites.py`). Previously, a daily signal marked `is_stale=True` (e.g., crude oil last obs June 15) had its Z-score zeroed from the END of the observation month (June 30) onward — wiping it from the June composite. Fix: `stale_from = (period + 1).to_timestamp("M")`. A June 15 observation is now available at the June composite; zeroing starts from July onward.
+- **Pipeline re-run** — fetched fresh crude oil data (June 22, `is_stale=False`); crude oil now contributing to June inflation composite (`eff_wt=0.0097`, `missing=False`).
+- **US quadrant updated to Inflationary Boom** (growth=+0.015, inflation=+0.434). Was misclassified as Stagflation while crude oil was excluded.
+- **Signal QAQC**: `us.credit.bank_loans` / `ez.policy.central_bank_assets` (weekly, ~15d) — display-only stale, not in composites. EZ yields (ECB IRS lag, 145-175d) — no free-API fix. KR CPI/IP — correctly excluded. All genuinely stale signals confirmed not affecting composite calculations.
+- **US signal count corrected to 64** in tests (`test_load_signal_overview_returns_all_signals`, `test_explorer_signal_table_callback`).
+- **354/354 tests pass.**
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+
+---
+
 ## 2026-06-25 — Signal drill-down, info popup, color palette, composite momentum
 
 **Done:**

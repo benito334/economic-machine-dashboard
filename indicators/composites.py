@@ -655,7 +655,9 @@ def _load_wide(
             if bool(row.low_history):
                 monthly[row.id] = np.nan
             elif bool(row.is_stale):
-                stale_from = pd.Timestamp(row.as_of).to_period("M").to_timestamp("M")
+                # Exclude from the month AFTER the observation, not the observation
+                # month itself. A June 15 observation is valid for the June composite.
+                stale_from = (pd.Timestamp(row.as_of).to_period("M") + 1).to_timestamp("M")
                 monthly.loc[monthly.index >= stale_from, row.id] = np.nan
 
     if return_fill_age:
