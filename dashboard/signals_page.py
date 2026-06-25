@@ -114,6 +114,29 @@ def _dash_td() -> html.Td:
     return html.Td("—", style={**_TD_MONO, "textAlign": "center", "color": "#555"})
 
 
+def _semantic_z_color(z, force: str, invert: bool = False) -> str:
+    """
+    Semantic color for a signal Z-score bar + text.
+
+    Growth:    force-positive adj_z (growing) → green; force-negative → red.
+    Inflation: reversed — positive Z (rising inflation) → red; negative → green.
+    invert:    negate adj_z before applying the logic (e.g. unemployment).
+    Alpha scales with |adj_z| / 3.0 so faint signals are visually quieter.
+    """
+    if z is None or (isinstance(z, float) and math.isnan(z)):
+        return "#666"
+    adj_z = -float(z) if invert else float(z)
+    if force == "inflation":
+        adj_z = -adj_z          # positive inflation = bad = red
+    magnitude = min(abs(adj_z) / 3.0, 1.0)
+    if magnitude < 0.07:
+        return "#666"           # near-zero → grey
+    alpha = 0.35 + 0.65 * magnitude
+    if adj_z > 0:
+        return f"rgba(92, 186, 138, {alpha:.2f})"   # green — economically good
+    return f"rgba(232, 115, 76, {alpha:.2f})"        # red  — economically bad
+
+
 def _z_bar_cell(z: Optional[float], color: str) -> html.Td:
     if z is None or (isinstance(z, float) and math.isnan(z)):
         return html.Td("—", style={**_TD_MONO, "color": "#555", "textAlign": "right"})
@@ -126,7 +149,7 @@ def _z_bar_cell(z: Optional[float], color: str) -> html.Td:
                 html.Div(style={
                     "width": f"{bar_w:.0f}px", "height": "6px",
                     "backgroundColor": color, "borderRadius": "2px",
-                    "opacity": "0.6", "flexShrink": "0",
+                    "opacity": "0.7", "flexShrink": "0",
                 }),
                 html.Span(f"{z:+.2f}", style={
                     "color": color, "fontFamily": "monospace", "fontSize": "0.82rem",
@@ -142,11 +165,12 @@ def _momentum_cell(
     change_3m: Optional[float],
     positive_dir: str = "rising",
     color: str = _GROWTH_COLOR,
+    bad_color: str = "#666",
 ) -> html.Td:
     if not direction:
         return html.Td(html.Span("—", style={"color": "#555"}), style=_TD)
-    arrow     = "↑" if direction == "rising" else "↓"
-    fg_color  = color if direction == positive_dir else "#666"
+    arrow    = "↑" if direction == "rising" else "↓"
+    fg_color = color if direction == positive_dir else bad_color
     if change_3m is not None and not (isinstance(change_3m, float) and math.isnan(change_3m)):
         content = html.Span([
             html.Span(f"{arrow} {direction}   ", style={"color": fg_color}),
@@ -254,6 +278,16 @@ def _composite_rows(
         )
         positive_dir = "falling" if (force == "growth" and invert) else "rising"
 
+        # Semantic Z-color: green = economically good, red = bad, grey = neutral
+        z_color = _semantic_z_color(
+            None if z_missing else z, force, invert,
+        )
+        # Momentum arrow: green = good direction, red = bad direction
+        if force == "growth":
+            mom_good, mom_bad = "#5CBA8A", "#E8734C"
+        else:  # inflation
+            mom_good, mom_bad = "#E8734C", "#5CBA8A"
+
         rows.append(html.Tr(
             style={"backgroundColor": row_bg},
             children=[
@@ -268,8 +302,8 @@ def _composite_rows(
                     **_TD_MONO, "textAlign": "center",
                     "color": "var(--muted-color)", "fontSize": "0.75rem",
                 }),
-                _z_bar_cell(None if z_missing else float(z), color),
-                _momentum_cell(direction, change_3m, positive_dir, color),
+                _z_bar_cell(None if z_missing else float(z), z_color),
+                _momentum_cell(direction, change_3m, positive_dir, mom_good, mom_bad),
                 _status_cell(is_stale, low_hist, z_missing,
                              fill_months, momentum_mult, decay_fraction),
             ],

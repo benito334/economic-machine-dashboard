@@ -4,6 +4,18 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-24 — Regime History step reset on navigation
+
+**Done:**
+- **Fix: Regime History now defaults to current date on every visit** — added `Input("page-trigger", "data")` to `update_regime_step` callback in `dashboard/charting.py`; when the triggered input is `page-trigger` and the page is `/regime-history`, the step is reset to 0 (most recent composite). Previously, the in-memory `regime-step-index` store retained whatever step the user last navigated to, so returning to the page could show data from a prior month.
+- **Investigation: Growth momentum score discrepancy between Regime History and Signals tabs** — confirmed by design: Regime History summary strip shows three distinct momentum metrics (composite Z, MoM Δ, Momentum Z over 12mo) while Signals page section header shows a simple majority-vote direction arrow; the composite Z values (`growth_score`) are the same at step=0 but differ at any non-zero step since Regime History is date-sensitive and Signals always shows latest.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- Run `python3 -m indicators.pipeline` after 2026-06-26 (BEA Q1 2026 release clears 3 stale US signals).
+
+---
+
 ## 2026-06-24 — Methodology page audit + per-signal Z-bar window fix
 
 **Done:**
