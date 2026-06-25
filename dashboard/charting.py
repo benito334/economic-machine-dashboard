@@ -2600,7 +2600,8 @@ def _regime_info_children(
      Input({"type": "regime-step-button", "action": "current"}, "n_clicks"),
      Input({"type": "regime-step-button", "action": "next"}, "n_clicks"),
      Input("nav-event", "data"),
-     Input("date-range", "data")],
+     Input("date-range", "data"),
+     Input("page-trigger", "data")],
     State("regime-step-index", "data"),
     prevent_initial_call=True,
 )
@@ -2608,12 +2609,18 @@ def update_regime_step(
     _prev_clicks: Any, _current_clicks: Any, _next_clicks: Any,
     nav_event: dict,
     date_range: dict,
+    page_trigger: dict,
     current_step: int,
 ) -> int:
     triggered = dash.callback_context.triggered_id
     step = current_step or 0
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
+
+    if triggered == "page-trigger":
+        if (page_trigger or {}).get("page") == "/regime-history":
+            return 0
+        return no_update
 
     if triggered == "date-range":
         return 0
