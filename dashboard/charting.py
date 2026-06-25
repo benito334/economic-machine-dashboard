@@ -2226,12 +2226,14 @@ def _regime_info_children(
     }
     """
     rolling = rolling or {}
-    rw = int(rolling.get("window", 0))
-    use_rolling = rw > 0
+    # Each force window resolves independently
+    g_use_rolling = int(rolling.get("window",           0)) > 0
+    i_use_rolling = int(rolling.get("inflation_window", 0)) > 0
+    use_rolling   = g_use_rolling or i_use_rolling
 
-    # Use rolling scores if window is active, otherwise stored composite scores
-    g_score    = rolling.get("g_score") if use_rolling else row.get("growth_score")
-    i_score    = rolling.get("i_score") if use_rolling else row.get("inflation_score")
+    # Use rolling scores if the respective window is active
+    g_score = rolling.get("g_score") if g_use_rolling else row.get("growth_score")
+    i_score = rolling.get("i_score") if i_use_rolling else row.get("inflation_score")
 
     # Derive quadrant from rolling scores when active; fall back to stored label
     _RQ = {
@@ -2248,7 +2250,43 @@ def _regime_info_children(
     else:
         quadrant = row.get("quadrant") or "—"
 
+    # Confidence: recompute from per-signal directions when rolling windows are
+    # active, because the stored value was computed for the stored (not rolling)
+    # quadrant and may no longer match.
     confidence = row.get("confidence")
+    if use_rolling and comp_df is not None and not comp_df.empty:
+        try:
+            _EXP_DIR = {
+                (True,  True):  ("rising",  "rising"),
+                (True,  False): ("rising",  "falling"),
+                (False, True):  ("falling", "rising"),
+                (False, False): ("falling", "falling"),
+            }
+            if g_score is not None and i_score is not None:
+                growth_up    = float(g_score) >= 0
+                inflation_up = float(i_score) >= 0
+                exp_g, exp_i = _EXP_DIR[(growth_up, inflation_up)]
+
+                def _agree(direction: str, exp: str, invert: bool) -> float:
+                    if not direction:
+                        return 0.5
+                    if invert:
+                        exp = "falling" if exp == "rising" else "rising"
+                    return 1.0 if direction == exp else 0.0
+
+                df_g = comp_df[comp_df["composite"] == "growth"]
+                df_i = comp_df[comp_df["composite"] == "inflation"]
+                g_vals = [_agree(str(r.direction or ""), exp_g, bool(r.invert))
+                          for r in df_g.itertuples(index=False)
+                          if r.zscore is not None and not (isinstance(r.zscore, float) and pd.isna(r.zscore))]
+                i_vals = [_agree(str(r.direction or ""), exp_i, bool(r.invert))
+                          for r in df_i.itertuples(index=False)
+                          if r.zscore is not None and not (isinstance(r.zscore, float) and pd.isna(r.zscore))]
+                g_frac = sum(g_vals) / len(g_vals) if g_vals else 0.5
+                i_frac = sum(i_vals) / len(i_vals) if i_vals else 0.5
+                confidence = (g_frac + i_frac) / 2.0
+        except Exception:
+            pass  # fall back to stored confidence
     # Use rolling disequilibrium score when a diseq window is active
     use_rolling_diseq = rolling.get("diseq_window", 0) > 0
     diseq = (
@@ -2363,6 +2401,12 @@ def _regime_info_children(
     conf_str = (f"{confidence:.0%}" if confidence is not None and not pd.isna(confidence) else "—")
     diseq_str = _fmt(diseq)
 
+    # Window label for the Force Z-Scores group header
+    _gw = int(rolling.get("window", 0))
+    _iw = int(rolling.get("inflation_window", 0))
+    _win_parts = ([f"G:{_gw}mo"] if _gw else []) + ([f"I:{_iw}mo"] if _iw else [])
+    _win_label = ("  ·  rolling " + " / ".join(_win_parts)) if _win_parts else ""
+
     summary_strip = html.Div(
         style={
             "display": "flex", "alignItems": "flex-start",
@@ -2387,7 +2431,7 @@ def _regime_info_children(
 
             # ── Force Z-Scores ─────────────────────────────────────────────────
             _group(
-                f"Force Z-Scores{'  ·  rolling ' + str(rw) + 'mo' if use_rolling else ''}",
+                f"Force Z-Scores{_win_label}",
                 [
                     _val_block("Growth",    g_score, _GROWTH_COLOR,    f"{n_g}/{n_g_total} signals"),
                     _val_block("Inflation", i_score, _INFLATION_COLOR, f"{n_i}/{n_i_total} signals"),
