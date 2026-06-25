@@ -843,9 +843,39 @@ class TestRoutedRegimeStepButtons:
             1 if action == "next" else None,
             None,
             {},
+            {},
+            "US",
             current_step,
         )
         assert result == expected
+
+    def test_step_button_bounds_use_selected_country_history(self, monkeypatch):
+        import dashboard.charting as charting
+
+        class _Context:
+            triggered_id = {"type": "regime-step-button", "action": "prev"}
+
+        def _history(**kwargs):
+            periods = 2 if kwargs.get("country") == "KR" else 4
+            return pd.DataFrame({
+                "as_of": pd.date_range("2020-01-31", periods=periods, freq="ME")
+            })
+
+        monkeypatch.setattr(charting.dash, "callback_context", _Context())
+        monkeypatch.setattr(charting, "load_composite_history", _history)
+
+        result = charting.update_regime_step(
+            1,
+            None,
+            None,
+            None,
+            {},
+            {},
+            "KR",
+            1,
+        )
+
+        assert result == 1
 
     def test_graph_click_selects_matching_snapshot(self, monkeypatch):
         import dashboard.charting as charting

@@ -2601,7 +2601,8 @@ def _regime_info_children(
      Input({"type": "regime-step-button", "action": "next"}, "n_clicks"),
      Input("nav-event", "data"),
      Input("date-range", "data"),
-     Input("page-trigger", "data")],
+     Input("page-trigger", "data"),
+     Input("country-store", "data")],
     State("regime-step-index", "data"),
     prevent_initial_call=True,
 )
@@ -2610,10 +2611,12 @@ def update_regime_step(
     nav_event: dict,
     date_range: dict,
     page_trigger: dict,
+    country: str,
     current_step: int,
 ) -> int:
     triggered = dash.callback_context.triggered_id
     step = current_step or 0
+    country = str(country or "US")
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
 
@@ -2623,6 +2626,8 @@ def update_regime_step(
         return no_update
 
     if triggered == "date-range":
+        return 0
+    if triggered == "country-store":
         return 0
 
     action = triggered.get("action") if isinstance(triggered, dict) else None
@@ -2636,7 +2641,7 @@ def update_regime_step(
         val = ev.get("value")
         if val is None:
             return no_update
-        comp = load_composite_history(start_date=start, end_date=end)
+        comp = load_composite_history(start_date=start, end_date=end, country=country)
         n = len(comp)
         if ev_type == "delta":
             delta = int(val)
@@ -2645,7 +2650,7 @@ def update_regime_step(
             return max(0, min(step + delta, n - 1))
         return no_update
 
-    comp = load_composite_history(start_date=start, end_date=end)
+    comp = load_composite_history(start_date=start, end_date=end, country=country)
     max_step = max(0, len(comp) - 1)
 
     if action == "prev":
