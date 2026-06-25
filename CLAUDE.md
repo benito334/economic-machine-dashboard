@@ -84,7 +84,7 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 
 ## Current Status
 
-**As of 2026-06-24:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Signals page (/signals) live — 5-force breakdown with 8-column Force Component Inputs table. Separate Growth / Inflation Z-score windows (Growth Full/36/48/60m; Inflation Full/60/90/120m) with independent sliders persisted in localStorage; per-signal Z-bars in Force Component Inputs table and Signals page update live with slider changes. New DB columns: zscore_90m/120m (signals), inflation_score_90m/120m (composites). Methodology page updated: Sections 2, 4, 6, 11, 13 reflect current state.
+**As of 2026-06-25:** Phases 1A–1I complete. Phase 2 in progress: EZ (34 signals) + KR (22 signals) live. **353 tests pass.** 119 signals total (63 US + 34 EZ + 22 KR). Signals page (/signals) live — 5-force breakdown with 8-column Force Component Inputs table, composite momentum score in section headers (semantically color-coded). Signal drill-down modal (click any signal name → dual/triple panel chart: computed value + Z-score + raw underlying level for FRED yoy_pct signals). Signal info popup (ⓘ icon → provider, units, series title, raw FRED units, last updated). Shared vertical spike hover across all subplot panels. FRED metadata sidecar cache (`fred_{id}_meta.json`, 76 series). Dark-theme palette: lerp from washed-out light to vivid (fully opaque) replacing low-alpha rgba. Debt stress: FYFSD+FYOINT+FGRECPT FRED replacements for dropped IMF/WB annual components; 7/7 components now active.
 
 | Sub-phase | Status | Notes |
 | :--- | :--- | :--- |
@@ -103,6 +103,13 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 3 Back-test / regime replay | ⬜ Pending | FRED vintages |
 
 **To start the next session:** Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`). Run `python3 -m indicators.pipeline` after June 26 to pick up BEA Q1 2026 data (will clear 3 stale US signals). EZ current account gap is unresolvable from free APIs — documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
+
+**Signal drill-down + info popup notes (as of 2026-06-25):**
+- Click signal name → `{"type": "signal-link", "index": sig_id}` → `signal-drill-id` store → modal with 2-panel (level/Z) or 3-panel chart (+ raw FRED cache for yoy_pct signals). Shared hover spike via clientside callback on `signal-drill-chart` figure.
+- Click ⓘ icon → `{"type": "info-icon", "index": sig_id}` → `signal-info-id` store → compact modal with description, units, raw FRED units (from `fred_{id}_meta.json` sidecar), frequency, provider, last updated.
+- `_load_signal_binding(signal_id)` in `charting.py`: reads `config/us_bindings.yaml` or `config/countries/{cc}_bindings.yaml`.
+- `get_fred_meta(series_id)` in `loader.py`: reads/writes `raw_cache/fred_{id}_meta.json` sidecar (365-day TTL). 76 sidecars backfilled 2026-06-25.
+- Dark-theme palette: `_lerp_rgb(t, lo, hi)` + `_CLR_GREEN_LO/HI` + `_CLR_RED_LO/HI` in `shared_components.py`. Used by `_semantic_z_color`, `_momentum_score_color` (signals_page), `_stress_z_color`, `_sem_z_color` (charting). Replaces `rgba(color, alpha)` blending which disappeared on dark backgrounds.
 
 **Phase 2 architecture notes (as of 2026-06-23):**
 - Country files: `config/countries/{xx}_bindings.yaml` — pipeline auto-discovers all `*_bindings.yaml` in this dir

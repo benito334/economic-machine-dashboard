@@ -204,14 +204,18 @@ components:
     weight: 0.10            # TUNABLE
     stress_direction: negative   # surplus (positive value) reduces stress → Z-score negated
     frequency: A
-    construction: signal
+    construction: derived
     sources:
-      - signal: us.fiscal.primary_balance_gdp  # IMF Datamapper `pb`, annual, % GDP
+      - raw_fred: FYFSD    # Federal surplus/deficit, millions $, fiscal year Oct-Sep
+      - raw_fred: FYOINT   # Federal interest payments, millions $, fiscal year Oct-Sep
+      - raw_fred: GDP      # Nominal GDP, billions $, quarterly annualised rate
     notes: >
-      Primary balance = revenue minus non-interest expenditure. A surplus (positive)
-      means the government is generating enough revenue to cover non-interest spending,
-      reducing the net debt burden. The Z-score is negated so a larger surplus lowers
-      the stress contribution.
+      Primary balance = (FYFSD + FYOINT) / GDP * 100. Federal-only scope (excludes
+      state/local); used as proxy for general-government primary balance when the IMF
+      annual series is beyond its carry-forward horizon. FY data available ~1 month
+      after each September 30, giving 12-18 months more timeliness than IMF Datamapper.
+      Falls back to IMF us.fiscal.primary_balance_gdp if FRED cache is unavailable.
+      The Z-score is negated so a larger surplus lowers the stress contribution.
       TUNABLE rationale: 0.10; lower than interest outlays because the primary balance
       is an accounting flow that may not reflect sustainability when existing debt is large.
 
@@ -235,12 +239,18 @@ components:
     label: "Government revenue / GDP"
     weight: 0.10            # TUNABLE
     stress_direction: negative   # higher revenue capacity → less stress → Z-score negated
-    frequency: A
-    construction: signal
+    frequency: Q
+    construction: derived
     sources:
-      - signal: us.fiscal.govt_revenue_gdp   # World Bank GC.REV.XGRT.GD.ZS, annual, % GDP
+      - raw_fred: FGRECPT  # Federal Government Current Receipts, billions $, quarterly at annual rate
+      - raw_fred: GDP      # Nominal GDP, billions $, quarterly at annual rate
     notes: >
-      A higher revenue-to-GDP ratio means the government has more capacity to service
-      its debt. Negated so higher revenue reduces the stress score.
-      TUNABLE rationale: 0.10; annual and subject to tax-policy changes that can make
-      the ratio shift discontinuously.
+      FGRECPT / GDP * 100 = federal government current receipts as % of GDP (quarterly).
+      Both series are at annual rates in billions; the ratio is units-correct.
+      Quarterly frequency gives 12-18 months more timeliness than the World Bank annual
+      GC.REV.XGRT.GD.ZS series (which lags by 1-1.5 years). Scope is federal-only,
+      comparable to the WB central-government definition for the US.
+      Falls back to WB us.fiscal.govt_revenue_gdp if FRED FGRECPT cache is unavailable.
+      Negated so higher revenue reduces the stress score.
+      TUNABLE rationale: 0.10; quarterly data removes the previous annual carry-expiry
+      issue while keeping the same economic interpretation.

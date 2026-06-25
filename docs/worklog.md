@@ -4,6 +4,25 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-25 — Signal drill-down, info popup, color palette, composite momentum
+
+**Done:**
+- **Debt stress 5→7 components**: added FRED-derived `primary_balance_gdp` (FYFSD+FYOINT) and `govt_revenue_gdp` (FGRECPT quarterly) replacements; `us.fiscal.govt_receipts_qtr` binding in `us_bindings.yaml`; `longterm_stress.yaml` updated; both built by new `_build_primary_balance_gdp_fred()` + `_build_govt_receipts_gdp_fred()` in `longterm_stress.py`.
+- **Signal drill-down modal**: pattern-matching `{"type": "signal-link"}` Dash callback; `_signal_link()` in `shared_components.py` wired into all tables (lens tables, Force Component Inputs, Debt Stress table, Signals page). Click → dual-panel chart (value + Z-score) with shared spike hover line.
+- **3rd panel raw data**: `_load_signal_binding()` + `_load_raw_cache_series()` in `charting.py`; for FRED `yoy_pct` signals a 3rd subplot shows the raw level from parquet cache before YoY transformation.
+- **Shared vertical hover spike across all drill panels**: clientside JS callback mirrors regime history page — draws SVG `<line>` spanning all subplot y-extents on `plotly_hover`; `hovermode="x"` + `showspikes=True` on all traces.
+- **Signal info popup (ⓘ icon)**: `_signal_info_icon()` in `shared_components.py` added to all Signals page rows. Pattern-matching `{"type": "info-icon"}` callback opens `signal-info-modal` with signal description, transformed units, raw FRED units (when different), frequency, provider, series ID, last updated.
+- **FRED metadata sidecar**: `get_fred_meta(series_id)` in `loader.py` reads/writes `fred_{id}_meta.json` (365-day TTL cache). 76 sidecars backfilled on first access.
+- **Dark-theme color palette**: `_lerp_rgb()` + opaque anchors in `shared_components.py`. Replaces `rgba(color, low_alpha)` (invisible on dark bg) with lerp from light washed-out pastel (soft sage/salmon) → vivid saturated (emerald/red-orange). Applied to `_semantic_z_color`, `_momentum_score_color`, `_stress_z_color`, `_sem_z_color`.
+- **Signals page composite momentum**: `growth_momentum` + `inflation_momentum` from composites table shown in section headers as `Mom XX%`, color-coded. Rate/Credit/Vol momentum computed on the fly as direction fraction.
+- **`ALL`, `PreventUpdate`, `ctx` import fix**: added to top-level Dash import in `charting.py`; removed 3 redundant local `from dash import ctx` lines.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- Run `python3 -m indicators.pipeline` after 2026-06-26 (BEA Q1 2026 data clears 3 stale US signals).
+
+---
+
 ## 2026-06-24 — Regime History step reset on navigation
 
 **Done:**

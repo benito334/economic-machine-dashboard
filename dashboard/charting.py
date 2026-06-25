@@ -24,7 +24,8 @@ import dash_bootstrap_components as dbc
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from dash import Input, Output, State, callback, dash_table, dcc, html, no_update
+from dash import ALL, Input, Output, State, callback, ctx, dash_table, dcc, html, no_update
+from dash.exceptions import PreventUpdate
 from plotly.subplots import make_subplots
 
 from dashboard.charting_data import (
@@ -50,6 +51,7 @@ from dashboard import weight_audit as _weight_audit
 from dashboard import weight_history as _weight_history
 from dashboard import regime_classifier_page as _regime_classifier
 from dashboard import signals_page as _signals_page
+from dashboard.shared_components import _signal_link
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -311,6 +313,27 @@ def _zscore_color(z: Any) -> str:
     return "#cccccc"
 
 
+def _stress_z_color(z: Any, direction: str) -> str:
+    """Semantic color for a debt-stress component Z-score.
+
+    Signs the Z by its stress direction, then maps:
+      signed > 0  → stress-increasing → red gradient
+      signed < 0  → stress-reducing   → green gradient
+      near zero   → grey
+    """
+    if z is None or (isinstance(z, float) and _math.isnan(z)):
+        return "#666"
+    from dashboard.shared_components import _CLR_GREEN_HI, _CLR_GREEN_LO, _CLR_RED_HI, _CLR_RED_LO, _lerp_rgb
+    signed = float(z) if direction == "positive" else -float(z)
+    mag = min(abs(signed) / 3.0, 1.0)
+    if mag < 0.05:
+        return "#888"
+    return (
+        _lerp_rgb(mag, _CLR_RED_LO,   _CLR_RED_HI)   if signed > 0
+        else _lerp_rgb(mag, _CLR_GREEN_LO, _CLR_GREEN_HI)
+    )
+
+
 def _fmt_value(val: Any, units: str) -> str:
     if val is None or (isinstance(val, float) and _math.isnan(val)):
         return "—"
@@ -471,8 +494,7 @@ def _build_lens_table(lens_signals: "pd.DataFrame", histories_by_id: dict) -> ht
 
         data_rows.append(html.Tr([
             html.Td([
-                html.Span(label, title=linkage,
-                          style={"cursor": "help", "color": "#ddd", "fontWeight": "600"}),
+                _signal_link(label, sid),
                 html.Span(f" {ll}", style={"fontSize": "0.7em", "color": ll_col}),
                 html.Br(),
                 html.Span(source, style={"fontSize": "0.7em", "color": "#555"}),
@@ -1313,6 +1335,40 @@ _SETTINGS_MODAL = dbc.Modal([
 ], id="settings-modal", is_open=False, size="md")
 
 
+_SIGNAL_INFO_MODAL = dbc.Modal(
+    id="signal-info-modal",
+    size="md",
+    is_open=False,
+    children=[
+        dbc.ModalHeader(dbc.ModalTitle(id="signal-info-title"), close_button=True),
+        dbc.ModalBody(
+            html.Div(id="signal-info-content"),
+            style={"padding": "12px 20px 20px"},
+        ),
+    ],
+)
+
+_SIGNAL_DRILL_MODAL = dbc.Modal(
+    id="signal-drill-modal",
+    size="xl",
+    is_open=False,
+    children=[
+        dbc.ModalHeader(
+            dbc.ModalTitle(id="signal-drill-title"),
+            close_button=True,
+        ),
+        dbc.ModalBody(
+            dcc.Graph(
+                id="signal-drill-chart",
+                config={"displayModeBar": False},
+                style={"height": "440px"},
+            ),
+            style={"padding": "8px 16px 16px"},
+        ),
+    ],
+)
+
+
 app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     # Top-level stores — persist across page navigations
@@ -1338,9 +1394,16 @@ app.layout = html.Div([
     dcc.Store(id="country-store",        data="US", storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
+    # Signal drill-down: stores the signal_id most recently clicked
+    dcc.Store(id="signal-drill-id",         data=None),
+    dcc.Store(id="signal-drill-hover-init", data=None),
+    # Signal info popup
+    dcc.Store(id="signal-info-id",          data=None),
     html.Div(id="theme-dummy",           style={"display": "none"}),
 
     _SETTINGS_MODAL,
+    _SIGNAL_DRILL_MODAL,
+    _SIGNAL_INFO_MODAL,
 
     html.Div([
         _left_nav(),
@@ -1378,7 +1441,6 @@ def toggle_settings_modal(n_open: int, n_close: int, is_open: bool) -> bool:
     prevent_initial_call=True,
 )
 def update_zscore_window(sidebar_val: int, modal_val: int) -> int:
-    from dash import ctx
     if ctx.triggered_id == "zscore-window-slider":
         return int(sidebar_val) if sidebar_val is not None else 0
     return int(modal_val) if modal_val is not None else 0
@@ -1391,7 +1453,6 @@ def update_zscore_window(sidebar_val: int, modal_val: int) -> int:
     prevent_initial_call=True,
 )
 def update_inflation_window(sidebar_val: int, modal_val: int) -> int:
-    from dash import ctx
     if ctx.triggered_id == "inflation-window-slider":
         return int(sidebar_val) if sidebar_val is not None else 0
     return int(modal_val) if modal_val is not None else 0
@@ -1404,7 +1465,6 @@ def update_inflation_window(sidebar_val: int, modal_val: int) -> int:
     prevent_initial_call=True,
 )
 def update_diseq_window(sidebar_val: int, modal_val: int) -> int:
-    from dash import ctx
     if ctx.triggered_id == "diseq-window-slider":
         return int(sidebar_val) if sidebar_val is not None else 0
     return int(modal_val) if modal_val is not None else 0
@@ -1634,6 +1694,81 @@ app.clientside_callback(
     """,
     Output("hover-sync-init", "data"),
     Input("regime-chart", "figure"),
+    prevent_initial_call=True,
+)
+
+# Same shared-hover-line treatment for the signal drill-down modal chart.
+app.clientside_callback(
+    """
+    function(figure) {
+        if (!figure) return dash_clientside.no_update;
+        setTimeout(function() {
+            var wrapper = document.getElementById('signal-drill-chart');
+            var gd = wrapper && wrapper.querySelector('.js-plotly-plot');
+            if (!gd || typeof gd.on !== 'function' || gd._sdHoverSyncBound) return;
+
+            gd._sdHoverSyncBound = true;
+            function drawSharedHoverLine(rawX) {
+                var layout = gd._fullLayout;
+                var hoverLayer = gd.querySelector('.hoverlayer');
+                var xAxis = layout && layout.xaxis;
+                var yAxes = layout && layout._subplots ? layout._subplots.yaxis : null;
+                if (!hoverLayer || !xAxis || !yAxes || !yAxes.length) return;
+
+                var xPixel = xAxis._offset + xAxis.d2p(rawX);
+                var top = Infinity;
+                var bottom = -Infinity;
+                yAxes.forEach(function(axisId) {
+                    var key = axisId === 'y' ? 'yaxis' : 'yaxis' + axisId.slice(1);
+                    var axis = layout[key];
+                    if (!axis) return;
+                    top = Math.min(top, axis._offset);
+                    bottom = Math.max(bottom, axis._offset + axis._length);
+                });
+                if (!Number.isFinite(xPixel) || !Number.isFinite(top) || !Number.isFinite(bottom)) return;
+
+                var line = hoverLayer.querySelector('.sd-shared-hover-line');
+                if (!line) {
+                    line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('class', 'sd-shared-hover-line');
+                    line.setAttribute('stroke', 'rgba(210, 215, 225, 0.72)');
+                    line.setAttribute('stroke-width', '1');
+                    line.setAttribute('stroke-dasharray', '4,3');
+                    line.setAttribute('pointer-events', 'none');
+                    hoverLayer.insertBefore(line, hoverLayer.firstChild);
+                }
+                line.setAttribute('x1', xPixel);
+                line.setAttribute('x2', xPixel);
+                line.setAttribute('y1', top);
+                line.setAttribute('y2', bottom);
+            }
+
+            gd.on('plotly_hover', function(eventData) {
+                if (gd._sdHoverSyncing || !eventData || !eventData.points || !eventData.points.length) return;
+                var rawX = eventData.points[0].x;
+                var xValue = rawX instanceof Date ? rawX.getTime() : Date.parse(rawX);
+                var subplots = gd._fullLayout && gd._fullLayout._subplots
+                    ? gd._fullLayout._subplots.cartesian : null;
+                if (!Number.isFinite(xValue) || !subplots || !subplots.length) return;
+
+                gd._sdHoverSyncing = true;
+                try {
+                    Plotly.Fx.hover(gd, {xval: xValue}, subplots);
+                    requestAnimationFrame(function() { drawSharedHoverLine(rawX); });
+                } finally {
+                    setTimeout(function() { gd._sdHoverSyncing = false; }, 0);
+                }
+            });
+            gd.on('plotly_unhover', function() {
+                var line = gd.querySelector('.sd-shared-hover-line');
+                if (line) line.remove();
+            });
+        }, 0);
+        return Date.now();
+    }
+    """,
+    Output("signal-drill-hover-init", "data"),
+    Input("signal-drill-chart", "figure"),
     prevent_initial_call=True,
 )
 
@@ -2309,17 +2444,17 @@ def _regime_info_children(
 
         def _sem_z_color(z_val, f: str, inv: bool = False) -> str:
             """Green = economically good for the force, red = bad, grey = neutral."""
+            from dashboard.shared_components import _CLR_GREEN_HI, _CLR_GREEN_LO, _CLR_RED_HI, _CLR_RED_LO, _lerp_rgb
             if z_val is None or (isinstance(z_val, float) and pd.isna(z_val)):
                 return "#666"
             adj = -float(z_val) if inv else float(z_val)
             if f == "inflation":
                 adj = -adj
             mag = min(abs(adj) / 3.0, 1.0)
-            if mag < 0.07:
-                return "#666"
-            a = 0.35 + 0.65 * mag
-            return (f"rgba(92, 186, 138, {a:.2f})" if adj > 0
-                    else f"rgba(232, 115, 76, {a:.2f})")
+            if mag < 0.05:
+                return "#888"
+            return (_lerp_rgb(mag, _CLR_GREEN_LO, _CLR_GREEN_HI) if adj > 0
+                    else _lerp_rgb(mag, _CLR_RED_LO, _CLR_RED_HI))
 
         def _section(force: str, total: int, color: str) -> list:
             df_f = comp_df[comp_df["composite"] == force].copy()
@@ -2473,7 +2608,7 @@ def _regime_info_children(
                 rows.append(html.Tr(
                     style={"backgroundColor": row_bg},
                     children=[
-                        html.Td(sr["label"], style=td_sty),
+                        html.Td(_signal_link(str(sr["label"]), str(sig_id)), style=td_sty),
                         html.Td(f"{importance:.2f}", style={**td_mono, "textAlign": "center"}),
                         html.Td(config_wt_str, style={**td_mono, "textAlign": "center"}),
                         html.Td(eff_wt_str, style={**td_mono, "textAlign": "center",
@@ -3804,7 +3939,6 @@ def _build_debt_stress_info(
         lag_q    = stale_dict.get(cid, 0)
         extrap_q = extrap_dict.get(cid, 0)
         z_missing = z is None or (isinstance(z, float) and pd.isna(z))
-        bar_color = "#E8734C" if direction == "positive" else "#4C9BE8"
 
         # ── Last data cell ───────────────────────────────────────────────────
         last_obs: pd.Timestamp | None = (component_dates or {}).get(cid)
@@ -3838,6 +3972,7 @@ def _build_debt_stress_info(
         if z_missing:
             z_cell = html.Td("—", style={**td_mono, "color": "#555", "textAlign": "right"})
         else:
+            z_clr = _stress_z_color(z, direction)
             bar_w = min(abs(float(z)) / 2.5 * 80, 80)
             z_cell = html.Td(
                 html.Div(
@@ -3846,11 +3981,11 @@ def _build_debt_stress_info(
                     children=[
                         html.Div(style={
                             "width": f"{bar_w:.0f}px", "height": "6px",
-                            "backgroundColor": bar_color, "borderRadius": "2px",
-                            "opacity": "0.65", "flexShrink": "0",
+                            "backgroundColor": z_clr, "borderRadius": "2px",
+                            "opacity": "0.8", "flexShrink": "0",
                         }),
                         html.Span(f"{float(z):+.2f}",
-                                  style={"color": bar_color, "fontFamily": "monospace",
+                                  style={"color": z_clr, "fontFamily": "monospace",
                                          "fontSize": "0.82rem"}),
                     ],
                 ),
@@ -3923,7 +4058,11 @@ def _build_debt_stress_info(
         rows.append(html.Tr(
             style={"backgroundColor": row_bg},
             children=[
-                html.Td(label, style=td_sty),
+                html.Td(
+                    _signal_link(label, _DEBT_STRESS_DRILL_SIGNAL[cid])
+                    if _DEBT_STRESS_DRILL_SIGNAL.get(cid) else html.Span(label),
+                    style=td_sty,
+                ),
                 html.Td(
                     "Annual" if freq == "A" else "Quarterly",
                     style={**td_sty, "textAlign": "center",
@@ -4089,6 +4228,472 @@ def update_debt_stress_chart(
 
 def _dark_layout(title: str = "") -> dict:
     return figure_layout(DEFAULT_THEME, title)
+
+
+# ── Signal drill-down modal ───────────────────────────────────────────────────
+
+# Map debt-stress component IDs → the closest signal_id in the signals table
+_DEBT_STRESS_DRILL_SIGNAL: dict[str, str | None] = {
+    "gov_household_debt_gdp":  "us.credit.gov_debt_gdp",
+    "corporate_debt_gdp":      None,   # pure derived ratio; no single signal
+    "household_debt_service":  "us.credit.debt_service_ratio",
+    "federal_interest_gdp":    "us.fiscal.interest_payments",
+    "primary_balance_gdp":     "us.fiscal.primary_balance_gdp",
+    "structural_balance":      "us.fiscal.structural_balance",
+    "govt_revenue_gdp":        "us.fiscal.govt_receipts_qtr",
+}
+
+
+def _load_signal_binding(signal_id: str) -> dict | None:
+    """Return the YAML binding dict for a signal_id, or None if not found."""
+    import yaml as _yaml
+    parts = signal_id.split(".")
+    if len(parts) < 2:
+        return None
+    country = parts[0].upper()
+    binding_suffix = ".".join(parts[1:])
+
+    config_dir = Path(__file__).parent.parent / "config"
+    fpath = (
+        config_dir / "us_bindings.yaml"
+        if country == "US"
+        else config_dir / "countries" / f"{country.lower()}_bindings.yaml"
+    )
+    if not fpath.exists():
+        return None
+    try:
+        with open(fpath) as f:
+            data = _yaml.safe_load(f)
+    except Exception:
+        return None
+    for b in data.get("bindings", []):
+        if b.get("id") == binding_suffix:
+            b["_country"] = country
+            return b
+    return None
+
+
+def _load_raw_cache_series(binding: dict) -> tuple[pd.Series | None, str]:
+    """Load the raw pre-transformation FRED series for a yoy_pct binding.
+
+    Returns (series, series_id_label) or (None, "") when not applicable.
+    Covers FRED yoy_pct signals only — WB/Eurostat/ECB use hash-based filenames.
+    """
+    from indicators.loader import RAW_CACHE_DIR
+    if (str(binding.get("provider", "")).upper() != "FRED"
+            or str(binding.get("transformation", "")) != "yoy_pct"):
+        return None, ""
+    series_id = str(binding.get("series_id", ""))
+    if not series_id:
+        return None, ""
+    cache_path = RAW_CACHE_DIR / f"fred_{series_id}.parquet"
+    if not cache_path.exists():
+        return None, ""
+    try:
+        df = pd.read_parquet(cache_path)
+        raw = df.iloc[:, 0].dropna() if isinstance(df, pd.DataFrame) else df.dropna()
+        return raw, series_id
+    except Exception:
+        return None, ""
+
+
+def _build_drill_chart(signal_id: str, window_months: int, theme_name: str) -> go.Figure:
+    """Drill-down chart: computed value + Z-score + optional raw underlying level."""
+    import duckdb as _ddb
+    from dashboard.charting_data import DB_PATH
+
+    con = _ddb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute(
+            "SELECT as_of, value, units FROM signals "
+            "WHERE id = ? AND value IS NOT NULL ORDER BY as_of",
+            [signal_id],
+        ).df()
+        meta = con.execute(
+            "SELECT units, linkage FROM signals WHERE id = ? LIMIT 1",
+            [signal_id],
+        ).df()
+    finally:
+        con.close()
+
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "No data"))
+        return fig
+
+    df["as_of"] = pd.to_datetime(df["as_of"])
+    units = str(meta["units"].iloc[0]) if not meta.empty else ""
+
+    # ── Rolling Z-score ────────────────────────────────────────────────────────
+    if len(df) > 1:
+        median_gap_days = float(df["as_of"].diff().dt.days.median())
+    else:
+        median_gap_days = 30.0
+    obs_per_month = 30.44 / max(median_gap_days, 1.0)
+
+    if window_months > 0:
+        window_n = max(int(round(window_months * obs_per_month)), 5)
+        min_p    = max(window_n // 2, 5)
+        win_label = f"{window_months}m rolling"
+    else:
+        window_n  = len(df)
+        min_p     = max(min(window_n, 24), 5)
+        win_label = "full-history"
+
+    mu    = df["value"].rolling(window_n, min_periods=min_p).mean()
+    sigma = df["value"].rolling(window_n, min_periods=min_p).std()
+    df["z"] = ((df["value"] - mu) / sigma).replace([float("inf"), float("-inf")], float("nan"))
+
+    # ── Raw underlying level (FRED yoy_pct signals) ────────────────────────────
+    binding = _load_signal_binding(signal_id)
+    raw_series, raw_label = _load_raw_cache_series(binding) if binding else (None, "")
+
+    # ── Subplot layout ─────────────────────────────────────────────────────────
+    force = signal_id.split(".")[1] if signal_id.count(".") >= 2 else ""
+    n_rows = 3 if raw_series is not None else 2
+
+    def _z_fill_color(pos: bool) -> str:
+        if force == "inflation":
+            return "rgba(92,186,138,0.12)" if pos else "rgba(232,115,76,0.12)"
+        return "rgba(232,115,76,0.12)" if pos else "rgba(92,186,138,0.12)"
+
+    fig = make_subplots(
+        rows=n_rows, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.36, 0.32, 0.32] if n_rows == 3 else [0.55, 0.45],
+        vertical_spacing=0.05,
+    )
+
+    # ── Row 1: computed value (YoY% or level pass-through) ────────────────────
+    fig.add_trace(go.Scatter(
+        x=df["as_of"], y=df["value"],
+        mode="lines",
+        line={"color": "rgba(180,200,255,0.85)", "width": 1.6},
+        name=units or "value",
+        hovertemplate="%{x|%b %Y}: %{y:.4g}<extra></extra>",
+    ), row=1, col=1)
+
+    # ── Row 2: Z-score with ±1σ / ±2σ bands ──────────────────────────────────
+    z_valid = df["z"].dropna()
+    if not z_valid.empty:
+        fig.add_hrect(y0=1,  y1=4,  fillcolor=_z_fill_color(True),  line_width=0, row=2, col=1)
+        fig.add_hrect(y0=-4, y1=-1, fillcolor=_z_fill_color(False), line_width=0, row=2, col=1)
+
+    for lvl, dash in [(1, "dot"), (2, "dash"), (-1, "dot"), (-2, "dash")]:
+        fig.add_hline(y=lvl, line_dash=dash, line_color="rgba(150,150,150,0.35)",
+                      line_width=1, row=2, col=1)
+    fig.add_hline(y=0, line_color="rgba(150,150,150,0.5)", line_width=1, row=2, col=1)
+
+    fig.add_trace(go.Scatter(
+        x=df["as_of"], y=df["z"],
+        mode="lines",
+        line={"color": "rgba(200,180,255,0.9)", "width": 1.5},
+        name=f"Z ({win_label})",
+        hovertemplate="%{x|%b %Y}: Z=%{y:+.2f}<extra></extra>",
+    ), row=2, col=1)
+
+    # ── Row 3: raw underlying level ────────────────────────────────────────────
+    if raw_series is not None:
+        fig.add_trace(go.Scatter(
+            x=raw_series.index, y=raw_series.values,
+            mode="lines",
+            line={"color": "rgba(255,210,100,0.75)", "width": 1.4},
+            name=f"Raw: {raw_label}",
+            hovertemplate="%{x|%b %Y}: %{y:.4g}<extra></extra>",
+        ), row=3, col=1)
+
+    # ── Layout: spike crosshair spanning all panels (mirrors regime history) ───
+    layout = figure_layout(theme_name)
+    layout.update({
+        "margin": {"l": 55, "r": 20, "t": 10, "b": 30},
+        "hovermode": "x",
+        "hoversubplots": "axis",
+        "showlegend": False,
+        "uirevision": signal_id,
+    })
+    fig.update_layout(**layout)
+    fig.update_xaxes(
+        showspikes=True,
+        spikemode="across",
+        spikesnap="cursor",
+        spikedash="dot",
+        spikethickness=1,
+        spikecolor="rgba(180,180,180,0.6)",
+    )
+    fig.update_yaxes(title_text=units or "value", title_font_size=10, row=1, col=1)
+    fig.update_yaxes(title_text="Z-score", title_font_size=10, zeroline=False, row=2, col=1)
+    if raw_series is not None:
+        fig.update_yaxes(title_text=raw_label, title_font_size=10, row=3, col=1)
+
+    return fig
+
+
+@app.callback(
+    Output("signal-drill-id", "data"),
+    Input({"type": "signal-link", "index": ALL}, "n_clicks"),
+    State({"type": "signal-link", "index": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def _on_signal_link_click(n_clicks_list: list, id_list: list) -> str | None:
+    """Store the clicked signal_id whenever any signal link is clicked."""
+    if not ctx.triggered or not any(n for n in (n_clicks_list or []) if n):
+        raise PreventUpdate
+    raw_id = ctx.triggered[0]["prop_id"].rsplit(".", 1)[0]
+    try:
+        import json as _json
+        clicked = _json.loads(raw_id)["index"]
+    except Exception:
+        raise PreventUpdate
+    return clicked
+
+
+@app.callback(
+    Output("signal-drill-modal", "is_open"),
+    Output("signal-drill-title", "children"),
+    Output("signal-drill-chart", "figure"),
+    Input("signal-drill-id", "data"),
+    State("zscore-window-store",    "data"),
+    State("inflation-window-store", "data"),
+    State("theme-store",            "data"),
+    prevent_initial_call=True,
+)
+def _open_signal_drill(signal_id: str | None,
+                       zscore_window: int,
+                       inflation_window: int,
+                       theme_name: str) -> tuple:
+    """Open the drill-down modal and render the dual-panel chart."""
+    if not signal_id:
+        raise PreventUpdate
+
+    force = signal_id.split(".")[1] if signal_id.count(".") >= 2 else ""
+    window = inflation_window if force == "inflation" else zscore_window
+
+    label = _concept_label(signal_id)
+    sid_display = signal_id.replace(".", " · ")
+    title = [
+        html.Span(label, style={"fontWeight": "700"}),
+        html.Span(f"  ·  {sid_display}",
+                  style={"fontSize": "0.78rem", "color": "var(--muted-color)",
+                         "fontWeight": "400"}),
+    ]
+
+    fig = _build_drill_chart(signal_id, int(window or 0), theme_name or DEFAULT_THEME)
+    return True, title, fig
+
+
+# ── Signal info popup callbacks ───────────────────────────────────────────────
+
+_UNITS_LABEL: dict[str, str] = {
+    "yoy_pct":          "Year-over-year % change (decimal)",
+    "yoy_pct_spread":   "YoY % spread between two series",
+    "pct_level":        "Percent level",
+    "pct_gdp":          "% of GDP",
+    "pct_pot_gdp":      "% of potential GDP",
+    "pct_working_age":  "% of working-age population",
+    "pct_pop_15plus":   "% of population aged 15+",
+    "pct_annual":       "% (annual rate)",
+    "pct_total_pop":    "% of total population",
+    "net_pct":          "Net % (diffusion / balance-of-opinion)",
+    "diffusion_index":  "Diffusion index",
+    "index":            "Index",
+    "index_2020eq100":  "Index (2020 = 100)",
+    "index_2010eq100":  "Index (2010 = 100)",
+    "ratio":            "Ratio",
+    "thousands":        "Thousands",
+    "millions_usd":     "USD millions",
+    "billions_usd":     "USD billions",
+}
+_FREQ_LABEL: dict[str, str] = {
+    "M": "Monthly", "Q": "Quarterly", "A": "Annual",
+    "W": "Weekly",  "D": "Daily",
+}
+_FORCE_COLOR: dict[str, str] = {
+    "growth":        "#5CBA8A",
+    "inflation":     "#E8734C",
+    "interest_rate": "#4C9EEB",
+    "credit":        "#E8C84C",
+    "volatility":    "#B07FE8",
+    "master":        "#888",
+    "fiscal":        "#9EA8B8",
+    "external":      "#78C4C4",
+    "demographic":   "#B8A08C",
+}
+
+
+@app.callback(
+    Output("signal-info-id", "data"),
+    Input({"type": "info-icon", "index": ALL}, "n_clicks"),
+    State({"type": "info-icon", "index": ALL}, "id"),
+    prevent_initial_call=True,
+)
+def _on_info_icon_click(n_clicks_list: list, id_list: list) -> str | None:
+    if not ctx.triggered or not any(n for n in (n_clicks_list or []) if n):
+        raise PreventUpdate
+    raw_id = ctx.triggered[0]["prop_id"].rsplit(".", 1)[0]
+    try:
+        import json as _json
+        clicked = _json.loads(raw_id)["index"]
+    except Exception:
+        raise PreventUpdate
+    return clicked
+
+
+@app.callback(
+    Output("signal-info-modal", "is_open"),
+    Output("signal-info-title", "children"),
+    Output("signal-info-content", "children"),
+    Input("signal-info-id", "data"),
+    prevent_initial_call=True,
+)
+def _open_signal_info(signal_id: str | None) -> tuple:
+    if not signal_id:
+        raise PreventUpdate
+
+    import duckdb as _ddb
+    from dashboard.charting_data import DB_PATH
+
+    con = _ddb.connect(str(DB_PATH), read_only=True)
+    try:
+        row = con.execute(
+            "SELECT units, linkage, provider, source, is_stale, is_proxy, "
+            "       low_history, vintage_available, as_of "
+            "FROM signals WHERE id = ? "
+            "ORDER BY as_of DESC LIMIT 1",
+            [signal_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    binding = _load_signal_binding(signal_id)
+
+    units_code  = (row[0] if row else None) or (binding or {}).get("units", "")
+    linkage     = (row[1] if row else None) or ""
+    provider    = (row[2] if row else None) or (binding or {}).get("provider", "")
+    source      = (row[3] if row else None) or (binding or {}).get("series_id", "")
+    is_stale    = bool(row[4]) if row else False
+    is_proxy    = bool(row[5]) if row else False
+    low_hist    = bool(row[6]) if row else False
+    as_of       = row[8] if row else None
+
+    freq_code   = (binding or {}).get("frequency", "")
+    lead_lag    = (binding or {}).get("lead_lag", "")
+    force       = signal_id.split(".")[1] if signal_id.count(".") >= 2 else ""
+
+    label = _concept_label(signal_id)
+    sid_parts = signal_id.split(".")
+    country_badge = sid_parts[0].upper() if len(sid_parts) >= 1 else ""
+    force_color = _FORCE_COLOR.get(force, "#888")
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    title_children = [
+        html.Span(label, style={"fontWeight": "700"}),
+        html.Span(f"  {country_badge}", style={
+            "fontSize": "0.72rem", "color": "#888",
+            "fontWeight": "400", "marginLeft": "6px",
+        }),
+    ]
+
+    # ── Badge row ─────────────────────────────────────────────────────────────
+    def _badge(text: str, bg: str, fg: str = "#eee") -> html.Span:
+        return html.Span(text, style={
+            "background": bg, "color": fg,
+            "padding": "2px 7px", "borderRadius": "4px",
+            "fontSize": "0.72rem", "marginRight": "6px",
+            "fontWeight": "600",
+        })
+
+    badges = [_badge(force.replace("_", " ").title(), force_color, "#111")]
+    if lead_lag:
+        ll_colors = {"leading": "#2a5a3a", "coincident": "#2a3a5a",
+                     "lagging": "#5a2a2a", "structural": "#3a3a2a"}
+        badges.append(_badge(lead_lag.title(), ll_colors.get(lead_lag, "#333")))
+    if is_stale:
+        badges.append(_badge("stale", "#7a4a00", "#ffcc80"))
+    if is_proxy:
+        badges.append(_badge("proxy", "#4a4a4a"))
+    if low_hist:
+        badges.append(_badge("low history", "#3a4a4a"))
+
+    # ── Metadata grid ─────────────────────────────────────────────────────────
+    units_display = _UNITS_LABEL.get(str(units_code), str(units_code) if units_code else "—")
+    freq_display  = _FREQ_LABEL.get(freq_code, freq_code or "—")
+    as_of_display = (
+        pd.Timestamp(as_of).strftime("%B %Y") if as_of else "—"
+    )
+
+    # Raw units from FRED sidecar — only shown when different from transformed units
+    raw_units_display = None
+    fred_title = None
+    if str((binding or {}).get("provider", "")).upper() == "FRED":
+        series_id_for_meta = str((binding or {}).get("series_id", ""))
+        if series_id_for_meta:
+            from indicators.loader import get_fred_meta
+            meta = get_fred_meta(series_id_for_meta)
+            fred_title = meta.get("title") or None
+            raw_units_short = meta.get("units_short", "")
+            sa_short = meta.get("seasonal_adjustment_short", "")
+            if raw_units_short:
+                raw_label = raw_units_short
+                if sa_short and sa_short not in ("Not Seasonally Adjusted", "NSA"):
+                    raw_label += f", {sa_short}"
+                # Only show if it adds information beyond the transformed units label
+                if raw_label.lower() not in units_display.lower():
+                    raw_units_display = raw_label
+
+    def _meta_row(label_txt: str, value_content) -> html.Tr:
+        return html.Tr([
+            html.Td(label_txt, style={
+                "color": "var(--muted-color)", "fontSize": "0.78rem",
+                "padding": "4px 12px 4px 0", "whiteSpace": "nowrap",
+                "fontWeight": "500", "verticalAlign": "top",
+            }),
+            html.Td(value_content, style={
+                "fontSize": "0.82rem", "padding": "4px 0",
+                "color": "var(--font-color)", "wordBreak": "break-all",
+            }),
+        ])
+
+    units_cell = html.Span([
+        html.Span(units_display),
+        *(
+            [html.Span(
+                f"  (raw: {raw_units_display})",
+                style={"color": "var(--muted-color)", "fontSize": "0.78rem"},
+            )]
+            if raw_units_display else []
+        ),
+    ])
+
+    meta_rows = [
+        _meta_row("Units",        units_cell),
+        _meta_row("Frequency",    freq_display),
+        _meta_row("Provider",     provider or "—"),
+        _meta_row("Series ID",    source or "—"),
+        _meta_row("Last updated", as_of_display),
+    ]
+    if fred_title:
+        meta_rows.insert(0, _meta_row("Series title", fred_title))
+
+    meta_table = html.Table(
+        meta_rows,
+        style={"width": "100%", "borderCollapse": "collapse", "marginTop": "10px"},
+    )
+
+    content = html.Div([
+        html.Div(badges, style={"marginBottom": "12px"}),
+        html.P(
+            linkage or "No description available.",
+            style={
+                "fontSize": "0.85rem", "color": "var(--font-color)",
+                "lineHeight": "1.55", "margin": "0 0 4px 0",
+                "borderLeft": f"3px solid {force_color}",
+                "paddingLeft": "10px",
+            },
+        ),
+        meta_table,
+    ])
+
+    return True, title_children, content
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

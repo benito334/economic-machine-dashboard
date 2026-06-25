@@ -438,6 +438,53 @@ def _build_corporate_debt_gdp(
     return _extend_to_current_quarter(ratio, limit=ffill_limit)
 
 
+def _build_primary_balance_gdp_fred(data_dir: Path, ffill_limit: int = 4) -> pd.Series:
+    """Federal primary balance / GDP from FRED annual fiscal-year series.
+
+    FYFSD: Federal surplus or deficit (−), millions $, fiscal year Oct–Sep.
+    FYOINT: Federal net interest payments, millions $, fiscal year Oct–Sep.
+    Primary balance = FYFSD + FYOINT (adds interest back to get pre-interest flow).
+    GDP: Nominal GDP, billions $, quarterly annualised rate.
+
+    Unit conversion: FYFSD + FYOINT in millions → billions (÷ 1000).
+    The fiscal-year ratio is forward-filled to the quarterly GDP grid; the Z-score
+    is then computed at annual frequency by _rolling_z_annual_then_ffill().
+
+    Note: Federal-only scope (excludes state/local government). Used as a proxy
+    when IMF general-government primary balance is unavailable or beyond its
+    carry-forward horizon. FY data is available ~1 month after each September 30.
+    """
+    fyfsd  = _load_raw_fred("FYFSD",  data_dir)   # millions $, Sep-30 dates
+    fyoint = _load_raw_fred("FYOINT", data_dir)    # millions $, Sep-30 dates
+    gdp    = _load_raw_fred("GDP",    data_dir).resample("QE").last().dropna()
+
+    pb_bn = (fyfsd + fyoint) / 1000.0  # primary balance in billions, Sep-30 dates
+
+    # Forward-fill fiscal-year value onto the quarterly GDP grid
+    pb_q = pb_bn.reindex(gdp.index, method="ffill", limit=ffill_limit)
+
+    # % of GDP (both at annual-rate basis; units cancel correctly)
+    ratio = pb_q.divide(gdp).dropna() * 100
+    return ratio
+
+
+def _build_govt_receipts_gdp_fred(data_dir: Path, ffill_limit: int = 4) -> pd.Series:
+    """Federal government current receipts / GDP from FRED quarterly series.
+
+    FGRECPT: Federal Government Current Receipts, billions $, quarterly at annual rate.
+    GDP: Nominal GDP, billions $, quarterly at annual rate.
+
+    Both series are already at annual rates so the ratio is units-correct.
+    Returns a quarterly series extending to the most recent available quarter.
+    """
+    receipts = _load_raw_fred("FGRECPT", data_dir).resample("QE").last().dropna()
+    gdp      = _load_raw_fred("GDP",     data_dir).resample("QE").last().dropna()
+
+    df    = pd.DataFrame({"receipts": receipts, "gdp": gdp}).dropna()
+    ratio = (df["receipts"] / df["gdp"] * 100).dropna()
+    return _extend_to_current_quarter(ratio, limit=ffill_limit)
+
+
 def _build_federal_interest_gdp(data_dir: Path, ffill_limit: int = 4) -> pd.Series:
     """Construct federal interest outlays / GDP ratio.
 
@@ -642,15 +689,48 @@ def compute_debt_stress_history(
         raw_series["federal_interest_gdp"] = pd.Series(dtype=float)
         observation_sources["federal_interest_gdp"] = []
 
-    # Annual signals
-    signal_id_map = {
-        "primary_balance_gdp": f"{country_prefix}.fiscal.primary_balance_gdp",
-        "structural_balance":  f"{country_prefix}.fiscal.structural_balance",
-        "govt_revenue_gdp":    f"{country_prefix}.fiscal.govt_revenue_gdp",
-    }
-    for cid in ("primary_balance_gdp", "structural_balance", "govt_revenue_gdp"):
+    # Primary balance: FRED FYFSD+FYOINT/GDP (federal, fiscal year Oct-Sep).
+    # Falls back to IMF signal when FRED cache is unavailable.
+    try:
+        s = _build_primary_balance_gdp_fred(data_dir, ffill_limit=max_carry_q)
+        raw_series["primary_balance_gdp"] = s
+        fyfsd_obs  = _load_raw_fred("FYFSD",  data_dir)
+        fyoint_obs = _load_raw_fred("FYOINT", data_dir)
+        _record_sources("primary_balance_gdp", fyfsd_obs, fyoint_obs)
+    except Exception as exc:
+        logger.warning("primary_balance_gdp (FRED): %s — falling back to IMF signal", exc)
         try:
-            s = _load_signal_values(conn, signal_id_map[cid])
+            s = _load_signal_values(conn, f"{country_prefix}.fiscal.primary_balance_gdp")
+            raw_series["primary_balance_gdp"] = s
+            _record_sources("primary_balance_gdp", s)
+        except Exception as exc2:
+            logger.warning("primary_balance_gdp (IMF fallback): %s", exc2)
+            raw_series["primary_balance_gdp"] = pd.Series(dtype=float)
+            observation_sources["primary_balance_gdp"] = []
+
+    # Government receipts/GDP: FRED FGRECPT quarterly (federal, annual rate).
+    # Falls back to World Bank annual signal when FRED cache is unavailable.
+    try:
+        s = _build_govt_receipts_gdp_fred(data_dir, ffill_limit=max_carry_q)
+        raw_series["govt_revenue_gdp"] = s
+        fgrecpt_obs = _load_raw_fred("FGRECPT", data_dir)
+        _record_sources("govt_revenue_gdp", fgrecpt_obs)
+    except Exception as exc:
+        logger.warning("govt_revenue_gdp (FRED): %s — falling back to WB signal", exc)
+        try:
+            s = _load_signal_values(conn, f"{country_prefix}.fiscal.govt_revenue_gdp")
+            raw_series["govt_revenue_gdp"] = s
+            _record_sources("govt_revenue_gdp", s)
+        except Exception as exc2:
+            logger.warning("govt_revenue_gdp (WB fallback): %s", exc2)
+            raw_series["govt_revenue_gdp"] = pd.Series(dtype=float)
+            observation_sources["govt_revenue_gdp"] = []
+
+    # Structural balance: IMF signal only (no FRED equivalent).
+    for cid in ("structural_balance",):
+        signal_id = f"{country_prefix}.fiscal.structural_balance"
+        try:
+            s = _load_signal_values(conn, signal_id)
             raw_series[cid] = s
             _record_sources(cid, s)
         except Exception as exc:

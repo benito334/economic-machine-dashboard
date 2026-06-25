@@ -22,7 +22,10 @@ from dashboard.charting_data import (
     load_composite_history,
     load_latest_signals,
 )
-from dashboard.shared_components import _concept_label, _zscore_color
+from dashboard.shared_components import (
+    _CLR_GREEN_HI, _CLR_GREEN_LO, _CLR_RED_HI, _CLR_RED_LO,
+    _concept_label, _lerp_rgb, _signal_info_icon, _signal_link, _zscore_color,
+)
 
 # ── Force accent colours ───────────────────────────────────────────────────────
 _GROWTH_COLOR     = "#5CBA8A"
@@ -50,6 +53,34 @@ def _majority_arrow(directions) -> str:
     rising  = sum(1 for d in directions if d == "rising")
     falling = sum(1 for d in directions if d == "falling")
     return "↑" if rising > falling else ("↓" if falling > rising else "→")
+
+
+def _direction_fraction(df: pd.DataFrame) -> Optional[float]:
+    """Fraction of signals with direction == 'rising' (0.0–1.0)."""
+    if df.empty or "direction" not in df.columns:
+        return None
+    dirs = df["direction"].dropna().tolist()
+    return sum(1 for d in dirs if d == "rising") / len(dirs) if dirs else None
+
+
+def _momentum_score_color(score: Optional[float], force: str) -> str:
+    """Semantic color for a momentum fraction (0–1).
+
+    0.5 = neutral (grey). Above 0.5 = more signals rising.
+    For growth/rate/credit/vol: rising is good → green.
+    For inflation: rising is bad → red.
+    """
+    if score is None or (isinstance(score, float) and math.isnan(score)):
+        return "#666"
+    adj = score - 0.5
+    if force == "inflation":
+        adj = -adj
+    magnitude = min(abs(adj) / 0.5, 1.0)
+    if magnitude < 0.07:
+        return "#888"
+    if adj > 0:
+        return _lerp_rgb(magnitude, _CLR_GREEN_LO, _CLR_GREEN_HI)
+    return _lerp_rgb(magnitude, _CLR_RED_LO, _CLR_RED_HI)
 
 
 def _mean_z(df: pd.DataFrame) -> Optional[float]:
@@ -115,26 +146,23 @@ def _dash_td() -> html.Td:
 
 
 def _semantic_z_color(z, force: str, invert: bool = False) -> str:
-    """
-    Semantic color for a signal Z-score bar + text.
+    """Semantic color for a signal Z-score bar + text.
 
-    Growth:    force-positive adj_z (growing) → green; force-negative → red.
-    Inflation: reversed — positive Z (rising inflation) → red; negative → green.
-    invert:    negate adj_z before applying the logic (e.g. unemployment).
-    Alpha scales with |adj_z| / 3.0 so faint signals are visually quieter.
+    Interpolates from a washed-out light shade at low magnitude to vivid at
+    high magnitude (fully opaque), which stays readable on dark backgrounds
+    unlike low-alpha rgba blending.
     """
     if z is None or (isinstance(z, float) and math.isnan(z)):
         return "#666"
     adj_z = -float(z) if invert else float(z)
     if force == "inflation":
-        adj_z = -adj_z          # positive inflation = bad = red
+        adj_z = -adj_z
     magnitude = min(abs(adj_z) / 3.0, 1.0)
-    if magnitude < 0.07:
-        return "#666"           # near-zero → grey
-    alpha = 0.35 + 0.65 * magnitude
+    if magnitude < 0.05:
+        return "#888"
     if adj_z > 0:
-        return f"rgba(92, 186, 138, {alpha:.2f})"   # green — economically good
-    return f"rgba(232, 115, 76, {alpha:.2f})"        # red  — economically bad
+        return _lerp_rgb(magnitude, _CLR_GREEN_LO, _CLR_GREEN_HI)
+    return _lerp_rgb(magnitude, _CLR_RED_LO, _CLR_RED_HI)
 
 
 def _z_bar_cell(z: Optional[float], color: str) -> html.Td:
@@ -291,7 +319,10 @@ def _composite_rows(
         rows.append(html.Tr(
             style={"backgroundColor": row_bg},
             children=[
-                html.Td(str(sr.get("label", sig_id)), style=_TD),
+                html.Td([
+                    _signal_link(str(sr.get("label", sig_id)), sig_id),
+                    _signal_info_icon(sig_id),
+                ], style=_TD),
                 html.Td(f"{importance:.2f}",   style={**_TD_MONO, "textAlign": "center"}),
                 html.Td(f"{config_wt*100:.1f}%", style={**_TD_MONO, "textAlign": "center"}),
                 html.Td(f"{eff_wt*100:.1f}%", style={
@@ -342,7 +373,10 @@ def _signal_rows(sig_df: pd.DataFrame, color: str) -> tuple[list[html.Tr], int]:
         rows.append(html.Tr(
             style={"backgroundColor": row_bg},
             children=[
-                html.Td(label, style=_TD),
+                html.Td([
+                    _signal_link(label, sid),
+                    _signal_info_icon(sid),
+                ], style=_TD),
                 _dash_td(),   # Importance — not applicable
                 _dash_td(),   # Config Wt  — not applicable
                 _dash_td(),   # Eff Wt     — not applicable
@@ -375,15 +409,19 @@ _COL_HEADER = html.Tr([
 def _build_section(
     name: str,
     color: str,
+    force_key: str,
     composite_z: Optional[float],
+    momentum_score: Optional[float],
     momentum_arrow: str,
     n_active: int,
     n_total: int,
     data_rows: list[html.Tr],
 ) -> html.Details:
-    z_str   = f"{composite_z:+.2f}" if composite_z is not None and not math.isnan(composite_z) else "—"
-    z_color = _zscore_color(composite_z) if composite_z is not None else "#888"
-    count   = f"{n_active}/{n_total} active" if n_total else "—"
+    z_str     = f"{composite_z:+.2f}" if composite_z is not None and not math.isnan(composite_z) else "—"
+    z_color   = _semantic_z_color(composite_z, force_key) if composite_z is not None else "#888"
+    mom_str   = f"{momentum_score:.0%}" if momentum_score is not None else "—"
+    mom_color = _momentum_score_color(momentum_score, force_key)
+    count     = f"{n_active}/{n_total} active" if n_total else "—"
 
     summary = html.Summary(
         html.Span([
@@ -393,6 +431,10 @@ def _build_section(
             html.Span("  ·  Z ", style={"color": "var(--muted-color)"}),
             html.Span(z_str, style={
                 "color": z_color, "fontFamily": "monospace", "fontWeight": "600",
+            }),
+            html.Span("  ·  Mom ", style={"color": "var(--muted-color)"}),
+            html.Span(mom_str, style={
+                "color": mom_color, "fontFamily": "monospace", "fontWeight": "600",
             }),
             html.Span(f"  ·  {momentum_arrow}",
                       style={"fontSize": "1.0em"}),
@@ -471,6 +513,7 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     )
 
     g_z = i_z = None
+    g_mom = i_mom = None
     audit_by_signal: dict = {}
     try:
         hist = load_composite_history(country=country)
@@ -487,6 +530,8 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
                 i_z = float(row[i_roll_col])
             else:
                 i_z = float(row["inflation_score"]) if pd.notna(row.get("inflation_score")) else None
+            g_mom = float(row["growth_momentum"])    if pd.notna(row.get("growth_momentum"))    else None
+            i_mom = float(row["inflation_momentum"]) if pd.notna(row.get("inflation_momentum")) else None
             wa_raw = row.get("weight_audit")
             if wa_raw:
                 raw = json.loads(wa_raw) if isinstance(wa_raw, str) else wa_raw
@@ -510,6 +555,10 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     rate_z   = _mean_z(rate_df)
     credit_z = _mean_z(credit_df)
     vol_z    = _mean_z(vol_df)
+
+    rate_mom   = _direction_fraction(rate_df)
+    credit_mom = _direction_fraction(credit_df)
+    vol_mom    = _direction_fraction(vol_df)
 
     # ── Build rows ────────────────────────────────────────────────────────────
     g_rows,  g_active  = _composite_rows(comp_df, "growth",    _GROWTH_COLOR,    audit_by_signal)
@@ -546,11 +595,11 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     )
 
     sections = [
-        _build_section("Growth",       _GROWTH_COLOR,     g_z,     _comp_arrow("growth"),    g_active,  g_total,  g_rows),
-        _build_section("Inflation",    _INFLATION_COLOR,  i_z,     _comp_arrow("inflation"), i_active,  i_total,  i_rows),
-        _build_section("Interest Rate",_RATE_COLOR,       rate_z,  _majority_arrow(rate_df["direction"].dropna().tolist()),   r_active,  len(rate_df),   r_rows),
-        _build_section("Credit",       _CREDIT_COLOR,     credit_z,_majority_arrow(credit_df["direction"].dropna().tolist()), cr_active, len(credit_df), cr_rows),
-        _build_section("Volatility",   _VOLATILITY_COLOR, vol_z,   _majority_arrow(vol_df["direction"].dropna().tolist() if not vol_df.empty else []), v_active, len(vol_df), v_rows),
+        _build_section("Growth",       _GROWTH_COLOR,     "growth",        g_z,     g_mom,     _comp_arrow("growth"),    g_active,  g_total,       g_rows),
+        _build_section("Inflation",    _INFLATION_COLOR,  "inflation",     i_z,     i_mom,     _comp_arrow("inflation"), i_active,  i_total,       i_rows),
+        _build_section("Interest Rate",_RATE_COLOR,       "interest_rate", rate_z,  rate_mom,  _majority_arrow(rate_df["direction"].dropna().tolist()),                                     r_active,  len(rate_df),   r_rows),
+        _build_section("Credit",       _CREDIT_COLOR,     "credit",        credit_z,credit_mom,_majority_arrow(credit_df["direction"].dropna().tolist()),                                   cr_active, len(credit_df), cr_rows),
+        _build_section("Volatility",   _VOLATILITY_COLOR, "volatility",    vol_z,   vol_mom,   _majority_arrow(vol_df["direction"].dropna().tolist() if not vol_df.empty else []),          v_active,  len(vol_df),    v_rows),
     ]
 
     return html.Div([page_header] + sections + [footer])

@@ -1164,6 +1164,23 @@ bindings:
     sanity_min: 0.0
     sanity_max: 2000000.0
 
+  - id: fiscal.govt_receipts_qtr
+    series_id: FGRECPT
+    provider: FRED
+    frequency: Q
+    force: fiscal
+    lead_lag: coincident
+    transformation: level
+    units: billions_usd
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 5000.0
+    linkage: "Federal government current receipts (billions, annual rate, quarterly). Used in the Debt Stress indicator to compute receipts/GDP ratio; more timely than the annual World Bank revenue series."
+    sanity_min: 1000.0
+    sanity_max: 15000.0
+
   - id: fiscal.govt_revenue_gdp
     series_id: GC.REV.XGRT.GD.ZS
     provider: WorldBank

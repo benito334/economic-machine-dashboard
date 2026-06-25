@@ -12,6 +12,53 @@ from dash import html
 
 _DIR_ARROW: dict[str, str] = {"rising": "↑", "falling": "↓", "flat": "→"}
 
+# Dark-theme palette anchors — interpolate from washed-out light end to vivid.
+# At low magnitude the washed-out tone is still clearly visible on a dark
+# background (unlike low-alpha rgba which blends to near-invisible).
+_CLR_GREEN_LO = (148, 210, 178)   # soft sage/mint
+_CLR_GREEN_HI = (46,  204, 113)   # vivid emerald
+_CLR_RED_LO   = (232, 178, 158)   # soft salmon
+_CLR_RED_HI   = (231, 76,  60)    # vivid red-orange
+
+
+def _lerp_rgb(t: float, lo: tuple, hi: tuple) -> str:
+    """Linear interpolate between two RGB 3-tuples. t=0 → lo, t=1 → hi."""
+    return "rgb({},{},{})".format(
+        int(lo[0] + t * (hi[0] - lo[0])),
+        int(lo[1] + t * (hi[1] - lo[1])),
+        int(lo[2] + t * (hi[2] - lo[2])),
+    )
+
+
+def _signal_link(label: str, signal_id: str) -> html.Span:
+    """Clickable signal label that opens the time-series drill-down modal."""
+    return html.Span(
+        label,
+        id={"type": "signal-link", "index": signal_id},
+        n_clicks=0,
+        style={
+            "cursor": "pointer",
+            "borderBottom": "1px dotted rgba(200,200,200,0.3)",
+        },
+    )
+
+
+def _signal_info_icon(signal_id: str) -> html.Span:
+    """Small info icon that opens the signal metadata popup."""
+    return html.Span(
+        "ⓘ",
+        id={"type": "info-icon", "index": signal_id},
+        n_clicks=0,
+        style={
+            "cursor": "pointer",
+            "marginLeft": "6px",
+            "fontSize": "0.72rem",
+            "color": "rgba(140,170,220,0.55)",
+            "verticalAlign": "middle",
+            "userSelect": "none",
+        },
+    )
+
 
 def _concept_label(signal_id: str) -> str:
     parts = signal_id.split(".")
@@ -164,9 +211,7 @@ def build_force_table(
 
         data_rows.append(html.Tr([
             html.Td([
-                html.Span(label, title=linkage, style={
-                    "cursor": "help", "color": "#ddd", "fontWeight": "600",
-                }),
+                _signal_link(label, sid),
                 html.Span(f" {ll}", style={"fontSize": "0.7em", "color": ll_col}),
                 html.Br(),
                 html.Span(source, style={"fontSize": "0.7em", "color": "#555"}),

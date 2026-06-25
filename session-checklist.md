@@ -58,6 +58,19 @@ All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidanc
 - **Signals page** (`/signals`) live: 5-force breakdown (Growth/Inflation/Rate/Credit/Volatility), per-section composite Z + momentum header, force tables matching Regime Map; `dashboard/shared_components.py` extracted for reuse.
 - 353/353 tests pass; Docker rebuilt.
 
+## Completed 2026-06-25
+
+- **Debt stress repairs**: FYFSD+FYOINT+FGRECPT FRED-derived replacements for dropped IMF `primary_balance_gdp` + WB `govt_revenue_gdp`; 7/7 components active (was 5/7); `us.fiscal.govt_receipts_qtr` added to `us_bindings.yaml`
+- **Debt stress semantic colors**: `_stress_z_color()` — red shades = stress-increasing, green = stress-reducing
+- **Signal drill-down modal** (Option A): click any signal name across all tables (lens, Force Components, Debt Stress, Signals page) → dual-panel chart (computed value + Z-score). Pattern-matching `{"type": "signal-link"}` callback + `signal-drill-id` store.
+- **3rd panel raw data**: for FRED `yoy_pct` signals, drill chart adds row 3 = raw underlying level from parquet cache. `_load_signal_binding()` + `_load_raw_cache_series()` in `charting.py`.
+- **Shared vertical hover spike**: clientside callback on `signal-drill-chart` figure mirrors the regime history implementation; SVG line spans all subplot y-extents on hover.
+- **Signal info popup** (ⓘ icon): `_signal_info_icon()` in `shared_components.py` added to all Signals page rows. Click → `signal-info-modal` with description, units (transformed + raw FRED units), frequency, provider, series ID, last updated.
+- **FRED metadata sidecar**: `get_fred_meta(series_id)` in `loader.py` reads/writes `fred_{id}_meta.json` (365-day TTL). 76 sidecars backfilled.
+- **Dark-theme color palette**: `_lerp_rgb()` + `_CLR_GREEN_LO/HI` + `_CLR_RED_LO/HI` in `shared_components.py`. Replaces `rgba(color, low_alpha)` (invisible on dark) with opaque lerp from light washed-out → vivid saturated. Applied to `_semantic_z_color`, `_momentum_score_color`, `_stress_z_color`, `_sem_z_color`.
+- **Signals page composite momentum**: `growth_momentum` + `inflation_momentum` from composites table shown in section headers as `Mom XX%`, color-coded with same semantic palette. Rate/Credit/Vol momentum computed as direction fraction on the fly.
+- **ALL import fix**: `ALL` + `PreventUpdate` + `ctx` added to top-level Dash imports in `charting.py`.
+
 ## Up next (next session)
 | Priority | Item |
 |---|---|

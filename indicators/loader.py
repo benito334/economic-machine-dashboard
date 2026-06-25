@@ -49,6 +49,43 @@ def _cache_path(series_id: str) -> Path:
     return RAW_CACHE_DIR / f"fred_{series_id}.parquet"
 
 
+def _meta_path(series_id: str) -> Path:
+    return RAW_CACHE_DIR / f"fred_{series_id}_meta.json"
+
+
+def get_fred_meta(series_id: str) -> dict:
+    """Return FRED series metadata (title, units, seasonal adjustment).
+
+    Reads from a sidecar JSON if present; otherwise fetches from the FRED API
+    and writes the sidecar for future calls. TTL is 365 days.
+    Returns an empty dict on failure so callers can degrade gracefully.
+    """
+    import json as _json
+    meta_file = _meta_path(series_id)
+    _year = 3600 * 24 * 365
+    if meta_file.exists() and (time.time() - meta_file.stat().st_mtime) < _year:
+        try:
+            return _json.loads(meta_file.read_text())
+        except Exception:
+            pass
+    try:
+        fred = _get_fred_client()
+        info = fred.get_series_info(series_id)
+        meta = {
+            "title":        str(info.get("title", "")),
+            "units":        str(info.get("units", "")),
+            "units_short":  str(info.get("units_short", "")),
+            "seasonal_adjustment_short": str(info.get("seasonal_adjustment_short", "")),
+            "frequency":    str(info.get("frequency", "")),
+        }
+        RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        meta_file.write_text(_json.dumps(meta))
+        return meta
+    except Exception as exc:
+        logger.warning("[fred meta] %s: %s", series_id, exc)
+        return {}
+
+
 def _is_fresh(path: Path, freq: str) -> bool:
     if not path.exists():
         return False
