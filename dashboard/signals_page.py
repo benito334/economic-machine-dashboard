@@ -145,21 +145,21 @@ def _dash_td() -> html.Td:
     return html.Td("—", style={**_TD_MONO, "textAlign": "center", "color": "#555"})
 
 
-def _semantic_z_color(z, force: str, invert: bool = False) -> str:
+def _semantic_z_color(z, force: str, invert: bool = False, thresh: float = 0.5) -> str:
     """Semantic color for a signal Z-score bar + text.
 
-    Interpolates from a washed-out light shade at low magnitude to vivid at
-    high magnitude (fully opaque), which stays readable on dark backgrounds
-    unlike low-alpha rgba blending.
+    Uses the configured threshold as the neutral zone boundary.
+    Interpolates above the threshold from washed-out to vivid.
     """
     if z is None or (isinstance(z, float) and math.isnan(z)):
         return "#666"
     adj_z = -float(z) if invert else float(z)
     if force == "inflation":
         adj_z = -adj_z
-    magnitude = min(abs(adj_z) / 3.0, 1.0)
-    if magnitude < 0.05:
+    if abs(adj_z) < thresh:
         return "#888"
+    magnitude = min((abs(adj_z) - thresh) / max(2.0 * thresh, 0.01), 1.0)
+    magnitude = 0.35 + 0.65 * magnitude
     if adj_z > 0:
         return _lerp_rgb(magnitude, _CLR_GREEN_LO, _CLR_GREEN_HI)
     return _lerp_rgb(magnitude, _CLR_RED_LO, _CLR_RED_HI)
@@ -263,6 +263,7 @@ def _composite_rows(
     force: str,
     color: str,
     audit_by_signal: dict,
+    thresh: float = 0.5,
 ) -> tuple[list[html.Tr], int]:
     """Build table rows for a Growth/Inflation composite force (full weight info)."""
     rows: list[html.Tr] = []
@@ -308,7 +309,7 @@ def _composite_rows(
 
         # Semantic Z-color: green = economically good, red = bad, grey = neutral
         z_color = _semantic_z_color(
-            None if z_missing else z, force, invert,
+            None if z_missing else z, force, invert, thresh=thresh,
         )
         # Momentum arrow: green = good direction, red = bad direction
         if force == "growth":
@@ -490,10 +491,11 @@ _SIGNALS_GROWTH_WINDOW_COL   = {36: "36m", 48: "48m", 60: "60m"}
     [Input("country-store",          "data"),
      Input("page-trigger",           "data"),
      Input("zscore-window-store",    "data"),
-     Input("inflation-window-store", "data")],
+     Input("inflation-window-store", "data"),
+     Input("regime-threshold-store", "data")],
     prevent_initial_call=False,
 )
-def render_signals(country_data, page_trigger, zscore_window=0, inflation_window=0):
+def render_signals(country_data, page_trigger, zscore_window=0, inflation_window=0, thresholds=None):
     page = (page_trigger or {}).get("page", "")
     if page and page != "/signals":
         return no_update
@@ -561,8 +563,9 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     vol_mom    = _direction_fraction(vol_df)
 
     # ── Build rows ────────────────────────────────────────────────────────────
-    g_rows,  g_active  = _composite_rows(comp_df, "growth",    _GROWTH_COLOR,    audit_by_signal)
-    i_rows,  i_active  = _composite_rows(comp_df, "inflation", _INFLATION_COLOR, audit_by_signal)
+    _thresh_z = float((thresholds or {}).get("gz", 0.5))
+    g_rows,  g_active  = _composite_rows(comp_df, "growth",    _GROWTH_COLOR,    audit_by_signal, thresh=_thresh_z)
+    i_rows,  i_active  = _composite_rows(comp_df, "inflation", _INFLATION_COLOR, audit_by_signal, thresh=_thresh_z)
     r_rows,  r_active  = _signal_rows(rate_df,   _RATE_COLOR)
     cr_rows, cr_active = _signal_rows(credit_df, _CREDIT_COLOR)
     v_rows,  v_active  = _signal_rows(vol_df,    _VOLATILITY_COLOR)

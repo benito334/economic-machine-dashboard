@@ -4,6 +4,24 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-25 — Configurable regime classification system
+
+**Done:**
+- **New two-label regime classification** (`dashboard/charting.py`): replaced single "Inflationary Boom / Stagflation / Expansion / Disinflationary Slowdown" badge with two independent chips — Growth chip (Growth · Transition · Retraction) and Inflation chip (Inflation · Transition · Disinflation).
+- **`_classify_regime(g_score, i_score, g_delta, i_delta, thresholds)`** function: dual condition — Z threshold (±gz/±iz) AND MoM delta threshold (gm/im) must both be satisfied to enter a named regime; otherwise lands in Transition.
+- **`regime-threshold-store`** (localStorage): default `{gz:0.5, iz:0.5, gm:0.0, im:0.0}`.
+- **`_THRESHOLD_MODAL`**: ⚙ button in Regime History header opens modal with four sliders (Growth Z, Inflation Z, Growth Mom, Inflation Mom); "Apply" persists to store, "Reset Defaults" reverts; sliders populate from store on open.
+- **Threshold-aware `_sem_z_color`** in `charting.py` and `_semantic_z_color` in `signals_page.py`: neutral zone = ±thresh (configurable); colour magnitude scales above it (floored at 35% intensity so never invisible).
+- **Scatter chart threshold lines**: four dashed lines at ±gz (vertical) and ±iz (horizontal) update live with store.
+- **`update_regime_info` callback** now accepts `regime-threshold-store` as Input; `_regime_info_children` passes `thresholds` through to classify and color.
+- **Signals page** (`render_signals`) receives `regime-threshold-store`; passes `thresh` to `_composite_rows` → `_semantic_z_color`.
+- **354/354 tests pass.** Container rebuilt and serving HTTP 200.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+
+---
+
 ## 2026-06-25 — Composites stale-exclusion fix + signal QAQC
 
 **Done:**

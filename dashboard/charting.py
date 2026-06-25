@@ -1182,6 +1182,9 @@ def _page_regime_history() -> html.Div:
                     html.Span(id="regime-date-display", className="text-muted small align-middle"),
                 ], className="d-flex align-items-center pt-2 pb-1"),
                 dbc.Col([
+                    dbc.Button("⚙", id="rh-threshold-open", color="link", size="sm", n_clicks=0,
+                               title="Regime Thresholds",
+                               style={"fontSize": "1.0rem", "padding": "2px 8px", "opacity": "0.7"}),
                     dbc.Button("ℹ", id="rh-help-toggle", color="link", size="sm", n_clicks=0,
                                title="Field Guide",
                                style={"fontSize": "1.0rem", "padding": "2px 8px", "opacity": "0.7"}),
@@ -1348,6 +1351,55 @@ _SIGNAL_INFO_MODAL = dbc.Modal(
     ],
 )
 
+_THRESHOLD_MODAL = dbc.Modal(
+    id="regime-threshold-modal",
+    size="md",
+    is_open=False,
+    children=[
+        dbc.ModalHeader(dbc.ModalTitle("Regime Thresholds", style={"fontSize": "1rem"})),
+        dbc.ModalBody([
+            html.P(
+                "A signal must cross both the Z-score threshold AND the momentum threshold "
+                "to be classified as Growth / Retraction or Inflation / Disinflation. "
+                "Otherwise it lands in Transition.",
+                style={"fontSize": "0.78rem", "color": "var(--muted-color)", "marginBottom": "18px"},
+            ),
+            html.Label("Growth Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+            dcc.Slider(id="rh-gz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
+                       marks={0: "0", 0.5: "0.5", 1.0: "1.0", 1.5: "1.5", 2.0: "2.0"},
+                       tooltip={"placement": "bottom", "always_visible": True}),
+            html.Div(style={"marginBottom": "18px"}),
+
+            html.Label("Inflation Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+            dcc.Slider(id="rh-iz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
+                       marks={0: "0", 0.5: "0.5", 1.0: "1.0", 1.5: "1.5", 2.0: "2.0"},
+                       tooltip={"placement": "bottom", "always_visible": True}),
+            html.Div(style={"marginBottom": "18px"}),
+
+            html.Label("Growth Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+            html.P("Δ MoM of the composite growth score. 0 = any positive move counts.",
+                   style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
+            dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
+                       marks={-0.1: "-0.10", -0.05: "-0.05", 0: "0", 0.05: "0.05", 0.1: "0.10"},
+                       tooltip={"placement": "bottom", "always_visible": True}),
+            html.Div(style={"marginBottom": "18px"}),
+
+            html.Label("Inflation Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+            html.P("Δ MoM of the composite inflation score. 0 = any positive move counts.",
+                   style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
+            dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
+                       marks={-0.1: "-0.10", -0.05: "-0.05", 0: "0", 0.05: "0.05", 0.1: "0.10"},
+                       tooltip={"placement": "bottom", "always_visible": True}),
+        ], style={"padding": "12px 20px 4px"}),
+        dbc.ModalFooter([
+            dbc.Button("Reset Defaults", id="rh-threshold-reset", color="secondary",
+                       size="sm", outline=True, n_clicks=0),
+            dbc.Button("Apply", id="rh-threshold-apply", color="primary",
+                       size="sm", n_clicks=0, className="ms-2"),
+        ]),
+    ],
+)
+
 _SIGNAL_DRILL_MODAL = dbc.Modal(
     id="signal-drill-modal",
     size="xl",
@@ -1392,6 +1444,10 @@ app.layout = html.Div([
     dcc.Store(id="diseq-window-store",      data=0, storage_type="local"),
     # Active country (Phase 2 multi-country support)
     dcc.Store(id="country-store",        data="US", storage_type="local"),
+    # Regime classification thresholds (persisted per browser)
+    dcc.Store(id="regime-threshold-store",
+              data={"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0},
+              storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
     # Signal drill-down: stores the signal_id most recently clicked
@@ -1402,6 +1458,7 @@ app.layout = html.Div([
     html.Div(id="theme-dummy",           style={"display": "none"}),
 
     _SETTINGS_MODAL,
+    _THRESHOLD_MODAL,
     _SIGNAL_DRILL_MODAL,
     _SIGNAL_INFO_MODAL,
 
@@ -2201,6 +2258,56 @@ def update_yield_curve(
 _GROWTH_COLOR    = "#4C9BE8"
 _INFLATION_COLOR = "#E8734C"
 
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0}
+
+# Growth chip colors (positive = good)
+_GROWTH_CHIP  = {"Growth": "#4C9BE8", "Transition": "#888888", "Retraction": "#E8734C"}
+# Inflation chip colors (inflation = bad for macro, disinflation = good)
+_INFLAT_CHIP  = {"Inflation": "#E8734C", "Transition": "#888888", "Disinflation": "#4C9BE8"}
+
+
+def _classify_regime(
+    g_score: "float | None",
+    i_score: "float | None",
+    g_delta: "float | None",
+    i_delta: "float | None",
+    thresholds: "dict | None" = None,
+) -> "tuple[str, str]":
+    """Return (growth_regime, inflation_regime) using dual Z + momentum conditions."""
+    t = thresholds or _DEFAULT_THRESHOLDS
+    gz  = float(t.get("gz", 0.5))
+    iz  = float(t.get("iz", 0.5))
+    gm  = float(t.get("gm", 0.0))
+    im  = float(t.get("im", 0.0))
+
+    # Growth regime
+    if g_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
+        gv = float(g_score)
+        gd = float(g_delta) if (g_delta is not None and not (isinstance(g_delta, float) and pd.isna(g_delta))) else 0.0
+        if gv > gz and gd > gm:
+            g_regime = "Growth"
+        elif gv < -gz and gd < -gm:
+            g_regime = "Retraction"
+        else:
+            g_regime = "Transition"
+    else:
+        g_regime = "Transition"
+
+    # Inflation regime
+    if i_score is not None and not (isinstance(i_score, float) and pd.isna(i_score)):
+        iv = float(i_score)
+        id_ = float(i_delta) if (i_delta is not None and not (isinstance(i_delta, float) and pd.isna(i_delta))) else 0.0
+        if iv > iz and id_ > im:
+            i_regime = "Inflation"
+        elif iv < -iz and id_ < -im:
+            i_regime = "Disinflation"
+        else:
+            i_regime = "Transition"
+    else:
+        i_regime = "Transition"
+
+    return g_regime, i_regime
+
 
 def _regime_info_children(
     row: dict,
@@ -2212,6 +2319,7 @@ def _regime_info_children(
     components_open: bool = False,
     weight_audit: "dict | None" = None,
     rolling: "dict | None" = None,
+    thresholds: "dict | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table.
 
@@ -2235,16 +2343,24 @@ def _regime_info_children(
     g_score = rolling.get("g_score") if g_use_rolling else row.get("growth_score")
     i_score = rolling.get("i_score") if i_use_rolling else row.get("inflation_score")
 
-    # Derive quadrant from rolling scores when active; fall back to stored label
-    _RQ = {
-        (True,  True):  "Inflationary Boom",
-        (True,  False): "Expansion",
-        (False, True):  "Stagflation",
-        (False, False): "Disinflationary Slowdown",
-    }
-    if use_rolling and g_score is not None and i_score is not None:
+    # Active MoM deltas for threshold classification
+    _g_delta_active = rolling.get("g_delta", g_delta) if g_use_rolling else g_delta
+    _i_delta_active = rolling.get("i_delta", i_delta) if i_use_rolling else i_delta
+
+    # Classify regimes using configurable thresholds
+    _t = thresholds or _DEFAULT_THRESHOLDS
+    g_regime, i_regime = _classify_regime(g_score, i_score, _g_delta_active, _i_delta_active, _t)
+
+    # Keep legacy quadrant for backward-compat color lookups
+    if g_score is not None and i_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
+        _RQ_LEGACY = {
+            (True,  True):  "Inflationary Boom",
+            (True,  False): "Expansion",
+            (False, True):  "Stagflation",
+            (False, False): "Disinflationary Slowdown",
+        }
         try:
-            quadrant = _RQ[(float(g_score) >= 0, float(i_score) >= 0)]
+            quadrant = _RQ_LEGACY[(float(g_score) >= 0, float(i_score) >= 0)]
         except Exception:
             quadrant = row.get("quadrant") or "—"
     else:
@@ -2413,17 +2529,32 @@ def _regime_info_children(
             "gap": "0", "flexWrap": "wrap", "marginBottom": "16px",
         },
         children=[
-            # ── Quadrant badge ────────────────────────────────────────────────
+            # ── Regime chips (Growth · Inflation) ─────────────────────────────
             html.Div([
-                html.Div(
-                    quadrant,
-                    style={"backgroundColor": q_color, "color": "#111",
-                           "textAlign": "center", "fontWeight": "bold",
-                           "fontSize": "0.88rem", "padding": "8px 12px",
-                           "borderRadius": "4px",
-                           "width": "195px", "boxSizing": "border-box",
-                           "whiteSpace": "nowrap"},
-                ),
+                html.Div([
+                    html.Div(
+                        [html.Span("G · ", style={"opacity": "0.65", "fontWeight": "400"}),
+                         html.Span(g_regime, style={"fontWeight": "700"})],
+                        style={
+                            "backgroundColor": _GROWTH_CHIP.get(g_regime, "#888"),
+                            "color": "#111", "textAlign": "center",
+                            "fontSize": "0.82rem", "padding": "6px 10px",
+                            "borderRadius": "4px", "flex": "1",
+                            "whiteSpace": "nowrap",
+                        },
+                    ),
+                    html.Div(
+                        [html.Span("I · ", style={"opacity": "0.65", "fontWeight": "400"}),
+                         html.Span(i_regime, style={"fontWeight": "700"})],
+                        style={
+                            "backgroundColor": _INFLAT_CHIP.get(i_regime, "#888"),
+                            "color": "#111", "textAlign": "center",
+                            "fontSize": "0.82rem", "padding": "6px 10px",
+                            "borderRadius": "4px", "flex": "1",
+                            "whiteSpace": "nowrap",
+                        },
+                    ),
+                ], style={"display": "flex", "gap": "6px"}),
                 *([past_badge] if past_badge is not None else []),
                 date_block,
             ], style={"paddingRight": "20px", "width": "215px", "flexShrink": "0",
@@ -2486,17 +2617,21 @@ def _regime_info_children(
             if isinstance(force_audit, dict):
                 _audit_by_signal.update(force_audit)
 
+        _thresh_z = float((_t or {}).get("gz", 0.5))
+
         def _sem_z_color(z_val, f: str, inv: bool = False) -> str:
-            """Green = economically good for the force, red = bad, grey = neutral."""
+            """Green = economically good for the force, red = bad, grey = neutral zone."""
             from dashboard.shared_components import _CLR_GREEN_HI, _CLR_GREEN_LO, _CLR_RED_HI, _CLR_RED_LO, _lerp_rgb
             if z_val is None or (isinstance(z_val, float) and pd.isna(z_val)):
                 return "#666"
             adj = -float(z_val) if inv else float(z_val)
             if f == "inflation":
                 adj = -adj
-            mag = min(abs(adj) / 3.0, 1.0)
-            if mag < 0.05:
+            # Neutral zone width = threshold; magnitude scales above it
+            if abs(adj) < _thresh_z:
                 return "#888"
+            mag = min((abs(adj) - _thresh_z) / max(2.0 * _thresh_z, 0.01), 1.0)
+            mag = 0.35 + 0.65 * mag  # floor at 35% intensity so colour is visible
             return (_lerp_rgb(mag, _CLR_GREEN_LO, _CLR_GREEN_HI) if adj > 0
                     else _lerp_rgb(mag, _CLR_RED_LO, _CLR_RED_HI))
 
@@ -2894,13 +3029,14 @@ _RQ_MAP = {
 @callback(
     [Output("regime-info-box", "children"),
      Output("regime-date-display", "children")],
-    [Input("regime-step-index",      "data"),
-     Input("date-range",             "data"),
-     Input("zscore-window-store",    "data"),
-     Input("inflation-window-store", "data"),
-     Input("diseq-window-store",     "data"),
-     Input("country-store",          "data"),
-     Input("page-trigger",           "data")],
+    [Input("regime-step-index",        "data"),
+     Input("date-range",               "data"),
+     Input("zscore-window-store",      "data"),
+     Input("inflation-window-store",   "data"),
+     Input("diseq-window-store",       "data"),
+     Input("country-store",            "data"),
+     Input("page-trigger",             "data"),
+     Input("regime-threshold-store",   "data")],
     State("regime-components-open", "data"),
     prevent_initial_call=False,
 )
@@ -2912,6 +3048,7 @@ def update_regime_info(
     diseq_window: int = 0,
     country: str = "US",
     _trigger: Any = None,
+    thresholds: "dict | None" = None,
     components_open: bool = False,
 ) -> tuple:
     step = step or 0
@@ -3026,6 +3163,7 @@ def update_regime_info(
             components_open,
             weight_audit,
             rolling,
+            thresholds=thresholds or _DEFAULT_THRESHOLDS,
         ),
         date_display,
     )
@@ -3405,6 +3543,71 @@ def _update_rh_help_panel_style(is_open: bool) -> dict:
     }
 
 
+# ── Regime Threshold modal — callbacks ───────────────────────────────────────
+
+@callback(
+    Output("regime-threshold-modal", "is_open"),
+    [Input("rh-threshold-open",  "n_clicks"),
+     Input("rh-threshold-apply", "n_clicks"),
+     Input("rh-threshold-reset", "n_clicks")],
+    State("regime-threshold-modal", "is_open"),
+    prevent_initial_call=True,
+)
+def _toggle_threshold_modal(n_open: int, n_apply: int, n_reset: int, is_open: bool) -> bool:
+    from dash import ctx
+    if ctx.triggered_id == "rh-threshold-open":
+        return True
+    return False  # Apply or Reset closes the modal
+
+
+@callback(
+    [Output("rh-gz-slider", "value"),
+     Output("rh-iz-slider", "value"),
+     Output("rh-gm-slider", "value"),
+     Output("rh-im-slider", "value")],
+    Input("regime-threshold-modal", "is_open"),
+    State("regime-threshold-store", "data"),
+    prevent_initial_call=True,
+)
+def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
+    """Populate slider values from store when modal opens."""
+    if not is_open:
+        from dash import no_update
+        return no_update, no_update, no_update, no_update
+    t = stored or _DEFAULT_THRESHOLDS
+    return (
+        float(t.get("gz", 0.5)),
+        float(t.get("iz", 0.5)),
+        float(t.get("gm", 0.0)),
+        float(t.get("im", 0.0)),
+    )
+
+
+@callback(
+    Output("regime-threshold-store", "data"),
+    [Input("rh-threshold-apply", "n_clicks"),
+     Input("rh-threshold-reset", "n_clicks")],
+    [State("rh-gz-slider", "value"),
+     State("rh-iz-slider", "value"),
+     State("rh-gm-slider", "value"),
+     State("rh-im-slider", "value"),
+     State("regime-threshold-store", "data")],
+    prevent_initial_call=True,
+)
+def _save_thresholds(
+    n_apply: int, n_reset: int,
+    gz: float, iz: float, gm: float, im: float,
+    current: "dict | None",
+) -> dict:
+    from dash import ctx, no_update
+    if ctx.triggered_id == "rh-threshold-reset":
+        return dict(_DEFAULT_THRESHOLDS)
+    if ctx.triggered_id == "rh-threshold-apply":
+        return {"gz": float(gz or 0.5), "iz": float(iz or 0.5),
+                "gm": float(gm or 0.0), "im": float(im or 0.0)}
+    return no_update
+
+
 # ── Regime Map scatter — callbacks ────────────────────────────────────────────
 
 @callback(
@@ -3437,13 +3640,14 @@ def update_scatter_date(step: int, date_range: dict, country: str = "US", _trigg
 
 @callback(
     Output("scatter-chart", "figure"),
-    [Input("regime-step-index",      "data"),
-     Input("date-range",             "data"),
-     Input("theme-store",            "data"),
-     Input("zscore-window-store",    "data"),
-     Input("inflation-window-store", "data"),
-     Input("country-store",          "data"),
-     Input("page-trigger",           "data")],
+    [Input("regime-step-index",        "data"),
+     Input("date-range",               "data"),
+     Input("theme-store",              "data"),
+     Input("zscore-window-store",      "data"),
+     Input("inflation-window-store",   "data"),
+     Input("country-store",            "data"),
+     Input("page-trigger",             "data"),
+     Input("regime-threshold-store",   "data")],
     prevent_initial_call=False,
 )
 def update_scatter_chart(
@@ -3454,6 +3658,7 @@ def update_scatter_chart(
     inflation_window: int = 0,
     country: str = "US",
     _trigger: Any = None,
+    thresholds: "dict | None" = None,
 ) -> go.Figure:
     step = step or 0
     theme_name = theme_name or DEFAULT_THEME
@@ -3550,6 +3755,17 @@ def update_scatter_chart(
              line=dict(color="#555", width=1, dash="dot")),
         dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=0,
              line=dict(color="#555", width=1, dash="dot")),
+    ]
+    # Configurable threshold lines
+    _th = thresholds or _DEFAULT_THRESHOLDS
+    _gz = float(_th.get("gz", 0.5))
+    _iz = float(_th.get("iz", 0.5))
+    _th_line = dict(color="rgba(255,255,255,0.22)", width=1, dash="dash")
+    shapes += [
+        dict(type="line", xref="x", yref="paper", x0=_gz,  x1=_gz,  y0=0, y1=1, line=_th_line),
+        dict(type="line", xref="x", yref="paper", x0=-_gz, x1=-_gz, y0=0, y1=1, line=_th_line),
+        dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=_iz,  y1=_iz,  line=_th_line),
+        dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=-_iz, y1=-_iz, line=_th_line),
     ]
 
     # ── Resolve selected index in all-history ────────────────────────────────
