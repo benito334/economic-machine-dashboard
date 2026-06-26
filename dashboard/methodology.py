@@ -208,11 +208,12 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Concept", "Definition"],
                         [
-                            ["Force",     "One of the five fundamental economic forces: Growth, Inflation, Policy, Credit/Debt, External/Trade"],
-                            ["Signal",    "A single normalised, time-stamped indicator observation for a given country and force"],
-                            ["Composite", "Weighted mean Z-score across the signals that belong to Growth or Inflation"],
-                            ["Quadrant",  "The four-season regime label derived from the signs of Growth and Inflation scores"],
-                            ["Vintage",   "A point-in-time API snapshot (available for FRED series only)"],
+                            ["Force",          "One of the five fundamental economic forces: Growth, Inflation, Policy, Credit/Debt, External/Trade"],
+                            ["Signal",         "A single normalised, time-stamped indicator observation for a given country and force"],
+                            ["Composite",      "Weighted mean Z-score across the signals that belong to Growth or Inflation"],
+                            ["Growth Regime",  "Growth / Transition / Retraction — classified by configurable Z and momentum thresholds"],
+                            ["Inflation Regime","Inflation / Transition / Disinflation — classified independently using the same dual-condition logic"],
+                            ["Vintage",        "A point-in-time API snapshot (available for FRED series only)"],
                         ]
                     )],
                 )),
@@ -220,8 +221,8 @@ def get_layout() -> html.Div:
                     "This tool is a diagnostic, cross-country macro-regime dashboard in the "
                     "Ray Dalio 'Economic Machine' tradition.  It ingests macroeconomic data "
                     "from free/open APIs, normalises each series into a standardised signal, "
-                    "classifies each economy into one of four macro seasons, and presents a "
-                    "multi-panel diagnostic terminal."
+                    "classifies each economy into two independent regime dimensions (Growth and "
+                    "Inflation), and presents a multi-panel diagnostic terminal."
                 ),
                 _p(
                     "It is a diagnostic tool, not an allocator.  No portfolio construction, "
@@ -231,11 +232,12 @@ def get_layout() -> html.Div:
                 _table(
                     ["Concept", "Definition"],
                     [
-                        ["Force",        "One of the five fundamental economic forces: Growth, Inflation, Policy, Credit/Debt, External/Trade"],
-                        ["Signal",       "A single normalised, time-stamped indicator observation for a given country and force"],
-                        ["Composite",    "Weighted mean Z-score across the signals that belong to Growth or Inflation"],
-                        ["Quadrant",     "The four-season regime label derived from the signs of Growth and Inflation scores"],
-                        ["Vintage",      "A point-in-time API snapshot (available for FRED series only)"],
+                        ["Force",           "One of the five fundamental economic forces: Growth, Inflation, Policy, Credit/Debt, External/Trade"],
+                        ["Signal",          "A single normalised, time-stamped indicator observation for a given country and force"],
+                        ["Composite",       "Weighted mean Z-score across the signals that belong to Growth or Inflation"],
+                        ["Growth Regime",   "Growth / Transition / Retraction — classified by configurable Z and momentum thresholds"],
+                        ["Inflation Regime","Inflation / Transition / Disinflation — classified independently using the same dual-condition logic"],
+                        ["Vintage",         "A point-in-time API snapshot (available for FRED series only)"],
                     ]
                 ),
             ], title="1 · Overview & Concepts"),
@@ -687,60 +689,66 @@ def get_layout() -> html.Div:
                 _copy_btn(_section_text(
                     "8 · Regime Classification",
                     [
-                        "The four macro seasons are determined by the signs of the Growth and "
-                        "Inflation composite scores.",
-                        "Expansion (G>0, I≤0): economy growing above trend; inflation below norm. "
-                        "Goldilocks. Typical mid-cycle environment.",
-                        "Inflationary Boom (G>0, I>0): strong growth with rising prices. "
-                        "Late-cycle. Policy tightening pressure builds.",
-                        "Stagflation (G≤0, I>0): below-trend growth with persistent inflation. "
-                        "Most difficult policy environment.",
-                        "Disinflationary Slowdown (G≤0, I≤0): contraction with falling prices. "
-                        "Deflationary risk; policy easing conditions.",
-                        "Confidence qualifies the label. A Stagflation reading with 30% confidence "
-                        "means only 30% of active signals agree with the quadrant direction. "
-                        "High disequilibrium means the economy is far from any steady state.",
+                        "Growth and Inflation are classified independently using a dual-condition "
+                        "rule: BOTH the composite Z-score AND the month-over-month momentum delta "
+                        "must cross their respective thresholds for a named regime to fire. "
+                        "Otherwise the dimension lands in Transition.",
+                        "Growth regime: Growth (Z > +gz AND Δ > gm), Retraction (Z < -gz AND Δ < -gm), "
+                        "Transition (all other cases).",
+                        "Inflation regime: Inflation (Z > +iz AND Δ > im), Disinflation (Z < -iz AND Δ < -im), "
+                        "Transition (all other cases).",
+                        "Default thresholds: gz = 0.5, iz = 0.5, gm = 0.0, im = 0.0. "
+                        "Adjust via the 'Regime Thresholds' button on the Regime History page. "
+                        "Settings persist in browser localStorage.",
+                        "Confidence = fraction of active signals whose direction agrees with the "
+                        "regime classification. High disequilibrium means structural forces are far "
+                        "from equilibrium across multiple dimensions.",
                     ],
                     tables=[(
-                        ["Quadrant", "Growth", "Inflation", "Description"],
+                        ["Dimension", "Label", "Condition", "Description"],
                         [
-                            ["Expansion",               "> 0", "≤ 0", "Goldilocks. Typical mid-cycle environment."],
-                            ["Inflationary Boom",        "> 0", "> 0", "Strong growth with rising prices. Late-cycle."],
-                            ["Stagflation",              "≤ 0", "> 0", "Below-trend growth with persistent inflation."],
-                            ["Disinflationary Slowdown", "≤ 0", "≤ 0", "Contraction with falling prices. Deflationary risk."],
+                            ["Growth",    "Growth",      "Z > +gz  AND  ΔMoM > gm",  "Above-trend momentum confirming expansion"],
+                            ["Growth",    "Transition",  "Neither threshold crossed",  "Mixed or inconclusive growth signal"],
+                            ["Growth",    "Retraction",  "Z < -gz  AND  ΔMoM < -gm", "Below-trend momentum confirming contraction"],
+                            ["Inflation", "Inflation",   "Z > +iz  AND  ΔMoM > im",  "Inflationary pressure building"],
+                            ["Inflation", "Transition",  "Neither threshold crossed",  "Mixed or inconclusive inflation signal"],
+                            ["Inflation", "Disinflation","Z < -iz  AND  ΔMoM < -im", "Disinflationary pressure confirmed"],
                         ]
                     )],
-                    notes=["Historical note: the 2022 US reading shows Inflationary Boom (not Stagflation) "
-                           "because employment Z-scores were strongly positive. Stagflation correctly "
+                    notes=["Historical note: 2022 US shows Growth + Inflation (not Retraction) "
+                           "because employment Z-scores were strongly positive. Retraction correctly "
                            "appears from March 2023 when growth Z-scores turned negative."],
                 )),
-                _p("The four macro seasons are determined by the signs of the Growth and "
-                   "Inflation composite scores."),
+                _p("Growth and Inflation are classified independently.  A named regime requires "
+                   "BOTH the Z-score AND the momentum delta to cross their configured thresholds — "
+                   "preventing single-period spikes from triggering a regime change."),
                 _table(
-                    ["Quadrant", "Growth", "Inflation", "Description"],
+                    ["Dimension", "Label", "Condition", "Description"],
                     [
-                        ["Expansion",              "> 0", "≤ 0",
-                         "Economy growing above trend; inflation below norm.  "
-                         "Goldilocks.  Typical mid-cycle environment."],
-                        ["Inflationary Boom",       "> 0", "> 0",
-                         "Strong growth with rising prices.  Late-cycle.  "
-                         "Policy tightening pressure builds."],
-                        ["Stagflation",             "≤ 0", "> 0",
-                         "Below-trend growth with persistent inflation.  "
-                         "Most difficult policy environment."],
-                        ["Disinflationary Slowdown","≤ 0", "≤ 0",
-                         "Contraction with falling prices.  "
-                         "Deflationary risk; policy easing conditions."],
+                        ["Growth",    "Growth",       "Z > +gz  AND  ΔMoM > gm",
+                         "Above-trend composite Z with positive month-over-month momentum."],
+                        ["Growth",    "Transition",   "Neither threshold crossed",
+                         "Mixed or inconclusive — neither expansion nor contraction confirmed."],
+                        ["Growth",    "Retraction",   "Z < −gz  AND  ΔMoM < −gm",
+                         "Below-trend composite Z with negative momentum."],
+                        ["Inflation", "Inflation",    "Z > +iz  AND  ΔMoM > im",
+                         "Inflationary pressure above threshold and building."],
+                        ["Inflation", "Transition",   "Neither threshold crossed",
+                         "Mixed or inconclusive inflation signal."],
+                        ["Inflation", "Disinflation", "Z < −iz  AND  ΔMoM < −im",
+                         "Disinflationary pressure confirmed by both Z and momentum."],
                     ]
                 ),
-                _p("Confidence qualifies the label.  A Stagflation reading with 30% confidence "
-                   "means only 30% of active signals agree with the quadrant direction — "
-                   "the classification is tentative.  High disequilibrium means the economy is "
-                   "far from any steady state across multiple force dimensions."),
-                _note("Historical note: the 2022 US reading shows Inflationary Boom "
-                      "(not Stagflation) because employment Z-scores were strongly positive.  "
-                      "Stagflation correctly appears from March 2023 when growth Z-scores "
-                      "turned negative."),
+                _p("Default thresholds: gz = 0.5, iz = 0.5, gm = 0.0, im = 0.0.  "
+                   "Adjust via the 'Regime Thresholds' button on the Regime History page.  "
+                   "Settings persist in localStorage.  Threshold lines are drawn on the scatter "
+                   "chart and the Regime History Z-score panels."),
+                _p("Confidence = fraction of active signals whose direction agrees with the "
+                   "classified regime.  High disequilibrium means structural forces are far from "
+                   "their equilibrium levels across multiple force dimensions."),
+                _note("Historical note: 2022 US shows Growth + Inflation rather than Retraction "
+                      "because employment Z-scores were strongly positive.  Retraction correctly "
+                      "appears from March 2023 when growth Z-scores turned negative."),
             ], title="8 · Regime Classification"),
 
             # 9 ── Long-Term Debt Stress ────────────────────────────────────────

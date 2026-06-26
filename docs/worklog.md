@@ -4,6 +4,23 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-25 — Regime UI polish + methodology audit
+
+**Done:**
+- **Slider styling fixes** (`dashboard/assets/theme.css`): tooltip boxes below sliders hidden (`dash-slider-tooltip { display: none }`); slider track/range/thumb styled with `--slider-accent` amber; value-display input box (`.dash-input-container`) given dark background (`var(--card-bg)`) with amber text and monospace font; mark labels forced amber via `.modal-body .dash-slider-mark`.
+- **Modal dark-theme overrides**: `.modal-content`, `.modal-header`, `.modal-footer` wired to `--card-bg`/`--border-color`; all modal slider parts inherit the sidebar slider palette.
+- **Auto-open bug fix** (`_toggle_threshold_modal` callback): Dash 4.x resolves `ctx.triggered_id` to the first Input even at n_clicks=0; fixed with `if ctx.triggered_id == "rh-threshold-open" and (n_open or 0) > 0` guard.
+- **Header threshold display**: `html.Div(id="rh-threshold-display")` added to Regime History header; `_update_threshold_display` callback renders live G·Z / I·Z / G·Δ / I·Δ chips in amber monospace inline with Prev/Now/Next buttons.
+- **Regime chart wired to threshold store**: `update_regime_chart` now takes `Input("regime-threshold-store", "data")`; Row 1 redesigned to dual-band scatter (Growth band at y=0.25, Inflation band at y=0.75); ±gz hlines added to Row 2 (Growth Z); ±iz hlines added to Row 4 (Inflation Z).
+- **"Regime Thresholds" button**: replaced ⚙ gear icon with `dbc.Button("Regime Thresholds", color="warning")` for visibility.
+- **Methodology page Section 1 updated**: description changed from "four macro seasons" to "two independent regime dimensions"; "Quadrant" concept row replaced with separate "Growth Regime" and "Inflation Regime" rows.
+- **Methodology page Section 8 rewritten**: old 4-season quadrant table replaced with dual-condition classification table (Growth/Transition/Retraction + Inflation/Transition/Disinflation), threshold explanation, configurable defaults, and localStorage persistence note.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+
+---
+
 ## 2026-06-25 — Configurable regime classification system
 
 **Done:**

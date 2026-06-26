@@ -1182,9 +1182,14 @@ def _page_regime_history() -> html.Div:
                     html.Span(id="regime-date-display", className="text-muted small align-middle"),
                 ], className="d-flex align-items-center pt-2 pb-1"),
                 dbc.Col([
-                    dbc.Button("⚙", id="rh-threshold-open", color="link", size="sm", n_clicks=0,
-                               title="Regime Thresholds",
-                               style={"fontSize": "1.0rem", "padding": "2px 8px", "opacity": "0.7"}),
+                    html.Div(id="rh-threshold-display",
+                             style={"display": "flex", "alignItems": "center",
+                                    "gap": "12px", "marginRight": "12px"}),
+                    dbc.Button("Regime Thresholds", id="rh-threshold-open",
+                               color="warning", size="sm", n_clicks=0,
+                               style={"fontSize": "0.78rem", "fontWeight": "600",
+                                      "padding": "4px 12px", "marginRight": "6px",
+                                      "color": "#111"}),
                     dbc.Button("ℹ", id="rh-help-toggle", color="link", size="sm", n_clicks=0,
                                title="Field Guide",
                                style={"fontSize": "1.0rem", "padding": "2px 8px", "opacity": "0.7"}),
@@ -1364,32 +1369,53 @@ _THRESHOLD_MODAL = dbc.Modal(
                 "Otherwise it lands in Transition.",
                 style={"fontSize": "0.78rem", "color": "var(--muted-color)", "marginBottom": "18px"},
             ),
-            html.Label("Growth Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
-            dcc.Slider(id="rh-gz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
-                       marks={0: "0", 0.5: "0.5", 1.0: "1.0", 1.5: "1.5", 2.0: "2.0"},
-                       tooltip={"placement": "bottom", "always_visible": True}),
-            html.Div(style={"marginBottom": "18px"}),
+            html.Label("Growth Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
+            html.Div(
+                dcc.Slider(id="rh-gz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
+                           marks={0: _modal_mark("0"), 0.5: _modal_mark("0.5"),
+                                  1.0: _modal_mark("1.0"), 1.5: _modal_mark("1.5"), 2.0: _modal_mark("2.0")},
+                           tooltip={"always_visible": False, "style": {"display": "none"}},
+                           allow_direct_input=True,
+                           className="sidebar-slider"),
+                style={"paddingBottom": "28px"},
+            ),
 
-            html.Label("Inflation Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
-            dcc.Slider(id="rh-iz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
-                       marks={0: "0", 0.5: "0.5", 1.0: "1.0", 1.5: "1.5", 2.0: "2.0"},
-                       tooltip={"placement": "bottom", "always_visible": True}),
-            html.Div(style={"marginBottom": "18px"}),
+            html.Label("Inflation Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
+            html.Div(
+                dcc.Slider(id="rh-iz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
+                           marks={0: _modal_mark("0"), 0.5: _modal_mark("0.5"),
+                                  1.0: _modal_mark("1.0"), 1.5: _modal_mark("1.5"), 2.0: _modal_mark("2.0")},
+                           tooltip={"always_visible": False, "style": {"display": "none"}},
+                           allow_direct_input=True,
+                           className="sidebar-slider"),
+                style={"paddingBottom": "28px"},
+            ),
 
-            html.Label("Growth Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+            html.Label("Growth Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
             html.P("Δ MoM of the composite growth score. 0 = any positive move counts.",
                    style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
-            dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
-                       marks={-0.1: "-0.10", -0.05: "-0.05", 0: "0", 0.05: "0.05", 0.1: "0.10"},
-                       tooltip={"placement": "bottom", "always_visible": True}),
-            html.Div(style={"marginBottom": "18px"}),
+            html.Div(
+                dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
+                           marks={-0.1: _modal_mark("-0.10"), -0.05: _modal_mark("-0.05"),
+                                  0: _modal_mark("0"), 0.05: _modal_mark("0.05"), 0.1: _modal_mark("0.10")},
+                           tooltip={"always_visible": False, "style": {"display": "none"}},
+                           allow_direct_input=True,
+                           className="sidebar-slider"),
+                style={"paddingBottom": "28px"},
+            ),
 
-            html.Label("Inflation Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+            html.Label("Inflation Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
             html.P("Δ MoM of the composite inflation score. 0 = any positive move counts.",
                    style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
-            dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
-                       marks={-0.1: "-0.10", -0.05: "-0.05", 0: "0", 0.05: "0.05", 0.1: "0.10"},
-                       tooltip={"placement": "bottom", "always_visible": True}),
+            html.Div(
+                dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
+                           marks={-0.1: _modal_mark("-0.10"), -0.05: _modal_mark("-0.05"),
+                                  0: _modal_mark("0"), 0.05: _modal_mark("0.05"), 0.1: _modal_mark("0.10")},
+                           tooltip={"always_visible": False, "style": {"display": "none"}},
+                           allow_direct_input=True,
+                           className="sidebar-slider"),
+                style={"paddingBottom": "28px"},
+            ),
         ], style={"padding": "12px 20px 4px"}),
         dbc.ModalFooter([
             dbc.Button("Reset Defaults", id="rh-threshold-reset", color="secondary",
@@ -3171,14 +3197,15 @@ def update_regime_info(
 
 @callback(
     Output("regime-chart", "figure"),
-    [Input("date-range",             "data"),
-     Input("theme-store",            "data"),
-     Input("regime-step-index",      "data"),
-     Input("zscore-window-store",    "data"),
-     Input("inflation-window-store", "data"),
-     Input("diseq-window-store",     "data"),
-     Input("country-store",          "data"),
-     Input("page-trigger",           "data")],
+    [Input("date-range",               "data"),
+     Input("theme-store",              "data"),
+     Input("regime-step-index",        "data"),
+     Input("zscore-window-store",      "data"),
+     Input("inflation-window-store",   "data"),
+     Input("diseq-window-store",       "data"),
+     Input("country-store",            "data"),
+     Input("page-trigger",             "data"),
+     Input("regime-threshold-store",   "data")],
     prevent_initial_call=False,
 )
 def update_regime_chart(
@@ -3190,6 +3217,7 @@ def update_regime_chart(
     diseq_window: int = 0,
     country: str = "US",
     _trigger: Any = None,
+    thresholds: "dict | None" = None,
 ) -> go.Figure:
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
@@ -3240,13 +3268,32 @@ def update_regime_chart(
     win_label = f" · rolling {' / '.join(parts)}" if parts else ""
     diseq_label = f" · rolling {diseq_window}mo" if (diseq_sfx and d_col != "disequilibrium_score") else ""
 
+    # ── Per-row regime classification using configurable thresholds ────────────
+    _t = thresholds or _DEFAULT_THRESHOLDS
+    _gz = float(_t.get("gz", 0.5))
+    _iz = float(_t.get("iz", 0.5))
+    _th_line = dict(color="rgba(232,163,23,0.40)", width=1, dash="dash")
+
+    g_delta_s = comp[g_col].diff()
+    i_delta_s = comp[i_col].diff()
+    g_regimes, i_regimes = [], []
+    for pos in range(len(comp)):
+        row_s = comp.iloc[pos]
+        gr, ir = _classify_regime(
+            row_s.get(g_col), row_s.get(i_col),
+            g_delta_s.iloc[pos], i_delta_s.iloc[pos],
+            _t,
+        )
+        g_regimes.append(gr)
+        i_regimes.append(ir)
+
     fig = make_subplots(
         rows=7, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.03,
         row_heights=[0.16, 0.18, 0.10, 0.18, 0.10, 0.14, 0.14],
         subplot_titles=[
-            "Regime Quadrant",
+            "Regime  (Growth · Inflation)",
             f"Growth Force Z-Score (composite{win_label})",
             "Growth Momentum (fraction of signals growth-positive)",
             f"Inflation Force Z-Score (composite{win_label})",
@@ -3256,35 +3303,45 @@ def update_regime_chart(
         ],
     )
 
-    # Row 1: Quadrant as colour-coded scatter
-    quadrant_map = {
-        "Expansion": 1,
-        "Inflationary Boom": 2,
-        "Stagflation": 3,
-        "Disinflationary Slowdown": 0,
-    }
-    q_numeric = quadrant_series.map(quadrant_map).fillna(-1)
+    # Row 1: Dual-regime colour-coded bands (Growth @ y=0.25, Inflation @ y=0.75)
+    g_colors = [_GROWTH_CHIP.get(r, "#888") for r in g_regimes]
+    i_colors = [_INFLAT_CHIP.get(r, "#888") for r in i_regimes]
     fig.add_trace(
         go.Scatter(
-            x=comp["as_of"],
-            y=q_numeric,
+            x=comp["as_of"], y=[0.25] * len(comp),
             mode="markers",
-            name="Quadrant",
-            marker={
-                "color": [_QUADRANT_COLOR.get(q, "#888") for q in quadrant_series],
-                "size": 5,
-            },
-            hovertemplate="%{x|%Y-%m-%d}<br>%{customdata}<extra></extra>",
-            customdata=quadrant_series,
+            name="Growth Regime",
+            marker={"color": g_colors, "size": 7, "symbol": "square"},
+            customdata=g_regimes,
+            hovertemplate="%{x|%Y-%m-%d}<br>Growth: %{customdata}<extra></extra>",
+            showlegend=False,
+        ),
+        row=1, col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=comp["as_of"], y=[0.75] * len(comp),
+            mode="markers",
+            name="Inflation Regime",
+            marker={"color": i_colors, "size": 7, "symbol": "square"},
+            customdata=i_regimes,
+            hovertemplate="%{x|%Y-%m-%d}<br>Inflation: %{customdata}<extra></extra>",
             showlegend=False,
         ),
         row=1, col=1,
     )
     fig.update_yaxes(
-        tickvals=[0, 1, 2, 3],
-        ticktext=["Dis.Slow", "Expansion", "Inf.Boom", "Stagflation"],
-        row=1, col=1,
+        tickvals=[0.25, 0.75],
+        ticktext=["Growth", "Inflation"],
+        range=[0, 1], row=1, col=1,
     )
+
+    # Keep q_numeric / q_label for the step-highlight marker below
+    quadrant_map = {
+        "Expansion": 1, "Inflationary Boom": 2,
+        "Stagflation": 3, "Disinflationary Slowdown": 0,
+    }
+    q_numeric = quadrant_series.map(quadrant_map).fillna(-1)
 
     # Row 2: Growth score (rolling or full-history)
     fig.add_trace(
@@ -3299,6 +3356,8 @@ def update_regime_chart(
         row=2, col=1,
     )
     fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
+    fig.add_hline(y=_gz,  line=_th_line, row=2, col=1)
+    fig.add_hline(y=-_gz, line=_th_line, row=2, col=1)
 
     # Row 3: Growth momentum
     if "growth_momentum" in comp.columns:
@@ -3329,6 +3388,8 @@ def update_regime_chart(
         row=4, col=1,
     )
     fig.add_hline(y=0, line_dash="dot", line_color="#555", row=4, col=1)
+    fig.add_hline(y=_iz,  line=_th_line, row=4, col=1)
+    fig.add_hline(y=-_iz, line=_th_line, row=4, col=1)
 
     # Row 5: Inflation momentum
     if "inflation_momentum" in comp.columns:
@@ -3413,17 +3474,17 @@ def update_regime_chart(
         line_width=1.5,
     )
 
-    # Highlighted marker — quadrant row (row 1), open circle in quadrant colour
-    q_val = q_numeric.iloc[sel_idx] if sel_idx < len(q_numeric) else None
-    q_label = sel.get("quadrant")
-    if q_val is not None and not pd.isna(q_val):
+    # Highlighted marker — regime row (row 1): open circles on both bands
+    _sel_g = g_regimes[sel_idx] if sel_idx < len(g_regimes) else "Transition"
+    _sel_i = i_regimes[sel_idx] if sel_idx < len(i_regimes) else "Transition"
+    for _y, _regime, _chip in [(0.25, _sel_g, _GROWTH_CHIP), (0.75, _sel_i, _INFLAT_CHIP)]:
         fig.add_trace(
             go.Scatter(
-                x=[sel_ts], y=[q_val],
+                x=[sel_ts], y=[_y],
                 mode="markers",
                 marker={
                     "size": 14, "symbol": "circle-open",
-                    "color": _QUADRANT_COLOR.get(q_label, "#888"),
+                    "color": _chip.get(_regime, "#888"),
                     "line": {"width": 2.5},
                 },
                 showlegend=False, hoverinfo="skip",
@@ -3549,15 +3610,53 @@ def _update_rh_help_panel_style(is_open: bool) -> dict:
     Output("regime-threshold-modal", "is_open"),
     [Input("rh-threshold-open",  "n_clicks"),
      Input("rh-threshold-apply", "n_clicks"),
-     Input("rh-threshold-reset", "n_clicks")],
+     Input("rh-threshold-reset", "n_clicks"),
+     Input("page-trigger",       "data")],
     State("regime-threshold-modal", "is_open"),
-    prevent_initial_call=True,
+    prevent_initial_call=False,  # fire on load to guarantee is_open=False
 )
-def _toggle_threshold_modal(n_open: int, n_apply: int, n_reset: int, is_open: bool) -> bool:
+def _toggle_threshold_modal(
+    n_open: int, n_apply: int, n_reset: int,
+    page_trigger: dict, is_open: bool,
+) -> bool:
     from dash import ctx
-    if ctx.triggered_id == "rh-threshold-open":
+    # Guard on n_clicks > 0: initial load fires with n_clicks=0 which must not open
+    if ctx.triggered_id == "rh-threshold-open" and (n_open or 0) > 0:
         return True
-    return False  # Apply or Reset closes the modal
+    return False  # initial load, Apply, Reset, or page navigation all close
+
+
+@callback(
+    Output("rh-threshold-display", "children"),
+    Input("regime-threshold-store", "data"),
+    prevent_initial_call=False,
+)
+def _update_threshold_display(thresholds: "dict | None") -> list:
+    t = thresholds or _DEFAULT_THRESHOLDS
+    gz = float(t.get("gz", 0.5))
+    iz = float(t.get("iz", 0.5))
+    gm = float(t.get("gm", 0.0))
+    im = float(t.get("im", 0.0))
+
+    def _chip(label: str, val: float, prec: int = 2) -> html.Span:
+        return html.Span([
+            html.Span(label, style={"color": "var(--muted-color)", "fontSize": "0.65rem",
+                                    "textTransform": "uppercase", "letterSpacing": "0.05em",
+                                    "marginRight": "3px"}),
+            html.Span(f"{val:+.{prec}f}" if prec > 1 else f"{val:.{prec}f}",
+                      style={"color": "#E8A317", "fontFamily": "monospace", "fontSize": "0.75rem",
+                             "fontWeight": "600"}),
+        ], style={"whiteSpace": "nowrap"})
+
+    return [
+        _chip("G·Z", gz),
+        html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
+        _chip("I·Z", iz),
+        html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
+        _chip("G·Δ", gm, 3),
+        html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
+        _chip("I·Δ", im, 3),
+    ]
 
 
 @callback(

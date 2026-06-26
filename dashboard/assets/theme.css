@@ -191,6 +191,68 @@ hr {
     align-items: center !important;
 }
 
+/* ── Bootstrap modals — dark theme ──────────────────────────────────────── */
+.modal-content {
+    background-color: var(--card-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--font-color) !important;
+}
+.modal-header,
+.modal-footer {
+    border-color: var(--border-color) !important;
+    background-color: var(--card-bg) !important;
+}
+.modal-title {
+    color: var(--font-color) !important;
+}
+/* Sliders inside modals — same track/range/thumb treatment as sidebar-slider */
+.modal-body .dash-slider-track {
+    background-color: color-mix(in srgb, var(--slider-accent) 22%, transparent) !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+.modal-body .dash-slider-range {
+    background-color: var(--slider-accent) !important;
+    height: 3px !important;
+    border-radius: 2px !important;
+}
+.modal-body .dash-slider-thumb {
+    background-color: var(--slider-accent) !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.modal-body .dash-slider-thumb:hover,
+.modal-body .dash-slider-thumb:focus {
+    filter: brightness(1.25) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--slider-accent) 30%, transparent) !important;
+}
+/* Hide all tooltips inside modals (we use marks instead) */
+.modal-body .dash-slider-tooltip {
+    display: none !important;
+}
+/* Direct-input value box on right of modal sliders */
+.modal-body .dash-input-container {
+    background-color: var(--card-bg) !important;
+    color: #E8A317 !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    font-size: 0.82rem !important;
+    font-family: monospace !important;
+    text-align: center !important;
+    outline: none !important;
+}
+.modal-body .dash-input-container:focus {
+    border-color: #E8A317 !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #E8A317 25%, transparent) !important;
+}
+/* Mark labels inside modals — yellow text, no background */
+.modal-body .dash-slider-mark {
+    color: #E8A317 !important;
+    font-size: 0.72rem !important;
+    background: transparent !important;
+}
+
 /* Formula card copy button */
 .formula-copy-btn:hover {
     opacity: 1 !important;
