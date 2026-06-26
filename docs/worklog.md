@@ -4,6 +4,20 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-26 — Rolling Z fix, chart polish, signals subnav, repo made private
+
+**Done:**
+- **Rolling Z fix on force detail pages**: `load_signal_history` allowlist expanded to include all rolling Z columns (`zscore_36m/48m/60m/90m/120m`). Force detail callback now passes `g_zcol`/`i_zcol` to `load_multi_signal_history` so per-signal Z panels update when the lookback slider changes.
+- **Composite Z chart styling**: `fill="tozeroy"` with per-force shading; line width 1.5; `y=0` dotted midline; amber dashed ±threshold hlines for growth/inflation pages — matches Regime History style.
+- **Composite Momentum panel**: new Row 2 on growth/inflation/rate/credit force pages; amber `#E8A317` with fill, 50% dotted midline, % Y-axis. Volatility page skipped (no DB momentum column).
+- **Signals subnav collapse**: sub-pages (Growth/Inflation/Rate/Credit/Volatility) now hidden by default and expand on hover or when any `/signals/*` page is active. Pure CSS: `max-height` transition on `.signals-subnav`, `:hover` + `:has(.active)` selectors. Signals NavLink changed to `active="partial"` so it stays highlighted on all sub-routes.
+- **Repo made private**: `github.com/benito334/indicators-machine` set to PRIVATE via `gh repo edit`.
+
+**Next:**
+- Phase 3: Back-testing engine (FRED vintage replay — named scenarios: 1970s stagflation, 2008 GFC, 2020 COVID) + simulation engine (parameter sweep / sensitivity to weights, thresholds, lookback windows).
+
+---
+
 ## 2026-06-26 — Force detail sub-pages + chart alignment fixes
 
 **Done:**

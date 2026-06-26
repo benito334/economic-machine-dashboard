@@ -168,7 +168,20 @@ def _build_banner(
 # ── Chart builder ──────────────────────────────────────────────────────────────
 
 _COMPOSITE_H = 160   # px — composite Z panel
+_MOMENTUM_H  = 110   # px — composite momentum panel
 _SIGNAL_PH   = 100   # px — each raw/Z sub-panel
+
+# Per-force fill colours for the composite Z area (matches force brand colour)
+_FORCE_FILL: dict[str, str] = {
+    "growth":    "rgba(92, 186, 138, 0.15)",
+    "inflation": "rgba(232, 115, 76, 0.15)",
+    "rate":      "rgba(76, 155, 232, 0.15)",
+    "credit":    "rgba(176, 127, 212, 0.15)",
+    "volatility":"rgba(244, 200, 66, 0.12)",
+}
+_MOM_COLOR = "#E8A317"          # amber — distinct from all force colours
+_MOM_FILL  = "rgba(232, 163, 23, 0.12)"
+_TH_LINE   = dict(color="rgba(232, 163, 23, 0.40)", width=1, dash="dash")
 
 
 def _build_force_chart(
@@ -182,23 +195,38 @@ def _build_force_chart(
     z_wide: pd.DataFrame,
     theme_name: str = "carbon",
     score_col: Optional[str] = None,
+    thresholds: Optional[dict] = None,
 ) -> go.Figure:
     fc = _FORCE_CFG[force]
     color = fc["color"]
     score_col = score_col or fc["score_col"]
+    mom_col   = fc["mom_col"]
+    thresholds = thresholds or {}
 
-    n_signals = len(signal_ids)
-    n_rows = 1 + n_signals * 2        # composite + (raw + Z) per signal
+    has_composite = bool(score_col and not comp_hist.empty and score_col in comp_hist.columns)
+    has_momentum  = bool(
+        has_composite and mom_col
+        and not comp_hist.empty and mom_col in comp_hist.columns
+        and not comp_hist[mom_col].dropna().empty
+    )
+
+    n_signals       = len(signal_ids)
+    momentum_offset = 1 if has_momentum else 0
+    n_rows          = 1 + momentum_offset + n_signals * 2
 
     composite_h = _COMPOSITE_H
+    momentum_h  = _MOMENTUM_H if has_momentum else 0
     signal_ph   = _SIGNAL_PH
-    total_h     = composite_h + n_signals * 2 * signal_ph
+    total_h     = composite_h + momentum_h + n_signals * 2 * signal_ph
 
-    # Row height fractions for Plotly
-    row_heights = [composite_h / total_h] + [signal_ph / total_h] * (n_signals * 2)
+    row_heights = [composite_h / total_h]
+    if has_momentum:
+        row_heights.append(momentum_h / total_h)
+    row_heights += [signal_ph / total_h] * (n_signals * 2)
 
-    # Subplot titles — shown as small text above each row
     subplot_titles: list[str] = [f"{fc['label']} Composite Z-score"]
+    if has_momentum:
+        subplot_titles.append(f"{fc['label']} Momentum (signal agreement %)")
     for sid in signal_ids:
         lbl = labels.get(sid, sid.split(".")[-1].replace("_", " ").title())
         subplot_titles += [lbl, f"{lbl}  ·  Z-score"]
@@ -214,7 +242,6 @@ def _build_force_chart(
 
     # ── Normalize signal dates to month-start to align with monthly composites ─
     # Only resample when a composite row exists; skip for volatility (daily VIX).
-    has_composite = bool(score_col and not comp_hist.empty and score_col in comp_hist.columns)
     if has_composite:
         if not raw_wide.empty:
             raw_wide = raw_wide.copy()
@@ -225,29 +252,50 @@ def _build_force_chart(
             z_wide.index = pd.to_datetime(z_wide.index).to_period("M").to_timestamp()
             z_wide = z_wide.groupby(z_wide.index).last()
 
-    # ── Row 1: Composite Z over time ──────────────────────────────────────────
-    if score_col and not comp_hist.empty and score_col in comp_hist.columns:
+    # ── Row 1: Composite Z — filled area + threshold lines ────────────────────
+    if has_composite:
         ser = comp_hist[["as_of", score_col]].dropna().copy()
-        # Normalize composite month-end dates to month-start (matches resampled signals)
         ser["as_of"] = pd.to_datetime(ser["as_of"]).dt.to_period("M").dt.to_timestamp()
         fig.add_trace(go.Scatter(
             x=ser["as_of"], y=ser[score_col],
             name="Composite Z",
-            line=dict(color=color, width=2),
+            line=dict(color=color, width=1.5),
+            fill="tozeroy",
+            fillcolor=_FORCE_FILL.get(force, "rgba(128,128,128,0.15)"),
             hovertemplate="%{x|%b %Y}: %{y:.3f}<extra></extra>",
             showlegend=False,
         ), row=1, col=1)
-        fig.add_hline(y=0, line_dash="dot",
-                      line_color="rgba(130,130,130,0.45)", line_width=1, row=1, col=1)
+        fig.add_hline(y=0, line_dash="dot", line_color="#555", row=1, col=1)
+        thresh_key = fc["thresh_key"]
+        if thresh_key:
+            tv = float(thresholds.get(thresh_key, 0.5))
+            fig.add_hline(y= tv, line=_TH_LINE, row=1, col=1)
+            fig.add_hline(y=-tv, line=_TH_LINE, row=1, col=1)
 
-    # ── Rows 2 … : per-signal dual panels ────────────────────────────────────
+    # ── Row 2 (optional): Composite Momentum — amber fill ─────────────────────
+    if has_momentum:
+        mom_ser = comp_hist[["as_of", mom_col]].dropna().copy()
+        mom_ser["as_of"] = pd.to_datetime(mom_ser["as_of"]).dt.to_period("M").dt.to_timestamp()
+        fig.add_trace(go.Scatter(
+            x=mom_ser["as_of"], y=mom_ser[mom_col],
+            name="Momentum",
+            line=dict(color=_MOM_COLOR, width=1.5),
+            fill="tozeroy",
+            fillcolor=_MOM_FILL,
+            hovertemplate="%{x|%b %Y}: %{y:.0%}<extra></extra>",
+            showlegend=False,
+        ), row=2, col=1)
+        fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=2, col=1)
+        fig.update_yaxes(tickformat=".0%", range=[0, 1],
+                         title_text="%", title_font_size=9, row=2, col=1)
+
+    # ── Rows 3+ : per-signal dual panels ──────────────────────────────────────
     for i, sid in enumerate(signal_ids):
-        row_raw = 2 + i * 2
-        row_z   = 3 + i * 2
+        row_raw = 2 + momentum_offset + i * 2
+        row_z   = 3 + momentum_offset + i * 2
         lbl     = labels.get(sid, sid.split(".")[-1].replace("_", " ").title())
         units   = units_map.get(sid, "value")
 
-        # Raw value panel
         if sid in raw_wide.columns:
             raw_s = raw_wide[sid].dropna()
             if not raw_s.empty:
@@ -259,18 +307,11 @@ def _build_force_chart(
                     showlegend=False,
                 ), row=row_raw, col=1)
 
-        # Z-score panel
         if sid in z_wide.columns:
             z_s = z_wide[sid].dropna()
             if not z_s.empty:
-                # Colour each point green/red by sign
-                z_vals = z_s.values
-                pos_mask = z_vals >= 0
-                fill_pos = color if force != "inflation" else "#E8734C"
-                fill_neg = "#E8734C" if force != "inflation" else color
-
                 fig.add_trace(go.Scatter(
-                    x=z_s.index, y=z_vals,
+                    x=z_s.index, y=z_s.values,
                     name=f"{lbl} Z",
                     mode="lines",
                     line=dict(color=color, width=1.2),
@@ -281,7 +322,6 @@ def _build_force_chart(
                               line_color="rgba(130,130,130,0.35)", line_width=1,
                               row=row_z, col=1)
 
-        # Y-axis labels
         fig.update_yaxes(title_text=units, title_font_size=9, row=row_raw, col=1)
         fig.update_yaxes(title_text="Z", title_font_size=9, zeroline=False,
                          row=row_z, col=1)
@@ -289,24 +329,18 @@ def _build_force_chart(
     # ── Global layout ─────────────────────────────────────────────────────────
     layout = figure_layout(theme_name)
     layout.update({
-        "height":       max(400, total_h),
-        "margin":       {"l": 55, "r": 20, "t": 28, "b": 30},
-        "hovermode":    "x",
+        "height":        max(400, total_h),
+        "margin":        {"l": 55, "r": 20, "t": 28, "b": 30},
+        "hovermode":     "x",
         "hoversubplots": "axis",
-        "showlegend":   False,
-        "uirevision":   f"force-{force}-{country}",
+        "showlegend":    False,
+        "uirevision":    f"force-{force}-{country}",
     })
-    # Composite Z y-axis
     fig.update_yaxes(title_text="Z", title_font_size=9, zeroline=False, row=1, col=1)
     fig.update_xaxes(
-        showspikes=True,
-        spikemode="across",
-        spikesnap="cursor",
-        spikedash="dot",
-        spikethickness=1,
-        spikecolor="rgba(180,180,180,0.6)",
+        showspikes=True, spikemode="across", spikesnap="cursor",
+        spikedash="dot", spikethickness=1, spikecolor="rgba(180,180,180,0.6)",
     )
-    # Subplot title font — smaller
     for ann in fig.layout.annotations:
         ann.update(font=dict(size=9), xanchor="left", x=0.01)
 
@@ -511,6 +545,7 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             chart = _build_force_chart(
                 force, country, vix_ids, vix_labels, vix_units,
                 empty_hist, raw_wide_v, z_wide_v, theme_name,
+                thresholds=thresholds,
             )
             return banner, table_section, chart
 
@@ -565,7 +600,10 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
                         for _, r in comp_df[comp_df["composite"] == force].iterrows()}
         units_map    = load_signal_units(signal_ids)
         raw_wide_df  = load_multi_signal_history(signal_ids, value_col="value")
-        z_wide_df    = load_multi_signal_history(signal_ids, value_col="zscore")
+        # Use the rolling Z column matching the selected window so per-signal
+        # Z panels update when the lookback slider changes.
+        z_val_col = g_zcol if force == "growth" else i_zcol if force == "inflation" else "zscore"
+        z_wide_df    = load_multi_signal_history(signal_ids, value_col=z_val_col)
 
         # Use the same rolling-window column the banner uses, so chart matches
         chart_score_col = fc["score_col"]
@@ -581,7 +619,7 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
         chart = _build_force_chart(
             force, country, signal_ids, labels_map, units_map,
             comp_hist, raw_wide_df, z_wide_df, theme_name,
-            score_col=chart_score_col,
+            score_col=chart_score_col, thresholds=thresholds,
         )
 
         banner = _build_banner(force, comp_z, momentum, n_active, n_total,

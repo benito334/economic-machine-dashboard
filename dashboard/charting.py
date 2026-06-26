@@ -711,7 +711,11 @@ def _left_nav() -> html.Div:
             "padding": "14px 12px 4px 12px",
         })
 
-    _tooltips: list = []
+    _tooltips: list = [
+        # Tooltip for the manually-constructed Signals nav link (active="partial")
+        dbc.Tooltip("Signals", target="navlnk-signals", placement="right",
+                    delay={"show": 300, "hide": 50}),
+    ]
 
     def _nl(icon: str, text: str, href: str, disabled: bool = False,
             nav_id: str | None = None) -> dbc.NavLink:
@@ -794,19 +798,42 @@ def _left_nav() -> html.Div:
             _nl("📍", "Regime Map",     "/regime-map",     nav_id="navlnk-regime-map"),
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
-            _nl("📡", "Signals",        "/signals",        nav_id="navlnk-signals"),
-            # Force sub-pages
-            dbc.NavLink(html.Span("↳ Growth",       className="sidebar-text"),
-                        href="/signals/growth",     active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-            dbc.NavLink(html.Span("↳ Inflation",    className="sidebar-text"),
-                        href="/signals/inflation",  active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-            dbc.NavLink(html.Span("↳ Interest Rate",className="sidebar-text"),
-                        href="/signals/rate",       active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-            dbc.NavLink(html.Span("↳ Credit",       className="sidebar-text"),
-                        href="/signals/credit",     active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-            dbc.NavLink(html.Span("↳ Volatility",   className="sidebar-text"),
-                        href="/signals/volatility", active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
         ], vertical=True, pills=True, className="mb-1"),
+
+        # ── Signals + collapsible force sub-pages ─────────────────────────────
+        html.Div([
+            dbc.Nav([
+                dbc.NavLink(
+                    [
+                        html.Span("📡", className="nav-icon",
+                                  style={"minWidth": "22px", "display": "inline-block",
+                                         "textAlign": "center"}),
+                        html.Span(" Signals", className="sidebar-text"),
+                    ],
+                    href="/signals",
+                    active="partial",
+                    id="navlnk-signals",
+                    className="py-1 px-3 small sidebar-nav-link",
+                ),
+            ], vertical=True, pills=True),
+            html.Div([
+                dbc.NavLink(html.Span("↳ Growth",       className="sidebar-text"),
+                            href="/signals/growth",     active="exact",
+                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+                dbc.NavLink(html.Span("↳ Inflation",    className="sidebar-text"),
+                            href="/signals/inflation",  active="exact",
+                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+                dbc.NavLink(html.Span("↳ Interest Rate",className="sidebar-text"),
+                            href="/signals/rate",       active="exact",
+                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+                dbc.NavLink(html.Span("↳ Credit",       className="sidebar-text"),
+                            href="/signals/credit",     active="exact",
+                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+                dbc.NavLink(html.Span("↳ Volatility",   className="sidebar-text"),
+                            href="/signals/volatility", active="exact",
+                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+            ], className="signals-subnav"),
+        ], className="signals-nav-group mb-1"),
 
         # ── Data ──────────────────────────────────────────────────────────────
         _label("Data"),

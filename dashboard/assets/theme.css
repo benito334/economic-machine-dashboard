@@ -203,6 +203,21 @@ hr {
     opacity: 1.0;
 }
 
+/* ── Signals collapsible sub-nav ──────────────────────────────────────────── */
+.signals-subnav {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.22s ease;
+}
+/* Expand on hover of the whole group */
+.signals-nav-group:hover .signals-subnav {
+    max-height: 200px;
+}
+/* Stay expanded when Signals or any sub-page is active */
+.signals-nav-group:has(.active) .signals-subnav {
+    max-height: 200px;
+}
+
 /* ── Bootstrap modals — dark theme ──────────────────────────────────────── */
 .modal-content {
     background-color: var(--card-bg) !important;

@@ -54,7 +54,13 @@ def load_signal_history(
 
     value_col: "value" for the raw observation, "zscore" for the normalised Z-score.
     """
-    allowed = {"value", "zscore", "level_percentile", "change_1m", "change_3m", "change_12m"}
+    allowed = {
+        "value", "zscore", "level_percentile",
+        "change_1m", "change_3m", "change_12m",
+        "zscore_12m", "zscore_18m", "zscore_24m",
+        "zscore_36m", "zscore_48m", "zscore_60m",
+        "zscore_90m", "zscore_120m",
+    }
     if value_col not in allowed:
         raise ValueError(f"value_col must be one of {allowed}")
 
