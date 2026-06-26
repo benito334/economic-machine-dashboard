@@ -600,11 +600,44 @@ def get_layout() -> html.Div:
                    "is reduced to as little as 0.1×.  Default α = 0.5.  This rewards signals "
                    "where the level and momentum are telling the same story."),
                 _sub("Observation-age decay"),
-                _p("w_decay = 0.5 ^ (age_months / half_life).  A signal that has not updated "
-                   "in 6 months with a 3-month half-life contributes at 25% of its nominal "
-                   "weight.  Carry caps (M: 3 months, Q: 9, A: 15) zero out signals beyond "
-                   "their expected release window — those appear as BLANK rows in the "
-                   "component table."),
+                _p("w_decay = 0.5 ^ (age_months / half_life).  The half-life is set "
+                   "per-signal in the composites config (half_life_months field) and defaults "
+                   "to the global 3-month value when not specified.  The appropriate half-life "
+                   "depends on how fast the underlying economic process moves, not just the "
+                   "release frequency:"),
+                _table(
+                    ["Half-life", "Signal type", "Rationale"],
+                    [
+                        ["3 months",
+                         "Monthly flow signals (Bank Loans, payrolls, CPI, etc.)",
+                         "Global default.  Data refreshes every month; a 3-month-old reading "
+                         "already tells a different story."],
+                        ["4 months",
+                         "Quarterly flow or fast-moving leading indicators "
+                         "(Lending Standards, Corporate Debt Growth)",
+                         "Released quarterly but track the short-term cycle; two missed "
+                         "releases drops the signal to 25% weight, which is appropriate."],
+                        ["6 months",
+                         "Quarterly stock-ish measures (Debt Service Ratio)",
+                         "Slow to change; retains 50% weight after two full quarters — "
+                         "still relevant if one release is delayed."],
+                        ["9 months",
+                         "Quarterly structural stock measures "
+                         "(Household Debt / GDP, Corporate Debt / GDP)",
+                         "Very slow-moving balance-sheet ratios; a 9-month-old reading is "
+                         "still informative.  Carry cap (9 months) zeroes the signal if data "
+                         "is missing for three consecutive quarters."],
+                        ["12 months",
+                         "Annual signals (Gov Debt / GDP, WB/IMF annual series)",
+                         "Retains 50% weight after one full release cycle.  Carry cap (15 months) "
+                         "provides a 3-month grace period before zeroing."],
+                    ]
+                ),
+                _note("Carry caps (M: 3 months, Q: 9, A: 15) are hard limits — once exceeded "
+                      "the signal is zeroed regardless of half-life and appears as a BLANK row "
+                      "in the component table.  The half-life and carry cap together define the "
+                      "full staleness policy: the half-life governs gradual decay; the carry cap "
+                      "governs hard exclusion."),
                 _inline_formula(F("Observation-age decay")),
                 _sub("Effective weight"),
                 _p("w_eff = w_cfg × w_momentum × w_decay, renormalised over the active "
@@ -682,6 +715,108 @@ def get_layout() -> html.Div:
                 _inline_formula(F("Effective weight and force score")),
                 _inline_formula(F("Regime confidence")),
                 _inline_formula(F("Structural disequilibrium")),
+
+                _sub("Interest Rate basket — US default importances"),
+                _p("The Interest Rate composite (financial accommodation score) is built from "
+                   "six policy-rate signals spanning the short and long ends of the nominal and "
+                   "real yield curve.  All six use invert=true so that rising rates reduce the "
+                   "accommodation score (positive score = easy money, negative = tight money).  "
+                   "These are the default importance values; adjust via the Importance Editor "
+                   "(Weight Audit page) without changing this file."),
+                _table(
+                    ["Signal", "Why it matters", "Default tier", "Importance", "Half-life"],
+                    [
+                        ["Fed Funds Target",
+                         "Directly reflects the Fed's policy stance; any change immediately shifts "
+                         "the short-term discount rate that feeds into all other rates. "
+                         "It is the primary anchor for the policy basket.",
+                         "PRIMARY", "0.95", "3 m"],
+                        ["Fed Funds (effective)",
+                         "Market-based short-term rate that incorporates expectations about the "
+                         "policy stance and risk premia. It is the first observable price of the "
+                         "policy lever.",
+                         "PRIMARY", "0.88", "3 m"],
+                        ["Real Fed Funds",
+                         "Removes inflation expectations from the short-term rate, isolating the "
+                         "pure discount-rate component that drives the present value of cash flows. "
+                         "It adds a second perspective on the same underlying force, but with a "
+                         "different emphasis.",
+                         "STRONG", "0.75", "3 m"],
+                        ["Yield 2Y (nominal)",
+                         "Short-term market pricing of the policy rate over a horizon where "
+                         "inflation expectations are still modest. It is useful for detecting "
+                         "forward-looking tightening or easing, especially when the Fed's "
+                         "balance-sheet actions are large.",
+                         "STRONG", "0.70", "4 m"],
+                        ["Real Yield 10Y",
+                         "Long-term real rate that captures the market's view of the long-run "
+                         "discount rate after stripping out inflation expectations. It is a key "
+                         "driver of the valuation of long-duration assets and therefore a strong "
+                         "anchor for the long end of the curve. Less volatile than the short end.",
+                         "PRIMARY", "0.90", "6 m"],
+                        ["Yield 10Y (nominal)",
+                         "The raw long-term nominal rate embeds both the expected real rate and "
+                         "inflation expectations. It is highly correlated with Real Yield 10Y, "
+                         "so its incremental information is limited, but it provides a useful "
+                         "cross-check on the real yield signal. Less volatile than the short end.",
+                         "CONTEXT", "0.45", "6 m"],
+                    ]
+                ),
+                _note("Yield-curve slope signals (10Y–2Y, 10Y–3M) and credit spreads (IG, HY) "
+                      "carry distinct information about risk appetite and are not included in this "
+                      "basket to avoid mixing rate-level and spread signals. They may be assigned "
+                      "to the Credit basket in a future calibration."),
+
+                _sub("Credit basket — US default importances"),
+                _p("The Credit composite (credit health score) measures the availability and "
+                   "sustainability of credit in the economy.  Positive score = healthy/expanding "
+                   "credit; negative = stressed/contracting.  Debt-burden and leverage signals use "
+                   "invert=true so that rising stress reduces the score.  Bank Loans is the flow "
+                   "anchor; Lending Standards is the leading indicator; the stock measures add "
+                   "context on sustainability.  Corporate Debt Outstanding Growth captures non-bank "
+                   "borrowers and complements bank loans.  Corporate Debt / GDP (BIS quarterly) "
+                   "adds the stock-of-leverage lens.  These are defaults, adjustable via the Importance Editor."),
+                _table(
+                    ["Signal", "Why it matters", "Default tier", "Importance", "Half-life"],
+                    [
+                        ["Bank Loans",
+                         "Core measure of total private-sector credit supplied by banks — the most "
+                         "direct gauge of credit growth or contraction. It drives the short-term "
+                         "debt-cycle dynamics.",
+                         "PRIMARY", "0.90", "3 m"],
+                        ["Lending Standards",
+                         "Reflects the stringency of bank underwriting. Tightening standards usually "
+                         "precede a slowdown in loan growth; loosening signals an expansion. It "
+                         "provides early-warning information about the next phase of the credit cycle.",
+                         "STRONG", "0.75", "4 m"],
+                        ["Corporate Debt Outstanding Growth",
+                         "Direct flow of new corporate issuance (or net change in nonfinancial "
+                         "corporate debt, YoY%).  When issuance is strong the short-term debt cycle "
+                         "is expanding; when it stalls or reverses, tightening is underway.  "
+                         "Complements bank loans by capturing demand from non-bank borrowers.",
+                         "STRONG", "0.65", "4 m"],
+                        ["Debt Service Ratio",
+                         "Shows the burden of servicing existing debt on corporate earnings or "
+                         "household income. A rising ratio signals stress that can lead to slower "
+                         "credit growth or higher defaults, adding context to current supply conditions.",
+                         "CONTEXT", "0.45", "6 m"],
+                        ["Household Debt / GDP",
+                         "Measures the overall household debt load relative to the economy's output. "
+                         "High levels can limit future borrowing capacity and affect the long-run "
+                         "credit environment. It is more static but important for assessing sustainability.",
+                         "CONTEXT", "0.40", "9 m"],
+                        ["Corporate Debt / GDP",
+                         "Captures the size of the non-bank corporate debt pile relative to the "
+                         "economy (BIS quarterly series).  High levels signal elevated refinancing "
+                         "risk and credit-cycle vulnerability.  Stock measure so slow-moving.",
+                         "CONTEXT", "0.40", "9 m"],
+                        ["Gov Debt / GDP",
+                         "Indicates the government's debt burden, which influences fiscal space and "
+                         "the ability to support credit through policy tools. It is less volatile "
+                         "than private-sector measures, so it serves as a background signal.",
+                         "VOLATILE", "0.20", "12 m"],
+                    ]
+                ),
             ], title="7 · Composite Construction"),
 
             # 8 ── Regime Classification ────────────────────────────────────────
@@ -689,60 +824,108 @@ def get_layout() -> html.Div:
                 _copy_btn(_section_text(
                     "8 · Regime Classification",
                     [
-                        "Growth and Inflation are classified independently using a dual-condition "
-                        "rule: BOTH the composite Z-score AND the month-over-month momentum delta "
-                        "must cross their respective thresholds for a named regime to fire. "
-                        "Otherwise the dimension lands in Transition.",
-                        "Growth regime: Growth (Z > +gz AND Δ > gm), Retraction (Z < -gz AND Δ < -gm), "
+                        "Momentum plays two distinct roles in this system — weight tilt during "
+                        "score computation, and a confirmation gate on the displayed regime chips — "
+                        "and a third, simpler rule governs the stored historical quadrant.",
+
+                        "ROLE 1 — Weight tilt (pipeline, always active): before the composite "
+                        "Z-scores are computed, each signal's effective weight is multiplied by a "
+                        "momentum agreement factor (see Section 6). When a signal's direction agrees "
+                        "with its force's expected direction, its weight is boosted up to 1.5×; "
+                        "disagreement damps it below 1.0×. This shifts how much each signal "
+                        "contributes to growth_score and inflation_score, but does not gate the "
+                        "regime label itself.",
+
+                        "ROLE 2 — Regime chip classification (dashboard display): Growth and "
+                        "Inflation are classified independently using a dual-condition rule — BOTH "
+                        "the composite Z-score AND the month-over-month momentum delta must cross "
+                        "their respective thresholds for a named regime to fire. Otherwise the "
+                        "dimension lands in Transition. "
+                        "Growth: Growth (Z > +gz AND ΔMoM > gm), Retraction (Z < -gz AND ΔMoM < -gm), "
+                        "Transition (all other cases). "
+                        "Inflation: Inflation (Z > +iz AND ΔMoM > im), Disinflation (Z < -iz AND ΔMoM < -im), "
                         "Transition (all other cases).",
-                        "Inflation regime: Inflation (Z > +iz AND Δ > im), Disinflation (Z < -iz AND Δ < -im), "
-                        "Transition (all other cases).",
+
                         "Default thresholds: gz = 0.5, iz = 0.5, gm = 0.0, im = 0.0. "
-                        "Adjust via the 'Regime Thresholds' button on the Regime History page. "
-                        "Settings persist in browser localStorage.",
+                        "With gm = im = 0.0 the momentum gate reduces to 'any positive tick' — "
+                        "making the dual-condition effectively Z-score-only at defaults. Raise gm "
+                        "or im above 0 to require a meaningful sustained move before a regime fires. "
+                        "Adjust via the 'Regime Thresholds' button on the Regime History page; "
+                        "settings persist in browser localStorage.",
+
+                        "STORED QUADRANT (database) uses a different, simpler rule: "
+                        "sign(growth_score) × sign(inflation_score) → one of four labels "
+                        "(Expansion, Inflationary Boom, Stagflation, Disinflationary Slowdown). "
+                        "No momentum condition is applied. This is the label used in the Global "
+                        "Overview table and historical regime replay. The dashboard chips and the "
+                        "stored quadrant will diverge whenever the Z-score is in the right half-plane "
+                        "but momentum is flat or negative — the chips will show Transition while "
+                        "the stored quadrant still shows the named season.",
+
                         "Confidence = fraction of active signals whose direction agrees with the "
                         "regime classification. High disequilibrium means structural forces are far "
                         "from equilibrium across multiple dimensions.",
                     ],
                     tables=[(
-                        ["Dimension", "Label", "Condition", "Description"],
+                        ["Layer", "Label", "Condition", "Note"],
                         [
-                            ["Growth",    "Growth",      "Z > +gz  AND  ΔMoM > gm",  "Above-trend momentum confirming expansion"],
-                            ["Growth",    "Transition",  "Neither threshold crossed",  "Mixed or inconclusive growth signal"],
-                            ["Growth",    "Retraction",  "Z < -gz  AND  ΔMoM < -gm", "Below-trend momentum confirming contraction"],
-                            ["Inflation", "Inflation",   "Z > +iz  AND  ΔMoM > im",  "Inflationary pressure building"],
-                            ["Inflation", "Transition",  "Neither threshold crossed",  "Mixed or inconclusive inflation signal"],
-                            ["Inflation", "Disinflation","Z < -iz  AND  ΔMoM < -im", "Disinflationary pressure confirmed"],
+                            ["Stored quadrant", "Expansion",             "growth_score ≥ 0  AND  inflation_score ≥ 0", "DB / Global Overview; no momentum gate"],
+                            ["Stored quadrant", "Inflationary Boom",     "growth_score ≥ 0  AND  inflation_score < 0",  ""],
+                            ["Stored quadrant", "Stagflation",           "growth_score < 0  AND  inflation_score ≥ 0",  ""],
+                            ["Stored quadrant", "Disinflationary Slowdown","growth_score < 0 AND  inflation_score < 0", ""],
+                            ["Growth chip",     "Growth",      "Z > +gz  AND  ΔMoM > gm",   "Dashboard chips; dual-condition"],
+                            ["Growth chip",     "Transition",  "Neither threshold crossed",   ""],
+                            ["Growth chip",     "Retraction",  "Z < -gz  AND  ΔMoM < -gm",   ""],
+                            ["Inflation chip",  "Inflation",   "Z > +iz  AND  ΔMoM > im",    ""],
+                            ["Inflation chip",  "Transition",  "Neither threshold crossed",   ""],
+                            ["Inflation chip",  "Disinflation","Z < -iz  AND  ΔMoM < -im",   ""],
                         ]
                     )],
-                    notes=["Historical note: 2022 US shows Growth + Inflation (not Retraction) "
-                           "because employment Z-scores were strongly positive. Retraction correctly "
-                           "appears from March 2023 when growth Z-scores turned negative."],
+                    notes=[
+                        "At default thresholds (gm = im = 0.0) the momentum gate is trivially "
+                        "satisfied by any positive monthly tick, so the chips behave like a "
+                        "pure Z-score rule. Set gm/im > 0 to require a meaningful upward move.",
+                        "Historical note: 2022 US shows Growth + Inflation (not Retraction) "
+                        "because employment Z-scores were strongly positive. Retraction correctly "
+                        "appears from March 2023 when growth Z-scores turned negative.",
+                    ],
                 )),
-                _p("Growth and Inflation are classified independently.  A named regime requires "
-                   "BOTH the Z-score AND the momentum delta to cross their configured thresholds — "
-                   "preventing single-period spikes from triggering a regime change."),
+                _p("Momentum plays two distinct roles.  First, during score computation the "
+                   "pipeline tilts each signal's effective weight by a momentum-agreement factor "
+                   "(see Section 6) — signals whose direction confirms the force get up to 1.5× "
+                   "weight; conflicting signals are down-weighted.  This shapes the composite "
+                   "Z-scores before any regime label is applied."),
+                _p("Second, the dashboard regime chips use a dual-condition rule: a named regime "
+                   "fires only when BOTH the composite Z-score AND the month-over-month momentum "
+                   "delta cross their respective thresholds.  Otherwise the dimension lands in "
+                   "Transition, preventing single-period spikes from triggering a regime change."),
                 _table(
-                    ["Dimension", "Label", "Condition", "Description"],
+                    ["Layer", "Label", "Condition", "Note"],
                     [
-                        ["Growth",    "Growth",       "Z > +gz  AND  ΔMoM > gm",
-                         "Above-trend composite Z with positive month-over-month momentum."],
-                        ["Growth",    "Transition",   "Neither threshold crossed",
-                         "Mixed or inconclusive — neither expansion nor contraction confirmed."],
-                        ["Growth",    "Retraction",   "Z < −gz  AND  ΔMoM < −gm",
-                         "Below-trend composite Z with negative momentum."],
-                        ["Inflation", "Inflation",    "Z > +iz  AND  ΔMoM > im",
-                         "Inflationary pressure above threshold and building."],
-                        ["Inflation", "Transition",   "Neither threshold crossed",
-                         "Mixed or inconclusive inflation signal."],
-                        ["Inflation", "Disinflation", "Z < −iz  AND  ΔMoM < −im",
-                         "Disinflationary pressure confirmed by both Z and momentum."],
+                        ["Stored quadrant", "Expansion",              "growth_score ≥ 0  AND  inflation_score ≥ 0",  "DB / Global Overview; sign-only, no momentum gate"],
+                        ["Stored quadrant", "Inflationary Boom",      "growth_score ≥ 0  AND  inflation_score < 0",  ""],
+                        ["Stored quadrant", "Stagflation",            "growth_score < 0  AND  inflation_score ≥ 0",  ""],
+                        ["Stored quadrant", "Disinflationary Slowdown","growth_score < 0  AND  inflation_score < 0", ""],
+                        ["Growth chip",     "Growth",       "Z > +gz  AND  ΔMoM > gm",  "Dashboard dual-condition"],
+                        ["Growth chip",     "Transition",   "Neither threshold crossed",  ""],
+                        ["Growth chip",     "Retraction",   "Z < −gz  AND  ΔMoM < −gm",  ""],
+                        ["Inflation chip",  "Inflation",    "Z > +iz  AND  ΔMoM > im",   ""],
+                        ["Inflation chip",  "Transition",   "Neither threshold crossed",  ""],
+                        ["Inflation chip",  "Disinflation", "Z < −iz  AND  ΔMoM < −im",  ""],
                     ]
                 ),
                 _p("Default thresholds: gz = 0.5, iz = 0.5, gm = 0.0, im = 0.0.  "
-                   "Adjust via the 'Regime Thresholds' button on the Regime History page.  "
-                   "Settings persist in localStorage.  Threshold lines are drawn on the scatter "
+                   "With gm = im = 0.0 the momentum gate reduces to 'any positive tick', so at "
+                   "defaults the chips behave like a pure Z-score rule.  Raise gm or im above 0 "
+                   "to require a meaningful sustained move before a regime fires.  "
+                   "Adjust via the 'Regime Thresholds' button on the Regime History page; "
+                   "settings persist in localStorage.  Threshold lines are drawn on the scatter "
                    "chart and the Regime History Z-score panels."),
+                _note("The stored quadrant (DB / Global Overview) and the dashboard chips can "
+                      "diverge: if the Z-score is in the right half-plane but momentum is flat or "
+                      "negative, the chips show Transition while the stored quadrant still shows "
+                      "the named season.  This is intentional — the chips are the stricter, "
+                      "confirmation-required view."),
                 _p("Confidence = fraction of active signals whose direction agrees with the "
                    "classified regime.  High disequilibrium means structural forces are far from "
                    "their equilibrium levels across multiple force dimensions."),

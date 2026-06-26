@@ -56,3 +56,26 @@ inflation_score:
       base_share: 0.5
       importance: 0.30      # VOLATILE — annual resolution limits precision; bridge only
       quality_factor: 0.70
+
+# ── KR Financial Accommodation Score ─────────────────────────────────────────
+# NOTE: KR has only one rate signal. Score will have low coverage — treat as
+# directional indicator only, not a robust composite.
+rate_score:
+  description: "KR financial accommodation — 10y yield (single signal; low coverage)"
+  indicators:
+    - id: policy.yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available KR rate signal
+      quality_factor: 1.00
+      invert: true          # high yield = restrictive
+
+# ── KR Credit Health Score ────────────────────────────────────────────────────
+# NOTE: KR has only one credit signal. Score will have low coverage.
+credit_score:
+  description: "KR credit health — govt debt/GDP (single signal; low coverage)"
+  indicators:
+    - id: credit.gov_debt_gdp
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available KR credit signal
+      quality_factor: 1.00
+      invert: true          # high debt/GDP = stress

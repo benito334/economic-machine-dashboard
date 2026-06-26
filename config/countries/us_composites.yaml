@@ -105,3 +105,103 @@ inflation_score:
       base_share: 0.5
       importance: 0.30      # CONTEXT — upstream cost-push; leads CPI by 2-3 months
       quality_factor: 0.90
+
+# ── Financial Accommodation Score ────────────────────────────────────────────
+# Positive = accommodative / loose conditions; Negative = restrictive / tight.
+# All six signals are rate levels — invert:true so that rising rates reduce the
+# accommodation score. Default importances match the user-defined tier table
+# (see Methodology Section 6 — Interest Rate basket defaults).
+#
+# Basket focuses on the pure policy-rate term structure. Yield-curve slopes and
+# credit spreads (premium.*) are not included here; they are structural signals
+# with different information content and may be added to credit_score separately.
+rate_score:
+  description: "Financial accommodation composite — Fed policy rates and nominal/real term structure"
+  indicators:
+    - id: policy.fed_funds_target
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — direct policy instrument; immediately sets short-term discount rate
+      quality_factor: 1.00
+      half_life_months: 3.0 # policy anchor; discrete FOMC jumps make old readings quickly stale
+      invert: true          # higher target rate = more restrictive
+    - id: policy.real_yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — long-run real rate; key driver of long-duration asset valuation
+      quality_factor: 1.00
+      half_life_months: 6.0 # long-end real rate; structurally slow-moving; less volatile than short end
+      invert: true          # high real 10y yield = tight long-end conditions
+    - id: policy.fed_funds
+      base_share: 1.0
+      importance: 0.88      # PRIMARY — first observable price of policy lever; embeds risk premia
+      quality_factor: 1.00
+      half_life_months: 3.0 # tracks fed_funds_target closely; equally reactive to policy decisions
+      invert: true          # higher effective rate = restrictive
+    - id: policy.real_fed_funds
+      base_share: 0.7
+      importance: 0.75      # STRONG — removes inflation expectations; pure discount-rate perspective
+      quality_factor: 1.00
+      half_life_months: 3.0 # derived from short-term nominal rate and inflation; same fast cadence
+      invert: true          # high real rate = restrictive; second lens on same force
+    - id: policy.yield_2y
+      base_share: 0.7
+      importance: 0.70      # STRONG — market forward-pricing of policy rate; leads tightening cycles
+      quality_factor: 0.95
+      half_life_months: 4.0 # forward-prices 2 years out; slightly smoother than overnight rate
+      invert: true          # rising 2y yield = market pricing in more tightening
+    - id: policy.yield_10y
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — highly correlated with real_yield_10y; limited incremental info
+      quality_factor: 0.90
+      half_life_months: 6.0 # long-end nominal; less volatile than short-end; same cadence as real_yield_10y
+      invert: true          # higher nominal 10y = restrictive long-end conditions
+
+# ── Credit Health Score ───────────────────────────────────────────────────────
+# Positive = healthy/expanding credit; Negative = stressed/contracting.
+# Debt burden and tightening signals are inverted: rising = worse health.
+# Default importances match the user-defined tier table
+# (see Methodology Section 7 — Credit basket defaults).
+credit_score:
+  description: "Credit health composite — loan growth, lending standards, debt burden signals"
+  indicators:
+    - id: credit.bank_loans
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — most direct gauge of credit growth/contraction; drives short-term debt cycle
+      quality_factor: 1.00
+      half_life_months: 3.0 # monthly flow signal; fast-moving; default global half-life
+      # no invert: rising loans YoY = healthy credit expansion
+    - id: credit.lending_standards
+      base_share: 0.7
+      importance: 0.75      # STRONG — leading indicator; tightening precedes loan slowdown
+      quality_factor: 1.00
+      half_life_months: 4.0 # quarterly (SLOOS) but fast-moving cycle indicator
+      invert: true          # net tightening = worse credit health (SLOOS: positive = tighter)
+    - id: credit.corporate_debt
+      base_share: 0.7
+      importance: 0.65      # STRONG — flow signal; YoY growth in nonfinancial corporate debt; leads cycle turns
+      quality_factor: 0.90
+      half_life_months: 4.0 # quarterly flow signal; fast-moving; tracks the short-term debt cycle
+      invert: true          # rapid debt accumulation = rising leverage risk (STRONG; complements bank_loans)
+    - id: credit.debt_service_ratio
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — burden of servicing existing debt; stress signal
+      quality_factor: 0.95
+      half_life_months: 6.0 # quarterly stock-ish measure; slow to move; 2 release cycles = still fresh
+      invert: true          # rising DSR = more income diverted to debt = stress
+    - id: credit.household_debt_gdp
+      base_share: 0.5
+      importance: 0.40      # CONTEXT — stock measure of leverage; slow-moving sustainability signal
+      quality_factor: 0.90
+      half_life_months: 9.0 # quarterly BIS series; structural, slow-moving; retains 50% weight after 3 quarters
+      invert: true          # high household debt/GDP = limits future borrowing capacity
+    - id: credit.corporate_debt_gdp
+      base_share: 0.5
+      importance: 0.40      # CONTEXT — stock measure of corporate leverage; slow-moving sustainability signal
+      quality_factor: 0.90
+      half_life_months: 9.0 # quarterly BIS series; structural, slow-moving; same cadence as household_debt_gdp
+      invert: true          # high corporate debt/GDP = elevated refinancing risk
+    - id: credit.gov_debt_gdp
+      base_share: 0.3
+      importance: 0.20      # VOLATILE — background signal; less volatile than private measures
+      quality_factor: 0.85
+      half_life_months: 12.0 # annual signal; retains 50% weight after 4 quarters (one full release cycle)
+      invert: true          # high govt debt = less fiscal space to support credit

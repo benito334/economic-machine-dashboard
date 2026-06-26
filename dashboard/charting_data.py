@@ -254,10 +254,12 @@ def load_composite_component_status(
     country_prefix = country.lower()
 
     rows_meta: list[dict] = []
-    for comp_name in ("growth_score", "inflation_score"):
-        force = comp_name.split("_")[0]  # "growth" or "inflation"
+    for comp_name in ("growth_score", "inflation_score", "rate_score", "credit_score"):
+        force = comp_name.split("_")[0]  # "growth", "inflation", "rate", or "credit"
         indicators = cfg.get(comp_name, {}).get("indicators", [])
-        nominal_weights = normalized_nominal_weights(indicators) if indicators else {}
+        if not indicators:
+            continue
+        nominal_weights = normalized_nominal_weights(indicators)
         for ind in indicators:
             concept_id = ind["id"]
             rows_meta.append({
@@ -312,8 +314,9 @@ def load_composite_component_status(
     df["as_of"] = pd.to_datetime(df["as_of"])
     sig_map = df.set_index("id").to_dict("index")
 
-    # Map composite → which zscore column to read
-    _zscore_col_for = {"growth": g_zscore_col, "inflation": i_zscore_col}
+    # Map composite → which zscore column to read (rate/credit always use base zscore)
+    _zscore_col_for = {"growth": g_zscore_col, "inflation": i_zscore_col,
+                       "rate": "zscore", "credit": "zscore"}
 
     result_rows = []
     for meta in rows_meta:

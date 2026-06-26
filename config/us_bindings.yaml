@@ -1111,6 +1111,23 @@ bindings:
     sanity_min: -0.30
     sanity_max: 0.30
 
+  - id: credit.corporate_debt_gdp
+    series_id: QUSNAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 70.0
+    linkage: "Total credit to non-financial corporations as % of GDP (BIS/FRED, quarterly). Stock measure of corporate leverage; above equilibrium signals elevated refinancing risk and credit-cycle vulnerability."
+    sanity_min: 30.0
+    sanity_max: 130.0
+
   # ─── Lens I — Fiscal ──────────────────────────────────────────────────────
 
   - id: fiscal.federal_deficit

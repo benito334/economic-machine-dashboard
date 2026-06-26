@@ -4,6 +4,30 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-26 — Rate/Credit composites + per-signal age-decay half-lives
+
+**Done:**
+
+- **Rate/Credit composites engine** (`indicators/composites.py`, `indicators/models.py`, `store/store.py`): Extended `_score_force()` path (importance × momentum tilt × age decay) to all four forces. Added `rate_score`, `credit_score`, `rate_momentum`, `credit_momentum` DB columns and `CompositeSnapshot` fields. `weight_audit` JSON now includes `"rate"` and `"credit"` keys alongside growth/inflation.
+- **Signals page rate/credit display** (`dashboard/signals_page.py`): Rate and Credit sections now use `_composite_rows()` (full 8-column table with importance, config wt, eff wt, Z-bar, momentum) instead of `_signal_rows()`. Fixed two generic bugs in `_composite_rows()`: `positive_dir` was hardcoded for growth (`invert` check now force-agnostic); momentum color flip only applies to `inflation` force now (not every non-growth force).
+- **`charting_data.py`**: `load_composite_component_status()` extended to iterate `rate_score` and `credit_score` config sections; `_zscore_col_for` mapping covers `rate` and `credit`.
+- **US Interest Rate basket redesign** (`config/countries/us_composites.yaml`): Replaced 9-signal basket (mixed policy + premium + balance-sheet) with 6 pure policy-rate / term-structure signals: `fed_funds_target` (PRIMARY 0.95), `real_yield_10y` (PRIMARY 0.90), `fed_funds` (PRIMARY 0.88), `real_fed_funds` (STRONG 0.75), `yield_2y` (STRONG 0.70), `yield_10y` (CONTEXT 0.45).
+- **US Credit basket rebuilt** (`config/countries/us_composites.yaml`): Expanded from 5 to 7 signals — added `corporate_debt` (STRONG 0.65, Corporate Debt Outstanding Growth YoY%) and new `corporate_debt_gdp` (CONTEXT 0.40, BIS/FRED quarterly stock measure). Full basket: bank_loans → lending_standards → corporate_debt → debt_service_ratio → household_debt_gdp → corporate_debt_gdp → gov_debt_gdp.
+- **New binding** (`config/us_bindings.yaml`): `credit.corporate_debt_gdp` → FRED `QUSNAM770A` ("Total Credit to Non-Financial Corporations as % of GDP", BIS quarterly). Equilibrium 70.0, sanity 30–130. Signal live (72.2% GDP at Oct 2025).
+- **EZ/KR composites** (`config/countries/ez_composites.yaml`, `kr_composites.yaml`): Added `rate_score` and `credit_score` sections (EZ: 5+4 signals; KR: 1+1 minimal stubs pending data rollout).
+- **Per-signal age-decay half-lives** — Interest Rate basket: `fed_funds_target`/`fed_funds`/`real_fed_funds` = 3m (short-end, discrete FOMC jumps); `yield_2y` = 4m (forward-pricing); `real_yield_10y`/`yield_10y` = 6m (long-end, structurally slow). Credit basket: `bank_loans` = 3m; `lending_standards`/`corporate_debt` = 4m (fast-moving quarterly flow); `debt_service_ratio` = 6m (stock-ish, quarterly); `household_debt_gdp`/`corporate_debt_gdp` = 9m (slow structural); `gov_debt_gdp` = 12m (annual). Engine reads `half_life_months` per-signal from composites YAML; falls back to global 3m; stored in `weight_audit` JSON.
+- **Methodology Section 6** (`dashboard/methodology.py`): "Observation-age decay" subsection now has a 5-row half-life tier table (3m → 4m → 6m → 9m → 12m) with signal-type descriptions and rationale; carry-cap vs half-life distinction clarified.
+- **Methodology Section 7**: Both basket tables extended with "Half-life" column. Interest Rate table row order changed to group short-end (3m) then long-end (6m). Credit table shows all 7 signals.
+- **Methodology Section 8**: Rewritten to cover three distinct momentum roles — (1) weight tilt in pipeline, (2) dual-condition chip classification in dashboard, (3) stored quadrant (sign-only).
+- **65 US signals** (was 64); **558 US composite snapshots** recomputed with updated baskets and half-lives. 354 tests still pass.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- Run `python3 -m indicators.pipeline` after BEA Q1 2026 data release to clear 3 stale US signals.
+- KR monthly CPI: BoK ECOS API registration needed.
+
+---
+
 ## 2026-06-25 — Regime UI polish + methodology audit
 
 **Done:**

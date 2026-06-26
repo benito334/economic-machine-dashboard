@@ -81,3 +81,62 @@ inflation_score:
       base_share: 0.3
       importance: 0.20      # VOLATILE — supplementary commodity passthrough; reduced from 0.35
       quality_factor: 0.80
+
+# ── EZ Financial Accommodation Score ─────────────────────────────────────────
+# Positive = accommodative; Negative = restrictive / tight.
+# EZ rate signals are in the policy force; sovereign stress in the credit force.
+rate_score:
+  description: "EZ financial accommodation composite — ECB rate signals, yield curve slope"
+  indicators:
+    - id: policy.real_yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — real long-end rate; primary accommodation signal for EZ
+      quality_factor: 1.00
+      invert: true          # high real yield = restrictive
+    - id: policy.yield_10y
+      base_share: 0.5
+      importance: 0.55      # STRONG — correlated with real_yield_10y; nominal anchor
+      quality_factor: 0.90
+      invert: true
+    - id: policy.yield_spread
+      base_share: 0.5
+      importance: 0.65      # STRONG — EZ yield curve slope; steep = accommodative
+      quality_factor: 0.90
+      # no invert: positive spread = steep curve = accommodative
+    - id: policy.central_bank_assets
+      base_share: 0.5
+      importance: 0.50      # CONTEXT — ECB balance sheet; growing = accommodative (QE channel)
+      quality_factor: 0.85
+      # no invert: rising assets = more accommodation
+    - id: policy.fed_funds_target
+      base_share: 0.3
+      importance: 0.30      # CONTEXT — US policy rate as global accommodation anchor
+      quality_factor: 0.80
+      invert: true          # high US rate = global tightening spills into EZ
+
+# ── EZ Credit Health Score ────────────────────────────────────────────────────
+# EZ 'credit' force holds sovereign yield levels and BTP-Bund stress signals.
+# Positive = healthy / compressed spreads; Negative = stressed / wide spreads.
+credit_score:
+  description: "EZ credit health composite — sovereign stress, govt debt burden"
+  indicators:
+    - id: credit.btp_bund_spread
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — BTP-Bund spread; key EZ fragmentation risk signal
+      quality_factor: 1.00
+      invert: true          # wide spread = peripheral stress = worse credit health
+    - id: credit.gov_debt_gdp
+      base_share: 0.5
+      importance: 0.55      # STRONG — aggregate EZ govt debt stock; structural stress signal
+      quality_factor: 0.90
+      invert: true
+    - id: credit.yield_it_10y
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — Italian yield level; correlated with BTP-Bund spread
+      quality_factor: 0.85
+      invert: true          # high Italian yield = peripheral risk elevated
+    - id: credit.yield_de_10y
+      base_share: 0.5
+      importance: 0.35      # CONTEXT — German benchmark; rising = global tightening spillover
+      quality_factor: 0.85
+      invert: true          # high Bund yield = tighter baseline for all EZ borrowers

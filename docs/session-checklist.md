@@ -1,5 +1,18 @@
 # Session Checklist — Indicators Machine
 
+## Completed 2026-06-26
+
+- ✅ Rate/Credit composites: extended `_score_force()` path to all four forces; 4 new DB columns; weight_audit includes rate/credit
+- ✅ Signals page: Rate/Credit now use `_composite_rows()` (8-column table); fixed `positive_dir` and momentum color bugs
+- ✅ US Interest Rate basket redesigned: 6 pure policy-rate signals (replaced 9-signal mixed basket)
+- ✅ US Credit basket rebuilt: 7 signals (added back corporate_debt + new corporate_debt_gdp)
+- ✅ New binding: `credit.corporate_debt_gdp` → FRED QUSNAM770A (BIS corporate credit % GDP, quarterly)
+- ✅ EZ/KR composites: rate_score + credit_score sections added
+- ✅ Per-signal age-decay half-lives: rate basket (3m/3m/3m/4m/6m/6m); credit basket (3m/4m/4m/6m/9m/9m/12m); engine reads `half_life_months` from YAML
+- ✅ Methodology Section 6: half-life tier table added (5 rows, 3m–12m)
+- ✅ Methodology Section 7: Half-life column in both basket tables; Section 8: three-momentum-roles rewrite
+- ✅ 65 US signals, 558 snapshots recomputed; 354 tests pass
+
 ## Every Session: Open With
 
 - [ ] Read `CLAUDE.md` (already loaded if this is in context)

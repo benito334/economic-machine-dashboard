@@ -125,6 +125,7 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         "inflation_score_36m", "inflation_score_48m", "inflation_score_60m",
         "inflation_score_90m", "inflation_score_120m",
         "disequilibrium_12m", "disequilibrium_18m", "disequilibrium_24m",
+        "rate_score", "credit_score", "rate_momentum", "credit_momentum",
     ):
         conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
 
@@ -219,6 +220,10 @@ CREATE TABLE IF NOT EXISTS composites (
     disequilibrium_12m   DOUBLE,
     disequilibrium_18m   DOUBLE,
     disequilibrium_24m   DOUBLE,
+    rate_score           DOUBLE,
+    credit_score         DOUBLE,
+    rate_momentum        DOUBLE,
+    credit_momentum      DOUBLE,
     created_at           TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -228,7 +233,9 @@ _COMPOSITE_COLUMNS = [
     "country", "as_of", "growth_score", "inflation_score", "quadrant",
     "confidence", "disequilibrium_score", "n_growth_signals",
     "n_inflation_signals", "n_forces", "low_coverage", "stale_signals",
-    "growth_momentum", "inflation_momentum", "weight_audit",
+    "growth_momentum", "inflation_momentum",
+    "rate_score", "credit_score", "rate_momentum", "credit_momentum",
+    "weight_audit",
     "created_at",
 ]
 # Rolling composite columns are written by update_rolling_composites() after the baseline insert.

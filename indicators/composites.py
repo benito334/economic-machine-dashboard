@@ -88,7 +88,7 @@ def load_composites_config(
 
 def _validate_weighting_config(config: dict) -> None:
     """Fail fast on invalid tunable importance/quality and dynamic-weight settings."""
-    for section in ("growth_score", "inflation_score"):
+    for section in ("growth_score", "inflation_score", "rate_score", "credit_score"):
         indicators = config.get(section, {}).get("indicators", [])
         for ind in indicators:
             for key in ("importance", "quality_factor"):
@@ -716,15 +716,19 @@ def compute_composite_history(
     from indicators.models import CompositeSnapshot
 
     country_prefix = country.lower()
-    growth_cfg   = config["growth_score"]["indicators"]
+    growth_cfg    = config["growth_score"]["indicators"]
     inflation_cfg = config["inflation_score"]["indicators"]
+    rate_cfg      = config.get("rate_score",   {}).get("indicators", [])
+    credit_cfg    = config.get("credit_score", {}).get("indicators", [])
     min_signals  = config.get("regime_confidence", {}).get("min_signals_required", 4)
     min_forces   = config.get("disequilibrium_score", {}).get("min_forces_required", 3)
 
     # ── Signal ID lists ───────────────────────────────────────────────────────
     growth_ids    = [f"{country_prefix}.{ind['id']}" for ind in growth_cfg]
     inflation_ids = [f"{country_prefix}.{ind['id']}" for ind in inflation_cfg]
-    composite_ids = list(dict.fromkeys(growth_ids + inflation_ids))
+    rate_ids      = [f"{country_prefix}.{ind['id']}" for ind in rate_cfg]
+    credit_ids    = [f"{country_prefix}.{ind['id']}" for ind in credit_cfg]
+    composite_ids = list(dict.fromkeys(growth_ids + inflation_ids + rate_ids + credit_ids))
 
     force_groups = _build_force_groups(conn, country, config)
     diseq_ids    = list(dict.fromkeys(sid for ids in force_groups.values() for sid in ids))
@@ -733,8 +737,10 @@ def compute_composite_history(
     _log_force_balance(country, growth_cfg, inflation_cfg)
 
     # ── Configurable nominal + dynamic weighting ─────────────────────────────
-    growth_nominal = normalized_nominal_weights(growth_cfg)
+    growth_nominal    = normalized_nominal_weights(growth_cfg)
     inflation_nominal = normalized_nominal_weights(inflation_cfg)
+    rate_nominal      = normalized_nominal_weights(rate_cfg)   if rate_cfg   else {}
+    credit_nominal    = normalized_nominal_weights(credit_cfg) if credit_cfg else {}
     dynamic_cfg = config.get("dynamic_weighting", {})
     dynamic_enabled = bool(dynamic_cfg.get("enabled", False))
 
@@ -859,7 +865,8 @@ def compute_composite_history(
                         )
                     if decay_enabled:
                         if time_decay_cfg:
-                            decay_fraction = age_weight_fraction(age, half_life_months)
+                            sig_half_life = float(ind.get("half_life_months", half_life_months))
+                            decay_fraction = age_weight_fraction(age, sig_half_life)
                         else:
                             decay_fraction = legacy_decay_factor ** age
                     if hard_drop_months is not None and age > float(hard_drop_months):
@@ -877,6 +884,7 @@ def compute_composite_history(
                     "config_weight": round(nominal, 8),
                     "momentum_multiplier": round(momentum_mult, 6),
                     "age_months": round(age, 3),
+                    "half_life_months": float(ind.get("half_life_months", half_life_months)),
                     "decay_fraction": round(decay_fraction, 6),
                     "effective_weight": round(effective, 8),
                     "normalized_weight": 0.0,
@@ -897,6 +905,8 @@ def compute_composite_history(
         inflation_score, i_ids_contrib, inflation_audit = _score_force(
             inflation_cfg, inflation_nominal
         )
+        rate_score_val,   r_ids_contrib, rate_audit   = _score_force(rate_cfg,   rate_nominal)   if rate_cfg   else (None, [], {})
+        credit_score_val, c_ids_contrib, credit_audit = _score_force(credit_cfg, credit_nominal) if credit_cfg else (None, [], {})
         n_growth = len(g_ids_contrib)
         n_inflation = len(i_ids_contrib)
 
@@ -983,6 +993,25 @@ def compute_composite_history(
             i_mom_total += 1
         inflation_momentum = i_mom_pos / i_mom_total if i_mom_total > 0 else None
 
+        def _momentum_fraction(cfg: list[dict], ids_contrib: list[str]) -> Optional[float]:
+            """Fraction of contributing signals moving in their positive direction."""
+            pos = total = 0
+            for ind in cfg:
+                sid = f"{country_prefix}.{ind['id']}"
+                if sid not in ids_contrib:
+                    continue
+                d = d_row.get(sid)
+                if not isinstance(d, str) or not d:
+                    continue
+                positive_dir = "falling" if ind.get("invert", False) else "rising"
+                if d == positive_dir:
+                    pos += 1
+                total += 1
+            return pos / total if total > 0 else None
+
+        rate_momentum   = _momentum_fraction(rate_cfg,   r_ids_contrib) if rate_cfg   else None
+        credit_momentum = _momentum_fraction(credit_cfg, c_ids_contrib) if credit_cfg else None
+
         # ── Stale signal audit (L3) ───────────────────────────────────────────
         stale_signals: Optional[str] = None
         if fill_age_comp is not None and dt in fill_age_comp.index:
@@ -1012,8 +1041,16 @@ def compute_composite_history(
                 stale_signals=stale_signals,
                 growth_momentum   =round(growth_momentum,    4) if growth_momentum    is not None else None,
                 inflation_momentum=round(inflation_momentum, 4) if inflation_momentum is not None else None,
+                rate_score   =round(rate_score_val,   4) if rate_score_val   is not None else None,
+                credit_score =round(credit_score_val, 4) if credit_score_val is not None else None,
+                rate_momentum  =round(rate_momentum,   4) if rate_momentum   is not None else None,
+                credit_momentum=round(credit_momentum, 4) if credit_momentum is not None else None,
                 weight_audit=json.dumps(
-                    {"growth": growth_audit, "inflation": inflation_audit},
+                    {
+                        "growth": growth_audit, "inflation": inflation_audit,
+                        **({"rate":   rate_audit}   if rate_cfg   else {}),
+                        **({"credit": credit_audit} if credit_cfg else {}),
+                    },
                     separators=(",", ":"),
                     sort_keys=True,
                 ),
