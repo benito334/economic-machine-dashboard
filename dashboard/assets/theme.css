@@ -191,6 +191,18 @@ hr {
     align-items: center !important;
 }
 
+/* Force detail sub-nav — indented, smaller text */
+.sidebar-subnav {
+    font-size: 0.78rem !important;
+    opacity: 0.80;
+    padding-top: 1px !important;
+    padding-bottom: 1px !important;
+}
+.sidebar-subnav.active,
+.sidebar-subnav:hover {
+    opacity: 1.0;
+}
+
 /* ── Bootstrap modals — dark theme ──────────────────────────────────────── */
 .modal-content {
     background-color: var(--card-bg) !important;

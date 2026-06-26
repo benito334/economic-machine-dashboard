@@ -91,6 +91,14 @@ def _mean_z(df: pd.DataFrame) -> Optional[float]:
     return float(vals.mean()) if not vals.empty else None
 
 
+def _comp_arrow(comp_df: pd.DataFrame, force: str) -> str:
+    """Majority direction arrow for one composite force."""
+    sub = comp_df[comp_df["composite"] == force]
+    if sub.empty:
+        return "→"
+    return _majority_arrow(sub["direction"].dropna().tolist())
+
+
 def _vix_df(country: str) -> pd.DataFrame:
     if country != "US":
         return pd.DataFrame()
@@ -590,13 +598,6 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     r_total  = len(comp_df[comp_df["composite"] == "rate"])
     cr_total = len(comp_df[comp_df["composite"] == "credit"])
 
-    # Momentum arrows for Growth/Inflation from composites
-    def _comp_arrow(force: str) -> str:
-        sub = comp_df[comp_df["composite"] == force]
-        if sub.empty:
-            return "→"
-        return _majority_arrow(sub["direction"].dropna().tolist())
-
     # ── Sections ──────────────────────────────────────────────────────────────
     last_obs = latest["as_of"].max() if not latest.empty else "—"
     page_header = html.Div([
@@ -615,10 +616,10 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     )
 
     sections = [
-        _build_section("Growth",        _GROWTH_COLOR,     "growth",        g_z,      g_mom,      _comp_arrow("growth"),    g_active,  g_total,   g_rows),
-        _build_section("Inflation",     _INFLATION_COLOR,  "inflation",     i_z,      i_mom,      _comp_arrow("inflation"), i_active,  i_total,   i_rows),
-        _build_section("Interest Rate", _RATE_COLOR,       "rate",          rate_z,   rate_mom,   _comp_arrow("rate"),      r_active,  r_total,   r_rows),
-        _build_section("Credit",        _CREDIT_COLOR,     "credit",        credit_z, credit_mom, _comp_arrow("credit"),    cr_active, cr_total,  cr_rows),
+        _build_section("Growth",        _GROWTH_COLOR,     "growth",        g_z,      g_mom,      _comp_arrow(comp_df, "growth"),    g_active,  g_total,   g_rows),
+        _build_section("Inflation",     _INFLATION_COLOR,  "inflation",     i_z,      i_mom,      _comp_arrow(comp_df, "inflation"), i_active,  i_total,   i_rows),
+        _build_section("Interest Rate", _RATE_COLOR,       "rate",          rate_z,   rate_mom,   _comp_arrow(comp_df, "rate"),      r_active,  r_total,   r_rows),
+        _build_section("Credit",        _CREDIT_COLOR,     "credit",        credit_z, credit_mom, _comp_arrow(comp_df, "credit"),    cr_active, cr_total,  cr_rows),
         _build_section("Volatility",    _VOLATILITY_COLOR, "volatility",    vol_z,    vol_mom,    _majority_arrow(vol_df["direction"].dropna().tolist() if not vol_df.empty else []), v_active, len(vol_df), v_rows),
     ]
 

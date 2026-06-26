@@ -51,6 +51,7 @@ from dashboard import weight_audit as _weight_audit
 from dashboard import weight_history as _weight_history
 from dashboard import regime_classifier_page as _regime_classifier
 from dashboard import signals_page as _signals_page
+from dashboard import force_detail as _force_detail
 from dashboard.shared_components import _signal_link
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -65,6 +66,8 @@ app = dash.Dash(
 server = app.server  # expose Flask for Gunicorn / production
 _explorer.register_callbacks(app)       # Phase 1E Data Explorer callbacks
 _data_dashboard.register_callbacks(app) # Data Feed Monitor sort + filter
+for _fd_force in _force_detail._FORCES:  # Force detail sub-pages (/signals/{force})
+    _force_detail.register_callbacks(app, _fd_force)
 
 # ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -792,6 +795,17 @@ def _left_nav() -> html.Div:
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
             _nl("📡", "Signals",        "/signals",        nav_id="navlnk-signals"),
+            # Force sub-pages
+            dbc.NavLink(html.Span("↳ Growth",       className="sidebar-text"),
+                        href="/signals/growth",     active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+            dbc.NavLink(html.Span("↳ Inflation",    className="sidebar-text"),
+                        href="/signals/inflation",  active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+            dbc.NavLink(html.Span("↳ Interest Rate",className="sidebar-text"),
+                        href="/signals/rate",       active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+            dbc.NavLink(html.Span("↳ Credit",       className="sidebar-text"),
+                        href="/signals/credit",     active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+            dbc.NavLink(html.Span("↳ Volatility",   className="sidebar-text"),
+                        href="/signals/volatility", active="exact", className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Data ──────────────────────────────────────────────────────────────
@@ -964,6 +978,10 @@ def _page_regime_classifier() -> html.Div:
 
 def _page_signals() -> html.Div:
     return _signals_page.get_layout()
+
+
+def _page_force(force: str) -> html.Div:
+    return _force_detail.get_layout(force)
 
 
 def _page_yield_curve() -> html.Div:
@@ -1895,6 +1913,11 @@ _PAGE_MAP = {
     "/weight-history":      _page_weight_history,
     "/regime-classifier":   _page_regime_classifier,
     "/signals":             _page_signals,
+    "/signals/growth":     lambda: _page_force("growth"),
+    "/signals/inflation":  lambda: _page_force("inflation"),
+    "/signals/rate":       lambda: _page_force("rate"),
+    "/signals/credit":     lambda: _page_force("credit"),
+    "/signals/volatility": lambda: _page_force("volatility"),
 }
 
 

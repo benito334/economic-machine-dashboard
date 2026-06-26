@@ -2,6 +2,14 @@
 
 ## Completed 2026-06-26
 
+- ✅ Force detail sub-pages: `/signals/{force}` for all 5 forces (`dashboard/force_detail.py`)
+- ✅ Banner: 6 chips — Force Z, Momentum, Active, In Agreement, Threshold, Lookback
+- ✅ Force chart: composite Z row + per-signal dual panels (raw + Z-score), shared spike hover
+- ✅ Date alignment fix: composite month-end and signal native dates both normalized to month-start
+- ✅ Z-score column fix: chart now uses rolling-window variant matching banner (e.g., `growth_score_36m`)
+- ✅ Regime History alignment fix: same root cause; force detail now matches Regime History growth chart
+- ✅ `load_signal_units()` added to `charting_data.py`; `_comp_arrow()` promoted to module-level in `signals_page.py`
+- ✅ Sidebar sub-nav links + `.sidebar-subnav` CSS class
 - ✅ Rate/Credit composites: extended `_score_force()` path to all four forces; 4 new DB columns; weight_audit includes rate/credit
 - ✅ Signals page: Rate/Credit now use `_composite_rows()` (8-column table); fixed `positive_dir` and momentum color bugs
 - ✅ US Interest Rate basket redesigned: 6 pure policy-rate signals (replaced 9-signal mixed basket)

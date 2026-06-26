@@ -4,6 +4,26 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-06-26 — Force detail sub-pages + chart alignment fixes
+
+**Done:**
+
+- **Force detail sub-pages** (`dashboard/force_detail.py`, new ~290-line file): 5 pages at `/signals/{force}` (growth, inflation, rate, credit, volatility). Each page: banner strip (Force Z · Momentum · Active · In Agreement · Threshold · Lookback), collapsible 8-column signal table (same as `/signals` main page), stacked time-series chart (composite Z row 1, then raw-value + Z-score dual panels per signal). Shared hover spike via clientside JS mirrors Regime History tab. VIX page uses daily raw data (no composite row); composite forces use monthly-resampled data.
+- **`load_signal_units()`** added to `dashboard/charting_data.py`: queries `signals` table for `units` per signal_id list; used by force detail chart builder.
+- **`_comp_arrow()`** promoted to module-level in `dashboard/signals_page.py` (was a closure inside `render_signals()`); signature `_comp_arrow(comp_df, force)` — importable by `force_detail.py`.
+- **Sidebar sub-nav**: 5 `.sidebar-subnav` links under Signals in `charting.py`; `.sidebar-subnav` CSS class in `theme.css` (0.78rem, 0.80 opacity, full opacity on hover/active).
+- **Bug fixes (this session):**
+  - *Z-score column mismatch*: `_build_force_chart()` was hardcoding base `growth_score`/`inflation_score` regardless of rolling-window store. Now `_render()` computes `chart_score_col` (e.g., `growth_score_36m`) matching the banner, and passes it explicitly.
+  - *Date misalignment*: Composites store month-end dates (`2026-05-31`); signals store native observation dates (`2026-05-01` for monthly FRED, weekly dates for bank loans, etc.). Both are now normalized to first-of-month before plotting — composite via `dt.to_period("M").dt.to_timestamp()`, signals via index resample + `.groupby().last()`. VIX (no composite row) skips resampling and keeps daily granularity.
+  - *Regime History divergence*: Same root cause as Z-score mismatch — force detail always plotted full-history `growth_score` while Regime History used the window-adjusted variant. Fixed by the same `chart_score_col` parameter.
+
+**Next:**
+- Phase 2 Japan rollout (`config/countries/jp_bindings.yaml` + `jp_composites.yaml`).
+- Run `python3 -m indicators.pipeline` after BEA Q1 2026 data release to clear 3 stale US signals.
+- KR monthly CPI: BoK ECOS API registration needed.
+
+---
+
 ## 2026-06-26 — Rate/Credit composites + per-signal age-decay half-lives
 
 **Done:**

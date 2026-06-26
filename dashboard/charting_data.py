@@ -129,7 +129,8 @@ def load_composite_history(
             f"growth_score_36m, growth_score_48m, growth_score_60m, "
             f"inflation_score_36m, inflation_score_48m, inflation_score_60m, "
             f"inflation_score_90m, inflation_score_120m, "
-            f"disequilibrium_12m, disequilibrium_18m, disequilibrium_24m "
+            f"disequilibrium_12m, disequilibrium_18m, disequilibrium_24m, "
+            f"rate_score, credit_score, rate_momentum, credit_momentum "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()
@@ -556,3 +557,22 @@ def load_all_signal_histories(
     finally:
         con.close()
     return df
+
+
+def load_signal_units(signal_ids: list[str]) -> dict[str, str]:
+    """Return {signal_id: units} for each signal in the list.  Missing IDs get 'value'."""
+    if not signal_ids:
+        return {}
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        placeholders = ",".join("?" * len(signal_ids))
+        rows = con.execute(
+            f"SELECT DISTINCT id, units FROM signals WHERE id IN ({placeholders})",
+            signal_ids,
+        ).fetchall()
+    finally:
+        con.close()
+    result = {sid: "value" for sid in signal_ids}
+    for sid, units in rows:
+        result[sid] = units or "value"
+    return result
