@@ -1,0 +1,123 @@
+# Ray Dalio Review Log
+
+Persistent record of technical review sessions with the external "Ray Dalio" AI agent (digitalray.ai), used to sanity-check the Indicators Machine project against a genuine Dalio-framework read on global macro/markets. Read this file at the start of any Ray review session before briefing anything; append to it at the end.
+
+Goal per [CLAUDE.md](../../CLAUDE.md): confirm the dashboard actually supports understanding global economies "from a Ray Dalio point of view" well enough to inform smart global investing decisions — even though allocation/trade logic itself stays out of this repo's scope.
+
+Working agreement (2026-07-05):
+- Keep the current 5-force taxonomy (Growth / Inflation / Rate / Credit / Volatility) as the review structure **unless Ray makes the case we're using the wrong framework** (e.g. his short-term debt cycle / long-term debt cycle / productivity / 3-big-cycles model) — if so, note it here and revisit.
+- Scope: diagnostic layer review + explicit flagging of investment-layer gaps (market/asset-price context missing from current build). No allocation logic gets built here.
+- Every session produces an **actionable punch list** — proposed changes only, each requiring explicit user approval before implementation.
+- Process: go systematically, one force/function at a time, iterating with Ray until reaching a real conclusion (not a single Q&A pass) — do NOT jump to building the skill until this pattern has run across several topics.
+- **Every per-force review must include a data-feed check**: does the free-API data we're actually pulling correspond to the best/correct signal for that concept, per this project's "free APIs only, never invent series IDs" rule (see [CLAUDE.md](../../CLAUDE.md))? Added 2026-07-05 after triage surfaced two cases (#8, #9 below) where the *concept* Ray wants may not have a free data source at all.
+- Punch-list items get triaged into one of: **ready to implement** (clear, no further Ray input needed), **needs design pass** (direction agreed, mechanism/parameters still open — needs another iteration with Ray), **needs data-feed check** (blocked on whether a free source exists), or **acknowledged, no build** (logged for awareness, out of this repo's scope).
+
+---
+
+## Coverage Matrix
+
+| Area | Status | Last Reviewed | Ray's Verdict (1-line) |
+|---|---|---|---|
+| Overall architecture / 5-force taxonomy | Reviewed – punch list open | 2026-07-05 | "Largely aligned" with his 3-force machine (productivity, short-term debt cycle, long-term debt cycle), but the long-run productivity trend isn't explicit and should be its own signal |
+| Growth force | Punch list open | pre-2026-06-26 | Labor-market signals (payrolls/unemployment/JOLTS/participation) are 4/9 equal-weight slots — over-represented vs. output/demand side; suggests giving output-and-demand a slightly higher aggregate weight |
+| Inflation force | Punch list open | pre-2026-06-26 | 5Y/10Y breakevens double-count market expectations (r~0.90); crude oil daily series creates a frequency mismatch against monthly composite |
+| Interest Rate force | Punch list open | 2026-07-05 | Structurally fine as the short-term-debt-cycle policy lever, but should link explicitly to forward-looking policy stance (Fed funds futures / forward guidance), not just current rate levels |
+| Credit force | Punch list open | 2026-07-05 | Structurally sound; confirm it has both supply-side (bank lending standards) and demand-side (borrower willingness) signals, not just one side |
+| Volatility force | Reviewed – punch list open | 2026-07-05 | Categorically different from the other 4 forces — describes environment noise/risk, not the economic machine itself. Should NOT feed the regime label directly; use as a threshold-widening modifier or standalone risk-off overlay. Recommends realized volatility (from equity price series, works for any country) as the universal signal, VIX as a US-only supplement, plus bond-vol/credit-spread-vol for redundancy |
+| Long-Term Debt Stress composite | Reviewed – solid plan reached | 2026-07-05 | "The composite you've built is on solid footing." Minimum viable subset for sparse-data countries = debt-to-GDP + debt-service ratio + primary balance (size/pressure/direction). Recommends a dynamic stock/flow weighting formula (see punch list) and adding both debt-service-to-consumption and -to-investment ratios |
+| Regime Classification (quadrant thresholds) | Reviewed – solid plan reached, full algorithm specified | 2026-07-05 | Two independent Growth/Inflation chips are "fine" AS LONG AS credit+rate are understood as the *mechanism* linking them. Gave a complete, ordered 7-step algorithm with worked Python pseudocode (see punch list #23) — country-vol-scaled baseline → credit multiplier (inflation only) → volatility multiplier (both chips) → multiplicative combination → classify → divergence flag overlay (diagnostic only, no threshold impact). Design principle: "interest-rate (policy-rate) and credit conditions are the primary levers, volatility is a secondary confidence-shaper, different time-horizons need distinct signals" |
+| Global Overview / Cycle Health Index | Reviewed – solid plan reached | 2026-07-05 | "Keep both" CHI and Debt Stress — CHI is a fast yes/no triage metric, Debt Stress is the deep structural analysis; scopes differ enough to coexist. Treats Growth/Rate/Inflation as "three pillars of the short-run economic machine," recommends context-dependent weight tilts (see punch list) over a flat 0.30/0.30/0.30. Nominal policy rate is intentional (speed, no estimation error, avoids double-counting since inflation is already a separate term) — recommends adding a configurable real-rate toggle rather than switching the default |
+| Data sourcing gaps (EZ current account, KR CPI, etc.) | Not reviewed | — | — |
+| Investment-layer gaps (market/asset pricing context) | Punch list open | 2026-07-05 | "The missing link to market data is the biggest hurdle for allocation" — dashboard has diagnosis but no bridge from regime to expected asset-class returns; gave a concrete 5-part roadmap (see punch list) |
+| Disequilibrium score | Reviewed – clean | pre-2026-06-26 | Treat the non-regime 43 signals as risk-premia/imbalance indicators, aggregate similarly but keep the score separate as an early-warning flag for regime shifts — matches current design intent |
+| Stale-data handling | Reviewed – clean, partially implemented | pre-2026-06-26 | Recommended weight decay (`base_weight × max(0, 1 - lag/max_lag)`), model-based fill for large gaps, re-normalization, and an audit trail — matches current `time_decay`/half-life design in `composites_policy.yaml`; model-based fill/re-normalization not fully confirmed against current code |
+
+Status values: `Not reviewed` / `In review` / `Reviewed – clean` / `Punch list open` / `Resolved`.
+
+---
+
+## Session Log
+
+### Pre-existing history discovered 2026-07-05 (not run by this process — found via manual chat history on digitalray.ai)
+
+The user had already run a substantial, unstructured version of this review directly with Ray before this log existed. Thread: "I have a macro Macro Regime Classifier..." (digitalray.ai conversation id `99cd7c55-70c6-4838-b43b-da86e6fa5dc3`). Site disclaimer on every response: **"This response has not been curated by the real Ray"** — treat outputs as an AI approximation of Dalio's framework, not verified/vetted by Dalio himself.
+
+Covered in that thread (architecture as of pre-2026-06-26, i.e. before Rate/Credit/Volatility forces, Debt Stress, and CHI existed):
+1. Signal universe overview (59 US signals, 10 lenses, 16-signal Growth+Inflation regime subset, remaining 43 → Disequilibrium)
+2. Transformation/Z-score/momentum/direction/forward-fill pipeline stages
+3. Growth-Force composite weighting critique (see coverage matrix)
+4. Inflation-Force composite weighting critique — breakeven double-counting, crude oil frequency mismatch (see coverage matrix)
+5. Disequilibrium Score treatment — confirmed reasonable
+6. Stale-data handling scheme — weight decay + model-based fill + re-normalize + audit trail
+7. General modeling principles: reality-based modeling, systematic/rolling-window backtesting, monthly feedback loops against actual GDP/inflation outcomes, parsimony-first, documentation/transparency
+8. Historical ground-truth validation: dot-com bubble (1995-2000), 2008 GFC, post-2008 QE era (2013-2015) — composite Z-score behavior conceptually matched known historical narratives
+9. Separately, in other threads: GDP-regression calibration feedback (on `indicators/calibrate.py` output), EU growth/inflation signal suggestions, a "Cycle Health Index" question referencing our actual dashboard output, and extensive general Dalio-framework Q&A (big debt cycle, reserve currency transitions, all-weather portfolio construction, risk parity mechanics) — relevant to the investment-layer-gap scope but not yet mined into this log.
+
+**Ray's own explicit next step, never followed up on:** "When you share the details of the regime scoring algorithm (the exact aggregation, weighting, and thresholds), I can dive deeper into the statistical properties of the composite... and discuss how to calibrate the final regime thresholds."
+
+### Session 2026-07-05 — regime scoring algorithm + taxonomy update
+
+Continued the same thread (`99cd7c55-70c6-4838-b43b-da86e6fa5dc3`). Briefed Ray on everything added since the old conversation (Rate/Credit forces, restructured dual-chip Growth/Inflation classification replacing the 4-quadrant label, Long-Term Debt Stress, Cycle Health Index) and gave him the exact `_classify_regime()` code + `_DEFAULT_THRESHOLDS` + weighting formulas he'd asked for. Asked 4 targeted questions: (1) two independent chips vs. one unified quadrant, (2) threshold calibration defensibility, (3) whether the 5-force taxonomy maps onto his 3-force machine, (4) the biggest gap for actual investment use.
+
+**Ray's core framework, stated directly:** the economy is driven by three big forces — **productivity growth** (long-run trend, neutral-to-positive growth signal), the **short-term debt cycle** (business-cycle credit dynamics — strong positive Credit/Rate signals → Inflationary/Expansion; tight credit → Retraction/Disinflation), and the **long-term debt cycle** (decades-long debt-to-income buildup — high Debt Stress → Transition/Retraction, low stress → Growth). Credit and Rate are *part of the mechanism* connecting Growth and Inflation, not independent forces — they naturally co-move with both.
+
+**Key structural finding:** two independent Growth/Inflation chips are fine, but only if the system remembers that Credit/Rate are the *linking mechanism*, not decoration. Concrete recommendations: (a) add a correlation-divergence flag between the two chips — if they move in opposite directions for an extended period, that's a red flag for a productivity shock or policy-driven divergence; (b) feed Rate/Credit into the regime label *indirectly* by using their composites to adjust thresholds (e.g. raise the inflation threshold when credit is very tight, since even a modest price rise hurts more in that environment) rather than adding them as raw inputs to the classifier.
+
+**Threshold calibration:** fixed Z=±0.5 + zero momentum is a reasonable first-order rule (roughly top/bottom 30% of a normal distribution) but regimes aren't symmetric across countries or time periods. Recommends: scale by country-specific rolling volatility (24-month σ) instead of a fixed Z; consider historical-percentile bands instead of fixed Z; consider asymmetric up/down bounds. Store the final choice as a configurable default, keep UI override.
+
+**Taxonomy mapping (force-by-force):** Growth ↔ productivity + short-term credit expansion (missing: explicit long-run productivity trend signal — recommends adding one, e.g. TFP/labor-productivity/innovation index); Inflation ↔ demand-pull + credit cost-push (consider distinguishing price-*level* vs. inflation-*rate*); Rate ↔ correct as the short-term-cycle policy lever, but should incorporate forward-looking policy stance (Fed funds futures / forward guidance), not just current levels; Credit ↔ correct as short-term-cycle dynamics, confirm both supply-side (lending standards) and demand-side (borrower willingness) signals exist; Volatility ↔ useful as a cycle accelerant/dampener, but consider adding a financial-market-volatility component (VIX + bond-yield spreads) for a "risk-off" read. The Debt Stress composite and Cycle Health Index were both explicitly endorsed as bridging to the long-term-cycle side of the machine.
+
+**The investment-layer gap — his single biggest critique:** the dashboard is "only fundamentals" with no bridge from regime to expected asset-class returns. Gave a concrete 5-step roadmap: (1) regime-conditional return models — simple regressions/factor models for average excess return per asset class conditional on regime state; (2) factor-tilt overlays — use regime scores directly as factor weights (tilt toward growth equities when the Growth chip is high, inflation-protected bonds when the Inflation chip is high); (3) dynamic risk budgeting — adjust each asset class's risk budget by regime (cut high-leverage exposure in a high-credit-tightening regime, add rate-sensitive exposure in a high-rate-expansion regime); (4) scenario-stress testing — simulate a regime-shift's portfolio impact; (5) signal-quality feedback — feed realized asset-class returns back to refine the regime→return mapping. His summary: "the classifier will move from a useful diagnostic tool to a practical guide for global asset allocation" once these are added.
+
+---
+
+## Open Punch List
+
+Triaged 2026-07-05. Decision: hold ALL implementation — continue the systematic per-force review with Ray first (option "b"), batch code changes at the end. Nothing below has been implemented yet.
+
+| # | Area | Proposal | Triage | Source date |
+|---|---|---|---|---|
+| 1 | Growth | Reduce collective weight of labor-market-cluster signals (payrolls/unemployment/JOLTS/participation) vs. output-and-demand signals (industrial production/retail sales/real PCE/PMI) | Ready to implement — route through existing `indicators/calibrate.py` GDP-regression tool rather than hand-tuning | pre-2026-06-26 |
+| 2 | Inflation | Combine 5Y/10Y breakevens into a single blended signal instead of two independent 0.5-weight slots | Ready to implement — new derived `inflation.breakeven_avg` signal | pre-2026-06-26 |
+| 3 | Inflation | Crude oil: 7-day rolling average before month-end aggregation instead of raw daily forward-fill | Ready to implement | pre-2026-06-26 |
+| 4 | Regime classification | Add a correlation-divergence flag between the Growth and Inflation chips | **Superseded by #23** — fully specified (step 7: N=3 look-back divergence overlay) | 2026-07-05 |
+| 5 | Regime classification | Feed Rate/Credit composites into the regime label indirectly via threshold adjustment | **Superseded by #23** — fully specified (step 3: credit multiplier). Note: Rate itself ended up not needed as a separate multiplier — Ray's algorithm uses Credit + Volatility only | 2026-07-05 |
+| 6 | Regime thresholds | Replace fixed ±0.5 Z / 0.0 momentum with country-specific volatility scaling and/or historical-percentile bands; consider asymmetric bounds | **Superseded by #23** — fully specified (step 1: country-vol-scaled baseline) | 2026-07-05 |
+| 7 | Growth | Add explicit long-run productivity-trend signal | Ready to implement — `growth.productivity`/`growth.tfp`/`growth.rnd_intensity` already exist as signals, just excluded from the composite; this is a config change, not new data sourcing | 2026-07-05 |
+| 8 | Interest Rate | Incorporate forward-looking policy-stance signals (Fed funds futures, forward guidance) | Needs data-feed check — Fed funds futures / CME FedWatch likely not available as a free FRED series; confirm with Ray/FRED before designing anything | 2026-07-05 |
+| 9 | Credit | Confirm both supply-side (lending standards) and demand-side (borrower willingness) signals are represented | Needs data-feed check — we have SLOOS tightening-standards; unconfirmed whether FRED carries the SLOOS loan-*demand* series too | 2026-07-05 |
+| 10 | Volatility | Add financial-market-volatility component (bond-yield spread vol) beyond VIX | Deferred to Volatility force session (next up) | 2026-07-05 |
+| 11 | Long-Term Debt Stress | Add debt-service-to-consumption/investment ratios alongside debt-to-GDP stock measures | Deferred to Debt Stress session (next up) | 2026-07-05 |
+| 12 | Investment layer | Regime-conditional asset-return model, factor-tilt overlay, dynamic risk budgeting, scenario testing, feedback loop | Acknowledged, no build — candidate for the separate Allocation Layer project per CLAUDE.md scope | 2026-07-05 |
+| 13 | Volatility | Add realized volatility (from each country's own equity index price series) as the universal per-country signal; keep VIX as an additional US-only component | Ready to implement — matches existing "basket → single weighted-Z composite per country" architecture used by every other force | 2026-07-05 |
+| 14 | Volatility | Do NOT feed Volatility into the main regime label as a raw input — use it to widen Growth/Inflation thresholds (lower conviction) when elevated, and/or as a standalone risk-off overlay | **Superseded by #23** — fully specified (step 4: volatility multiplier, both chips) | 2026-07-05 |
+| 15 | Volatility | Add bond-volatility (MOVE-style) and credit-spread-volatility (rolling std of high-yield spreads/Treasury yields) components for redundancy | Needs data-feed check — confirm free FRED sourcing for a MOVE-equivalent or rolling std construction from existing spread series | 2026-07-05 |
+| 16 | Debt Stress | Data-feed answer for sparse-data countries (e.g. future Japan/other rollouts): minimum viable 3-component subset = debt-to-GDP (public+household), debt-service ratio, primary fiscal balance/GDP | Ready to implement — apply when a country's free data can't support all 7 components | 2026-07-05 |
+| 17 | Debt Stress | Replace fixed 55/45 stock/flow weight split with a dynamic formula: `effective_flow_weight = base_flow_weight × (1 + k × (debt_service_ratio / median_service_ratio))`, k≈0.2 | Ready to implement — Ray gave the exact formula | 2026-07-05 |
+| 18 | Debt Stress | Add both debt-service-to-consumption and debt-service-to-investment ratios (0.05-0.07 weight each, pulled from primary balance/govt revenue); if only one, prioritize -to-investment universally, -to-consumption as a secondary country-specific layer | Needs data-feed check — confirm free source for consumption/investment denominators (likely FRED PCE and gross private investment series) | 2026-07-05 |
+| 19 | Debt Stress | Impute missing annual series via simple linear interpolation over the last two observations before applying existing forward-fill logic | Ready to implement | 2026-07-05 |
+
+**Confirmed free data feeds found (2026-07-05, via direct FRED series-search API, not guessed):**
+- `DRSDCILM` — "Net Percentage of Domestic Banks Reporting Stronger Demand for C&I Loans" — the missing demand-side counterpart to our existing supply-side `DRTSCILM` (lending standards). Resolves punch item #9's data-feed question: **yes, a free demand-side SLOOS series exists.**
+- `FEDTARMD` — "FOMC Summary of Economic Projections for the Fed Funds Rate, Median" (the Fed's own dot-plot) — a legitimate free forward-guidance proxy. True market-implied Fed funds futures (CME data) are NOT free/not on FRED. Resolves punch item #8's data-feed question: **no market-based futures feed exists free, but the Fed's own forward guidance does.**
+
+| 20 | Cycle Health Index | If the debt-gap term proves noisy (swings on a short half-life), smooth it with a longer rolling window rather than removing it outright; otherwise keep as-is alongside Debt Stress | Ready to implement (conditional — only if noise is observed) | 2026-07-05 |
+| 21 | Cycle Health Index | Replace flat 0.30/0.30/0.30 growth/rate/inflation weights with a conditional multiplier: if inflation > 5% annual → inflation weight 0.35; elif growth < 1% annual → rate weight 0.35; else → all 0.30 (debt-gap add-ons unchanged) | Ready to implement — Ray gave the exact rule | 2026-07-05 |
+| 22 | Cycle Health Index | Add a configurable toggle to switch policy-rate term from nominal to "realized real policy rate" (rate minus contemporaneous inflation), keep nominal as default | Ready to implement | 2026-07-05 |
+| 23 | Regime classification | Replace #4/#5/#6/#14 with ONE unified `compute_thresholds()` algorithm (supersedes those 4 items — see full spec below) | Ready to implement — fully specified with pseudocode | 2026-07-05 |
+
+**Item #23 full specification** (supersedes #4, #5, #6, #14 — this is the final, implementable mechanism):
+
+Inputs: `z_growth, z_inflation, delta_growth, delta_inflation` (current Z-scores & momentum); `vol_growth, vol_inflation` (12-mo rolling std-dev Z-scores of each composite — i.e. "vol of the vol"); `credit_z` (Z-score of the credit-tightness basket, positive = tighter); `growth_rate_ann, inflation_rate_ann` (for CHI-style conditional weighting, reused here); `country_std_growth, country_std_inflation` (24-mo rolling σ of each composite's own Z-score); `prev_scores` (optional history of prior chip labels, for the divergence flag).
+
+1. **Country-specific volatility scaling** (the baseline): `base_gz = 0.6 × country_std_growth`, `base_iz = 0.6 × country_std_inflation`. Replaces the single global fixed Z=0.5 with a country- and period-relative baseline.
+2. **Conditional weight shift** (feeds CHI-style weighting, not the thresholds themselves): default `w_g=w_r=w_i=0.30`; if `inflation_rate_ann > 5.0 → w_i=0.35`; elif `growth_rate_ann < 1.0 → w_r=0.35`. Applied *after* thresholds, not to them.
+3. **Credit-tightness multiplier, inflation-only**: `credit_hi=1.5` ("very tight" threshold), `c1=0.30` (30% extra per unit above hi). `credit_adj = 1.0 + max(0, credit_z - credit_hi) × c1`.
+4. **Volatility multiplier, both chips**: `vol_hi=1.0` (start widening after 1-sigma), `v1=0.25` (25% extra per unit above hi). `vol_adj_g = 1.0 + max(0, vol_growth - vol_hi) × v1`; `vol_adj_i` symmetric; in practice a single `vol_adj = max(vol_adj_g, vol_adj_i)` is used for simplicity.
+5. **Combine multiplicatively** (preserves relative magnitude, compounds the two independent uncertainty sources — structural vs. stochastic): `final_gz = base_gz × vol_adj`; `final_iz = base_iz × credit_adj × vol_adj`.
+6. **Classify chips** using the adjusted thresholds (`gz = final_gz`, `iz = final_iz` fed into the existing `_classify_regime` logic unchanged) — done last so the classifier sees the fully context-adjusted cutoffs.
+7. **Correlation-divergence overlay** (diagnostic only, does NOT feed back into thresholds): look back N=3 periods; if Growth and Inflation chips have been on opposite sides for all N periods, set `divergence_flag=True`. Independent signal for downstream risk-off tilts, not part of the binary classification itself.
+
+Worked numerical example (Ray's own, sanity-checked): tight credit (credit_z=2.0, hi=1.5) + normal vol → `credit_adj=1.15`, `vol_adj≈1.075` → inflation threshold rises ~24% above baseline (`final_iz = 0.60 × 1.15 × 1.075 ≈ 0.742`) while growth threshold only picks up the vol adjustment (`final_gz = 0.72 × 1.075 ≈ 0.774`). Sanity checks Ray called out explicitly: tight-credit-alone → modest inflation-threshold rise; vol-spike-alone → both thresholds widen equally; both extreme → multiplicative compounding pushes inflation threshold well above growth's; 3+ months of opposite chips → divergence flag fires, "historically associated with policy-rate or credit-cycle shifts."
+
+**Next up:** none remaining in the systematic per-force pass — all 5 forces, Debt Stress, CHI, and the regime-classifier mechanism are now reviewed with Ray and have concrete plans. #12 (investment-layer roadmap) stays logged as acknowledged-no-build per scope; no further Ray iteration planned on it since it already has a full 5-step roadmap and doesn't belong in this repo. Remaining work is user triage + implementation of the ready-to-implement items, plus resolving the needs-data-feed-check items (#8, #9 already resolved with concrete FRED series; #15, #18 still open).

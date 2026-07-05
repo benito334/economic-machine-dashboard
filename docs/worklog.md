@@ -1023,3 +1023,34 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Reorganised `docs/Guidance/`: consumed guidance docs moved to `docs/Guidance/Used/`; `Backtesting_Indicator_imporvements.md` is the active working document for Phase 3.
 
 **Files changed:** `dashboard/regime_classifier_page.py`, `docs/Guidance/` structure.
+
+---
+
+## 2026-06-28 — Global Overview Cycle Health Index
+
+**Done:**
+- Added Cycle Health columns to `/overview`: raw index, debt-adjusted weighted index, and interpreted cycle stage.
+- Implemented browser-local Cycle Health config modal for weights, debt target, and stage thresholds.
+- Direct nominal GDP growth is used when available; otherwise the Overview uses `real GDP growth + headline inflation` as a display proxy so EZ/KR can participate.
+- Added focused tests for the Cycle Health math and Overview route rendering.
+- Follow-up: added Methodology documentation for the Cycle Health formulas/defaults and a config-modal clipboard button that copies the current settings.
+- Follow-up: Overview table values are now clickable and open a time-series modal. Standard cells plot their underlying DB signal history; CHI cells plot dynamically computed raw/debt-adjusted history using the active browser config.
+- Follow-up: CHI v2 implemented from feedback — raw formula now uses real GDP growth; debt-adjusted CHI separates public/private debt gaps with public-only fallback; thresholds default to adaptive `k × σ`; component contributions support age-based freshness decay.
+
+**Validation:** `python3 -m pytest` → 360 passed; follow-up `python3 -m pytest tests/test_charting.py` → 77 passed.
+
+**Next:** Review the default weights/thresholds against Phase 3 back-test scenarios, then decide whether to persist country-specific defaults in YAML.
+
+---
+
+## 2026-07-05 — Ray Dalio AI review process (systematic, all 5 forces + Debt Stress + CHI)
+
+**Done:**
+- Started a new process reviewing the project against a "Ray Dalio" AI persona (digitalray.ai, browser-driven) to sanity-check the methodology from a genuine macro-cycle framework perspective. New tracking doc: `docs/Guidance/ray_dalio_review_log.md` — coverage matrix, session log, and a 23-item triaged punch list (ready-to-implement / needs-design-pass / needs-data-feed-check / acknowledged-no-build).
+- Discovered and mined a large amount of pre-existing informal review history in the same tool (growth/inflation composite critique, historical ground-truth validation against 1990s/2008/QE episodes).
+- Systematically reviewed all 5 forces, the Long-Term Debt Stress composite, and the Cycle Health Index, each landing on a concrete, implementable plan (see log for full detail per area).
+- Biggest structural output: a complete, ordered 7-step regime-classifier threshold algorithm (country-vol-scaled baseline → credit multiplier → volatility multiplier → multiplicative combination → classify → correlation-divergence overlay), with worked Python pseudocode and a numerical example — supersedes 4 previously-open punch items.
+- Confirmed two free data feeds via direct FRED series-search (not guessed): `DRSDCILM` (SLOOS loan-demand, pairs with existing `DRTSCILM` lending-standards signal) and `FEDTARMD` (FOMC dot-plot median, a forward-guidance proxy since true Fed-funds-futures data isn't free).
+- Nothing implemented yet — this was the review/planning pass only.
+
+**Next:** Work through the 23-item punch list; start with the ready-to-implement items (#1, #2, #3, #7, #13, #16, #17, #19, #21, #22, #23), then resolve remaining data-feed checks (#15, #18).
