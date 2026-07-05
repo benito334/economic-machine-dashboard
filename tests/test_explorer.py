@@ -161,7 +161,7 @@ def test_overview_columns_structure():
 def test_load_signal_overview_returns_all_signals():
     from dashboard.explorer_data import load_signal_overview
     df = load_signal_overview()
-    assert len(df) == 64
+    assert len(df) == 65
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns
@@ -319,7 +319,7 @@ def test_explorer_signal_table_callback():
     overview = load_signal_overview()
     rows = _format_overview(overview)
     assert isinstance(rows, list)
-    assert len(rows) == 64
+    assert len(rows) == 65
     assert all("id" in r for r in rows)
     assert all("zscore_fmt" in r for r in rows)
     assert all("flags" in r for r in rows)

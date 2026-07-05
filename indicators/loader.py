@@ -243,6 +243,14 @@ def fetch_wb_series(
 
     try:
         series = _fetch_wb_from_api(series_id, wb_code, start_year)
+    except ValueError as exc:
+        # Data quality issue (empty response, all-null values) — not a network failure
+        logger.warning("[WB] No data for %s/%s: %s", wb_code, series_id, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for WB %s/%s", wb_code, series_id)
+            df = pd.read_parquet(cache)
+            return df["value"]
+        return None
     except Exception as exc:
         logger.error("[WB] Failed to fetch %s/%s: %s", wb_code, series_id, exc)
         if cache.exists():

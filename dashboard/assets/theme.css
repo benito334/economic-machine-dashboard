@@ -290,21 +290,23 @@ hr {
 .ov-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.88rem;
+    font-size: 0.78rem;
+    table-layout: auto;
 }
 .ov-th-country, .ov-th-num {
     color: var(--muted-color);
     font-weight: 500;
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
-    padding: 8px 14px 10px;
+    font-size: 0.64rem;
+    letter-spacing: 0.02em;
+    padding: 6px 7px 8px;
     border-bottom: 2px solid var(--border-color);
-    white-space: nowrap;
+    white-space: normal;
     text-transform: uppercase;
+    line-height: 1.15;
 }
 .ov-th-num { text-align: right; }
 .ov-th-sub {
-    font-size: 0.60rem;
+    font-size: 0.54rem;
     font-weight: 400;
     letter-spacing: 0;
     margin-top: 2px;
@@ -312,31 +314,96 @@ hr {
     opacity: 0.75;
 }
 .ov-country-name {
-    padding: 10px 14px;
+    padding: 8px 7px;
     border-bottom: 1px solid var(--border-color);
     color: var(--font-color);
     font-weight: 400;
     white-space: nowrap;
 }
 .ov-cell-num {
-    padding: 8px 14px;
+    padding: 6px 7px;
     text-align: right;
     border-bottom: 1px solid var(--border-color);
     font-variant-numeric: tabular-nums;
-    line-height: 1.4;
+    line-height: 1.25;
+    white-space: nowrap;
 }
 .ov-cell-default { color: var(--font-color); }
+.ov-cell-link {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 2px;
+    transition: color 0.12s ease, text-decoration-color 0.12s ease;
+}
+.ov-cell-link:hover {
+    color: var(--slider-accent, #E8A317);
+    text-decoration-color: currentColor;
+}
 .ov-cell-date {
-    font-size: 0.63rem;
+    font-size: 0.56rem;
     color: var(--muted-color);
     opacity: 0.7;
 }
 .ov-cell-missing {
-    padding: 8px 14px;
+    padding: 6px 7px;
     text-align: right;
     border-bottom: 1px solid var(--border-color);
     color: var(--muted-color);
     opacity: 0.4;
+}
+.ov-config-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+}
+.ov-config-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.ov-config-label {
+    color: var(--muted-color);
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 0;
+    text-transform: uppercase;
+}
+.ov-config-input {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--panel-bg);
+    color: var(--font-color);
+    padding: 7px 9px;
+    font-variant-numeric: tabular-nums;
+}
+.ov-config-input:focus {
+    border-color: var(--slider-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--slider-accent) 24%, transparent);
+    outline: none;
+}
+.ov-config-dropdown .Select-control,
+.ov-config-dropdown .Select-menu-outer,
+.ov-config-dropdown .Select-value,
+.ov-config-dropdown .Select-placeholder {
+    background: var(--panel-bg) !important;
+    border-color: var(--border-color) !important;
+    color: var(--font-color) !important;
+}
+.ov-config-dropdown .Select-value-label,
+.ov-config-dropdown .VirtualizedSelectOption {
+    color: var(--font-color) !important;
+}
+.ov-config-dropdown .VirtualizedSelectFocusedOption {
+    background: color-mix(in srgb, var(--slider-accent) 18%, var(--panel-bg)) !important;
+}
+.ov-config-note {
+    color: var(--muted-color);
+    font-size: 0.76rem;
+    line-height: 1.45;
+    margin-top: 14px;
 }
 .ov-row:hover .ov-country-name,
 .ov-row:hover .ov-cell-num,
@@ -566,4 +633,14 @@ hr {
     background-color: var(--card-bg) !important;
     color: var(--font-color) !important;
     border-color: var(--border-color) !important;
+}
+
+/* Pipeline refresh panel spin animation */
+@keyframes pipe-rotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.pipe-spin {
+    display: inline-block;
+    animation: pipe-rotate 1.2s linear infinite;
 }

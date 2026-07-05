@@ -66,6 +66,7 @@ app = dash.Dash(
 server = app.server  # expose Flask for Gunicorn / production
 _explorer.register_callbacks(app)       # Phase 1E Data Explorer callbacks
 _data_dashboard.register_callbacks(app) # Data Feed Monitor sort + filter
+_global_overview.register_callbacks(app) # Global Overview Cycle Health config
 for _fd_force in _force_detail._FORCES:  # Force detail sub-pages (/signals/{force})
     _force_detail.register_callbacks(app, _fd_force)
 

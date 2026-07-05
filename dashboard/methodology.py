@@ -11,6 +11,7 @@ from dash import dcc, html
 
 from indicators.composites import build_formula_catalog
 from indicators.longterm_stress import build_debt_stress_formula_catalog
+from dashboard.global_overview import CYCLE_HEALTH_DEFAULT_CONFIG, _cycle_config_clipboard_text
 
 
 # ── Visual helpers ─────────────────────────────────────────────────────────────
@@ -1343,10 +1344,193 @@ def get_layout() -> html.Div:
                       "It is stored in DuckDB and persists across sessions and container rebuilds."),
             ], title="12 · Weight Calibration & Audit"),
 
-            # 13 ── Deferred & Out of Scope ─────────────────────────────────────
+            # 13 ── Cycle Health Index ─────────────────────────────────────────
             dbc.AccordionItem([
                 _copy_btn(_section_text(
-                    "13 · Deferred Items",
+                    "13 · Cycle Health Index",
+                    [
+                        "The Cycle Health Index is a compact Global Overview diagnostic that "
+                        "combines real growth, the policy-rate cost of credit, inflation, and "
+                        "the debt burden into one short-cycle health reading. It is display-only: "
+                        "it does not feed the stored regime quadrant, force composites, or any "
+                        "allocation logic.",
+                        "Interpretation: CHI asks whether the economy's real growth is "
+                        "large enough to absorb the current cost of credit and price pressure. In "
+                        "plain language, it is a quick read on whether credit conditions are still "
+                        "supporting expansion or beginning to choke it. It links the short-term "
+                        "debt cycle (growth, rates, inflation) with a simple long-term debt-cycle "
+                        "drag (Debt/GDP above or below target).",
+                        "The raw version uses real GDP growth minus the policy rate minus headline "
+                        "inflation. This avoids double-counting price changes: nominal growth can "
+                        "rise simply because inflation rose, and inflation is already a subtractive "
+                        "term in the index. Positive values mean real growth is high relative to credit cost and price "
+                        "pressure; negative values mean rates and inflation are dragging harder "
+                        "than growth is expanding.",
+                        "The debt-adjusted version adds the long-term debt-cycle constraint by "
+                        "subtracting separate public and private debt gaps. Public debt is "
+                        "government debt/GDP minus its target; private debt is the average of "
+                        "available household and corporate debt/GDP minus its target. If private "
+                        "debt is unavailable for a country, the model falls back to public-only debt drag.",
+                        "Stage thresholds can be fixed or adaptive. Adaptive mode uses k times the "
+                        "standard deviation of that country's CHI history, so the same labels remain "
+                        "meaningful across countries and volatility regimes. Component contributions "
+                        "can also be decayed by observation age, pulling stale values toward neutral "
+                        "with an exponential half-life.",
+                    ],
+                    tables=[
+                        (
+                            ["Formula", "Definition"],
+                            [
+                                ["Raw CHI", "CHI_raw = Real GDP growth - Policy rate - Inflation"],
+                                ["Debt-adjusted CHI", "CHI_debt_adj = wg*RealGrowth - wr*Policy - wi*Inflation - wp*(PublicDebt/GDP - PublicTarget) - wv*(PrivateDebt/GDP - PrivateTarget)"],
+                                ["Adaptive thresholds", "positive = +k*σ(CHI_debt_adj); negative = -k*σ(CHI_debt_adj)"],
+                                ["Stage rule", "Expansion if CHI_debt_adj >= positive threshold; Late/Tight if <= negative threshold; Neutral otherwise"],
+                            ],
+                        ),
+                        (
+                            ["Stage", "Meaning", "Typical read-through"],
+                            [
+                                ["Expansion", "Growth is strong enough relative to rates, inflation, and debt drag.", "Credit is still relatively supportive; the short-term cycle has room to run."],
+                                ["Neutral", "Growth, rates, inflation, and debt drag are roughly balanced.", "Transition zone; watch momentum and corroborating indicators."],
+                                ["Late / Tight", "Rates, inflation, or debt burden are overwhelming growth.", "Late-cycle or early-contraction pressure; credit conditions are becoming a drag."],
+                            ],
+                        ),
+                        (
+                            ["Input", "Role in the index", "Higher value means"],
+                            [
+                                ["Real GDP growth", "Real output engine; positive contribution.", "More real capacity to service debt and absorb rates/inflation."],
+                                ["Policy rate", "Cost of short-term credit; subtractive contribution.", "Tighter financing conditions."],
+                                ["Inflation", "Price-pressure drag; subtractive contribution.", "More purchasing-power erosion and policy-tightening risk."],
+                                ["Public debt gap", "Fiscal balance-sheet constraint; subtractive when above target.", "Less fiscal flexibility and more sensitivity to rates."],
+                                ["Private debt gap", "Household/corporate leverage constraint; subtractive when above target.", "More private-sector refinancing and debt-service pressure."],
+                                ["Freshness decay", "Confidence filter applied to aged observations.", "Stale data contributes less to the current index."],
+                            ],
+                        ),
+                        (
+                            ["Setting", "Default"],
+                            [
+                                ["Growth weight (wg)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['growth']:.2f}"],
+                                ["Policy-rate weight (wr)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['policy_rate']:.2f}"],
+                                ["Inflation weight (wi)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['inflation']:.2f}"],
+                                ["Public debt weight (wp)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['public_debt_gap']:.2f}"],
+                                ["Private debt weight (wv)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['private_debt_gap']:.2f}"],
+                                ["Public debt target", f"{CYCLE_HEALTH_DEFAULT_CONFIG['debt_targets']['public']:.0f}% of GDP"],
+                                ["Private debt target", f"{CYCLE_HEALTH_DEFAULT_CONFIG['debt_targets']['private']:.0f}% of GDP"],
+                                ["Threshold mode", str(CYCLE_HEALTH_DEFAULT_CONFIG['threshold_mode'])],
+                                ["Adaptive threshold multiplier", f"{CYCLE_HEALTH_DEFAULT_CONFIG['threshold_sigma_multiplier']:.2f} × σ"],
+                                ["Freshness half-life", f"{CYCLE_HEALTH_DEFAULT_CONFIG['freshness_half_life_months']:.1f} months"],
+                            ],
+                        ),
+                    ],
+                    notes=[
+                        "Cycle Health settings are edited from the Global Overview configuration "
+                        "modal and persist in browser localStorage. They do not mutate YAML or DB state.",
+                        "The guidance document includes portfolio-allocation language, but this "
+                        "dashboard remains diagnostic only. No allocation or trade rule is produced.",
+                        "CHI is not a recession model. It is a compact lens to triage macro-cycle "
+                        "pressure and should be cross-checked against force composites, debt stress, "
+                        "credit spreads, labor data, and data-quality flags.",
+                    ],
+                )),
+                _p("The Cycle Health Index appears on the Global Overview table as three columns: "
+                   "raw CHI, debt-adjusted CHI, and the interpreted weighted stage."),
+                _sub("What CHI is measuring"),
+                _p("CHI is a cycle-pressure gauge. It compares the economy's real growth engine "
+                   "against the two forces that most directly eat into that growth: the policy-rate "
+                   "cost of credit and inflation. The debt-adjusted version adds slower-moving "
+                   "balance-sheet constraints: public debt measures fiscal space, while private "
+                   "debt measures household/corporate leverage where those series are available."),
+                _p("A rising CHI means the growth/rate/inflation/debt mix is becoming easier for "
+                   "the economy to carry. A falling CHI means the mix is becoming more restrictive. "
+                   "The level tells you where the pressure sits now; the direction tells you whether "
+                   "the cycle is improving or deteriorating."),
+                _sub("How to read the stage labels"),
+                _table(
+                    ["Stage", "Meaning", "What to check next"],
+                    [
+                        ["Expansion",
+                         "Debt-adjusted CHI is above the positive threshold. Growth is strong enough "
+                         "relative to rates, inflation, and debt drag.",
+                         "Confirm with Growth composite breadth, credit health, and inflation momentum."],
+                        ["Neutral",
+                         "Debt-adjusted CHI is between thresholds. The system is balanced or in transition.",
+                         "Watch the month-to-month direction and whether force scores agree or conflict."],
+                        ["Late / Tight",
+                         "Debt-adjusted CHI is below the negative threshold. Rates, inflation, or debt "
+                         "burden are overwhelming growth.",
+                         "Check debt stress, lending standards, credit spreads, unemployment, and fiscal balance."],
+                    ],
+                ),
+                _sub("Input interpretation"),
+                _table(
+                    ["Input", "Role", "Audit question"],
+                    [
+                        ["Real GDP growth", "Positive term; proxy for real output growth.", "Is real activity expanding fast enough to carry financing costs?"],
+                        ["Policy rate", "Negative term; proxy for the marginal cost of credit.", "Is policy restrictive relative to income growth?"],
+                        ["Inflation", "Negative term; captures purchasing-power erosion and tightening pressure.", "Is inflation forcing tighter policy or absorbing nominal growth?"],
+                        ["Public debt gap", "Negative term when government debt/GDP is above target.", "Is fiscal leverage amplifying the short-cycle signal?"],
+                        ["Private debt gap", "Negative term when household/corporate debt/GDP is above target.", "Is private leverage creating credit-cycle fragility?"],
+                        ["Freshness decay", "Exponential age filter applied to component contributions.", "Is the current reading relying on stale observations?"],
+                    ],
+                ),
+                _sub("Formulas"),
+                _table(
+                    ["Formula", "Definition"],
+                    [
+                        ["Raw CHI", "CHI_raw = Real GDP growth - Policy rate - Inflation"],
+                        ["Debt-adjusted CHI", "CHI_debt_adj = wg*RealGrowth - wr*Policy - wi*Inflation - wp*PublicDebtGap - wv*PrivateDebtGap"],
+                        ["Freshness", "component_used = component_value * 0.5^(age_months / half_life_months)"],
+                        ["Adaptive thresholds", "threshold = ± k * standard_deviation(CHI_debt_adj history)"],
+                    ],
+                ),
+                _sub("Default configuration"),
+                _table(
+                    ["Setting", "Default"],
+                    [
+                        ["Growth weight (wg)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['growth']:.2f}"],
+                        ["Policy-rate weight (wr)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['policy_rate']:.2f}"],
+                        ["Inflation weight (wi)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['inflation']:.2f}"],
+                        ["Public debt weight (wp)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['public_debt_gap']:.2f}"],
+                        ["Private debt weight (wv)", f"{CYCLE_HEALTH_DEFAULT_CONFIG['weights']['private_debt_gap']:.2f}"],
+                        ["Public debt target", f"{CYCLE_HEALTH_DEFAULT_CONFIG['debt_targets']['public']:.0f}% of GDP"],
+                        ["Private debt target", f"{CYCLE_HEALTH_DEFAULT_CONFIG['debt_targets']['private']:.0f}% of GDP"],
+                        ["Threshold mode", str(CYCLE_HEALTH_DEFAULT_CONFIG['threshold_mode'])],
+                        ["Adaptive threshold multiplier", f"{CYCLE_HEALTH_DEFAULT_CONFIG['threshold_sigma_multiplier']:.2f} × σ"],
+                        ["Fixed positive threshold", f"{CYCLE_HEALTH_DEFAULT_CONFIG['positive_threshold']:+.2f}"],
+                        ["Fixed negative threshold", f"{CYCLE_HEALTH_DEFAULT_CONFIG['negative_threshold']:+.2f}"],
+                        ["Freshness half-life", f"{CYCLE_HEALTH_DEFAULT_CONFIG['freshness_half_life_months']:.1f} months"],
+                    ],
+                ),
+                _p("Stage labels are based on the debt-adjusted value: Expansion at or above "
+                   "the positive threshold, Late / Tight at or below the negative threshold, and "
+                   "Neutral between the two. In adaptive mode, these thresholds are computed from "
+                   "the selected country's own CHI history; in fixed mode, the configured numeric "
+                   "thresholds are used directly."),
+                _note("Important limitation: CHI is an explanatory diagnostic, not a standalone "
+                      "forecast. A negative reading can reflect healthy anti-inflation tightening, "
+                      "a growth slowdown, excessive debt drag, or some combination of all three. "
+                      "Use it to identify what deserves attention, then audit the component values "
+                      "and the broader force pages."),
+                _note("Settings are browser-local and can be copied from the Global Overview "
+                      "configuration modal. The copied payload is:"),
+                html.Pre(
+                    _cycle_config_clipboard_text(CYCLE_HEALTH_DEFAULT_CONFIG),
+                    style={
+                        "fontSize": "0.72rem",
+                        "color": "var(--muted-color)",
+                        "backgroundColor": "var(--card-bg)",
+                        "border": "1px solid var(--border-color)",
+                        "borderRadius": "4px",
+                        "padding": "10px",
+                        "whiteSpace": "pre-wrap",
+                    },
+                ),
+            ], title="13 · Cycle Health Index"),
+
+            # 14 ── Deferred & Out of Scope ─────────────────────────────────────
+            dbc.AccordionItem([
+                _copy_btn(_section_text(
+                    "14 · Deferred Items",
                     ["Items deferred out of the current scope."],
                     tables=[(
                         ["Item", "Status"],
@@ -1375,7 +1559,7 @@ def get_layout() -> html.Div:
                         ["Dynamic momentum windows (D2)",      "Phase 3 — requires regime labels as input"],
                     ]
                 ),
-            ], title="13 · Deferred Items"),
+            ], title="14 · Deferred Items"),
 
         ], start_collapsed=True, always_open=True),
 

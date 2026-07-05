@@ -6,7 +6,10 @@ Next Release), and filter bar (search, force, status, frequency).
 from __future__ import annotations
 
 import os
-from datetime import timedelta
+import subprocess
+import sys
+import threading
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -14,9 +17,11 @@ import pandas as pd
 import yaml
 import dash_bootstrap_components as dbc
 from dash import Input, Output, State, ctx, dcc, html, no_update
+from dash.exceptions import PreventUpdate
 
 _DB = os.getenv("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
+_PROJECT_ROOT = Path(__file__).parent.parent
 
 # ── Component IDs ─────────────────────────────────────────────────────────────
 _SORT_STORE = "dd-sort-store"
@@ -137,6 +142,193 @@ _FREQ_ORDER = {"D": 0, "W": 1, "M": 2, "Q": 3, "A": 4}
 _NEXT_DAYS: dict[str, int] = {
     "D": 2, "W": 10, "M": 45, "Q": 120, "A": 400,
 }
+
+
+# ── Pipeline refresh state ─────────────────────────────────────────────────────
+
+_PASS_DEFS: list[dict] = [
+    {"key": "us_ingest", "label": "FRED · WorldBank · IMF",              "country": "US", "marker": "Pass 1: FRED series [US]"},
+    {"key": "us_comp",   "label": "Composites + rolling windows",         "country": "US", "marker": "Pass 5: Composites engine [US]"},
+    {"key": "us_stress", "label": "Long-term Debt Stress",               "country": "US", "marker": "Pass 6: Long-Term Debt Stress"},
+    {"key": "ez_ingest", "label": "FRED · Eurostat · ECB · WB · IMF",   "country": "EZ", "marker": "Country: EZ"},
+    {"key": "ez_comp",   "label": "Composites",                          "country": "EZ", "marker": "Pass 5: Composites engine [EZ]"},
+    {"key": "kr_ingest", "label": "FRED · WorldBank · IMF",              "country": "KR", "marker": "Country: KR"},
+    {"key": "kr_comp",   "label": "Composites",                          "country": "KR", "marker": "Pass 5: Composites engine [KR]"},
+]
+_SKIP_MARKERS = ("Passes 5b-5d:", "Passes 5e-5f:")
+
+_RUN_LOCK = threading.Lock()
+_PIPELINE_STATE: dict = {
+    "running": False,
+    "started_at": None,
+    "finished_at": None,
+    "elapsed_s": None,
+    "exit_code": None,
+    "current_pass": None,
+    "log_tail": [],
+    "passes": {p["key"]: {"status": "idle", "detail": ""} for p in _PASS_DEFS},
+}
+
+
+def _fmt_elapsed(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    m, s = divmod(s, 60)
+    return f"{m}m {s}s"
+
+
+def _reset_pipeline_state() -> None:
+    _PIPELINE_STATE.update({
+        "running": False, "started_at": None, "finished_at": None,
+        "elapsed_s": None, "exit_code": None, "current_pass": None, "log_tail": [],
+    })
+    for key in _PIPELINE_STATE["passes"]:
+        _PIPELINE_STATE["passes"][key] = {"status": "idle", "detail": ""}
+
+
+def _update_pass_from_line(line: str) -> None:
+    """Update pass status from one stdout line. Must be called with _RUN_LOCK held."""
+    for skip in _SKIP_MARKERS:
+        if skip in line:
+            return
+    for p in _PASS_DEFS:
+        if p["marker"] in line:
+            cur = _PIPELINE_STATE.get("current_pass")
+            if cur and _PIPELINE_STATE["passes"][cur]["status"] == "running":
+                _PIPELINE_STATE["passes"][cur]["status"] = "ok"
+            _PIPELINE_STATE["passes"][p["key"]]["status"] = "running"
+            _PIPELINE_STATE["current_pass"] = p["key"]
+            return
+    if "[ERROR]" in line:
+        cur = _PIPELINE_STATE.get("current_pass")
+        if cur:
+            _PIPELINE_STATE["passes"][cur]["detail"] = line.strip()[:120]
+    if "─── Summary" in line:
+        cur = _PIPELINE_STATE.get("current_pass")
+        if cur and _PIPELINE_STATE["passes"][cur]["status"] == "running":
+            _PIPELINE_STATE["passes"][cur]["status"] = "ok"
+            _PIPELINE_STATE["current_pass"] = None
+
+
+def _run_pipeline_bg() -> None:
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "indicators.pipeline"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=str(_PROJECT_ROOT),
+            env=os.environ.copy(),
+        )
+        for line in proc.stdout:
+            line = line.rstrip()
+            with _RUN_LOCK:
+                _PIPELINE_STATE["log_tail"] = (_PIPELINE_STATE["log_tail"] + [line])[-30:]
+                _update_pass_from_line(line)
+        proc.wait()
+        rc = proc.returncode
+    except Exception as exc:
+        rc = -1
+        with _RUN_LOCK:
+            _PIPELINE_STATE["log_tail"].append(f"[LAUNCH ERROR] {exc}")
+
+    with _RUN_LOCK:
+        cur = _PIPELINE_STATE.get("current_pass")
+        if cur:
+            _PIPELINE_STATE["passes"][cur]["status"] = "ok" if rc == 0 else "error"
+            _PIPELINE_STATE["current_pass"] = None
+        started = _PIPELINE_STATE["started_at"]
+        _PIPELINE_STATE["elapsed_s"] = (
+            (datetime.now() - datetime.fromisoformat(started)).total_seconds() if started else None
+        )
+        _PIPELINE_STATE["running"] = False
+        _PIPELINE_STATE["finished_at"] = datetime.now().isoformat()
+        _PIPELINE_STATE["exit_code"] = rc
+
+
+def _start_pipeline_run() -> None:
+    with _RUN_LOCK:
+        if _PIPELINE_STATE["running"]:
+            return
+        _reset_pipeline_state()
+        _PIPELINE_STATE["running"] = True
+        _PIPELINE_STATE["started_at"] = datetime.now().isoformat()
+    threading.Thread(target=_run_pipeline_bg, daemon=True).start()
+
+
+def _render_pipeline_panel() -> html.Div:
+    with _RUN_LOCK:
+        state = {
+            "running": _PIPELINE_STATE["running"],
+            "started_at": _PIPELINE_STATE["started_at"],
+            "elapsed_s": _PIPELINE_STATE["elapsed_s"],
+            "exit_code": _PIPELINE_STATE["exit_code"],
+            "passes": {k: dict(v) for k, v in _PIPELINE_STATE["passes"].items()},
+        }
+
+    if state["started_at"] is None:
+        return html.Div()
+
+    if state["running"]:
+        elapsed = (datetime.now() - datetime.fromisoformat(state["started_at"])).total_seconds()
+        hdr_icon, hdr_text, hdr_color = "⟳", f"Running — {_fmt_elapsed(elapsed)}", "#E8A317"
+    elif state["exit_code"] == 0:
+        hdr_icon, hdr_text, hdr_color = "✓", f"Completed in {_fmt_elapsed(state['elapsed_s'] or 0)}", "#5CB85C"
+    else:
+        hdr_icon, hdr_text, hdr_color = "✕", f"Failed after {_fmt_elapsed(state['elapsed_s'] or 0)}", "#E8534C"
+
+    started_str = datetime.fromisoformat(state["started_at"]).strftime("%Y-%m-%d %H:%M")
+
+    _cc_colors = {"US": "#4C9BE8", "EZ": "#F4C842", "KR": "#5CBA8A"}
+    _st_cfg = {
+        "idle":    ("○",  "var(--muted-color)", "Pending",  "var(--muted-color)"),
+        "running": ("⟳",  "#E8A317",            "Running…", "#E8A317"),
+        "ok":      ("✓",  "#5CB85C",            "Done",     "#5CB85C"),
+        "error":   ("✕",  "#E8534C",            "Error",    "#E8534C"),
+    }
+
+    rows = []
+    for p in _PASS_DEFS:
+        ps = state["passes"][p["key"]]
+        icon_ch, icon_col, lbl, lbl_col = _st_cfg.get(ps["status"], _st_cfg["idle"])
+        cc = p["country"]
+        cc_color = _cc_colors.get(cc, "#888")
+        spin_cls = "pipe-spin" if ps["status"] == "running" else ""
+        rows.append(html.Div([
+            html.Span(icon_ch, className=spin_cls, style={"color": icon_col, "width": "16px", "display": "inline-block", "textAlign": "center"}),
+            html.Span(cc, style={
+                "fontSize": "0.62rem", "fontWeight": 700, "padding": "1px 5px",
+                "borderRadius": "3px", "border": f"1px solid {cc_color}",
+                "color": cc_color, "marginLeft": "8px", "marginRight": "8px",
+            }),
+            html.Span(p["label"], style={"fontSize": "0.76rem", "flexGrow": 1}),
+            html.Span(lbl, style={"fontSize": "0.74rem", "color": lbl_col}),
+            *(
+                [html.Span(ps["detail"], style={"fontSize": "0.68rem", "color": "#E8534C", "marginLeft": "8px", "fontFamily": "monospace"})]
+                if ps.get("detail") else []
+            ),
+        ], style={
+            "display": "flex", "alignItems": "center", "gap": "4px",
+            "padding": "5px 0", "borderBottom": "1px solid var(--border-color)",
+        }))
+
+    return html.Div([
+        html.Div([
+            html.Span(hdr_icon, className="pipe-spin" if state["running"] else "", style={"color": hdr_color, "marginRight": "6px"}),
+            html.Span("Pipeline", style={"fontWeight": 600, "fontSize": "0.79rem", "marginRight": "10px"}),
+            html.Span(hdr_text, style={"fontSize": "0.77rem", "color": hdr_color}),
+            html.Span(f" · {started_str}", style={"fontSize": "0.71rem", "color": "var(--muted-color)", "marginLeft": "8px"}),
+        ], style={"marginBottom": "10px", "display": "flex", "alignItems": "center"}),
+        html.Div(rows),
+    ], style={
+        "backgroundColor": "var(--card-bg)",
+        "border": "1px solid var(--border-color)",
+        "borderRadius": "6px",
+        "padding": "12px 16px",
+        "marginBottom": "14px",
+    })
 
 
 # ── YAML metadata ─────────────────────────────────────────────────────────────
@@ -520,14 +712,30 @@ def get_layout() -> html.Div:
 
     return html.Div([
         html.Div([
-            html.H4("Data Feed Monitor",
-                    style={"marginBottom": "2px", "fontSize": "1.1rem"}),
-            html.P(
-                id="dd-description",
-                children="Signals grouped by force. Click a column header to sort; sorting switches to flat view.",
-                style={"color": "var(--muted-color)", "fontSize": "0.74rem",
-                       "marginBottom": "12px"},
-            ),
+            html.Div([
+                html.Div([
+                    html.H4("Data Feed Monitor",
+                            style={"marginBottom": "2px", "fontSize": "1.1rem"}),
+                    html.P(
+                        id="dd-description",
+                        children="Signals grouped by force. Click a column header to sort; sorting switches to flat view.",
+                        style={"color": "var(--muted-color)", "fontSize": "0.74rem",
+                               "marginBottom": "12px"},
+                    ),
+                ], style={"flex": 1}),
+                html.Div(
+                    dbc.Button(
+                        "🔄 Refresh All",
+                        id="dd-refresh-btn",
+                        color="warning",
+                        size="sm",
+                        style={"fontSize": "0.76rem", "whiteSpace": "nowrap"},
+                    ),
+                    style={"alignSelf": "flex-start", "paddingTop": "4px"},
+                ),
+            ], style={"display": "flex", "alignItems": "flex-start", "gap": "12px"}),
+            html.Div(id="dd-pipe-panel"),
+            dcc.Interval(id="dd-pipe-interval", interval=1500, n_intervals=0, disabled=True),
             filter_bar,
             html.Div(id=_SUMMARY_ID, className="dd-summary", style={"marginBottom": "10px"}),
         ], className="pt-3"),
@@ -641,3 +849,28 @@ def register_callbacks(app) -> None:
         summary  = _build_summary(df, total_all, active_filters)
         header   = _build_header(sort_state)
         return tbody, summary, sort_state, header, description
+
+    # ── Pipeline refresh callbacks ─────────────────────────────────────────
+
+    @app.callback(
+        Output("dd-pipe-panel",    "children"),
+        Output("dd-pipe-interval", "disabled"),
+        Output("dd-refresh-btn",   "disabled"),
+        Input("dd-refresh-btn",    "n_clicks"),
+        Input("dd-pipe-interval",  "n_intervals"),
+        prevent_initial_call=True,
+    )
+    def _pipeline_update(n_clicks, n_intervals):
+        triggered = ctx.triggered_id
+
+        if triggered == "dd-refresh-btn":
+            if not n_clicks:
+                raise PreventUpdate
+            _start_pipeline_run()
+        elif triggered != "dd-pipe-interval":
+            raise PreventUpdate
+
+        panel = _render_pipeline_panel()
+        with _RUN_LOCK:
+            still_running = _PIPELINE_STATE["running"]
+        return panel, not still_running, still_running

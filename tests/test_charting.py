@@ -124,7 +124,105 @@ def test_overview_page_is_routed_and_renders_table():
     rendered = str(layout.to_plotly_json())
     assert "Global Overview" in rendered
     assert "ov-table" in rendered
+    assert "Cycle Health" in rendered
+    assert "Cycle Health Config" in rendered
     assert trigger == {"page": "/overview"}
+
+
+def test_cycle_health_uses_real_growth_and_public_debt_drag():
+    from dashboard.global_overview import _cycle_health
+
+    country_data = {
+        "master.gdp_real": (0.02, "2026-01"),
+        "policy.fed_funds_target": (4.0, "2026-06"),
+        "inflation.cpi_headline": (0.03, "2026-05"),
+        "credit.gov_debt_gdp": (100.0, "2026-01"),
+    }
+    health = _cycle_health(country_data, {
+        "threshold_mode": "fixed",
+        "apply_freshness_decay": False,
+    })
+
+    assert health is not None
+    assert health["growth_source"] == "real"
+    assert health["simple"] == pytest.approx(-5.0)
+    assert health["adjusted"] == pytest.approx(-4.5)
+    assert health["debt_mode"] == "public-only"
+    assert health["stage"] == "Late / Tight"
+
+
+def test_cycle_health_uses_private_debt_when_available():
+    from dashboard.global_overview import _cycle_health
+
+    country_data = {
+        "master.gdp_real": (0.02, "2026-01"),
+        "policy.fed_funds_target": (4.0, "2026-06"),
+        "inflation.cpi_headline": (0.03, "2026-05"),
+        "credit.gov_debt_gdp": (70.0, "2026-01"),
+        "credit.household_debt_gdp": (80.0, "2026-01"),
+        "credit.corporate_debt_gdp": (120.0, "2026-01"),
+    }
+    health = _cycle_health(country_data, {
+        "threshold_mode": "fixed",
+        "apply_freshness_decay": False,
+        "debt_targets": {"public": 70.0, "private": 90.0},
+    })
+
+    assert health is not None
+    assert health["debt_mode"] == "public+private"
+    assert health["private_debt_gap"] == pytest.approx(10.0)
+    assert health["adjusted"] == pytest.approx(-2.0)
+
+
+def test_cycle_health_clipboard_text_includes_configured_settings():
+    from dashboard.global_overview import _cycle_config_clipboard_text
+
+    text = _cycle_config_clipboard_text({
+        "weights": {
+            "growth": 0.4,
+            "policy_rate": 0.2,
+            "inflation": 0.3,
+            "debt_gap": 0.1,
+        },
+        "debt_target_pct": 80.0,
+        "positive_threshold": 0.75,
+        "negative_threshold": -0.25,
+    })
+
+    assert "CHI_raw = Real GDP growth - Policy rate - Inflation" in text
+    assert "Growth weight:      0.4" in text
+    assert "Public debt target (% GDP):  80" in text
+    assert "Fixed positive threshold: 0.75" in text
+    assert "Fixed negative threshold: -0.25" in text
+
+
+def test_methodology_page_documents_cycle_health_index():
+    from dashboard.methodology import get_layout
+
+    rendered = str(get_layout().to_plotly_json())
+    assert "13 · Cycle Health Index" in rendered
+    assert "CHI_raw = Real GDP growth - Policy rate - Inflation" in rendered
+    assert "Debt-adjusted CHI" in rendered
+
+
+@pytest.mark.integration
+def test_overview_drill_figure_builds_regular_metric_history():
+    from dashboard.global_overview import _overview_drill_figure
+
+    fig = _overview_drill_figure("us", "master.gdp_real")
+    assert len(fig.data) == 1
+    assert len(fig.data[0].x) > 0
+    assert len(fig.data[0].y) > 0
+
+
+@pytest.mark.integration
+def test_overview_drill_figure_builds_cycle_health_history():
+    from dashboard.global_overview import _overview_drill_figure
+
+    fig = _overview_drill_figure("us", "chi_adjusted")
+    assert len(fig.data) >= 1
+    assert len(fig.data[0].x) > 0
+    assert len(fig.data[0].y) > 0
 
 
 def test_charting_groups_match_catalog():

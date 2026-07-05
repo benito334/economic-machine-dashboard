@@ -77,3 +77,4 @@ All of these datasets are maintained by reputable institutions, and the metadata
 **7. Final thought**
 
 The goal isn’t to find a perfect, static list of regimes; it’s to create a systematic, repeatable process that captures the dominant macro forces at any point in time. By anchoring your indicator to a clear, data‑driven regime framework, you can see where it adds value, where it fails, and how you might improve it. Remember that regimes are part of a larger cycle—short‑term debt cycles, long‑term debt cycles, and the broader empire‑cycle dynamics that shape the global order. A robust indicator will be flexible enough to adapt as those cycles evolve, while staying grounded in the concrete evidence that the historical data provide.
+
