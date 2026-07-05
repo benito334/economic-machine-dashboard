@@ -37,13 +37,8 @@ from dashboard.signals_page import (
     _build_section,
     _composite_rows,
     _comp_arrow,
-    _direction_fraction,
-    _majority_arrow,
-    _mean_z,
     _momentum_score_color,
     _semantic_z_color,
-    _signal_rows,
-    _vix_df,
 )
 from dashboard.themes import figure_layout
 from indicators.composites import load_composites_config
@@ -57,7 +52,7 @@ _FORCE_CFG: dict[str, dict] = {
     "inflation": {"label": "Inflation",    "color": _INFLATION_COLOR,  "score_col": "inflation_score", "mom_col": "inflation_momentum", "thresh_key": "iz", "is_composite": True},
     "rate":      {"label": "Interest Rate","color": _RATE_COLOR,       "score_col": "rate_score",      "mom_col": "rate_momentum",      "thresh_key": None, "is_composite": True},
     "credit":    {"label": "Credit",       "color": _CREDIT_COLOR,     "score_col": "credit_score",    "mom_col": "credit_momentum",    "thresh_key": None, "is_composite": True},
-    "volatility":{"label": "Volatility",   "color": _VOLATILITY_COLOR, "score_col": None,              "mom_col": None,                 "thresh_key": None, "is_composite": False},
+    "volatility":{"label": "Volatility",   "color": _VOLATILITY_COLOR, "score_col": "volatility_score", "mom_col": "volatility_momentum", "thresh_key": None, "is_composite": True},
 }
 
 _GROWTH_WINDOW_COL   = {36: "36m", 48: "48m", 60: "60m"}
@@ -241,7 +236,9 @@ def _build_force_chart(
     )
 
     # ── Normalize signal dates to month-start to align with monthly composites ─
-    # Only resample when a composite row exists; skip for volatility (daily VIX).
+    # Only resample when a composite row exists (all forces are composites now,
+    # including Volatility since 2026-07-05 — daily signals like VIX/realized_vol
+    # take their month-end last value, same as Rate's daily fed_funds/DFF).
     if has_composite:
         if not raw_wide.empty:
             raw_wide = raw_wide.copy()
@@ -501,57 +498,12 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
                     if isinstance(force_dict, dict):
                         audit_by_signal.update(force_dict)
 
-        # ── Volatility special case ───────────────────────────────────────────
-        if force == "volatility":
-            vol_df   = _vix_df(country)
-            comp_z   = _mean_z(vol_df)
-            momentum = _direction_fraction(vol_df)
-
-            n_total  = len(vol_df)
-            n_active = sum(1 for _, r in vol_df.iterrows() if pd.notna(r.get("zscore")))
-            n_agree  = 0  # VIX: rising = bad, no clear agreement metric for 1 signal
-
-            thresh_z = float(thresholds.get("gz", 0.5))
-            v_rows, v_active = _signal_rows(vol_df, _VOLATILITY_COLOR)
-            table_section = _build_section(
-                "Volatility", _VOLATILITY_COLOR, "volatility",
-                comp_z, momentum,
-                _majority_arrow(vol_df["direction"].dropna().tolist() if not vol_df.empty else []),
-                v_active, n_total, v_rows,
-            )
-            banner = _build_banner(force, comp_z, momentum, n_active, n_total,
-                                   n_agree, thresholds, lookback_label)
-
-            # Chart: VIX raw + Z, no composite row from DB
-            vix_ids = ["us.volatility.vix"]
-            raw_wide_v = pd.DataFrame()
-            z_wide_v   = pd.DataFrame()
-            try:
-                # VIX raw data from regime_classifier helper
-                from indicators.regime_classifier import _load_vix
-                vix_raw = _load_vix()
-                if vix_raw is not None and not vix_raw.empty:
-                    raw_wide_v = vix_raw.to_frame(name="us.volatility.vix")
-                    window = 120
-                    roll = vix_raw.rolling(window, min_periods=24)
-                    z_series = (vix_raw - roll.mean()) / roll.std()
-                    z_wide_v = z_series.to_frame(name="us.volatility.vix")
-            except Exception:
-                pass
-
-            vix_labels   = {"us.volatility.vix": "VIX"}
-            vix_units    = {"us.volatility.vix": "index level"}
-            empty_hist   = pd.DataFrame(columns=["as_of"])
-            chart = _build_force_chart(
-                force, country, vix_ids, vix_labels, vix_units,
-                empty_hist, raw_wide_v, z_wide_v, theme_name,
-                thresholds=thresholds,
-            )
-            return banner, table_section, chart
-
-        # ── Composite forces (growth, inflation, rate, credit) ────────────────
+        # ── Composite forces (growth, inflation, rate, credit, volatility) ─────
+        # Volatility became a real basket composite 2026-07-05 (Ray Dalio review
+        # #13) — it now uses this same generic path instead of a raw-VIX special case.
         comp_key = {"growth": "growth_score", "inflation": "inflation_score",
-                    "rate": "rate_score", "credit": "credit_score"}[force]
+                    "rate": "rate_score", "credit": "credit_score",
+                    "volatility": "volatility_score"}[force]
         cfg = load_composites_config(country)
         country_prefix = country.lower()
         indicators = cfg.get(comp_key, {}).get("indicators", [])

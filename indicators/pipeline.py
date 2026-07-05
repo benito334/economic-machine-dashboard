@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import yaml
 from dotenv import load_dotenv
@@ -164,6 +165,26 @@ def compute_derived(
         combined = pd.concat([be5, be10], axis=1, join="inner")
         combined.columns = ["be5", "be10"]
         return ((combined["be5"] + combined["be10"]) / 2.0).dropna()
+
+    if bid == "volatility.realized_vol":
+        # Ray Dalio review 2026-07-05 (#13): annualized rolling std of log returns
+        # on the country's own equity-index level. Uses transformed_store (keyed by
+        # binding id, not provider series_id) so this one branch works for every
+        # country's volatility.equity_index regardless of which underlying FRED
+        # series backs it (SP500 daily for US, monthly share-price index for EZ/KR).
+        eq = transformed_store.get("volatility.equity_index")
+        if eq is None or eq.empty:
+            return None
+        log_returns = np.log(eq).diff().dropna()
+        if binding.frequency == "D":
+            window, periods_per_year = 21, 252   # ~1 trading month, annualized daily
+        else:
+            window, periods_per_year = 12, 12     # 12-month window, annualized monthly (EZ/KR proxy)
+        realized_vol = (
+            log_returns.rolling(window, min_periods=max(3, window // 2)).std()
+            * np.sqrt(periods_per_year)
+        )
+        return realized_vol.dropna()
 
     if bid == "credit.btp_bund_spread":
         # Italian BTP 10Y minus German Bund 10Y (both in % pct_level)

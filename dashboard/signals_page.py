@@ -99,40 +99,6 @@ def _comp_arrow(comp_df: pd.DataFrame, force: str) -> str:
     return _majority_arrow(sub["direction"].dropna().tolist())
 
 
-def _vix_df(country: str) -> pd.DataFrame:
-    if country != "US":
-        return pd.DataFrame()
-    try:
-        from indicators.regime_classifier import _load_vix
-
-        vix = _load_vix()
-        if vix is None or vix.empty:
-            return pd.DataFrame()
-        window   = 120
-        roll     = vix.rolling(window, min_periods=24)
-        z_series = (vix - roll.mean()) / roll.std()
-        last_val  = float(vix.iloc[-1])
-        prev_val  = float(vix.iloc[-2]) if len(vix) > 1 else last_val
-        z_val = (
-            float(z_series.iloc[-1])
-            if not z_series.empty and not math.isnan(z_series.iloc[-1])
-            else None
-        )
-        return pd.DataFrame([{
-            "id":          "us.volatility.vix",
-            "label":       "VIX",
-            "direction":   "rising" if last_val > prev_val else "falling",
-            "zscore":      z_val,
-            "change_3m":   None,
-            "is_stale":    False,
-            "low_history": False,
-            "as_of":       vix.index[-1],
-            "invert":      False,
-        }])
-    except Exception:
-        return pd.DataFrame()
-
-
 # ── Table cell builders (match Regime History style exactly) ──────────────────
 
 _TH = {
@@ -148,11 +114,6 @@ _TD = {
     "color": "var(--font-color)", "verticalAlign": "middle",
 }
 _TD_MONO = {**_TD, "fontFamily": "monospace"}
-
-
-def _dash_td() -> html.Td:
-    return html.Td("—", style={**_TD_MONO, "textAlign": "center", "color": "#555"})
-
 
 def _semantic_z_color(z, force: str, invert: bool = False, thresh: float = 0.5) -> str:
     """Semantic color for a signal Z-score bar + text.
@@ -353,56 +314,6 @@ def _composite_rows(
     return rows, n_active
 
 
-def _signal_rows(sig_df: pd.DataFrame, color: str) -> tuple[list[html.Tr], int]:
-    """Build table rows for a raw-signal force (Rate / Credit / Volatility)."""
-    rows: list[html.Tr] = []
-    n_active = 0
-
-    for _, sr in sig_df.iterrows():
-        sid       = str(sr.get("id", ""))
-        label     = str(sr.get("label", None) or _concept_label(sid))
-        z         = sr.get("zscore")
-        z_missing = z is None or (isinstance(z, float) and math.isnan(z))
-        direction = str(sr.get("direction") or "")
-        change_3m = sr.get("change_3m")
-        is_stale  = bool(sr.get("is_stale", False))
-        low_hist  = bool(sr.get("low_history", False))
-        as_of_raw = sr.get("as_of")
-        last_str  = (
-            pd.Timestamp(as_of_raw).strftime("%b %Y")
-            if as_of_raw is not None and pd.notna(as_of_raw) else "—"
-        )
-
-        if not z_missing:
-            n_active += 1
-
-        row_bg = (
-            "rgba(60,20,20,0.12)"
-            if z_missing or is_stale or low_hist else "transparent"
-        )
-
-        rows.append(html.Tr(
-            style={"backgroundColor": row_bg},
-            children=[
-                html.Td([
-                    _signal_link(label, sid),
-                    _signal_info_icon(sid),
-                ], style=_TD),
-                _dash_td(),   # Importance — not applicable
-                _dash_td(),   # Config Wt  — not applicable
-                _dash_td(),   # Eff Wt     — not applicable
-                html.Td(last_str, style={
-                    **_TD_MONO, "textAlign": "center",
-                    "color": "var(--muted-color)", "fontSize": "0.75rem",
-                }),
-                _z_bar_cell(None if z_missing else float(z), color),
-                _momentum_cell(direction, change_3m, "rising", color),
-                _status_cell(is_stale, low_hist, z_missing),
-            ],
-        ))
-    return rows, n_active
-
-
 # ── Section builder ───────────────────────────────────────────────────────────
 
 _COL_HEADER = html.Tr([
@@ -526,8 +437,8 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
 
     g_z = i_z = None
     g_mom = i_mom = None
-    rate_z_comp = credit_z_comp = None
-    rate_mom_comp = credit_mom_comp = None
+    rate_z_comp = credit_z_comp = volatility_z_comp = None
+    rate_mom_comp = credit_mom_comp = volatility_mom_comp = None
     audit_by_signal: dict = {}
     try:
         hist = load_composite_history(country=country)
@@ -555,6 +466,11 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
                 rate_mom_comp = float(row["rate_momentum"])
             if "credit_momentum" in hist.columns and pd.notna(row.get("credit_momentum")):
                 credit_mom_comp = float(row["credit_momentum"])
+            # Volatility composite — added 2026-07-05 (Ray Dalio review #13)
+            if "volatility_score" in hist.columns and pd.notna(row.get("volatility_score")):
+                volatility_z_comp = float(row["volatility_score"])
+            if "volatility_momentum" in hist.columns and pd.notna(row.get("volatility_momentum")):
+                volatility_mom_comp = float(row["volatility_momentum"])
             wa_raw = row.get("weight_audit")
             if wa_raw:
                 raw = json.loads(wa_raw) if isinstance(wa_raw, str) else wa_raw
@@ -573,30 +489,32 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
         ~latest["id"].apply(_concept).isin(exc_rate)
     ]
     credit_df = latest[latest["force"].isin(["credit", "premium"])]
-    vol_df    = _vix_df(country)
 
     # Use stored composite scores where available; fall back to unweighted mean
     rate_z   = rate_z_comp   if rate_z_comp   is not None else _mean_z(rate_df)
     credit_z = credit_z_comp if credit_z_comp is not None else _mean_z(credit_df)
-    vol_z    = _mean_z(vol_df)
+    vol_z    = volatility_z_comp
 
     # Use stored momentum fractions where available; fall back to direction fraction
     rate_mom   = rate_mom_comp   if rate_mom_comp   is not None else _direction_fraction(rate_df)
     credit_mom = credit_mom_comp if credit_mom_comp is not None else _direction_fraction(credit_df)
-    vol_mom    = _direction_fraction(vol_df)
+    vol_mom    = volatility_mom_comp
 
     # ── Build rows ────────────────────────────────────────────────────────────
     _thresh_z = float((thresholds or {}).get("gz", 0.5))
-    g_rows,  g_active  = _composite_rows(comp_df, "growth",    _GROWTH_COLOR,    audit_by_signal, thresh=_thresh_z)
-    i_rows,  i_active  = _composite_rows(comp_df, "inflation", _INFLATION_COLOR, audit_by_signal, thresh=_thresh_z)
-    r_rows,  r_active  = _composite_rows(comp_df, "rate",      _RATE_COLOR,      audit_by_signal, thresh=_thresh_z)
-    cr_rows, cr_active = _composite_rows(comp_df, "credit",    _CREDIT_COLOR,    audit_by_signal, thresh=_thresh_z)
-    v_rows,  v_active  = _signal_rows(vol_df,    _VOLATILITY_COLOR)
+    g_rows,  g_active  = _composite_rows(comp_df, "growth",     _GROWTH_COLOR,     audit_by_signal, thresh=_thresh_z)
+    i_rows,  i_active  = _composite_rows(comp_df, "inflation",  _INFLATION_COLOR,  audit_by_signal, thresh=_thresh_z)
+    r_rows,  r_active  = _composite_rows(comp_df, "rate",       _RATE_COLOR,       audit_by_signal, thresh=_thresh_z)
+    cr_rows, cr_active = _composite_rows(comp_df, "credit",     _CREDIT_COLOR,     audit_by_signal, thresh=_thresh_z)
+    # Volatility is now a real basket composite (2026-07-05, Ray Dalio review #13) —
+    # same _composite_rows path as Rate/Credit, not the old ad-hoc _vix_df/_signal_rows.
+    v_rows,  v_active  = _composite_rows(comp_df, "volatility", _VOLATILITY_COLOR, audit_by_signal, thresh=_thresh_z)
 
     g_total  = len(comp_df[comp_df["composite"] == "growth"])
     i_total  = len(comp_df[comp_df["composite"] == "inflation"])
     r_total  = len(comp_df[comp_df["composite"] == "rate"])
     cr_total = len(comp_df[comp_df["composite"] == "credit"])
+    v_total  = len(comp_df[comp_df["composite"] == "volatility"])
 
     # ── Sections ──────────────────────────────────────────────────────────────
     last_obs = latest["as_of"].max() if not latest.empty else "—"
@@ -610,17 +528,16 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
 
     footer = html.Div(
         "Config Wt = normalized base share × importance × quality factor  ·  "
-        "Eff Wt = Config Wt × momentum tilt × time-decay  ·  "
-        "Volatility signals are not in the composites engine — weight columns show —",
+        "Eff Wt = Config Wt × momentum tilt × time-decay",
         style={"fontSize": "0.65rem", "color": "#555", "marginTop": "8px", "paddingLeft": "4px"},
     )
 
     sections = [
-        _build_section("Growth",        _GROWTH_COLOR,     "growth",        g_z,      g_mom,      _comp_arrow(comp_df, "growth"),    g_active,  g_total,   g_rows),
-        _build_section("Inflation",     _INFLATION_COLOR,  "inflation",     i_z,      i_mom,      _comp_arrow(comp_df, "inflation"), i_active,  i_total,   i_rows),
-        _build_section("Interest Rate", _RATE_COLOR,       "rate",          rate_z,   rate_mom,   _comp_arrow(comp_df, "rate"),      r_active,  r_total,   r_rows),
-        _build_section("Credit",        _CREDIT_COLOR,     "credit",        credit_z, credit_mom, _comp_arrow(comp_df, "credit"),    cr_active, cr_total,  cr_rows),
-        _build_section("Volatility",    _VOLATILITY_COLOR, "volatility",    vol_z,    vol_mom,    _majority_arrow(vol_df["direction"].dropna().tolist() if not vol_df.empty else []), v_active, len(vol_df), v_rows),
+        _build_section("Growth",        _GROWTH_COLOR,     "growth",        g_z,      g_mom,      _comp_arrow(comp_df, "growth"),     g_active,  g_total,   g_rows),
+        _build_section("Inflation",     _INFLATION_COLOR,  "inflation",     i_z,      i_mom,      _comp_arrow(comp_df, "inflation"),  i_active,  i_total,   i_rows),
+        _build_section("Interest Rate", _RATE_COLOR,       "rate",          rate_z,   rate_mom,   _comp_arrow(comp_df, "rate"),       r_active,  r_total,   r_rows),
+        _build_section("Credit",        _CREDIT_COLOR,     "credit",        credit_z, credit_mom, _comp_arrow(comp_df, "credit"),     cr_active, cr_total,  cr_rows),
+        _build_section("Volatility",    _VOLATILITY_COLOR, "volatility",    vol_z,    vol_mom,    _comp_arrow(comp_df, "volatility"), v_active,  v_total,   v_rows),
     ]
 
     return html.Div([page_header] + sections + [footer])

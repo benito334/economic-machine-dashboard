@@ -123,3 +123,61 @@ def test_run_exits_nonzero_when_enabled_country_composites_empty(monkeypatch, tm
         pipeline.run()
 
     assert exc.value.code == 1
+
+
+# ── compute_derived (added 2026-07-05, Ray Dalio review #2 and #13) ───────────
+
+import numpy as np
+import pandas as pd
+
+from indicators.pipeline import compute_derived
+
+
+def test_compute_derived_breakeven_avg():
+    idx = pd.date_range("2026-01-01", periods=3, freq="D")
+    raw_store = {
+        "T5YIE": pd.Series([2.0, 2.2, 2.4], index=idx),
+        "T10YIE": pd.Series([2.4, 2.6, 2.8], index=idx),
+    }
+    binding = SimpleNamespace(id="inflation.breakeven_avg", frequency="D")
+    result = compute_derived(binding, raw_store, {})
+    assert result is not None
+    assert result.tolist() == pytest.approx([2.2, 2.4, 2.6])
+
+
+def test_compute_derived_breakeven_avg_missing_input_returns_none():
+    binding = SimpleNamespace(id="inflation.breakeven_avg", frequency="D")
+    assert compute_derived(binding, {"T5YIE": pd.Series([1.0])}, {}) is None
+
+
+def test_compute_derived_realized_vol_daily_annualizes_with_sqrt_252():
+    idx = pd.date_range("2020-01-01", periods=40, freq="D")
+    rng = np.random.default_rng(42)
+    prices = 100 * np.exp(np.cumsum(rng.normal(0, 0.01, size=len(idx))))
+    eq = pd.Series(prices, index=idx)
+    binding = SimpleNamespace(id="volatility.realized_vol", frequency="D")
+    result = compute_derived(binding, {}, {"volatility.equity_index": eq})
+    assert result is not None
+    assert not result.empty
+    # Manually recompute the last value to confirm the window/annualization factor
+    log_returns = np.log(eq).diff().dropna()
+    expected_last = log_returns.tail(21).std() * np.sqrt(252)
+    assert result.iloc[-1] == pytest.approx(expected_last, rel=1e-6)
+
+
+def test_compute_derived_realized_vol_monthly_uses_12mo_window():
+    idx = pd.date_range("2020-01-31", periods=20, freq="ME")
+    rng = np.random.default_rng(7)
+    prices = 100 * np.exp(np.cumsum(rng.normal(0, 0.03, size=len(idx))))
+    eq = pd.Series(prices, index=idx)
+    binding = SimpleNamespace(id="volatility.realized_vol", frequency="M")
+    result = compute_derived(binding, {}, {"volatility.equity_index": eq})
+    assert result is not None
+    log_returns = np.log(eq).diff().dropna()
+    expected_last = log_returns.tail(12).std() * np.sqrt(12)
+    assert result.iloc[-1] == pytest.approx(expected_last, rel=1e-6)
+
+
+def test_compute_derived_realized_vol_missing_input_returns_none():
+    binding = SimpleNamespace(id="volatility.realized_vol", frequency="D")
+    assert compute_derived(binding, {}, {}) is None

@@ -454,3 +454,45 @@ bindings:
     linkage: "ILO-modeled labor force participation rate (% population 15+). Higher than EA average; rising female participation is a structural positive."
     sanity_min: 30.0
     sanity_max: 90.0
+
+  # ─── Volatility Force (added 2026-07-05, Ray Dalio review #13) ─────────────
+  # No free daily KR equity-index feed exists via FRED — only monthly share-price
+  # index data. Realized vol here is a MONTHLY-return proxy, lower-fidelity than
+  # the US's daily-return version. See docs/Guidance/data_source_wishlist.md for
+  # the search for a better (daily, e.g. true KOSPI) source.
+
+  - id: volatility.equity_index
+    series_id: SPASTT01KRM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "OECD MEI share price index for Korea (monthly) — raw level, used only as input to realized volatility."
+    sanity_min: 0.0
+    sanity_max: 1000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.15
+    linkage: "Annualized rolling standard deviation of monthly log returns on the Korea share-price index (12-month window) — a monthly-resolution proxy for realized volatility; no daily KOSPI feed is free via FRED."
+    sanity_min: 0.0
+    sanity_max: 2.0

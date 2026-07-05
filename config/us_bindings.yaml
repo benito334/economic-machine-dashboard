@@ -705,6 +705,62 @@ bindings:
     sanity_max: 25.0
     notes: "⚠ FRED/ICE data-licensing change: FRED only serves this series from 2023-06-19 onward (~787 obs). Z-score and percentile are relative to a 3-year window only — not full history. Long-history credit premium is covered by premium.credit_spread_corp (BAA10Y, since 1986). Tracked in session-checklist G-10."
 
+  # ─── Lens — Volatility Force (added 2026-07-05, Ray Dalio review #13) ─────
+  # Ray: realized volatility (computed from each country's own equity index)
+  # is the universal signal that works everywhere; VIX stays as an additional
+  # US-only component for its forward-looking (implied-vol) flavor.
+
+  - id: volatility.equity_index
+    series_id: SP500
+    provider: FRED
+    frequency: D
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "S&P 500 daily close — raw price level, used only as the input to realized volatility (not Z-scored on its own level, which is non-stationary)."
+    sanity_min: 0.0
+    sanity_max: 50000.0
+    notes: "FRED SP500 only covers 2016-07-05 onward (~10yr history) — shorter than most other US signals."
+
+  - id: volatility.vix
+    series_id: VIXCLS
+    provider: FRED
+    frequency: D
+    force: volatility
+    lead_lag: leading
+    transformation: level
+    units: index_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 18.0
+    linkage: "CBOE VIX — market-implied (forward-looking) 30-day volatility expectation for the S&P 500. US-only: no free VIX-equivalent exists for other countries."
+    sanity_min: 5.0
+    sanity_max: 100.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: D
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.15
+    linkage: "Annualized rolling standard deviation of S&P 500 daily log returns (21-trading-day window) — a universal, country-agnostic volatility measure that doesn't require an options market."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
   # ─── Lens A supplement — Growth structural ────────────────────────────────
 
   - id: growth.rnd_intensity

@@ -136,7 +136,8 @@ def load_composite_history(
             f"inflation_score_36m, inflation_score_48m, inflation_score_60m, "
             f"inflation_score_90m, inflation_score_120m, "
             f"disequilibrium_12m, disequilibrium_18m, disequilibrium_24m, "
-            f"rate_score, credit_score, rate_momentum, credit_momentum "
+            f"rate_score, credit_score, rate_momentum, credit_momentum, "
+            f"volatility_score, volatility_momentum "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()
@@ -261,8 +262,8 @@ def load_composite_component_status(
     country_prefix = country.lower()
 
     rows_meta: list[dict] = []
-    for comp_name in ("growth_score", "inflation_score", "rate_score", "credit_score"):
-        force = comp_name.split("_")[0]  # "growth", "inflation", "rate", or "credit"
+    for comp_name in ("growth_score", "inflation_score", "rate_score", "credit_score", "volatility_score"):
+        force = comp_name.split("_")[0]  # "growth", "inflation", "rate", "credit", or "volatility"
         indicators = cfg.get(comp_name, {}).get("indicators", [])
         if not indicators:
             continue

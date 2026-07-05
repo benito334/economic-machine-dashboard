@@ -1072,3 +1072,20 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Validation:** `python3 -m pytest` → 370 passed, 1 pre-existing unrelated failure (`test_compare_raw_vs_processed_level_signal`, a pandas dtype bug, reproduces on main without any of these changes — spawned as a separate task). Pipeline re-run clean after each change.
 
 **Remaining:** #13 (Volatility restructure, needs a data-feed decision given the constraint above) and #23 (the full regime-classifier threshold algorithm — the biggest, most invasive remaining change).
+
+---
+
+## 2026-07-05 — Ray Dalio review punch-list implementation (part 2: Volatility restructure, #13)
+
+**Done:**
+- **New signals**: `volatility.equity_index` (US: `SP500` daily; EZ: `SPASTT01EZM661N` monthly; KR: `SPASTT01KRM661N` monthly) and `volatility.vix` (US only, `VIXCLS`). All confirmed via direct FRED series-search, not guessed.
+- **New derived signal**: `volatility.realized_vol` — annualized rolling std of log returns on the equity index (21-day/√252 window for US daily data, 12-month/√12 window for the EZ/KR monthly proxy). `indicators/pipeline.py::compute_derived`.
+- **Volatility is now a real basket composite** (`volatility_score`/`volatility_momentum`), matching the same architecture as Growth/Inflation/Rate/Credit: added to `models.py`, `store.py` (schema + migration), `composites.py` (validation, scoring, momentum, weight_audit), `charting_data.py::load_composite_component_status` and `load_composite_history`. US basket = realized_vol (importance 0.70) + VIX (importance 0.90, bonus weight); EZ/KR = realized_vol only (single-signal, `quality_factor: 0.70`, low-coverage/directional-only, documented in each composites.yaml).
+- **Removed the old ad-hoc raw-VIX path**: deleted `_vix_df()`/`_signal_rows()`/`_dash_td()` (dead code) from `signals_page.py`; `force_detail.py`'s `/signals/volatility` page dropped its special-case branch and now uses the same generic composite-driven banner/table/chart path as every other force.
+- **Bug found + fixed along the way**: `load_composite_history()` in `charting_data.py` had an explicit column SELECT list that omitted the (pre-existing) `rate_score`/`credit_score` columns from ever showing up correctly if they'd been missing too — added `volatility_score`/`volatility_momentum` to that list. Also fixed a `PermissionError` in `loader.py`'s cache-write step (pre-existing root-owned cache file blocking a legitimate new-binding fetch) by logging a warning and proceeding without caching instead of crashing the pipeline.
+- **New doc**: `docs/Guidance/data_source_wishlist.md` — running checklist of data we want but don't have a free source for yet (daily EA/KR equity index, MOVE-equivalent, credit-spread vol, ECB/BOK loan-demand series, debt-service-to-consumption/investment denominators), with guidance for the next country rollout (Japan).
+- **Verified live in the dashboard** (rebuilt `docker compose build/up charting`): `/signals/volatility` and `/signals` overview both render the new composite correctly (Force Z, momentum, weight columns, 4-panel stacked chart with composite Z + momentum + per-signal dual panels) for US; confirmed EZ/KR ingest correctly too (EZ currently shows `NaN` for the latest few months because the OECD source lags beyond the monthly forward-fill window — same expected staleness behavior as other known-lagging EZ signals, not a bug).
+
+**Validation:** `python3 -m pytest` → 377 passed, 1 pre-existing unrelated failure (dtype bug, already tracked separately). Full pipeline re-run clean across US/EZ/KR.
+
+**Next:** #23 — the full regime-classifier threshold algorithm (the last, most invasive punch-list item).

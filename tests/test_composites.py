@@ -311,6 +311,47 @@ def test_snapshot_audits_dynamic_and_decay_weight_layers(mem_conn):
     assert payrolls["normalized_weight"] == pytest.approx(0.5)
 
 
+def test_volatility_score_computed_from_basket(mem_conn):
+    """Ray Dalio review 2026-07-05 (#13): Volatility became a real basket composite."""
+    _seed_expansion(mem_conn)
+    months = pd.date_range("2017-01-31", periods=6, freq="ME")
+    for dt in months:
+        ds = str(dt.date())
+        _insert_signals(mem_conn, [
+            {"id": "us.volatility.realized_vol", "as_of": ds, "zscore": 0.4, "direction": "rising", "force": "volatility"},
+            {"id": "us.volatility.vix",          "as_of": ds, "zscore": 0.8, "direction": "rising", "force": "volatility"},
+        ])
+    cfg = {
+        **_minimal_config(),
+        "volatility_score": {
+            "indicators": [
+                {"id": "volatility.realized_vol", "base_share": 1.0, "importance": 0.70, "quality_factor": 0.90},
+                {"id": "volatility.vix",           "base_share": 0.7, "importance": 0.90, "quality_factor": 1.00},
+            ]
+        },
+    }
+    snapshots = compute_composite_history(mem_conn, "US", cfg)
+    latest = snapshots[-1]
+
+    assert latest.volatility_score is not None
+    assert latest.volatility_score > 0  # both inputs positive Z, weighted mean must be positive
+    assert latest.volatility_momentum == pytest.approx(1.0)  # both signals rising
+
+    audit = json.loads(latest.weight_audit)
+    assert "volatility" in audit
+    assert "us.volatility.realized_vol" in audit["volatility"]
+    assert "us.volatility.vix" in audit["volatility"]
+
+
+def test_volatility_score_absent_when_not_configured(mem_conn):
+    """Countries without a volatility_score section (e.g. old configs) get None, not an error."""
+    _seed_expansion(mem_conn)
+    snapshots = compute_composite_history(mem_conn, "US", _minimal_config())
+    assert snapshots[-1].volatility_score is None
+    assert snapshots[-1].volatility_momentum is None
+    assert "volatility" not in json.loads(snapshots[-1].weight_audit)
+
+
 def test_confidence_high_when_signals_agree(mem_conn):
     """When all signals agree with the quadrant direction, confidence should be close to 1."""
     _seed_stagflation(mem_conn)

@@ -140,3 +140,14 @@ credit_score:
       importance: 0.35      # CONTEXT — German benchmark; rising = global tightening spillover
       quality_factor: 0.85
       invert: true          # high Bund yield = tighter baseline for all EZ borrowers
+
+# ── EZ Volatility Score (added 2026-07-05, Ray Dalio review #13) ─────────────
+# NOTE: single signal, monthly-return proxy (no free daily EA equity feed exists
+# via FRED — see docs/Guidance/data_source_wishlist.md). Low coverage; directional only.
+volatility_score:
+  description: "EZ market volatility — monthly-return proxy on EA share-price index (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available EZ volatility signal
+      quality_factor: 0.70  # reduced quality_factor: monthly-resolution proxy, not true daily realized vol

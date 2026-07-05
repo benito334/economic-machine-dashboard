@@ -146,8 +146,14 @@ def fetch_series(
 
     series.name = "value"
     series.index.name = "date"
-    series.to_frame().to_parquet(cache)
-    logger.debug("[cached] %s → %s (%d obs)", series_id, cache.name, len(series))
+    try:
+        series.to_frame().to_parquet(cache)
+        logger.debug("[cached] %s → %s (%d obs)", series_id, cache.name, len(series))
+    except PermissionError:
+        # Cache file owned by a different user/process (e.g. pre-existing shared
+        # cache with restrictive permissions) — proceed with the freshly fetched
+        # data rather than failing the whole pipeline over a caching nicety.
+        logger.warning("[cache write skipped] %s: permission denied on %s", series_id, cache)
     return series
 
 

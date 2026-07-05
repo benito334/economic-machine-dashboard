@@ -79,3 +79,14 @@ credit_score:
       importance: 0.90      # PRIMARY — only available KR credit signal
       quality_factor: 1.00
       invert: true          # high debt/GDP = stress
+
+# ── KR Volatility Score (added 2026-07-05, Ray Dalio review #13) ─────────────
+# NOTE: single signal, monthly-return proxy (no free daily KOSPI feed exists via
+# FRED — see docs/Guidance/data_source_wishlist.md). Low coverage; directional only.
+volatility_score:
+  description: "KR market volatility — monthly-return proxy on share-price index (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available KR volatility signal
+      quality_factor: 0.70  # reduced quality_factor: monthly-resolution proxy, not true daily realized vol

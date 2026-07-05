@@ -231,3 +231,22 @@ credit_score:
       quality_factor: 0.85
       half_life_months: 12.0 # annual signal; retains 50% weight after 4 quarters (one full release cycle)
       invert: true          # high govt debt = less fiscal space to support credit
+
+# ── Volatility Score (added 2026-07-05, Ray Dalio review #13) ────────────────
+# Positive = higher volatility / more risk-off environment.
+# Ray: Volatility should NOT feed the Growth/Inflation regime label directly —
+# it's a modifier/overlay (see regime classifier algorithm), but is still
+# computed as its own basket composite like every other force for consistency.
+volatility_score:
+  description: "Market volatility composite — realized equity vol + VIX (US-only bonus weight)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.70      # STRONG — universal, country-agnostic signal
+      quality_factor: 0.90
+      half_life_months: 3.0 # daily signal; fast-moving
+    - id: volatility.vix
+      base_share: 0.7
+      importance: 0.90      # PRIMARY — forward-looking (implied vol), US-only bonus weight
+      quality_factor: 1.00
+      half_life_months: 3.0
