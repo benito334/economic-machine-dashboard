@@ -15,7 +15,7 @@ Format per entry: **Concept** — desired frequency — current status — candi
 
 ## Interest Rate force
 
-- **Forward-looking policy-rate expectations** — needs to reflect market-implied path, ideally daily/weekly — **Partial.** True market-based Fed funds futures (CME FedWatch) are not free/not on FRED. Confirmed substitute: `FEDTARMD` (FOMC Summary of Economic Projections, dot-plot median) — quarterly cadence (released ~4x/year at FOMC meetings), the Fed's own guidance rather than market pricing. Good enough to implement punch item #8; note the resolution difference (quarterly dot-plot vs. daily market pricing) if it matters for a future refinement.
+- **Forward-looking policy-rate expectations** — needs to reflect market-implied path, ideally daily/weekly — **Not viable as a standard signal (found 2026-07-05).** True market-based Fed funds futures (CME FedWatch) are not free/not on FRED. The apparent substitute `FEDTARMD` (FOMC dot-plot median) *exists free* but is a forecast snapshot, NOT a historical series: it serves only the latest FOMC's projections for future year-ends (rows dated 2026/2027/2028), all future-dated (deleted by the no-future-observations guard) with no history to Z-score. It cannot feed a Z-scored basket. Viable paths instead: (a) display-only dot-plot readout on the Rate page; (b) derived `yield_2y − fed_funds` expected-change signal (has history, but overlaps the existing `policy.yield_2y` which already represents market forward-pricing); (c) treat `policy.yield_2y` as sufficient. Awaiting a design decision (roadmap Phase A1).
 - **EA/KR equivalent forward guidance** — not yet researched. ECB SDW may carry policy-rate-expectation series; BOK equivalent unconfirmed.
 
 ## Credit force

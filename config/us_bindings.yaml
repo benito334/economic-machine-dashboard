@@ -617,6 +617,23 @@ bindings:
     sanity_min: -60.0
     sanity_max: 80.0
 
+  - id: credit.loan_demand
+    series_id: DRSDCILM
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: net_pct
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Net % of banks reporting STRONGER demand for C&I loans (SLOOS). The demand-side counterpart to lending_standards' supply side (Ray Dalio review #9): positive = borrowers want more credit = healthy expansion; negative = demand contracting = early cycle weakness."
+    sanity_min: -80.0
+    sanity_max: 60.0
+
   - id: credit.gov_debt_gdp
     series_id: GFDEGDQ188S
     provider: FRED

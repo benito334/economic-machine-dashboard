@@ -39,10 +39,9 @@ The reframe vs. today: the 5 forces (L2) stop being the top-level story and beco
 ## Build phases
 
 ### Phase A — Finish the force layer (close the open review items)  ·  Effort: S
-Two data feeds were already confirmed free during the review but not yet wired in.
-- **A1 — Rate force forward guidance.** Add `FEDTARMD` (FOMC dot-plot median) to the US `rate_score` basket as a forward-looking policy-stance signal (Ray's punch item #8). Low importance/CONTEXT tier; quarterly cadence.
-- **A2 — Credit force demand side.** Add `DRSDCILM` (SLOOS "Net % of Banks Reporting Stronger Demand for C&I Loans") to the US `credit_score` basket, pairing with the existing supply-side `DRTSCILM` (punch item #9).
-- **Data:** both confirmed free on FRED (see review log). **Deps:** none. **DoD:** both signals ingest, appear in the Signals/force pages, and are documented on the Methodology page.
+- **A2 — Credit force demand side.** ✅ **Done 2026-07-05.** Added `credit.loan_demand` (`DRSDCILM`, SLOOS "Net % of Banks Reporting Stronger Demand for C&I Loans") to the US `credit_score` basket (STRONG, importance 0.65, not inverted), pairing with the existing supply-side `credit.lending_standards` (punch item #9). Ingests cleanly (139 quarterly obs 1991→2026); documented in Methodology §7.
+- **A1 — Rate force forward guidance.** ⚠ **Blocked — assumed feed not viable.** `FEDTARMD` (FOMC dot-plot median) *exists free* but is a forecast snapshot, not a historical observation series: it returns only the latest FOMC's projections for future year-ends (rows dated 2026/2027/2028), which are future-dated (deleted by the pipeline's no-future-observations guard) and carry no history to Z-score. It cannot be a standard basket signal. **Design decision needed** — options: (i) a display-only dot-plot readout on the Rate page (not a composite signal); (ii) a derived "expected policy change" signal, e.g. `yield_2y − fed_funds` (has full history, Z-scoreable, but overlaps `policy.yield_2y` which the config already describes as "market forward-pricing of policy rate"); (iii) defer, treating the existing `policy.yield_2y` as the forward-looking representation. Logged in [data_source_wishlist.md](data_source_wishlist.md).
+- **DoD:** A2 done. A1 pending a decision on (i)/(ii)/(iii).
 
 ### Phase B — Promote the productivity trend to a first-class read (L3)  ·  Effort: S–M
 Ray treats productivity growth as one of the three big forces, distinct from the cyclical business cycle.

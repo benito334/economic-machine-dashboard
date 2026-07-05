@@ -875,10 +875,12 @@ def get_layout() -> html.Div:
                    "sustainability of credit in the economy.  Positive score = healthy/expanding "
                    "credit; negative = stressed/contracting.  Debt-burden and leverage signals use "
                    "invert=true so that rising stress reduces the score.  Bank Loans is the flow "
-                   "anchor; Lending Standards is the leading indicator; the stock measures add "
-                   "context on sustainability.  Corporate Debt Outstanding Growth captures non-bank "
-                   "borrowers and complements bank loans.  Corporate Debt / GDP (BIS quarterly) "
-                   "adds the stock-of-leverage lens.  These are defaults, adjustable via the Importance Editor."),
+                   "anchor; Lending Standards (supply) and Loan Demand (demand) are the paired "
+                   "leading indicators — a healthy credit cycle needs both willing lenders and "
+                   "willing borrowers; the stock measures add context on sustainability.  Corporate "
+                   "Debt Outstanding Growth captures non-bank borrowers and complements bank loans.  "
+                   "Corporate Debt / GDP (BIS quarterly) adds the stock-of-leverage lens.  These are "
+                   "defaults, adjustable via the Importance Editor."),
                 _table(
                     ["Signal", "Why it matters", "Default tier", "Importance", "Half-life"],
                     [
@@ -887,11 +889,18 @@ def get_layout() -> html.Div:
                          "direct gauge of credit growth or contraction. It drives the short-term "
                          "debt-cycle dynamics.",
                          "PRIMARY", "0.90", "3 m"],
-                        ["Lending Standards",
+                        ["Lending Standards (supply side)",
                          "Reflects the stringency of bank underwriting. Tightening standards usually "
                          "precede a slowdown in loan growth; loosening signals an expansion. It "
                          "provides early-warning information about the next phase of the credit cycle.",
                          "STRONG", "0.75", "4 m"],
+                        ["Loan Demand (demand side)",
+                         "SLOOS net % of banks reporting stronger demand for C&I loans — the borrower-"
+                         "appetite counterpart to lending standards (Ray Dalio review 2026-07-05 #9). "
+                         "A healthy credit cycle needs both willing lenders and willing borrowers; "
+                         "demand contracting is early-cycle weakness. Not inverted (stronger demand = "
+                         "healthier).",
+                         "STRONG", "0.65", "4 m"],
                         ["Corporate Debt Outstanding Growth",
                          "Direct flow of new corporate issuance (or net change in nonfinancial "
                          "corporate debt, YoY%).  When issuance is strong the short-term debt cycle "

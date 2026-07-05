@@ -197,10 +197,19 @@ credit_score:
       # no invert: rising loans YoY = healthy credit expansion
     - id: credit.lending_standards
       base_share: 0.7
-      importance: 0.75      # STRONG — leading indicator; tightening precedes loan slowdown
+      importance: 0.75      # STRONG — leading (supply-side); tightening precedes loan slowdown
       quality_factor: 1.00
       half_life_months: 4.0 # quarterly (SLOOS) but fast-moving cycle indicator
       invert: true          # net tightening = worse credit health (SLOOS: positive = tighter)
+    - id: credit.loan_demand
+      base_share: 0.7
+      importance: 0.65      # STRONG — leading (demand-side counterpart to lending_standards)
+                             # Ray Dalio review 2026-07-05 (#9): a credit composite should carry
+                             # both the supply side (bank willingness to lend) and the demand side
+                             # (borrower appetite for credit); this SLOOS demand series is the latter.
+      quality_factor: 0.95
+      half_life_months: 4.0 # quarterly SLOOS; same cadence as lending_standards
+      # no invert: stronger demand (positive net %) = healthy credit expansion
     - id: credit.corporate_debt
       base_share: 0.7
       importance: 0.65      # STRONG — flow signal; YoY growth in nonfinancial corporate debt; leads cycle turns
