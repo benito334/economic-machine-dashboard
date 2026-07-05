@@ -1415,6 +1415,24 @@ _THRESHOLD_MODAL = dbc.Modal(
                 "Otherwise it lands in Transition.",
                 style={"fontSize": "0.78rem", "color": "var(--muted-color)", "marginBottom": "18px"},
             ),
+            dcc.Checklist(
+                id="rh-dynamic-toggle",
+                options=[{
+                    "label": " Use dynamic thresholds (Ray Dalio algorithm)",
+                    "value": "dynamic",
+                }],
+                value=[],
+                style={"fontSize": "0.85rem", "color": "var(--font-color)", "marginBottom": "6px"},
+            ),
+            html.P(
+                "Scales the Z-score thresholds by each country's own rolling volatility, then "
+                "widens them further when credit is tight or the composite has been noisy. "
+                "The sliders below are used as a fallback only where there isn't yet enough "
+                "history for a meaningful rolling calculation. See "
+                "docs/Guidance/ray_dalio_review_log.md #23.",
+                style={"fontSize": "0.72rem", "color": "var(--muted-color)", "marginBottom": "18px",
+                       "fontStyle": "italic"},
+            ),
             html.Label("Growth Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
             html.Div(
                 dcc.Slider(id="rh-gz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
@@ -2335,12 +2353,114 @@ def update_yield_curve(
 _GROWTH_COLOR    = "#4C9BE8"
 _INFLATION_COLOR = "#E8734C"
 
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0}
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": False}
 
 # Growth chip colors (positive = good)
 _GROWTH_CHIP  = {"Growth": "#4C9BE8", "Transition": "#888888", "Retraction": "#E8734C"}
 # Inflation chip colors (inflation = bad for macro, disinflation = good)
 _INFLAT_CHIP  = {"Inflation": "#E8734C", "Transition": "#888888", "Disinflation": "#4C9BE8"}
+
+# ── Dynamic regime thresholds (Ray Dalio review 2026-07-05, #23) ─────────────
+# Full algorithm, as specified by Ray:
+#   1. Country-vol-scaled baseline: base_gz = 0.6 * sigma_g (24-mo rolling
+#      std of the growth composite's own Z-score, look-ahead safe).
+#   2. (conditional weight shift — reused from the CHI weighting rule, not
+#      applied here; see dashboard/global_overview.py::_conditional_chi_weights)
+#   3. Credit-tightness multiplier, inflation threshold only: credit_adj =
+#      1 + max(0, credit_z - 1.5) * 0.30, where credit_z is tightness
+#      (= -credit_score, since our credit_score is positive=healthy).
+#   4. Volatility multiplier, both chips: vol_adj = max(vol_adj_g, vol_adj_i),
+#      vol_adj_x = 1 + max(0, sigma_x_12mo - 1.0) * 0.25 — "vol of the vol":
+#      12-month rolling std of the growth/inflation composite's OWN Z-score
+#      history (signal noisiness), distinct from the market-based Volatility
+#      force.
+#   5. Combine multiplicatively: final_gz = base_gz * vol_adj;
+#      final_iz = base_iz * credit_adj * vol_adj.
+#   6. Classify chips using final_gz/final_iz as the Z thresholds (momentum
+#      thresholds gm/im are untouched).
+#   7. Correlation-divergence overlay (diagnostic only, does not feed back
+#      into the thresholds): flag when growth and inflation Z-scores have had
+#      opposite signs for _DIVERGENCE_LOOKBACK_N consecutive periods.
+# Supersedes punch items #4, #5, #6, #14.
+_DYN_THRESH_BASE_COEF    = 0.6   # Ray's suggested vol-scaling coefficient
+_DYN_THRESH_SIGMA_WINDOW = 24    # months — country-specific baseline scaling
+_DYN_THRESH_VOL_WINDOW   = 12    # months — "vol of the vol" multiplier
+_DYN_THRESH_MIN_PERIODS  = 8     # minimum history before dynamic scaling activates
+_CREDIT_TIGHT_HI = 1.5
+_CREDIT_TIGHT_C1 = 0.30
+_VOL_MULT_HI = 1.0
+_VOL_MULT_V1 = 0.25
+_DIVERGENCE_LOOKBACK_N = 3
+
+
+def compute_dynamic_thresholds(
+    comp: "pd.DataFrame",
+    base_gz: float = 0.5,
+    base_iz: float = 0.5,
+) -> "pd.DataFrame":
+    """Country-vol-scaled, credit/volatility-adjusted regime thresholds.
+
+    `comp` must have growth_score / inflation_score columns (credit_score
+    optional — falls back to no credit adjustment if absent). Returns a
+    DataFrame aligned to comp's index with columns:
+      dyn_gz, dyn_iz      — adjusted thresholds, feed directly into
+                             _classify_regime's `thresholds["gz"/"iz"]`
+      credit_adj, vol_adj — the individual multipliers, for audit/display
+      divergence_flag     — True when growth/inflation have moved in opposite
+                             directions for _DIVERGENCE_LOOKBACK_N consecutive
+                             periods (diagnostic only)
+
+    Falls back to (base_gz, base_iz) wherever there isn't yet enough history
+    for a meaningful rolling standard deviation (e.g. early in a country's
+    history, or a newly-rolled-out country).
+    """
+    g = comp.get("growth_score", pd.Series(dtype=float, index=comp.index))
+    i = comp.get("inflation_score", pd.Series(dtype=float, index=comp.index))
+    credit = comp.get("credit_score", pd.Series(dtype=float, index=comp.index))
+
+    # Step 1: country-specific volatility scaling (24-mo rolling sigma, lagged
+    # by 1 period so period t's threshold never uses period t's own value).
+    sigma_g_24 = g.shift(1).rolling(_DYN_THRESH_SIGMA_WINDOW, min_periods=_DYN_THRESH_MIN_PERIODS).std()
+    sigma_i_24 = i.shift(1).rolling(_DYN_THRESH_SIGMA_WINDOW, min_periods=_DYN_THRESH_MIN_PERIODS).std()
+    base_dyn_gz = _DYN_THRESH_BASE_COEF * sigma_g_24
+    base_dyn_iz = _DYN_THRESH_BASE_COEF * sigma_i_24
+
+    # Step 3: credit-tightness multiplier (inflation only).
+    credit_z = (-credit).fillna(0.0)
+    credit_adj = 1.0 + (credit_z - _CREDIT_TIGHT_HI).clip(lower=0.0) * _CREDIT_TIGHT_C1
+
+    # Step 4: volatility multiplier (both sides) — signal noisiness, not the
+    # market-based Volatility force.
+    min_p_12 = max(3, _DYN_THRESH_VOL_WINDOW // 3)
+    sigma_g_12 = g.shift(1).rolling(_DYN_THRESH_VOL_WINDOW, min_periods=min_p_12).std()
+    sigma_i_12 = i.shift(1).rolling(_DYN_THRESH_VOL_WINDOW, min_periods=min_p_12).std()
+    vol_adj_g = 1.0 + (sigma_g_12 - _VOL_MULT_HI).clip(lower=0.0) * _VOL_MULT_V1
+    vol_adj_i = 1.0 + (sigma_i_12 - _VOL_MULT_HI).clip(lower=0.0) * _VOL_MULT_V1
+    vol_adj = pd.concat([vol_adj_g, vol_adj_i], axis=1).max(axis=1)
+
+    # Step 5: combine multiplicatively.
+    final_gz = base_dyn_gz * vol_adj
+    final_iz = base_dyn_iz * credit_adj * vol_adj
+
+    # Fall back to the static base threshold wherever there isn't enough
+    # history yet for a meaningful sigma.
+    dyn_gz = final_gz.where(sigma_g_24.notna(), base_gz)
+    dyn_iz = final_iz.where(sigma_i_24.notna(), base_iz)
+
+    # Step 7: correlation-divergence overlay (diagnostic only).
+    g_sign = np.sign(g)
+    i_sign = np.sign(i)
+    valid = g_sign.notna() & i_sign.notna() & (g_sign != 0) & (i_sign != 0)
+    opposite = (g_sign != i_sign) & valid
+    divergence_flag = opposite.rolling(_DIVERGENCE_LOOKBACK_N).sum() >= _DIVERGENCE_LOOKBACK_N
+
+    return pd.DataFrame({
+        "dyn_gz": dyn_gz,
+        "dyn_iz": dyn_iz,
+        "credit_adj": credit_adj,
+        "vol_adj": vol_adj,
+        "divergence_flag": divergence_flag.fillna(False),
+    }, index=comp.index)
 
 
 def _classify_regime(
@@ -3229,6 +3349,20 @@ def update_regime_info(
         weight_audit = json.loads(selected.get("weight_audit") or "{}")
     except (TypeError, json.JSONDecodeError):
         weight_audit = {}
+
+    # Dynamic thresholds (Ray Dalio review 2026-07-05, #23) — override the
+    # static gz/iz with the country-vol-scaled, credit/vol-adjusted values
+    # for this specific row when dynamic mode is enabled.
+    _t = thresholds or _DEFAULT_THRESHOLDS
+    if bool(_t.get("dynamic", False)):
+        dyn_df = compute_dynamic_thresholds(
+            comp, base_gz=float(_t.get("gz", 0.5)), base_iz=float(_t.get("iz", 0.5)),
+        )
+        row_dyn = dyn_df.iloc[idx]
+        thresholds_for_row = {**_t, "gz": float(row_dyn["dyn_gz"]), "iz": float(row_dyn["dyn_iz"])}
+    else:
+        thresholds_for_row = _t
+
     return (
         _regime_info_children(
             selected,
@@ -3240,7 +3374,7 @@ def update_regime_info(
             components_open,
             weight_audit,
             rolling,
-            thresholds=thresholds or _DEFAULT_THRESHOLDS,
+            thresholds=thresholds_for_row,
         ),
         date_display,
     )
@@ -3325,15 +3459,35 @@ def update_regime_chart(
     _iz = float(_t.get("iz", 0.5))
     _th_line = dict(color="rgba(232,163,23,0.40)", width=1, dash="dash")
 
+    # Dynamic thresholds (Ray Dalio review 2026-07-05, #23) — per-row gz/iz
+    # computed from each country's own rolling volatility + credit tightness,
+    # rather than one flat value for the whole history.
+    _dynamic = bool(_t.get("dynamic", False))
+    _dyn_df = compute_dynamic_thresholds(comp, base_gz=_gz, base_iz=_iz) if _dynamic else None
+    if _dynamic and not _dyn_df.empty:
+        # Use the latest row's dynamic threshold as the reference hline —
+        # a single static line can't represent a time-varying threshold.
+        _gz = float(_dyn_df["dyn_gz"].iloc[-1])
+        _iz = float(_dyn_df["dyn_iz"].iloc[-1])
+
     g_delta_s = comp[g_col].diff()
     i_delta_s = comp[i_col].diff()
     g_regimes, i_regimes = [], []
     for pos in range(len(comp)):
         row_s = comp.iloc[pos]
+        if _dynamic and _dyn_df is not None:
+            row_t = {
+                "gz": float(_dyn_df["dyn_gz"].iloc[pos]),
+                "iz": float(_dyn_df["dyn_iz"].iloc[pos]),
+                "gm": _t.get("gm", 0.0),
+                "im": _t.get("im", 0.0),
+            }
+        else:
+            row_t = _t
         gr, ir = _classify_regime(
             row_s.get(g_col), row_s.get(i_col),
             g_delta_s.iloc[pos], i_delta_s.iloc[pos],
-            _t,
+            row_t,
         )
         g_regimes.append(gr)
         i_regimes.append(ir)
@@ -3699,7 +3853,7 @@ def _update_threshold_display(thresholds: "dict | None") -> list:
                              "fontWeight": "600"}),
         ], style={"whiteSpace": "nowrap"})
 
-    return [
+    chips = [
         _chip("G·Z", gz),
         html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
         _chip("I·Z", iz),
@@ -3708,13 +3862,21 @@ def _update_threshold_display(thresholds: "dict | None") -> list:
         html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
         _chip("I·Δ", im, 3),
     ]
+    if bool(t.get("dynamic", False)):
+        chips += [
+            html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
+            html.Span("DYNAMIC", style={"color": "#E8A317", "fontSize": "0.65rem",
+                                        "fontWeight": "700", "letterSpacing": "0.05em"}),
+        ]
+    return chips
 
 
 @callback(
     [Output("rh-gz-slider", "value"),
      Output("rh-iz-slider", "value"),
      Output("rh-gm-slider", "value"),
-     Output("rh-im-slider", "value")],
+     Output("rh-im-slider", "value"),
+     Output("rh-dynamic-toggle", "value")],
     Input("regime-threshold-modal", "is_open"),
     State("regime-threshold-store", "data"),
     prevent_initial_call=True,
@@ -3723,13 +3885,14 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
     """Populate slider values from store when modal opens."""
     if not is_open:
         from dash import no_update
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
     t = stored or _DEFAULT_THRESHOLDS
     return (
         float(t.get("gz", 0.5)),
         float(t.get("iz", 0.5)),
         float(t.get("gm", 0.0)),
         float(t.get("im", 0.0)),
+        ["dynamic"] if bool(t.get("dynamic", False)) else [],
     )
 
 
@@ -3741,12 +3904,14 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
      State("rh-iz-slider", "value"),
      State("rh-gm-slider", "value"),
      State("rh-im-slider", "value"),
+     State("rh-dynamic-toggle", "value"),
      State("regime-threshold-store", "data")],
     prevent_initial_call=True,
 )
 def _save_thresholds(
     n_apply: int, n_reset: int,
     gz: float, iz: float, gm: float, im: float,
+    dynamic_val: "list | None",
     current: "dict | None",
 ) -> dict:
     from dash import ctx, no_update
@@ -3754,7 +3919,8 @@ def _save_thresholds(
         return dict(_DEFAULT_THRESHOLDS)
     if ctx.triggered_id == "rh-threshold-apply":
         return {"gz": float(gz or 0.5), "iz": float(iz or 0.5),
-                "gm": float(gm or 0.0), "im": float(im or 0.0)}
+                "gm": float(gm or 0.0), "im": float(im or 0.0),
+                "dynamic": bool(dynamic_val)}
     return no_update
 
 

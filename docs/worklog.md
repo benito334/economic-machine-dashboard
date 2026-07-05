@@ -1089,3 +1089,18 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Validation:** `python3 -m pytest` → 377 passed, 1 pre-existing unrelated failure (dtype bug, already tracked separately). Full pipeline re-run clean across US/EZ/KR.
 
 **Next:** #23 — the full regime-classifier threshold algorithm (the last, most invasive punch-list item).
+
+---
+
+## 2026-07-05 — Ray Dalio review punch-list implementation (part 3: regime-classifier algorithm, #23 — punch list complete)
+
+**Done:**
+- Implemented `compute_dynamic_thresholds()` in `dashboard/charting.py` — Ray's full 7-step algorithm: country-vol-scaled baseline (24-mo rolling σ of growth_score/inflation_score, look-ahead safe), credit-tightness multiplier (inflation threshold only), volatility multiplier ("vol of the vol" — 12-mo rolling σ of the composite's own Z-score history, both chips), multiplicative combination, and a correlation-divergence overlay (diagnostic only, N=3-month lookback).
+- Opt-in, not a silent behavior change: added a "Use dynamic thresholds (Ray Dalio algorithm)" checkbox to the existing Regime Thresholds modal (`regime-threshold-store`). Off by default — every existing user sees identical behavior unless they explicitly turn it on. Wired into both the Regime History full-history chart loop and the single-row regime-info card (`update_regime_info` callback), so switching modes changes the actual classification, not just a display label.
+- Verified live: enabling the toggle visibly changes the Growth/Inflation regime band pattern on `/regime-history`, and the header threshold display now shows a "DYNAMIC" badge. Confirmed via direct query that the computed thresholds are real and time-varying (US: dyn_gz ranges ~0.06–0.95, dyn_iz ~0.03–0.64 over history; credit_adj 1.0–1.07; vol_adj 1.0–1.12; divergence_flag fires ~33% of months) — no degenerate/constant values.
+- Added 5 focused unit tests for `compute_dynamic_thresholds` (fallback on short history, credit-tightness affecting inflation only, volatility widening both chips, divergence-flag timing, graceful handling of a missing credit_score column).
+- **Punch-list item #23 was the last one of the original 23** (plus #24, the wishlist doc) — all are now either implemented or explicitly deferred with a documented reason (data-feed gaps for #10/#15/#18, out-of-scope for #12).
+
+**Validation:** `python3 -m pytest` → 382 passed, 1 pre-existing unrelated failure (dtype bug, tracked separately). Verified live in the rebuilt dashboard.
+
+**Next:** Punch list is done. Remaining open items are all explicitly deferred (data-feed research per `docs/Guidance/data_source_wishlist.md`, or out-of-scope per the Allocation Layer boundary). Divergence-flag UI badge is a small nice-to-have follow-up, not blocking. BEA Q1 2026 refresh still pending per `session-checklist.md`.

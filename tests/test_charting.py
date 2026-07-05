@@ -1070,3 +1070,93 @@ class TestRoutedRegimeStepButtons:
         import dashboard.charting as charting
 
         assert charting.select_regime_point(click_data, {}, 0) is charting.no_update
+
+
+# ── compute_dynamic_thresholds (Ray Dalio review 2026-07-05, #23) ─────────────
+
+class TestComputeDynamicThresholds:
+    @staticmethod
+    def _flat_history(n=30, g=0.0, i=0.0, credit=0.0, freq="ME"):
+        idx = pd.date_range("2020-01-31", periods=n, freq=freq)
+        return pd.DataFrame({
+            "growth_score": [g] * n,
+            "inflation_score": [i] * n,
+            "credit_score": [credit] * n,
+        }, index=idx)
+
+    def test_falls_back_to_base_thresholds_when_history_too_short(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        comp = self._flat_history(n=4)  # well under the 8-period minimum
+        result = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+        assert (result["dyn_gz"] == 0.5).all()
+        assert (result["dyn_iz"] == 0.5).all()
+
+    def test_credit_tightness_widens_inflation_threshold_only(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        idx = pd.date_range("2020-01-31", periods=30, freq="ME")
+        rng_vals = [0.1, -0.1, 0.2, -0.2, 0.1] * 6  # some variability so sigma > 0
+        comp = pd.DataFrame({
+            "growth_score": rng_vals,
+            "inflation_score": rng_vals,
+            "credit_score": [2.0] * 30,  # very healthy = very NOT tight (credit_z very negative)
+        }, index=idx)
+        loose = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+
+        comp_tight = comp.copy()
+        comp_tight["credit_score"] = -2.0  # very unhealthy = tight (credit_z = 2.0 > hi=1.5)
+        tight = compute_dynamic_thresholds(comp_tight, base_gz=0.5, base_iz=0.5)
+
+        # Tight credit should raise the inflation threshold vs. loose credit,
+        # and should NOT affect the growth threshold at all.
+        assert tight["dyn_iz"].iloc[-1] > loose["dyn_iz"].iloc[-1]
+        assert tight["dyn_gz"].iloc[-1] == pytest.approx(loose["dyn_gz"].iloc[-1])
+        assert tight["credit_adj"].iloc[-1] > 1.0
+        assert loose["credit_adj"].iloc[-1] == pytest.approx(1.0)
+
+    def test_noisy_composite_widens_both_thresholds(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        idx = pd.date_range("2020-01-31", periods=30, freq="ME")
+        stable = compute_dynamic_thresholds(self._flat_history(n=30), base_gz=0.5, base_iz=0.5)
+
+        noisy_vals = [3.0, -3.0] * 15  # highly erratic growth score
+        comp_noisy = pd.DataFrame({
+            "growth_score": noisy_vals,
+            "inflation_score": [0.0] * 30,
+            "credit_score": [0.0] * 30,
+        }, index=idx)
+        noisy = compute_dynamic_thresholds(comp_noisy, base_gz=0.5, base_iz=0.5)
+
+        assert noisy["vol_adj"].iloc[-1] > stable["vol_adj"].iloc[-1]
+        # vol_adj widens BOTH chips' thresholds (it's a max() of the two sides)
+        assert noisy["dyn_gz"].iloc[-1] > 0 or noisy["dyn_iz"].iloc[-1] > 0
+
+    def test_divergence_flag_fires_after_n_opposite_periods(self):
+        from dashboard.charting import compute_dynamic_thresholds, _DIVERGENCE_LOOKBACK_N
+
+        idx = pd.date_range("2020-01-31", periods=10, freq="ME")
+        comp = pd.DataFrame({
+            "growth_score": [0.5] * 10,
+            "inflation_score": [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5],
+            "credit_score": [0.0] * 10,
+        }, index=idx)
+        result = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+
+        # First N-1 opposite-sign rows should not yet trip the flag; by the
+        # N-th consecutive opposite row it must be True.
+        assert not result["divergence_flag"].iloc[6 + _DIVERGENCE_LOOKBACK_N - 2]
+        assert result["divergence_flag"].iloc[6 + _DIVERGENCE_LOOKBACK_N - 1]
+        assert not result["divergence_flag"].iloc[3]  # growth/inflation agree here
+
+    def test_missing_credit_score_column_defaults_to_no_tightening(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        idx = pd.date_range("2020-01-31", periods=30, freq="ME")
+        comp = pd.DataFrame({
+            "growth_score": [0.1] * 30,
+            "inflation_score": [0.1] * 30,
+        }, index=idx)  # no credit_score column at all
+        result = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+        assert (result["credit_adj"] - 1.0).abs().max() < 1e-6
