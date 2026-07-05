@@ -660,10 +660,17 @@ def get_layout() -> html.Div:
                         [
                             ["Growth Score",
                              "Σ(w_eff_i × Z_adj_i) / Σ(w_eff_i)  for growth signals",
-                             "unemployment is inverted; up to 9 configured signals"],
+                             "unemployment is inverted; up to 12 configured signals "
+                             "(9 cyclical + 3 long-run productivity-trend, added 2026-07-05)"],
                             ["Inflation Score",
                              "Σ(w_eff_i × Z_adj_i) / Σ(w_eff_i)  for inflation signals",
-                             "up to 8 configured; breakevens at base_share=0.5; pce_core/cpi_core at 1.0"],
+                             "up to 7 configured; breakeven_avg (blended 5Y/10Y) at base_share=0.5; "
+                             "pce_core/cpi_core at 1.0"],
+                            ["Volatility Score",
+                             "Σ(w_eff_i × Z_adj_i) / Σ(w_eff_i)  for volatility signals",
+                             "US: realized vol + VIX; EZ/KR: realized vol only (single-signal, "
+                             "low-coverage). Added 2026-07-05 — does not feed the regime label "
+                             "directly; see Section 8"],
                             ["Confidence",
                              "½ × (N_G_agree / N_G + N_I_agree / N_I)",
                              "Fraction of contributing signals (with non-null direction) consistent "
@@ -691,12 +698,24 @@ def get_layout() -> html.Div:
                         ["Growth Score",
                          "Σ(w_eff_i × Z_adj_i) / Σ(w_eff_i)  for growth signals",
                          "unemployment is inverted (lower = better growth); "
-                         "up to 9 configured signals (stale or low-history signals excluded at runtime)"],
+                         "up to 12 configured signals (stale or low-history signals excluded at "
+                         "runtime) — 9 cyclical signals reweighted 2026-07-05 via GDP-regression "
+                         "calibration, plus 3 long-run productivity-trend signals (productivity, "
+                         "TFP, R&D intensity) added the same day; see the basket table below"],
                         ["Inflation Score",
                          "Σ(w_eff_i × Z_adj_i) / Σ(w_eff_i)  for inflation signals",
-                         "up to 8 configured signals; breakeven_5y and breakeven_10y each carry "
-                         "base_share = 0.5 to avoid double-counting market-implied expectations; "
+                         "up to 7 configured signals; breakeven_avg (blended mean of 5Y and 10Y "
+                         "TIPS breakevens, merged 2026-07-05 to avoid double-counting market-implied "
+                         "expectations) carries base_share = 0.5; "
                          "pce_core and cpi_core are anchors at base_share = 1.0"],
+                        ["Volatility Score",
+                         "Σ(w_eff_i × Z_adj_i) / Σ(w_eff_i)  for volatility signals",
+                         "Added 2026-07-05. US: realized equity volatility (21-day rolling std of "
+                         "S&P 500 log returns, annualized ×√252) plus VIX at bonus weight. EZ/KR: "
+                         "realized volatility only, computed from a monthly share-price index "
+                         "(12-month window, ×√12) since no free daily equity feed exists for "
+                         "either — single-signal, low-coverage, directional-only. Does not feed "
+                         "the Growth/Inflation regime label directly; see Section 8"],
                         ["Confidence",
                          "½ × (N_G_agree / N_G + N_I_agree / N_I)",
                          "Fraction of contributing signals (with a non-null direction) "
@@ -818,6 +837,63 @@ def get_layout() -> html.Div:
                          "VOLATILE", "0.20", "12 m"],
                     ]
                 ),
+
+                _sub("Growth basket — long-run productivity trend (added 2026-07-05)"),
+                _p("A 2026-07-05 review against Ray Dalio's framework flagged that the cyclical "
+                   "growth basket above had no explicit long-run productivity-trend component — "
+                   "his model treats productivity growth as one of the economy's three big forces, "
+                   "distinct from the short-term debt cycle the cyclical signals mostly capture. "
+                   "Three structural signals already existed in the signal universe but were "
+                   "excluded from the composite; they were added back with modest weights since "
+                   "they are slow-moving annual/quarterly series, not cyclical drivers."),
+                _table(
+                    ["Signal", "Why it matters", "Tier", "Importance", "Base share"],
+                    [
+                        ["Productivity (nonfarm labor productivity, quarterly)",
+                         "Most timely of the three trend signals; secular productivity gains "
+                         "support real wages and non-inflationary growth.",
+                         "CONTEXT", "0.35", "0.4"],
+                        ["TFP (Total Factor Productivity, annual)",
+                         "Slower-moving secular trend; a genuine productivity-growth read, "
+                         "distinct from cyclical labor/output measures.",
+                         "VOLATILE", "0.20", "0.3"],
+                        ["R&D Intensity (R&D spend / GDP, annual)",
+                         "Structural driver of future productivity gains rather than current growth.",
+                         "VOLATILE", "0.15", "0.3"],
+                    ],
+                ),
+                _note("The 9 original cyclical signals were also reweighted 2026-07-05 via a "
+                      "GDP-regression calibration (indicators/calibrate.py) — biggest changes: "
+                      "Job Openings 0.85→0.25 (weak GDP fit), Real PCE 0.65→0.95 (strongest fit). "
+                      "The 3 productivity-trend signals above were deliberately NOT calibrated "
+                      "against short-run GDP fit, since they represent a structural/long-run "
+                      "concept that a short-run regression would undervalue."),
+
+                _sub("Volatility basket — US default importances (added 2026-07-05)"),
+                _p("The Volatility composite tracks how noisy/risky the current environment is — "
+                   "a genuinely different concept from Growth/Inflation/Rate/Credit, which describe "
+                   "the underlying economic machine itself. It follows the same basket architecture "
+                   "as every other force, but by design does not feed the Growth/Inflation regime "
+                   "label directly (see Section 8)."),
+                _table(
+                    ["Signal", "Why it matters", "Tier", "Importance", "Countries"],
+                    [
+                        ["Realized volatility (rolling std of equity-index log returns)",
+                         "Universal, country-agnostic signal — works anywhere daily or monthly "
+                         "price data exists, unlike an implied-vol index which needs an options market.",
+                         "STRONG", "0.70", "US (daily), EZ/KR (monthly proxy)"],
+                        ["VIX (CBOE implied volatility)",
+                         "Forward-looking (market-implied) volatility expectation; carries bonus "
+                         "weight where available.",
+                         "PRIMARY", "0.90", "US only"],
+                    ],
+                ),
+                _note("EZ and KR have no free daily equity-index feed (FRED only carries a "
+                      "monthly OECD share-price index for both) — their realized-vol signal is a "
+                      "lower-resolution monthly-return proxy (quality_factor reduced to 0.70, "
+                      "flagged is_proxy=true), and the composite is single-signal / low-coverage "
+                      "for those two countries. See docs/Guidance/data_source_wishlist.md for the "
+                      "ongoing search for a better daily source."),
             ], title="7 · Composite Construction"),
 
             # 8 ── Regime Classification ────────────────────────────────────────
@@ -853,6 +929,22 @@ def get_layout() -> html.Div:
                         "or im above 0 to require a meaningful sustained move before a regime fires. "
                         "Adjust via the 'Regime Thresholds' button on the Regime History page; "
                         "settings persist in browser localStorage.",
+
+                        "DYNAMIC THRESHOLDS (added 2026-07-05, opt-in): a 'Use dynamic thresholds "
+                        "(Ray Dalio algorithm)' checkbox in the same modal replaces the flat gz/iz "
+                        "with values computed fresh for each period: (1) a country-specific baseline "
+                        "= 0.6 × the 24-month rolling standard deviation of that force's own Z-score "
+                        "history (look-ahead safe); (2) an inflation-only credit-tightness multiplier "
+                        "that widens iz when the Credit composite is very tight; (3) a volatility "
+                        "multiplier on both gz and iz — a 12-month rolling standard deviation of the "
+                        "force's own Z-score history ('vol of the vol', i.e. signal noisiness, "
+                        "distinct from the market-based Volatility force) — that widens thresholds "
+                        "when a force has been erratic recently; (4) the three combine "
+                        "multiplicatively. A separate correlation-divergence flag (not fed back into "
+                        "the thresholds) marks when Growth and Inflation have moved in opposite "
+                        "directions for 3 consecutive months, historically associated with a "
+                        "policy-rate or credit-cycle shift. Off by default — existing behavior is "
+                        "unchanged unless a user opts in. See docs/Guidance/ray_dalio_review_log.md #23.",
 
                         "STORED QUADRANT (database) uses a different, simpler rule: "
                         "sign(growth_score) × sign(inflation_score) → one of four labels "
@@ -922,6 +1014,28 @@ def get_layout() -> html.Div:
                    "Adjust via the 'Regime Thresholds' button on the Regime History page; "
                    "settings persist in localStorage.  Threshold lines are drawn on the scatter "
                    "chart and the Regime History Z-score panels."),
+                _sub("Dynamic thresholds (added 2026-07-05, opt-in)"),
+                _p("The same modal has a 'Use dynamic thresholds (Ray Dalio algorithm)' checkbox, "
+                   "off by default.  When enabled, gz/iz stop being flat constants and are instead "
+                   "recomputed every period as: (1) a country-specific baseline — 0.6 × the "
+                   "24-month rolling standard deviation of that force's own Z-score history "
+                   "(look-ahead safe, shift(1)); (2) an inflation-only credit-tightness "
+                   "multiplier that widens iz when the Credit composite is very tight "
+                   "(credit_z > 1.5); (3) a volatility multiplier on both gz and iz — the "
+                   "12-month rolling standard deviation of the force's own Z-score history "
+                   "('vol of the vol', i.e. how erratic the composite itself has been recently — "
+                   "distinct from the market-based Volatility force in Section 7); (4) the three "
+                   "combine multiplicatively.  The manual gz/iz sliders become a fallback used only "
+                   "where there isn't yet enough history for a meaningful rolling calculation."),
+                _p("A separate correlation-divergence flag — not fed back into the thresholds — "
+                   "marks when Growth and Inflation have moved in opposite directions for 3 "
+                   "consecutive months, which Ray's framework associates with a policy-rate or "
+                   "credit-cycle shift breaking the usual co-movement pattern. It is computed "
+                   "(compute_dynamic_thresholds() in dashboard/charting.py) but not yet surfaced "
+                   "as its own UI badge."),
+                _note("Dynamic thresholds are opt-in and off by default — existing dashboards see "
+                      "identical behavior unless a user explicitly enables the checkbox.  Full "
+                      "algorithm spec: docs/Guidance/ray_dalio_review_log.md, punch item #23."),
                 _note("The stored quadrant (DB / Global Overview) and the dashboard chips can "
                       "diverge: if the Z-score is in the right half-plane but momentum is flat or "
                       "negative, the chips show Transition while the stored quadrant still shows "
@@ -954,6 +1068,22 @@ def get_layout() -> html.Div:
                         "is zeroed. The composite is null if retained weight < 60% of basket.",
                         "Gap 3 — Extrapolation gate: model-based extrapolation available but "
                         "disabled by default. Enable in config/longterm_stress.yaml.",
+                        "Dynamic stock/flow weighting (added 2026-07-05): the weights below are "
+                        "grouped into a 'stock' set (debt/GDP, corporate debt/GDP, federal interest "
+                        "outlays — 0.55 combined) and a 'flow' set (debt-service ratio, primary "
+                        "balance, structural balance, govt revenue — 0.45 combined). Each quarter, "
+                        "effective_flow_weight = base_flow_weight × (1 + 0.2 × (debt_service_ratio "
+                        "/ its own historical median)), effective_stock_weight = 1 − "
+                        "effective_flow_weight, then each group's component weights are rescaled "
+                        "proportionally. The model leans into flow measures — which move earlier "
+                        "than stock measures — specifically when the debt-service ratio is elevated "
+                        "above its own historical norm.",
+                        "Missing-annual-observation interpolation (added 2026-07-05): a single "
+                        "missing annual observation (a provider skipping one year) is linearly "
+                        "interpolated from the surrounding known values before Z-scoring, rather "
+                        "than left as a gap for the carry-forward logic to paper over from the "
+                        "prior year alone. Trailing (most-recent) gaps are NOT interpolated — "
+                        "those are genuine staleness and still go through Gap 1/2 above.",
                     ],
                     tables=[(
                         ["Component", "Weight", "Freq", "Source", "Stress direction"],
@@ -1032,6 +1162,32 @@ def get_layout() -> html.Div:
                    "config/longterm_stress.yaml."),
                 _note("The staleness mechanisms in Debt Stress are independent from and more "
                       "conservative than the regime composite staleness decay."),
+                _sub("Dynamic stock/flow weighting (added 2026-07-05)"),
+                _p("The 7 weights above are split into a 'stock' group (Govt+Household debt/GDP, "
+                   "Corporate debt/GDP, Federal interest outlays/GDP — 0.55 combined, balance-sheet "
+                   "measures of how far the debt burden has built up) and a 'flow' group "
+                   "(Household debt-service ratio, Primary fiscal balance, Structural balance, "
+                   "Government revenue — 0.45 combined, cash-flow measures of which direction "
+                   "things are currently moving).  Each quarter: "
+                   "effective_flow_weight = base_flow_weight × (1 + k × (debt_service_ratio / "
+                   "its own historical median)), k = 0.2, effective_stock_weight = 1 − "
+                   "effective_flow_weight — then each group's individual component weights are "
+                   "rescaled proportionally to hit the new group total.  The composite leans into "
+                   "flow measures specifically when the debt-service ratio (the earliest stress "
+                   "signal) is elevated above its own historical norm, and reverts toward the "
+                   "55/45 baseline otherwise."),
+                _sub("Missing-data interpolation (added 2026-07-05)"),
+                _p("A single missing annual observation is linearly interpolated from the "
+                   "surrounding known values before Z-scoring, rather than left as a gap. This "
+                   "only fills internal gaps — a missing value with no later observation after it "
+                   "(i.e. the series has simply gone stale) is NOT interpolated, and still flows "
+                   "through the staleness-decay/carry-cap logic in Gaps 1–2 above."),
+                _note("For countries with sparser free data than the US (e.g. a future Japan "
+                      "rollout), config/longterm_stress.yaml documents a minimum-viable 3-component "
+                      "subset — Govt+Household debt/GDP, debt-service ratio, primary fiscal balance "
+                      "— chosen because together they capture the size, cash-flow pressure, and "
+                      "direction of the debt trajectory. The other 4 components add incremental, "
+                      "not fundamental, insight."),
                 _inline_formula(F("Rolling Z-score (quarterly components)")),
                 _inline_formula(F("Rolling Z-score (annual components → quarterly)")),
                 _inline_formula(F("Staleness weight decay")),
@@ -1376,6 +1532,20 @@ def get_layout() -> html.Div:
                         "meaningful across countries and volatility regimes. Component contributions "
                         "can also be decayed by observation age, pulling stale values toward neutral "
                         "with an exponential half-life.",
+                        "Conditional weighting (added 2026-07-05): wg/wr/wi default to an equal "
+                        "0.30/0.30/0.30 split, but tilt toward whichever pillar is most active — "
+                        "if inflation exceeds 5% annualized, wi rises to 0.35; otherwise if growth "
+                        "is below 1% annualized, wr rises to 0.35 (the cost of capital becomes the "
+                        "primary lever near the zero lower bound). Debt-gap weights (wp/wv) are "
+                        "unaffected. Only one tilt applies at a time.",
+                        "Nominal vs. real policy rate (added 2026-07-05): CHI uses the nominal "
+                        "policy rate by design, not an oversight — it moves faster than a real rate "
+                        "(which lags inflation data), is directly observable with no estimation "
+                        "error, and doesn't double-count since inflation is already its own "
+                        "separate subtractive term. A 'use_real_policy_rate' config flag (default "
+                        "off) switches to a realized real policy rate (nominal minus contemporaneous "
+                        "inflation) for users who want strict consistency with the Rate force "
+                        "elsewhere, which prefers real rates.",
                     ],
                     tables=[
                         (
@@ -1499,8 +1669,25 @@ def get_layout() -> html.Div:
                         ["Fixed positive threshold", f"{CYCLE_HEALTH_DEFAULT_CONFIG['positive_threshold']:+.2f}"],
                         ["Fixed negative threshold", f"{CYCLE_HEALTH_DEFAULT_CONFIG['negative_threshold']:+.2f}"],
                         ["Freshness half-life", f"{CYCLE_HEALTH_DEFAULT_CONFIG['freshness_half_life_months']:.1f} months"],
+                        ["Policy rate basis",
+                         "realized real (nominal − inflation)" if CYCLE_HEALTH_DEFAULT_CONFIG.get("use_real_policy_rate")
+                         else "nominal (default)"],
                     ],
                 ),
+                _sub("Conditional weighting & rate basis (added 2026-07-05)"),
+                _p("The wg/wr/wi weights above are the base 0.30/0.30/0.30 split, but tilt "
+                   "dynamically toward whichever pillar is currently most active: if inflation is "
+                   "above 5% annualized, wi rises to 0.35; otherwise if growth is below 1% "
+                   "annualized, wr rises to 0.35 — the cost of capital becomes the primary lever "
+                   "near the zero lower bound. Only one tilt applies at a time; wp/wv are always "
+                   "unaffected."),
+                _p("The policy-rate term uses the nominal rate by design: it moves faster than a "
+                   "real rate (no lag waiting on inflation data), is directly observable with no "
+                   "estimation error, and doesn't double-count inflation since it's already its "
+                   "own separate subtractive term in the formula. A 'use_real_policy_rate' config "
+                   "flag (default off, shown above) switches to a realized real policy rate "
+                   "(nominal minus contemporaneous inflation) for consistency with the Rate force "
+                   "elsewhere, which prefers real rates."),
                 _p("Stage labels are based on the debt-adjusted value: Expansion at or above "
                    "the positive threshold, Late / Tight at or below the negative threshold, and "
                    "Neutral between the two. In adaptive mode, these thresholds are computed from "
@@ -1543,6 +1730,13 @@ def get_layout() -> html.Div:
                             ["Expanding-window Z-scores for back-test (C4)", "Phase 3 back-test"],
                             ["OLS weight calibration (I1)",        "✅ Live — indicators/calibrate.py; advisory, user confirms changes"],
                             ["Dynamic momentum windows (D2)",      "Phase 3 — requires regime labels as input"],
+                            ["Daily EA/KR equity index (Volatility force)", "Deferred — no free daily feed; monthly proxy in use, see data_source_wishlist.md"],
+                            ["MOVE-equivalent bond volatility",   "Deferred — no free FRED series confirmed yet"],
+                            ["Credit-spread volatility component", "Deferred — buildable from existing spread signals, not yet built"],
+                            ["ECB/BOK loan-demand series (Credit force, EZ/KR)", "Deferred — US-side resolved (DRSDCILM); EZ/KR unconfirmed"],
+                            ["Debt-service-to-consumption/investment ratios", "Deferred — needs free PCE/investment denominator series"],
+                            ["Forward-looking Fed policy expectations", "✅ Resolved 2026-07-05 — FEDTARMD (FOMC dot-plot) confirmed free; not yet wired into the Rate basket"],
+                            ["Investment-layer roadmap (regime-conditional returns, factor tilts, risk budgeting)", "Out of scope — Allocation Layer project; see ray_dalio_review_log.md #12"],
                         ]
                     )],
                 )),
@@ -1557,9 +1751,93 @@ def get_layout() -> html.Div:
                         ["Expanding-window Z-scores for back-test (C4)", "Phase 3 back-test"],
                         ["OLS weight calibration (I1)",        "✅ Live — indicators/calibrate.py; advisory, user confirms changes via Importance Editor"],
                         ["Dynamic momentum windows (D2)",      "Phase 3 — requires regime labels as input"],
+                        ["Daily EA/KR equity index (Volatility force)",
+                         "Deferred 2026-07-05 — no free daily equity feed exists via FRED for the "
+                         "Euro Area or Korea; a monthly-return realized-vol proxy is in use instead. "
+                         "See docs/Guidance/data_source_wishlist.md."],
+                        ["MOVE-equivalent bond volatility",
+                         "Deferred 2026-07-05 — no free FRED series confirmed yet for a US bond-market "
+                         "volatility index."],
+                        ["Credit-spread volatility component",
+                         "Deferred 2026-07-05 — buildable in-house (rolling std of existing high-yield "
+                         "spread/Treasury-yield signals), just not built yet."],
+                        ["ECB/BOK loan-demand series (Credit force, EZ/KR)",
+                         "Deferred 2026-07-05 — US side resolved (DRSDCILM confirmed free, pairs with "
+                         "existing DRTSCILM); ECB Bank Lending Survey / BoK equivalent unconfirmed."],
+                        ["Debt-service-to-consumption / -to-investment ratios (Debt Stress)",
+                         "Deferred 2026-07-05 — needs a free consumption (FRED PCE) or investment "
+                         "denominator series; not yet sourced."],
+                        ["Forward-looking Fed policy expectations (Rate force)",
+                         "✅ Data-feed resolved 2026-07-05 — FEDTARMD (FOMC dot-plot median) confirmed "
+                         "free via FRED as a forward-guidance proxy; not yet wired into the Rate basket."],
+                        ["Investment-layer roadmap (regime-conditional returns, factor tilts, dynamic "
+                         "risk budgeting, scenario testing)",
+                         "Out of scope for this repo — candidate for the separate Allocation Layer "
+                         "project. Concrete 5-step roadmap logged in "
+                         "docs/Guidance/ray_dalio_review_log.md, punch item #12."],
                     ]
                 ),
             ], title="14 · Deferred Items"),
+
+            # 15 ── Revision Log ────────────────────────────────────────────────
+            dbc.AccordionItem([
+                _copy_btn(_section_text(
+                    "15 · Revision Log",
+                    [
+                        "A running log of methodology changes that alter what a number on this "
+                        "dashboard means or how it is computed — as distinct from docs/worklog.md, "
+                        "which logs every session at implementation-level detail. Add an entry here "
+                        "whenever a change affects a formula, weight, threshold, or classification "
+                        "rule described elsewhere on this page, so a reader can see at a glance "
+                        "what changed and when without re-deriving it from the source code.",
+                    ],
+                    tables=[(
+                        ["Date", "Change", "Sections affected"],
+                        [
+                            ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
+                            ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],
+                            ["2026-07-05", "Cycle Health Index: conditional growth/rate/inflation weight tilt; nominal/real policy-rate toggle", "13"],
+                            ["2026-07-05", "Long-Term Debt Stress: dynamic stock/flow weighting formula; missing-annual-data interpolation; sparse-country minimum-viable component set documented", "9"],
+                            ["2026-07-05", "Growth composite: GDP-regression calibration applied to the 9 cyclical signals; 3 long-run productivity-trend signals added", "7"],
+                            ["2026-07-05", "Inflation composite: merged 5Y/10Y TIPS breakevens into one blended signal to remove double-counting", "7"],
+                            ["2026-06-28", "Global Overview: added the Cycle Health Index (raw + debt-adjusted, adaptive thresholds, freshness decay)", "13"],
+                            ["2026-06-26", "Added Rate and Credit force composites with per-signal age-decay half-lives; force detail sub-pages", "7"],
+                            ["2026-06-25", "Regime classification restructured from a single 4-quadrant label to two independent Growth/Inflation chips with configurable dual-condition (Z + momentum) thresholds", "8"],
+                            ["2026-06-23", "Weight calibration system: importance tiers, force-balance rule, GDP-regression calibration tool, Weight Audit page", "7, 12"],
+                            ["2026-06-19", "Long-Term Debt Stress indicator added (7-component composite with staleness decay)", "9"],
+                            ["2026-06-18", "Composites engine added: Growth Score, Inflation Score, Regime Quadrant, Confidence, Disequilibrium", "7, 8"],
+                        ]
+                    )],
+                    notes=["See docs/Guidance/ray_dalio_review_log.md for the full session-by-session "
+                           "detail behind the 2026-07-05 entries (a systematic review against a Ray "
+                           "Dalio AI persona, with a 24-item punch list)."],
+                )),
+                _p("A running log of methodology changes that alter what a number on this "
+                   "dashboard means or how it is computed — as distinct from docs/worklog.md, "
+                   "which logs every session at implementation-level detail.  Add an entry here "
+                   "whenever a change affects a formula, weight, threshold, or classification rule "
+                   "described elsewhere on this page."),
+                _table(
+                    ["Date", "Change", "Sections affected"],
+                    [
+                        ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
+                        ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],
+                        ["2026-07-05", "Cycle Health Index: conditional growth/rate/inflation weight tilt; nominal/real policy-rate toggle", "13"],
+                        ["2026-07-05", "Long-Term Debt Stress: dynamic stock/flow weighting formula; missing-annual-data interpolation; sparse-country minimum-viable component set documented", "9"],
+                        ["2026-07-05", "Growth composite: GDP-regression calibration applied to the 9 cyclical signals; 3 long-run productivity-trend signals added", "7"],
+                        ["2026-07-05", "Inflation composite: merged 5Y/10Y TIPS breakevens into one blended signal to remove double-counting", "7"],
+                        ["2026-06-28", "Global Overview: added the Cycle Health Index (raw + debt-adjusted, adaptive thresholds, freshness decay)", "13"],
+                        ["2026-06-26", "Added Rate and Credit force composites with per-signal age-decay half-lives; force detail sub-pages", "7"],
+                        ["2026-06-25", "Regime classification restructured from a single 4-quadrant label to two independent Growth/Inflation chips with configurable dual-condition (Z + momentum) thresholds", "8"],
+                        ["2026-06-23", "Weight calibration system: importance tiers, force-balance rule, GDP-regression calibration tool, Weight Audit page", "7, 12"],
+                        ["2026-06-19", "Long-Term Debt Stress indicator added (7-component composite with staleness decay)", "9"],
+                        ["2026-06-18", "Composites engine added: Growth Score, Inflation Score, Regime Quadrant, Confidence, Disequilibrium", "7, 8"],
+                    ]
+                ),
+                _note("See docs/Guidance/ray_dalio_review_log.md for the full session-by-session "
+                      "detail behind the 2026-07-05 entries (a systematic review against a Ray "
+                      "Dalio AI persona, with a 24-item punch list)."),
+            ], title="15 · Revision Log"),
 
         ], start_collapsed=True, always_open=True),
 

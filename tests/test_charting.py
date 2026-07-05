@@ -261,6 +261,20 @@ def test_methodology_page_documents_cycle_health_index():
     assert "Debt-adjusted CHI" in rendered
 
 
+def test_methodology_page_documents_2026_07_05_revisions():
+    """Methodology page reflects the Ray Dalio review implementation and has a revision log."""
+    from dashboard.methodology import get_layout
+
+    rendered = str(get_layout().to_plotly_json())
+    assert "15 · Revision Log" in rendered
+    assert "dynamic-threshold algorithm" in rendered
+    assert "Volatility basket" in rendered
+    assert "Dynamic stock/flow weighting" in rendered
+    assert "Conditional weighting & rate basis" in rendered
+    assert "data_source_wishlist.md" in rendered
+    assert "ray_dalio_review_log.md" in rendered
+
+
 @pytest.mark.integration
 def test_overview_drill_figure_builds_regular_metric_history():
     from dashboard.global_overview import _overview_drill_figure
