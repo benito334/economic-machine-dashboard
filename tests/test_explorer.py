@@ -161,7 +161,7 @@ def test_overview_columns_structure():
 def test_load_signal_overview_returns_all_signals():
     from dashboard.explorer_data import load_signal_overview
     df = load_signal_overview()
-    assert len(df) == 65
+    assert len(df) == 66  # 65 + inflation.breakeven_avg (2026-07-05 Ray Dalio review #2)
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns
@@ -319,7 +319,7 @@ def test_explorer_signal_table_callback():
     overview = load_signal_overview()
     rows = _format_overview(overview)
     assert isinstance(rows, list)
-    assert len(rows) == 65
+    assert len(rows) == 66  # 65 + inflation.breakeven_avg (2026-07-05 Ray Dalio review #2)
     assert all("id" in r for r in rows)
     assert all("zscore_fmt" in r for r in rows)
     assert all("flags" in r for r in rows)
@@ -329,11 +329,13 @@ def test_explorer_signal_table_callback():
 
 class TestCompositeZscoreMatrix:
     @pytest.mark.integration
-    def test_returns_17_columns(self):
+    def test_returns_19_columns(self):
         from dashboard.explorer_data import load_composite_zscore_matrix
         matrix, meta = load_composite_zscore_matrix()
-        assert len(meta) == 17  # 9 growth + 8 inflation (cpi_imf_annual is KR-only)
-        assert matrix.shape[1] == 17
+        # 12 growth (9 cyclical + 3 productivity-trend, added 2026-07-05) + 7 inflation
+        # (8 - breakeven_5y - breakeven_10y + breakeven_avg; cpi_imf_annual is KR-only)
+        assert len(meta) == 19
+        assert matrix.shape[1] == 19
 
     @pytest.mark.integration
     def test_columns_match_meta(self):

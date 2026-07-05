@@ -54,7 +54,40 @@ CYCLE_HEALTH_DEFAULT_CONFIG: dict[str, Any] = {
     "negative_threshold": -0.50,
     "freshness_half_life_months": 3.0,
     "apply_freshness_decay": True,
+    # 2026-07-05 Ray Dalio review (#22): nominal policy rate is intentional (faster-
+    # moving, directly observable, no double-counting since inflation is already its
+    # own separate term) — kept as default; this toggle lets users switch to a
+    # "realized real policy rate" (nominal minus contemporaneous inflation) for
+    # strict consistency with the Rate force elsewhere, which prefers real rates.
+    "use_real_policy_rate": False,
 }
+
+# 2026-07-05 Ray Dalio review (#21): conditional weight shift replacing the flat
+# 0.30/0.30/0.30 growth/rate/inflation split. Applied AFTER the base weights are
+# read, only to the CHI weighting (not to the classification thresholds).
+_CHI_HIGH_INFLATION_ANN_PCT = 5.0
+_CHI_LOW_GROWTH_ANN_PCT = 1.0
+_CHI_CONDITIONAL_WEIGHT = 0.35
+
+
+def _conditional_chi_weights(
+    weights: dict[str, float],
+    inflation_rate_ann: "float | None",
+    growth_rate_ann: "float | None",
+) -> dict[str, float]:
+    """Tilt growth/rate/inflation CHI weights toward whichever pillar is most active.
+
+    If inflation > 5% annual, inflation gets more weight (0.35). Otherwise, if growth
+    < 1% annual, policy rate gets more weight (0.35) since the cost of capital becomes
+    the primary lever near the zero lower bound. Otherwise all three stay at 0.30.
+    Debt-gap weights are untouched.
+    """
+    w = dict(weights)
+    if inflation_rate_ann is not None and inflation_rate_ann > _CHI_HIGH_INFLATION_ANN_PCT:
+        w["inflation"] = _CHI_CONDITIONAL_WEIGHT
+    elif growth_rate_ann is not None and growth_rate_ann < _CHI_LOW_GROWTH_ANN_PCT:
+        w["policy_rate"] = _CHI_CONDITIONAL_WEIGHT
+    return w
 
 # ── Column definitions ──────────────────────────────────────────────────────
 # color keys: warn_le, warn_ge → orange   |   high_ge → blue   |   pos_ge, pos_le → green
@@ -228,6 +261,10 @@ def _normalise_cycle_config(config: dict | None) -> dict[str, Any]:
             config.get("apply_freshness_decay"),
             merged["apply_freshness_decay"],
         )
+        merged["use_real_policy_rate"] = _coerce_bool(
+            config.get("use_real_policy_rate"),
+            merged["use_real_policy_rate"],
+        )
 
     if merged["negative_threshold"] >= merged["positive_threshold"]:
         merged["negative_threshold"] = CYCLE_HEALTH_DEFAULT_CONFIG["negative_threshold"]
@@ -260,6 +297,9 @@ def _cycle_config_clipboard_text(config: dict | None = None) -> str:
         f"  Growth weight:      {w['growth']:.4g}",
         f"  Policy-rate weight: {w['policy_rate']:.4g}",
         f"  Inflation weight:   {w['inflation']:.4g}",
+        "  (Growth/rate/inflation weights shown are base values — a conditional rule tilts",
+        "   one of them to 0.35 at read time: inflation if >5% annual, else policy rate if",
+        "   growth <1% annual. See Ray Dalio review 2026-07-05 #21.)",
         f"  Public debt weight: {w['public_debt_gap']:.4g}",
         f"  Private debt weight:{w['private_debt_gap']:.4g}",
         f"  Public debt target (% GDP):  {t['public']:.4g}",
@@ -270,6 +310,7 @@ def _cycle_config_clipboard_text(config: dict | None = None) -> str:
         f"  Fixed negative threshold: {cfg['negative_threshold']:.4g}",
         f"  Freshness decay: {cfg['apply_freshness_decay']}",
         f"  Freshness half-life (months): {cfg['freshness_half_life_months']:.4g}",
+        f"  Policy rate basis: {'realized real (nominal - inflation)' if cfg['use_real_policy_rate'] else 'nominal'}",
         "",
         "Stage rule:",
         "  Expansion   if CHI_debt_adj >= positive threshold",
@@ -402,6 +443,10 @@ def _cycle_health(
     if real_growth is None or inflation is None or policy_rate is None:
         return None
 
+    if cfg.get("use_real_policy_rate"):
+        # Realized real policy rate = nominal rate minus contemporaneous inflation.
+        policy_rate = policy_rate - inflation
+
     ref_dates = [_parse_month(x) for x in [g_date, i_date, r_date, d_date, private_date]]
     ref_dates = [x for x in ref_dates if x is not None]
     ref = max(ref_dates) if ref_dates else pd.Timestamp(date.today())
@@ -413,7 +458,7 @@ def _cycle_health(
         return None
 
     simple = g_adj - r_adj - i_adj
-    weights = cfg["weights"]
+    weights = _conditional_chi_weights(cfg["weights"], inflation_rate_ann=inflation, growth_rate_ann=real_growth)
     debt_drag, debt_meta = _debt_drag(public_debt, d_date, private_debt, private_date, cfg, ref)
     adjusted = (
         weights["growth"] * g_adj

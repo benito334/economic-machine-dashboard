@@ -174,6 +174,62 @@ def test_cycle_health_uses_private_debt_when_available():
     assert health["adjusted"] == pytest.approx(-2.0)
 
 
+def test_conditional_chi_weights_tilts_toward_inflation_when_high():
+    from dashboard.global_overview import _conditional_chi_weights, CYCLE_HEALTH_DEFAULT_CONFIG
+
+    w = _conditional_chi_weights(CYCLE_HEALTH_DEFAULT_CONFIG["weights"], inflation_rate_ann=6.0, growth_rate_ann=2.0)
+    assert w["inflation"] == pytest.approx(0.35)
+    assert w["growth"] == pytest.approx(0.30)
+    assert w["policy_rate"] == pytest.approx(0.30)
+
+
+def test_conditional_chi_weights_tilts_toward_policy_rate_when_growth_low():
+    from dashboard.global_overview import _conditional_chi_weights, CYCLE_HEALTH_DEFAULT_CONFIG
+
+    w = _conditional_chi_weights(CYCLE_HEALTH_DEFAULT_CONFIG["weights"], inflation_rate_ann=2.0, growth_rate_ann=0.5)
+    assert w["policy_rate"] == pytest.approx(0.35)
+    assert w["inflation"] == pytest.approx(0.30)
+
+
+def test_cycle_health_high_inflation_shifts_weight_onto_inflation_term():
+    from dashboard.global_overview import _cycle_health
+
+    country_data = {
+        "master.gdp_real": (0.02, "2026-01"),
+        "policy.fed_funds_target": (4.0, "2026-06"),
+        "inflation.cpi_headline": (0.06, "2026-05"),  # 6% annual → triggers inflation tilt
+        "credit.gov_debt_gdp": (70.0, "2026-01"),
+    }
+    health = _cycle_health(country_data, {
+        "threshold_mode": "fixed",
+        "apply_freshness_decay": False,
+    })
+
+    assert health is not None
+    # adjusted = 0.30*2.0 - 0.30*4.0 - 0.35*6.0 - 0 (debt gap is 0 at target)
+    assert health["adjusted"] == pytest.approx(0.30 * 2.0 - 0.30 * 4.0 - 0.35 * 6.0)
+
+
+def test_cycle_health_real_policy_rate_toggle():
+    from dashboard.global_overview import _cycle_health
+
+    country_data = {
+        "master.gdp_real": (0.02, "2026-01"),
+        "policy.fed_funds_target": (4.0, "2026-06"),
+        "inflation.cpi_headline": (0.03, "2026-05"),
+        "credit.gov_debt_gdp": (70.0, "2026-01"),
+    }
+    health = _cycle_health(country_data, {
+        "threshold_mode": "fixed",
+        "apply_freshness_decay": False,
+        "use_real_policy_rate": True,
+    })
+
+    assert health is not None
+    # real policy rate = 4.0 - 3.0 = 1.0 → adjusted = 0.3*2.0 - 0.3*1.0 - 0.3*3.0 - 0
+    assert health["adjusted"] == pytest.approx(0.3 * 2.0 - 0.3 * 1.0 - 0.3 * 3.0)
+
+
 def test_cycle_health_clipboard_text_includes_configured_settings():
     from dashboard.global_overview import _cycle_config_clipboard_text
 

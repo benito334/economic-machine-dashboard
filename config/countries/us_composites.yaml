@@ -25,50 +25,75 @@
 # US-specific notes:
 #   - pce_core is the Fed's mandate measure; cpi_core is correlated (r~0.92) but
 #     not independent. Reduced cpi_core to STRONG tier to avoid double-counting.
-#   - breakeven_5y and breakeven_10y are correlated (r~0.90); 10yr reduced to VOLATILE.
+#   - breakeven_5y and breakeven_10y are correlated (r~0.90); merged into inflation.breakeven_avg
+#     (see 2026-07-05 Ray Dalio review) rather than keeping both as separate composite slots.
 #   - unemployment is lagging; reduced from 0.55 to 0.45 per guidance hierarchy.
 
 growth_score:
   description: "Group-weighted Z-score composite of growth-force coincident/leading signals"
+  # ── 2026-07-05: GDP-regression calibration applied (indicators/calibrate.py) ──
+  # Per the Ray Dalio review (docs/Guidance/ray_dalio_review_log.md #1), reduce
+  # collective weight of labor-market-cluster signals vs. output/demand, via the
+  # existing calibration tool rather than hand-tuning. OLS of each signal's Z-score
+  # against us.master.gdp_real Z-score; recommended_imp scaled to [0.10, 0.95].
+  # Applied to all 9 original cyclical signals (beta > 0 in all cases); NOT applied
+  # to the 3 productivity-trend signals below since they're deliberately structural/
+  # long-run and evaluating them against short-run GDP fit would defeat their purpose.
   indicators:
     - id: growth.payrolls
       base_share: 0.5
-      importance: 0.90      # PRIMARY — most reliable US labor market signal; non-redundant
+      importance: 0.64      # was 0.90 — GDP-regression: beta=0.82, R²=0.64, n=181
       quality_factor: 0.95
     - id: growth.industrial_prod
       base_share: 0.5
-      importance: 0.80      # PRIMARY — output anchor; broad manufacturing coverage
+      importance: 0.66      # was 0.80 — GDP-regression: beta=0.85, R²=0.73, n=181
       quality_factor: 0.95
     - id: growth.retail_sales
       base_share: 0.5
-      importance: 0.75      # STRONG — consumer demand proxy; correlated with real_pce
+      importance: 0.67      # was 0.75 — GDP-regression: beta=0.85, R²=0.61, n=133
       quality_factor: 0.95
     - id: growth.real_pce
       base_share: 0.4
-      importance: 0.65      # STRONG — correlated with retail_sales (r=0.80); slightly reduced
+      importance: 0.95      # was 0.65 — GDP-regression: beta=1.21, R²=0.88, n=73 (highest fit)
       quality_factor: 0.95
     - id: growth.capacity_util
       base_share: 0.5
-      importance: 0.65      # STRONG — forward-looking slack removal signal
+      importance: 0.45      # was 0.65 — GDP-regression: beta=0.57, R²=0.35, n=181
       quality_factor: 0.90
     - id: growth.job_openings
       base_share: 0.5
-      importance: 0.85      # PRIMARY — JOLTS openings; leading labor demand signal
+      importance: 0.25      # was 0.85 — GDP-regression: beta=0.32, R²=0.12, n=102 (weak fit; largest cut)
       quality_factor: 0.95
     - id: growth.pmi_proxy
       base_share: 0.5
-      importance: 0.80      # PRIMARY — composite activity; broad real-time coverage
+      importance: 0.49      # was 0.80 — GDP-regression: beta=0.63, R²=0.32, n=181
       quality_factor: 0.95
     - id: growth.labor_force_part
       base_share: 0.4
-      importance: 0.60      # STRONG — structural; reduced base_share to respect structural nature
+      importance: 0.10      # was 0.60 — GDP-regression: beta=0.13, R²=0.02, n=181 (not significant, p=0.078)
       quality_factor: 0.90
     - id: growth.unemployment
       base_share: 0.5
-      importance: 0.45      # CONTEXT — lagging indicator; reduced from 0.55 per guidance
+      importance: 0.25      # was 0.45 — GDP-regression: beta=0.32, R²=0.10, n=181
       quality_factor: 0.90
       invert: true          # lower unemployment = better growth
-  # Excluded from composite (structural frequency): growth.productivity, growth.tfp, growth.rnd_intensity
+    # ── Long-run productivity trend (added 2026-07-05, Ray Dalio review #7) ──
+    # Ray: the cyclical basket above has no explicit "trend-growth" component;
+    # his framework treats productivity growth as one of the 3 big forces (distinct
+    # from the short-term debt cycle these cyclical signals mostly capture).
+    # Modest weights: these are slow-moving/annual structural signals, not drivers.
+    - id: growth.productivity
+      base_share: 0.4
+      importance: 0.35      # CONTEXT — quarterly labor productivity; most timely of the 3 trend signals
+      quality_factor: 0.90
+    - id: growth.tfp
+      base_share: 0.3
+      importance: 0.20      # VOLATILE — annual TFP; slow-moving secular trend
+      quality_factor: 0.85
+    - id: growth.rnd_intensity
+      base_share: 0.3
+      importance: 0.15      # VOLATILE — annual R&D/GDP; structural driver of future productivity, not current growth
+      quality_factor: 0.85
 
 inflation_score:
   description: "Weighted Z-score composite of inflation-force signals"
@@ -85,13 +110,14 @@ inflation_score:
       base_share: 0.5
       importance: 0.30      # CONTEXT — adds wage-push signal; services persistence
       quality_factor: 0.85
-    - id: inflation.breakeven_5y
+    - id: inflation.breakeven_avg
       base_share: 0.5
-      importance: 0.25      # CONTEXT — market-based expectations; forward-looking
-      quality_factor: 0.90
-    - id: inflation.breakeven_10y
-      base_share: 0.5
-      importance: 0.20      # VOLATILE — correlated with breakeven_5y (r~0.90); 5yr preferred
+      importance: 0.30      # CONTEXT — blended 5Y/10Y market-based expectations; forward-looking.
+                             # Ray Dalio review 2026-07-05 (docs/Guidance/ray_dalio_review_log.md #2):
+                             # replaces separate breakeven_5y (0.25) + breakeven_10y (0.20) slots,
+                             # which double-counted the same expectations channel (r~0.90 correlated).
+                             # Both raw signals still exist individually for drill-down; only the
+                             # blended signal feeds the composite now.
       quality_factor: 0.90
     - id: inflation.cpi_headline
       base_share: 0.5

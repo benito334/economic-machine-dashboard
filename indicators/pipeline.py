@@ -154,6 +154,17 @@ def compute_derived(
         combined.columns = ["y", "r"]
         return (combined["y"] - combined["r"]).dropna()
 
+    if bid == "inflation.breakeven_avg":
+        # Simple average of 5Y and 10Y TIPS breakevens (both D, pct_level)
+        be5 = raw_store.get("T5YIE")
+        be10 = raw_store.get("T10YIE")
+        if be5 is None or be10 is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        combined = pd.concat([be5, be10], axis=1, join="inner")
+        combined.columns = ["be5", "be10"]
+        return ((combined["be5"] + combined["be10"]) / 2.0).dropna()
+
     if bid == "credit.btp_bund_spread":
         # Italian BTP 10Y minus German Bund 10Y (both in % pct_level)
         it_yield = transformed_store.get("credit.yield_it_10y")

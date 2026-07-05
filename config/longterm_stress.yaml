@@ -9,6 +9,24 @@
 # before being used for decisions.
 #
 # See docs/longterm_stress_indicator.md for the full specification.
+#
+# ── Sparse-data country rollout guidance (Ray Dalio review 2026-07-05, #16) ──
+# This composite is US-only today. When rolling out to a country with sparser
+# free data than FRED provides (e.g. Japan, or any future country whose fiscal
+# series only exist as annual World Bank/IMF data), Ray's minimum-viable subset
+# — in priority order — is:
+#   1. gov_household_debt_gdp (debt/GDP, public+household) — "most transparent
+#      gauge of total burden"
+#   2. household_debt_service (debt-service ratio)          — "the earliest
+#      stress signal"
+#   3. primary_balance_gdp (primary fiscal balance/GDP)      — "the flow that
+#      determines whether the stock is expanding or contracting"
+# These three capture size, cash-flow pressure, and direction of the debt
+# trajectory. corporate_debt_gdp, structural_balance, and govt_revenue_gdp add
+# incremental (not fundamental) insight and can be added later as free data
+# quality improves for that country. A new country's config should start with
+# just these 3 components (weights renormalized to sum to 1.0) rather than
+# leaving 4 slots permanently empty/stale.
 # ─────────────────────────────────────────────────────────────────────────────
 
 country: US
@@ -109,6 +127,31 @@ staleness:
     enabled: false               # TUNABLE — off by default
     method: rolling_mean         # TUNABLE — "rolling_mean" | "linear_trend"
     window_quarters: 8           # TUNABLE — lookback for mean / trend fit
+
+# ── Dynamic stock/flow weighting (Ray Dalio review 2026-07-05, #17) ───────────
+# Ray: the 55/45 stock/flow split is "a reasonable starting point" — stock tells
+# you how far you've come, flow tells you where you're headed — but should lean
+# more on flow measures specifically when the debt-service ratio (the earliest
+# stress signal) is elevated above its own historical median.
+#
+#   effective_flow_weight = base_flow_weight * (1 + k * (debt_service_ratio / median_service_ratio))
+#   effective_stock_weight = 1 - effective_flow_weight
+#
+# Each group's component weights are then rescaled proportionally within the group
+# to hit the new group total. median_service_ratio is an expanding median of the
+# household_debt_service raw series, shifted 1 quarter (look-ahead safe).
+dynamic_weighting:
+  enabled: true
+  k: 0.2                    # TUNABLE — Ray's suggested modest coefficient
+  stock_components:         # balance-sheet / cost-of-carrying-the-stock measures (sum to 0.55)
+    - gov_household_debt_gdp
+    - corporate_debt_gdp
+    - federal_interest_gdp
+  flow_components:          # cash-flow / current-direction measures (sum to 0.45)
+    - household_debt_service
+    - primary_balance_gdp
+    - structural_balance
+    - govt_revenue_gdp
 
 bands:
   # ── Interpretation bands ────────────────────────────────────────────────────

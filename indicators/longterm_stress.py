@@ -85,6 +85,15 @@ def _validate_config(config: dict) -> None:
     if method not in {"rolling_mean", "linear_trend"}:
         raise ValueError("unsupported staleness extrapolation method")
 
+    dyn = config.get("dynamic_weighting", {})
+    if dyn.get("enabled", False):
+        stock_ids = set(dyn.get("stock_components", []))
+        flow_ids = set(dyn.get("flow_components", []))
+        if stock_ids & flow_ids:
+            raise ValueError("dynamic_weighting: a component cannot be in both stock and flow groups")
+        if float(dyn.get("k", 0)) < 0:
+            raise ValueError("dynamic_weighting.k must be non-negative")
+
     bands = config.get("bands", {})
     thresholds = [
         bands.get("below_normal_upper"),
@@ -96,6 +105,67 @@ def _validate_config(config: dict) -> None:
         or not thresholds[0] < thresholds[1] < thresholds[2]
     ):
         raise ValueError("stress band thresholds must be present and increasing")
+
+
+def _dynamic_group_weights(
+    components_cfg: list[dict],
+    stock_ids: set[str],
+    flow_ids: set[str],
+    debt_service_ratio: Optional[float],
+    median_service_ratio: Optional[float],
+    k: float,
+) -> dict[str, float]:
+    """Ray Dalio review 2026-07-05 (#17): dynamic stock/flow weighting.
+
+    effective_flow_weight = base_flow_weight * (1 + k * (debt_service_ratio / median_service_ratio))
+    effective_stock_weight = 1 - effective_flow_weight
+
+    Leans into flow measures (household_debt_service, primary_balance_gdp,
+    structural_balance, govt_revenue_gdp) when the debt-service ratio is elevated
+    above its own historical median; reverts to the configured static weights
+    otherwise. Falls back to static weights when inputs are unavailable.
+    """
+    base = {c["id"]: float(c["weight"]) for c in components_cfg}
+    base_flow = sum(w for cid, w in base.items() if cid in flow_ids)
+    base_stock = sum(w for cid, w in base.items() if cid in stock_ids)
+    if (
+        not flow_ids or not stock_ids or base_flow <= 0 or base_stock <= 0
+        or debt_service_ratio is None or not median_service_ratio
+    ):
+        return base
+
+    eff_flow = base_flow * (1.0 + k * (debt_service_ratio / median_service_ratio))
+    eff_flow = min(max(eff_flow, 0.0), base_flow + base_stock)
+    eff_stock = (base_flow + base_stock) - eff_flow
+
+    result = dict(base)
+    for cid, w in base.items():
+        if cid in flow_ids:
+            result[cid] = w * (eff_flow / base_flow)
+        elif cid in stock_ids:
+            result[cid] = w * (eff_stock / base_stock)
+    return result
+
+
+def _expanding_median_lagged(series: pd.Series, min_periods: int = 8) -> pd.Series:
+    """Expanding median shifted by 1 period — look-ahead safe reference for
+    comparing a current observation against its own historical typical level."""
+    if series.empty:
+        return series
+    return series.shift(1).expanding(min_periods=min_periods).median()
+
+
+def _fill_missing_annual_via_interpolation(series: pd.Series, max_gap_periods: int = 1) -> pd.Series:
+    """Ray Dalio review 2026-07-05 (#19): linear-interpolate a single missing
+    annual observation from the last two known points, before the existing
+    forward-fill/carry logic runs. Only fills internal gaps (does not extrapolate
+    beyond the last known observation) and only short gaps (limit=max_gap_periods),
+    so genuinely missing recent data still falls through to the normal staleness
+    handling rather than being silently papered over indefinitely.
+    """
+    if series.empty:
+        return series
+    return series.interpolate(method="linear", limit=max_gap_periods, limit_area="inside")
 
 
 def stress_band_label(score: float, bands: dict) -> str:
@@ -555,8 +625,15 @@ def _rolling_z_annual_then_ffill(
     Carrying forward a single annual Z-score for up to ffill_limit quarters avoids
     the look-ahead and multiple-counting problem that would arise from Z-scoring
     the quarterly forward-filled series directly.
+
+    Ray Dalio review 2026-07-05 (#19): a single missing annual observation (e.g. a
+    provider skips one year) is linearly interpolated from the surrounding known
+    values before Z-scoring, rather than left as a gap for the forward-fill/carry
+    logic to paper over from the prior year's value alone.
     """
-    annual = series.resample("YE").last().dropna()
+    annual = series.resample("YE").last()
+    annual = _fill_missing_annual_via_interpolation(annual)
+    annual = annual.dropna()
     prior = annual.shift(shift)
     mu = prior.rolling(window, min_periods=min_periods).mean()
     sigma = prior.rolling(window, min_periods=min_periods).std()
@@ -775,6 +852,16 @@ def compute_debt_stress_history(
                 ffill_limit=max_carry_q,
             )
 
+    # ── Dynamic stock/flow weighting setup (Ray Dalio review 2026-07-05, #17) ──
+    dyn_cfg = config.get("dynamic_weighting", {})
+    dyn_enabled = bool(dyn_cfg.get("enabled", False))
+    dyn_stock_ids = set(dyn_cfg.get("stock_components", []))
+    dyn_flow_ids = set(dyn_cfg.get("flow_components", []))
+    dyn_k = float(dyn_cfg.get("k", 0.2))
+    hds_median_series = _expanding_median_lagged(
+        raw_series.get("household_debt_service", pd.Series(dtype=float))
+    )
+
     # ── Assemble per-quarter snapshots ────────────────────────────────────────
 
     snapshots: list[DebtStressSnapshot] = []
@@ -830,12 +917,24 @@ def compute_debt_stress_history(
                         component_z[cid] = z_extrap
                         extrapolated_comps.append(f"{cid}:{excess}")
 
+        # ── Dynamic stock/flow base weights for this quarter ──────────────────
+        if dyn_enabled:
+            hds_val = component_val.get("household_debt_service")
+            med_idx = hds_median_series.index[hds_median_series.index <= qt]
+            med_val = float(hds_median_series[med_idx[-1]]) if len(med_idx) > 0 else None
+            base_weights = _dynamic_group_weights(
+                components_cfg, dyn_stock_ids, dyn_flow_ids, hds_val, med_val, dyn_k
+            )
+        else:
+            base_weights = {c["id"]: float(c["weight"]) for c in components_cfg}
+
         # ── Gap 1: weight decay proportional to staleness lag ─────────────────
         effective_weights: dict[str, float] = {}
-        total_config_weight = sum(c["weight"] for c in components_cfg)
+        total_config_weight = sum(base_weights.values())
 
         for comp in components_cfg:
             cid = comp["id"]
+            base_w = base_weights[cid]
             if component_z.get(cid) is None:
                 effective_weights[cid] = 0.0
                 continue
@@ -846,14 +945,14 @@ def compute_debt_stress_history(
 
             if stale_halflife is not None and stale_halflife > 0:
                 decay = staleness_weight_fraction(excess, stale_halflife)
-                eff_w = comp["weight"] * decay
+                eff_w = base_w * decay
                 # Drop if effective weight falls below the minimum fraction
-                if eff_w < stale_min_frac * comp["weight"] and comp["weight"] > 0:
+                if eff_w < stale_min_frac * base_w and base_w > 0:
                     component_z[cid] = None
                     eff_w = 0.0
             else:
                 # No decay configured — binary present/missing
-                eff_w = comp["weight"]
+                eff_w = base_w
 
             effective_weights[cid] = eff_w
 

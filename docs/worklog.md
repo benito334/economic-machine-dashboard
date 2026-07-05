@@ -1054,3 +1054,21 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Nothing implemented yet — this was the review/planning pass only.
 
 **Next:** Work through the 23-item punch list; start with the ready-to-implement items (#1, #2, #3, #7, #13, #16, #17, #19, #21, #22, #23), then resolve remaining data-feed checks (#15, #18).
+
+---
+
+## 2026-07-05 — Ray Dalio review punch-list implementation (part 1: 8 of 11 items)
+
+**Done:**
+- **#1 Growth weights**: ran `indicators/calibrate.py` GDP-regression, applied recommended importances to all 9 cyclical growth signals (e.g. job_openings 0.85→0.25, real_pce 0.65→0.95), logged to `weight_change_log` (source="regression").
+- **#2 Inflation breakevens**: new derived signal `inflation.breakeven_avg` (mean of T5YIE/T10YIE) replacing the two separate breakeven slots in the composite; both raw signals still exist individually.
+- **#3 Crude oil rolling avg**: found already implemented from an earlier session (`pre_smooth_window: 7`) — no work needed.
+- **#7 Growth productivity trend**: added `growth.productivity`/`growth.tfp`/`growth.rnd_intensity` to the growth composite at modest weights (previously excluded as "structural frequency" even though the signals already existed).
+- **#16/#17/#19 Debt Stress**: documented a sparse-country minimum-viable 3-component fallback in `longterm_stress.yaml`; implemented Ray's dynamic stock/flow weighting formula (`_dynamic_group_weights()`); added linear interpolation for single missing annual observations (`_fill_missing_annual_via_interpolation()`).
+- **#21/#22 Cycle Health Index**: conditional growth/rate/inflation weight rule (`_conditional_chi_weights()`) and a nominal/real policy-rate toggle (`use_real_policy_rate`, defaults nominal).
+- **Data-feed checks resolved but not yet coded**: #8 (`FEDTARMD` FOMC dot-plot as forward-guidance proxy — no free futures feed exists) and #9 (`DRSDCILM` SLOOS loan-demand series confirmed free, pairs with existing `DRTSCILM`).
+- **#13 Volatility restructure — data constraint found**: FRED only has daily `SP500` for the US (from 2016-07), and just *monthly* share-price indices for EZ (`SPASTT01EZM661N`) / KR (`SPASTT01KRM661N`) — no daily equity feed for EZ/KR, so true realized vol isn't feasible there without a lower-resolution monthly-return proxy. Architecture work still pending.
+
+**Validation:** `python3 -m pytest` → 370 passed, 1 pre-existing unrelated failure (`test_compare_raw_vs_processed_level_signal`, a pandas dtype bug, reproduces on main without any of these changes — spawned as a separate task). Pipeline re-run clean after each change.
+
+**Remaining:** #13 (Volatility restructure, needs a data-feed decision given the constraint above) and #23 (the full regime-classifier threshold algorithm — the biggest, most invasive remaining change).

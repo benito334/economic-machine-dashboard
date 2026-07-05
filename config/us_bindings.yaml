@@ -392,6 +392,22 @@ bindings:
     sanity_min: -1.0
     sanity_max: 6.0
 
+  - id: inflation.breakeven_avg
+    provider: derived
+    frequency: D
+    force: inflation
+    lead_lag: leading
+    transformation: derived
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 2.0
+    linkage: "Average of 5Y and 10Y TIPS breakevens — blended market inflation expectations. Replaces the two individual breakeven signals in the inflation composite (they're correlated r~0.90 and were double-counting the same expectations channel); both raw signals remain available individually for drill-down."
+    sanity_min: -1.0
+    sanity_max: 6.0
+
   - id: inflation.crude_oil
     series_id: DCOILWTICO
     provider: FRED

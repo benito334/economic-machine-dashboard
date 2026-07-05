@@ -356,31 +356,38 @@ def test_inflation_config_uses_bound_ppi_signal():
 # ── Guidance defaults: importance, base shares, and quality ──────────────────
 
 def test_breakeven_guidance_defaults():
+    # 2026-07-05 Ray Dalio review (#2): breakeven_5y + breakeven_10y merged into
+    # a single blended inflation.breakeven_avg signal (r~0.90 correlated, was
+    # double-counting the same market-expectations channel).
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["inflation_score"]["indicators"]}
-    assert by_id["inflation.breakeven_5y"]["base_share"] == 0.5
-    assert by_id["inflation.breakeven_5y"]["importance"] == 0.25   # CONTEXT — market expectations anchor
-    assert by_id["inflation.breakeven_5y"]["quality_factor"] == 0.90
-    assert by_id["inflation.breakeven_10y"]["base_share"] == 0.5
-    assert by_id["inflation.breakeven_10y"]["importance"] == 0.20  # VOLATILE — correlated with 5y (r~0.90)
-    assert by_id["inflation.breakeven_10y"]["quality_factor"] == 0.90
+    assert by_id["inflation.breakeven_avg"]["base_share"] == 0.5
+    assert by_id["inflation.breakeven_avg"]["importance"] == 0.30
+    assert by_id["inflation.breakeven_avg"]["quality_factor"] == 0.90
 
 
 # ── G1: Labour-market group weights ──────────────────────────────────────────
 
 def test_growth_importance_guidance_defaults():
+    # 2026-07-05 Ray Dalio review (#1): GDP-regression calibration applied to the
+    # 9 original cyclical signals (indicators/calibrate.py); productivity-trend
+    # signals below are NOT calibrated against GDP (deliberately structural).
     cfg = load_composites_config()
     by_id = {ind["id"]: ind for ind in cfg["growth_score"]["indicators"]}
     expected = {
-        "growth.payrolls": 0.90,        # PRIMARY
-        "growth.industrial_prod": 0.80,  # PRIMARY
-        "growth.retail_sales": 0.75,     # STRONG
-        "growth.real_pce": 0.65,         # STRONG — correlated with retail_sales (r=0.80)
-        "growth.capacity_util": 0.65,    # STRONG
-        "growth.job_openings": 0.85,     # PRIMARY
-        "growth.pmi_proxy": 0.80,        # PRIMARY
-        "growth.labor_force_part": 0.60, # STRONG
-        "growth.unemployment": 0.45,     # CONTEXT — lagging indicator
+        "growth.payrolls": 0.64,
+        "growth.industrial_prod": 0.66,
+        "growth.retail_sales": 0.67,
+        "growth.real_pce": 0.95,
+        "growth.capacity_util": 0.45,
+        "growth.job_openings": 0.25,
+        "growth.pmi_proxy": 0.49,
+        "growth.labor_force_part": 0.10,
+        "growth.unemployment": 0.25,
+        # Long-run productivity trend, added 2026-07-05 (Ray Dalio review #7):
+        "growth.productivity": 0.35,     # CONTEXT — quarterly labor productivity
+        "growth.tfp": 0.20,              # VOLATILE — annual TFP
+        "growth.rnd_intensity": 0.15,    # VOLATILE — annual R&D/GDP
     }
     assert {signal_id: by_id[signal_id]["importance"] for signal_id in expected} == expected
 
@@ -392,8 +399,7 @@ def test_inflation_importance_guidance_defaults():
         "inflation.pce_core": 0.95,      # PRIMARY — Fed mandate measure
         "inflation.cpi_core": 0.65,      # STRONG — correlated with pce_core (r~0.92); was 0.95
         "inflation.wages": 0.30,         # CONTEXT
-        "inflation.breakeven_5y": 0.25,  # CONTEXT
-        "inflation.breakeven_10y": 0.20, # VOLATILE — correlated with 5y (r~0.90); was 0.25
+        "inflation.breakeven_avg": 0.30, # CONTEXT — blended 5Y/10Y (2026-07-05 Ray Dalio review #2)
         "inflation.cpi_headline": 0.20,  # VOLATILE
         "inflation.crude_oil": 0.10,     # VOLATILE
         "inflation.ppi_broad": 0.30,     # CONTEXT

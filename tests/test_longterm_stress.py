@@ -38,6 +38,9 @@ from indicators.longterm_stress import (
     stress_band_label,
     compute_debt_stress_history,
     load_longterm_stress_config,
+    _dynamic_group_weights,
+    _fill_missing_annual_via_interpolation,
+    _expanding_median_lagged,
 )
 from indicators.models import DebtStressSnapshot
 
@@ -799,3 +802,87 @@ def test_full_config_staleness_section(full_config):
     assert extrap["enabled"] is False, (
         "extrapolation.enabled must be False by default; enable only after validation"
     )
+
+
+# ── Dynamic stock/flow weighting (Ray Dalio review 2026-07-05, #17) ────────────
+
+def test_full_config_dynamic_weighting_section(full_config):
+    dyn = full_config.get("dynamic_weighting")
+    assert dyn is not None
+    assert dyn["enabled"] is True
+    stock = set(dyn["stock_components"])
+    flow = set(dyn["flow_components"])
+    assert not (stock & flow)
+    by_id = {c["id"]: c["weight"] for c in full_config["components"]}
+    assert sum(by_id[cid] for cid in stock) == pytest.approx(0.55)
+    assert sum(by_id[cid] for cid in flow) == pytest.approx(0.45)
+
+
+def test_dynamic_group_weights_matches_rays_formula_at_median():
+    # Ray's formula: effective_flow_weight = base_flow_weight * (1 + k * (ratio/median))
+    # At ratio == median (a "normal" reading), the ratio term is 1, so
+    # effective_flow_weight = base_flow_weight * (1 + k), not the raw base weight —
+    # this is the formula exactly as specified, not an invented interpretation.
+    components = [
+        {"id": "stockA", "weight": 0.55},
+        {"id": "flowA", "weight": 0.45},
+    ]
+    weights = _dynamic_group_weights(
+        components, stock_ids={"stockA"}, flow_ids={"flowA"},
+        debt_service_ratio=10.0, median_service_ratio=10.0, k=0.2,
+    )
+    assert weights["flowA"] == pytest.approx(0.45 * 1.2)
+    assert weights["stockA"] == pytest.approx(1.0 - 0.45 * 1.2)
+    assert weights["flowA"] + weights["stockA"] == pytest.approx(1.0)
+
+
+def test_dynamic_group_weights_shifts_toward_flow_when_elevated():
+    components = [
+        {"id": "stockA", "weight": 0.55},
+        {"id": "flowA", "weight": 0.45},
+    ]
+    # debt_service_ratio is double its median -> eff_flow = 0.45 * (1 + 0.2*2.0) = 0.63
+    weights = _dynamic_group_weights(
+        components, stock_ids={"stockA"}, flow_ids={"flowA"},
+        debt_service_ratio=20.0, median_service_ratio=10.0, k=0.2,
+    )
+    assert weights["flowA"] == pytest.approx(0.63)
+    assert weights["stockA"] == pytest.approx(0.37)
+    assert weights["flowA"] + weights["stockA"] == pytest.approx(1.0)
+
+
+def test_dynamic_group_weights_falls_back_when_median_unavailable():
+    components = [
+        {"id": "stockA", "weight": 0.55},
+        {"id": "flowA", "weight": 0.45},
+    ]
+    weights = _dynamic_group_weights(
+        components, stock_ids={"stockA"}, flow_ids={"flowA"},
+        debt_service_ratio=20.0, median_service_ratio=None, k=0.2,
+    )
+    assert weights == {"stockA": 0.55, "flowA": 0.45}
+
+
+def test_expanding_median_lagged_excludes_current_period():
+    s = pd.Series([1.0, 2.0, 3.0, 100.0], index=pd.date_range("2020-01-01", periods=4, freq="YE"))
+    med = _expanding_median_lagged(s, min_periods=1)
+    # The last value (100.0) must not influence its own reference median
+    assert med.iloc[-1] == pytest.approx(2.0)  # median of [1.0, 2.0, 3.0]
+
+
+# ── Missing annual observation interpolation (Ray Dalio review 2026-07-05, #19) ─
+
+def test_fill_missing_annual_via_interpolation_fills_single_gap():
+    idx = pd.date_range("2020-12-31", periods=4, freq="YE")
+    s = pd.Series([1.0, np.nan, 3.0, 4.0], index=idx)
+    filled = _fill_missing_annual_via_interpolation(s)
+    assert filled.loc[idx[1]] == pytest.approx(2.0)
+
+
+def test_fill_missing_annual_via_interpolation_does_not_extrapolate_trailing_gap():
+    idx = pd.date_range("2020-12-31", periods=4, freq="YE")
+    s = pd.Series([1.0, 2.0, 3.0, np.nan], index=idx)
+    filled = _fill_missing_annual_via_interpolation(s)
+    # Trailing (most-recent) gap is NOT filled — that's genuine staleness, not an
+    # internal data gap, and should still be handled by the normal staleness path.
+    assert pd.isna(filled.loc[idx[-1]])
