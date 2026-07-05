@@ -169,6 +169,89 @@ def _section_text(title: str, paras: list[str],
     return "\n".join(parts).rstrip()
 
 
+# ── Regime input-flow diagram (theme-adaptive, built from styled boxes) ───────
+
+_FLOW_BLUE = "#4C9BE8"
+_FLOW_AMBER = "#E8A317"
+
+
+def _flow_box(label: str, sublabel: str | None = None, accent: str | None = None,
+              dashed: bool = False, strong: bool = False):
+    border_style = "dashed" if dashed else "solid"
+    border_col = accent or "var(--muted-color)"
+    style = {
+        "border": f"{'2px' if strong else '1px'} {border_style} {border_col}",
+        "borderRadius": "8px",
+        "padding": "8px 12px",
+        "background": (f"{accent}26" if (accent and not dashed) else "transparent"),
+        "color": "var(--font-color)",
+        "fontSize": "0.8rem",
+        "textAlign": "center",
+        "minWidth": "118px",
+        "lineHeight": "1.35",
+    }
+    children = [html.Div(label, style={"fontWeight": "600" if strong else "500"})]
+    if sublabel:
+        children.append(html.Div(sublabel, style={
+            "fontSize": "0.68rem", "color": "var(--muted-color)", "marginTop": "1px"}))
+    return html.Div(children, style=style)
+
+
+def _flow_arrow(label: str | None = None, dashed: bool = False):
+    arrow = html.Span("→", style={
+        "fontSize": "1.2rem", "color": "var(--muted-color)",
+        "opacity": "0.6" if dashed else "1"})
+    if not label:
+        return html.Div(arrow, style={"padding": "0 6px", "alignSelf": "center"})
+    return html.Div([
+        arrow,
+        html.Div(label, style={"fontSize": "0.62rem", "color": "var(--muted-color)"}),
+    ], style={"padding": "0 6px", "textAlign": "center", "alignSelf": "center"})
+
+
+def _regime_input_flow() -> html.Div:
+    _row = {"display": "flex", "flexWrap": "wrap", "alignItems": "center", "gap": "6px"}
+    return html.Div([
+        html.Div([
+            html.Div([
+                _flow_box("Growth score", "+ momentum", _FLOW_BLUE),
+                _flow_box("Inflation score", "+ momentum", _FLOW_BLUE),
+            ], style={"display": "flex", "flexDirection": "column", "gap": "6px"}),
+            _flow_arrow("classified"),
+            _flow_box("Regime category", "growth + inflation chips", _FLOW_BLUE, strong=True),
+        ], style=_row),
+        html.Div([
+            _flow_box(
+                "Dynamic mode only  —  bends the ± thresholds",
+                "credit tightness · composite noise · country volatility",
+                _FLOW_AMBER),
+            _flow_arrow("adjusts the cutoffs", dashed=True),
+            html.Span("(never enters the score)", style={
+                "fontSize": "0.68rem", "color": "var(--muted-color)",
+                "fontStyle": "italic", "alignSelf": "center"}),
+        ], style={**_row, "marginTop": "12px"}),
+        html.Div("Computed and shown, but not part of the regime label:", style={
+            "fontSize": "0.72rem", "color": "var(--muted-color)", "margin": "14px 0 6px"}),
+        html.Div([
+            _flow_box("Rate score", dashed=True),
+            _flow_box("Market volatility", dashed=True),
+            _flow_box("Debt stress", dashed=True),
+            _flow_box("Cycle Health Index", dashed=True),
+        ], style=_row),
+        html.Div([
+            html.Span("■ ", style={"color": _FLOW_BLUE}),
+            html.Span("feeds the label   ", style={"fontSize": "0.68rem", "color": "var(--muted-color)"}),
+            html.Span("■ ", style={"color": _FLOW_AMBER}),
+            html.Span("bends thresholds (dynamic only)   ", style={"fontSize": "0.68rem", "color": "var(--muted-color)"}),
+            html.Span("▢ ", style={"color": "var(--muted-color)"}),
+            html.Span("shown, not in label", style={"fontSize": "0.68rem", "color": "var(--muted-color)"}),
+        ], style={"marginTop": "12px"}),
+    ], style={
+        "border": "1px solid var(--border-color)", "borderRadius": "10px",
+        "padding": "16px", "margin": "8px 0 4px", "background": "var(--card-bg)",
+    })
+
+
 # ── Page layout ───────────────────────────────────────────────────────────────
 
 def get_layout() -> html.Div:
@@ -946,6 +1029,16 @@ def get_layout() -> html.Div:
                         "policy-rate or credit-cycle shift. Off by default — existing behavior is "
                         "unchanged unless a user opts in. See docs/Guidance/ray_dalio_review_log.md #23.",
 
+                        "WHAT FEEDS THE LABEL: the regime category is classified from Growth and "
+                        "Inflation only. Rate, the market Volatility force, Debt Stress, and the "
+                        "Cycle Health Index are computed and displayed but do NOT enter the "
+                        "classification. The one indirect exception is Credit tightness (plus each "
+                        "composite's own recent noisiness and the country's rolling volatility), "
+                        "which in dynamic mode bends the ± thresholds rather than becoming part of "
+                        "the score. Direct: growth_score, inflation_score (+ momentum). Indirect "
+                        "(dynamic mode only): credit tightness, composite noise, country volatility. "
+                        "Not in the label: rate_score, volatility_score, debt stress, cycle health.",
+
                         "STORED QUADRANT (database) uses a different, simpler rule: "
                         "sign(growth_score) × sign(inflation_score) → one of four labels "
                         "(Expansion, Inflationary Boom, Stagflation, Disinflationary Slowdown). "
@@ -1036,6 +1129,41 @@ def get_layout() -> html.Div:
                 _note("Dynamic thresholds are opt-in and off by default — existing dashboards see "
                       "identical behavior unless a user explicitly enables the checkbox.  Full "
                       "algorithm spec: docs/Guidance/ray_dalio_review_log.md, punch item #23."),
+                _sub("What actually feeds the regime label"),
+                _p("A common question after the 2026-07 changes: with five forces now computed, "
+                   "how many of them drive the regime category?  The answer is deliberately narrow, "
+                   "following the Ray Dalio review — the label is classified from Growth and "
+                   "Inflation only.  Rate, the market Volatility force, Debt Stress, and the Cycle "
+                   "Health Index are each computed and displayed, but none of them enter the "
+                   "classification.  The one indirect exception is Credit: in dynamic mode, credit "
+                   "tightness (plus each composite's own recent noisiness and the country's rolling "
+                   "volatility) bends the ± thresholds that Growth and Inflation must cross — it "
+                   "moves the goalposts rather than becoming part of the score.  This was Ray's "
+                   "explicit design: keep the classifier clean, let the supporting forces adjust "
+                   "the bar instead of muddying the inputs."),
+                _regime_input_flow(),
+                _table(
+                    ["Force / input", "Role in the regime label", "How it enters"],
+                    [
+                        ["Growth score (+ momentum)", "Sets the Growth chip", "Direct input — classified"],
+                        ["Inflation score (+ momentum)", "Sets the Inflation chip", "Direct input — classified"],
+                        ["Credit tightness", "Raises the inflation threshold when credit is tight",
+                         "Indirect — bends thresholds (dynamic mode only)"],
+                        ["Composite noisiness", "Widens both thresholds when a force has been erratic",
+                         "Indirect — bends thresholds (dynamic mode only)"],
+                        ["Country rolling volatility", "Scales the baseline threshold per country",
+                         "Indirect — sets the baseline (dynamic mode only)"],
+                        ["Rate score", "None — displayed alongside", "Not in the label"],
+                        ["Market Volatility force (VIX / realized vol)", "None — displayed alongside",
+                         "Not in the label"],
+                        ["Debt Stress", "None — separate long-cycle diagnostic", "Not in the label"],
+                        ["Cycle Health Index", "None — separate Global Overview metric", "Not in the label"],
+                    ]
+                ),
+                _note("The 'composite noisiness' that bends the thresholds is the statistical "
+                      "jumpiness of the Growth/Inflation scores themselves (12-month rolling std of "
+                      "each composite's own Z-score) — it is NOT the market-based Volatility force "
+                      "(VIX / realized vol), which shares the word but does not feed the label."),
                 _note("The stored quadrant (DB / Global Overview) and the dashboard chips can "
                       "diverge: if the Z-score is in the right half-plane but momentum is flat or "
                       "negative, the chips show Transition while the stored quadrant still shows "
@@ -1795,6 +1923,7 @@ def get_layout() -> html.Div:
                         ["Date", "Change", "Sections affected"],
                         [
                             ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
+                            ["2026-07-05", "Documented what actually feeds the regime label (Growth+Inflation direct; Credit indirect via dynamic thresholds; Rate/Volatility/Debt Stress/CHI not in the label) + input-flow diagram", "8"],
                             ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],
                             ["2026-07-05", "Cycle Health Index: conditional growth/rate/inflation weight tilt; nominal/real policy-rate toggle", "13"],
                             ["2026-07-05", "Long-Term Debt Stress: dynamic stock/flow weighting formula; missing-annual-data interpolation; sparse-country minimum-viable component set documented", "9"],
@@ -1821,6 +1950,7 @@ def get_layout() -> html.Div:
                     ["Date", "Change", "Sections affected"],
                     [
                         ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
+                        ["2026-07-05", "Documented what actually feeds the regime label (Growth+Inflation direct; Credit indirect via dynamic thresholds; Rate/Volatility/Debt Stress/CHI not in the label) + input-flow diagram", "8"],
                         ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],
                         ["2026-07-05", "Cycle Health Index: conditional growth/rate/inflation weight tilt; nominal/real policy-rate toggle", "13"],
                         ["2026-07-05", "Long-Term Debt Stress: dynamic stock/flow weighting formula; missing-annual-data interpolation; sparse-country minimum-viable component set documented", "9"],
