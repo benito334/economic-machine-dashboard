@@ -3924,6 +3924,28 @@ def _save_thresholds(
     return no_update
 
 
+@callback(
+    Output("regime-threshold-store", "data", allow_duplicate=True),
+    Input("rh-dynamic-toggle", "value"),
+    State("regime-threshold-store", "data"),
+    prevent_initial_call=True,
+)
+def _apply_dynamic_toggle(dynamic_val: "list | None", current: "dict | None") -> dict:
+    """Dynamic-thresholds is a mode switch, not a value to confirm — apply it the
+    moment the checkbox changes rather than waiting for the Apply button (which
+    users don't expect to press for a checkbox).  Slider values still require Apply.
+    """
+    from dash import no_update
+    t = dict(current or _DEFAULT_THRESHOLDS)
+    new_val = bool(dynamic_val)
+    if bool(t.get("dynamic", False)) == new_val:
+        # No real change (e.g. this fired because the modal-open sync callback
+        # set the checkbox to match the store) — don't rewrite the store.
+        return no_update
+    t["dynamic"] = new_val
+    return t
+
+
 # ── Regime Map scatter — callbacks ────────────────────────────────────────────
 
 @callback(

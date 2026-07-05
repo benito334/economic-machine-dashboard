@@ -1174,3 +1174,31 @@ class TestComputeDynamicThresholds:
         }, index=idx)  # no credit_score column at all
         result = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
         assert (result["credit_adj"] - 1.0).abs().max() < 1e-6
+
+
+class TestDynamicToggleImmediateApply:
+    """The dynamic-thresholds checkbox applies on click, not via the Apply button."""
+
+    def test_toggle_on_writes_dynamic_true(self):
+        from dashboard.charting import _apply_dynamic_toggle
+
+        result = _apply_dynamic_toggle(["dynamic"], {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": False})
+        assert result["dynamic"] is True
+        # other threshold values are preserved
+        assert result["gz"] == 0.5 and result["iz"] == 0.5
+
+    def test_toggle_off_writes_dynamic_false(self):
+        from dashboard.charting import _apply_dynamic_toggle
+
+        result = _apply_dynamic_toggle([], {"gz": 0.4, "iz": 0.4, "gm": 0.0, "im": 0.0, "dynamic": True})
+        assert result["dynamic"] is False
+        assert result["gz"] == 0.4  # preserved
+
+    def test_no_op_when_value_matches_store(self):
+        from dashboard.charting import _apply_dynamic_toggle
+        from dash import no_update
+
+        # This is what fires when the modal-open sync sets the checkbox to match
+        # the store — must not rewrite the store (would cause a needless re-render).
+        assert _apply_dynamic_toggle([], {"dynamic": False}) is no_update
+        assert _apply_dynamic_toggle(["dynamic"], {"dynamic": True}) is no_update
