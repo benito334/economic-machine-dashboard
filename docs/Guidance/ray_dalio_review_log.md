@@ -4,6 +4,8 @@ Persistent record of technical review sessions with the external "Ray Dalio" AI 
 
 Goal per [CLAUDE.md](../../CLAUDE.md): confirm the dashboard actually supports understanding global economies "from a Ray Dalio point of view" well enough to inform smart global investing decisions — even though allocation/trade logic itself stays out of this repo's scope.
 
+**Build roadmap:** the layered, Ray-framework dashboard architecture that came out of this review is operationalized as a concrete, phased plan in [ray_framework_roadmap.md](ray_framework_roadmap.md) — start there when picking up build work.
+
 Working agreement (2026-07-05):
 - Keep the current 5-force taxonomy (Growth / Inflation / Rate / Credit / Volatility) as the review structure **unless Ray makes the case we're using the wrong framework** (e.g. his short-term debt cycle / long-term debt cycle / productivity / 3-big-cycles model) — if so, note it here and revisit.
 - Scope: diagnostic layer review + explicit flagging of investment-layer gaps (market/asset-price context missing from current build). No allocation logic gets built here.
