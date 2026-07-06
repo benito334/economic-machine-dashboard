@@ -1104,3 +1104,19 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Validation:** `python3 -m pytest` → 382 passed, 1 pre-existing unrelated failure (dtype bug, tracked separately). Verified live in the rebuilt dashboard.
 
 **Next:** Punch list is done. Remaining open items are all explicitly deferred (data-feed research per `docs/Guidance/data_source_wishlist.md`, or out-of-scope per the Allocation Layer boundary). Divergence-flag UI badge is a small nice-to-have follow-up, not blocking. BEA Q1 2026 refresh still pending per `session-checklist.md`.
+
+---
+
+## 2026-07-05 — Roadmap Phase A complete + Phase G backtest (G1+G2)
+
+**Done:**
+- **Roadmap created + Phase CC added**: `docs/Guidance/ray_framework_roadmap.md` — phased plan (A–H) for the 5-layer Ray-framework dashboard; Phase CC = country command center (single synthesis front-door page per country; v1 is assembly-only from existing data, closes the divergence-badge follow-up).
+- **Phase A2**: `credit.loan_demand` (FRED `DRSDCILM`, SLOOS demand side) added to the US credit basket — pairs with supply-side lending standards (Ray #9). 139 quarterly obs, verified live.
+- **Phase A1**: the assumed forward-guidance feed (`FEDTARMD` dot-plot) proved non-viable (future-dated forecast snapshot, no Z-scoreable history). Asked Ray; he chose a derived `policy.rate_expectations` = `yield_2y − fed_funds` ("money is made by identifying change rather than forecasting it"). Built at CONTEXT tier (0.45, inverted), 11,625 daily obs; keep/weight decision deferred to Phase G3 per his caveat.
+- **Phase G1 — point-in-time backtest engine** (`indicators/backtest.py`): expanding-window shift(1) Z-scores (no statistical look-ahead), PIT composites (momentum tilt/age decay deliberately omitted — documented), classification via the production `_classify_regime`/`compute_dynamic_thresholds` (single source of truth). 9 unit tests.
+- **Phase G2 — scenario scoring**: 8 named scenarios 1990→2024 (history starts 1980-81, so no 1970s replay). Results: wrong-direction ≈ 0% everywhere (direction validation PASSED with zero look-ahead); dynamic thresholds ≥ fixed (won 1990-91 recession 50→88% strict and late-90s boom 33→54%, tied the rest, cost 1 mislabeled month in 48). Verdict: supportive of dynamic, keep opt-in until G3. Design insight: the ΔMoM gate parks fast V-shaped episodes (COVID 33% strict) in Transition during the rebound — exit-condition asymmetry is a future refinement candidate.
+- Report: `docs/backtests/pit_regime_backtest_us.md` (regenerate with `python -m indicators.backtest`).
+
+**Validation:** `python3 -m pytest` → 397 passed, 1 pre-existing unrelated failure (dtype bug).
+
+**Next (per roadmap sequence):** Phase B (promote productivity trend) → Phase CC (command center v1) → Phase C (debt-cycle stage classifier). G3 (ALFRED vintage replay + asset-outcome tests incl. rate_expectations validation) stays open.

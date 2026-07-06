@@ -84,12 +84,16 @@ Validates the sparse-country patterns end to end.
 - Create `config/countries/jp_bindings.yaml` + `jp_composites.yaml`; apply the documented minimum-viable Debt Stress subset; use the monthly-proxy Volatility pattern; honest `vintage_available` and human sign-off.
 - **Deps:** none (can slot in anytime). **DoD:** JP appears across all pages with the same honesty flags as EZ/KR.
 
-### Phase G — Backtesting engine (Phase 3)  ·  Effort: L
-Highest-leverage validation. Ray's own emphasis: systematically test every change.
-- Replay FRED vintages against named scenarios (1970s stagflation, 2008 GFC, 2020 COVID); confirm the regime classifier lands in the expected regime with no look-ahead bias.
-- Crucially: **use this to validate whether the opt-in dynamic-threshold algorithm actually beats the fixed one** — right now that's unproven, and this decides whether dynamic becomes the default.
-- Also calibrates Phase C's stage thresholds against history.
-- **Deps:** none technically, but its output feeds C's calibration and the dynamic-vs-fixed decision. **DoD:** a reproducible backtest report per scenario + a dynamic-vs-fixed comparison.
+### Phase G — Backtesting engine (Phase 3)  ·  Effort: L  ·  **G1+G2 done 2026-07-05, G3 open**
+Highest-leverage validation. Ray's own emphasis: systematically test every change. Staged:
+- **G1 ✅ — point-in-time engine** (`indicators/backtest.py`): expanding-window shift(1) Z-scores so the classifier at month t uses only data available before t — eliminates *statistical* look-ahead. 36-month warm-up; scored era 1983→2026 (559 months). Data starts 1980-81, so no 1970s scenario is possible; 8 named scenarios from the 1990-91 recession through the 2023 disinflation. Run via `python -m indicators.backtest`; reproducible report at `docs/backtests/pit_regime_backtest_us.md`; 9 unit tests.
+- **G2 ✅ — scenario scoring + fixed-vs-dynamic comparison.** Findings:
+  1. **Direction validation passed.** With zero look-ahead, wrong-direction labels ≈ 0% in every scenario (single exception: 1 month of "Inflation" during the gradual 2023 cooling). The classifier lands on the correct side of every bust, boom, and inflation episode since 1983.
+  2. **Dynamic ≥ fixed.** Dynamic won 2 scenarios outright (1990-91 recession strict 50%→88%; late-90s boom 33%→54%) and tied the other 6, at the cost of one mislabeled month in 48 during the boom (+2% wrong). Mechanism: the country-vol-scaled baseline sets thresholds well below the flat 0.5 in low-volatility eras, giving more decisive labels. **Verdict: supportive of dynamic, not yet conclusive — keep it opt-in; revisit the default after G3** (only 8 scenarios, final-revised data).
+  3. **Design insight — the momentum gate dominates strict scores.** In fast V-shaped episodes (COVID: 33% strict) the ΔMoM gate flips positive during the rebound while Z is still deeply negative, parking months in Transition. If "still-in-recession persistence" is ever wanted, the *exit* condition needs asymmetry (e.g. require Z to recross, not just delta to flip) — logged as a future refinement candidate, possibly one to put to Ray.
+  4. 2023 disinflation scoring 0% strict is *correct* semantics: cooling from a high level ≠ below-average inflation, so Transition is the right chip.
+- **G3 ⬜ — remaining:** ALFRED vintage replay (data as known at the time — eliminates data-*revision* look-ahead); asset-outcome predictive tests (incl. Ray's suggested validation of `rate_expectations` against bond/credit outcomes, which decides whether that signal keeps its slot); Phase C stage-threshold calibration.
+- **DoD:** ✅ reproducible per-scenario report + dynamic-vs-fixed comparison exist. G3 items tracked above.
 
 ### Phase H — Investment bridge  ·  ⛔ OUT OF SCOPE
 Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, scenario stress-testing (Ray's 5-step roadmap, review-log #12). Belongs to the separate Allocation Layer project. Listed here only so the hand-off point is explicit.
