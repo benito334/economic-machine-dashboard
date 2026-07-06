@@ -124,3 +124,28 @@ Inputs: `z_growth, z_inflation, delta_growth, delta_inflation` (current Z-scores
 Worked numerical example (Ray's own, sanity-checked): tight credit (credit_z=2.0, hi=1.5) + normal vol → `credit_adj=1.15`, `vol_adj≈1.075` → inflation threshold rises ~24% above baseline (`final_iz = 0.60 × 1.15 × 1.075 ≈ 0.742`) while growth threshold only picks up the vol adjustment (`final_gz = 0.72 × 1.075 ≈ 0.774`). Sanity checks Ray called out explicitly: tight-credit-alone → modest inflation-threshold rise; vol-spike-alone → both thresholds widen equally; both extreme → multiplicative compounding pushes inflation threshold well above growth's; 3+ months of opposite chips → divergence flag fires, "historically associated with policy-rate or credit-cycle shifts."
 
 **Next up:** none remaining in the systematic per-force pass — all 5 forces, Debt Stress, CHI, and the regime-classifier mechanism are now reviewed with Ray and have concrete plans. #12 (investment-layer roadmap) stays logged as acknowledged-no-build per scope; no further Ray iteration planned on it since it already has a full 5-step roadmap and doesn't belong in this repo. Remaining work is user triage + implementation of the ready-to-implement items, plus resolving the needs-data-feed-check items (#8, #9 already resolved with concrete FRED series; #15, #18 still open).
+
+---
+
+## Session 2026-07-06 — Unification audit: lookback windows, taxonomy, confidence metric
+
+**Context.** After the roadmap build-out (Phases CC/C/D/E/F/G3 + UK rollout) three inconsistencies emerged between the older pages (Regime History/Map/Signals — user-selectable rolling windows, age decay) and the new pages (Command Center, Relative Cycles — full-history Z only), plus two legacy-taxonomy seams. Briefed Ray with three question groups; his rulings below (verbatim decisions, paraphrased reasoning).
+
+| Q | Ruling | Reasoning |
+|---|---|---|
+| Q1a Front-door windows | Command Center dials/chips compute on the **user-selected rolling window**, canonical defaults applied when untouched | The front door must reflect the current regime as perceived by the whole system — same engine as Regime History, no contradictory displays |
+| Q1b Cross-country | **Every country normalized on the SAME canonical rolling window** — never per-country spans, never per-user in the comparison matrix | A correlation matrix measures co-movement, not baselines; uniform windows remove Korea's development-era distortion |
+| Q1c Canonical defaults | **Growth 48m · Inflation 96m · Policy/Rate 36m**, user-overridable via sidebar | Backed by the vintage-replay backtest (longer windows improve classification for long-running regimes like inflation); 4y still catches a 12–18-month transition |
+| Q2 Taxonomy | Keep the four seasons **only as background shading beyond the ±gz/±iz lines** ("seasonal archetype" — modes of behavior); inside the band: explicit "Transition — no clear season" | Season names are valuable shorthand but become misleading in the gray zone where momentum doesn't meet the magnitude criteria; chips remain the decision rule |
+| Q3 Confidence | **Rename to "Chip Direction Agreement"**, split into Growth Chip Agreement + Inflation Chip Agreement (each = % of that force's signals moving with its chip's heading); optional average with components visible | The old definition was tied to a quadrant that no longer exists inside the transition band; aligning the metric with the chips makes it honest and actionable |
+
+**Implemented same-day (all of it):**
+- **Rolling columns for every country** — root fix: composite rolling passes (36/48/60m force, 90/120m inflation) were US-only; now run inside the pipeline country loop and backfilled for EZ/GB/JP/KR. The sidebar sliders previously silently fell back to full-history for non-US countries.
+- Canonical defaults: sliders + stores default to **48m growth / 90m inflation** (Ray ruled 96m; 90m is the existing DB grid point — Δ6m immaterial, documented). Policy/Rate 36m deferred: the rate composite has no rolling variants yet (logged as a follow-up).
+- Command Center wired to both window stores (dials, deltas, chips, dynamic-threshold inputs all use the windowed columns; "window 48m / 90m" annotation in the header).
+- Relative Cycles: country cards AND correlation matrices normalized on the canonical 48m/90m columns for every country, annotated in titles.
+- Regime Map: season shading only beyond the threshold lines; central "Transition — no clear season" label; all sign-based quadrant re-derivations replaced with the threshold-aware `_season_label()`; hover labels honest inside the band.
+- Confidence → **Chip Direction Agreement**: computed against the chips' headings (sign of composite MoM delta, inverted signals flipped) with G/I sub-metrics on both the Regime Map info card and the Command Center header. Stored legacy `confidence` column retained as fallback/history only.
+- 5 new tests (season-label thresholds, agreement math, CC window honoring, relative canonical windows).
+
+**Still open from this session:** rate-basket rolling variants (for the 36m policy default), stored-quadrant column retirement decision (kept for backtest/legacy compatibility for now).

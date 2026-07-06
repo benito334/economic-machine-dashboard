@@ -765,6 +765,27 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             snaps = compute_composite_history(conn, country_code.upper(), country_comp_config, freq_map=freq_map)
             n_comp = upsert_composites(conn, snaps)
             audit_signal_correlations(conn, country_code.upper(), country_comp_config)
+
+            # Rolling composite variants (Ray audit ruling 2026-07-06, Q1b:
+            # every country needs the same rolling windows as the US so the
+            # cross-country views can normalize on one canonical window).
+            for zscore_col, diseq_w, force_sfx, diseq_sfx in [
+                ("zscore_36m", 12, "36m", "12m"),
+                ("zscore_48m", 18, "48m", "18m"),
+                ("zscore_60m", 24, "60m", "24m"),
+            ]:
+                roll_snaps = compute_composite_history(
+                    conn, country_code.upper(), country_comp_config, freq_map=freq_map,
+                    zscore_col=zscore_col, diseq_window=diseq_w,
+                )
+                update_rolling_composites(conn, roll_snaps, force_suffix=force_sfx, diseq_suffix=diseq_sfx)
+            for zscore_col, force_sfx in [("zscore_90m", "90m"), ("zscore_120m", "120m")]:
+                roll_snaps = compute_composite_history(
+                    conn, country_code.upper(), country_comp_config, freq_map=freq_map,
+                    zscore_col=zscore_col, diseq_window=0,
+                )
+                update_inflation_rolling(conn, roll_snaps, force_suffix=force_sfx)
+            print(f"  Rolling variants (36/48/60m force, 90/120m inflation) updated")
             latest = snaps[-1] if snaps else None
             if latest:
                 q   = latest.quadrant or "?"

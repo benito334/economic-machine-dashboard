@@ -1235,3 +1235,20 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - 440 tests pass. Methodology §15 revision row.
 
 **Next:** China is next in the Phase 2 order (WB/IMF harmonized only — NBS out of scope). Other open tails: D4 manual-load slots, ONS/e-Stat registrations, dtype test failure, 2007-squeeze threshold tweak.
+
+---
+
+## 2026-07-06 — Unification audit (Ray session): windows, taxonomy, confidence
+
+**Ray session** (rulings logged in full in ray_dalio_review_log.md): Q1 lookback windows → rolling everywhere, canonical defaults 48m growth / 96m inflation / 36m policy, user-overridable, cross-country views on ONE uniform window; Q2 taxonomy → four seasons demoted to background shading beyond the ±threshold lines only, explicit "Transition — no clear season" inside the band; Q3 → confidence renamed **Chip Direction Agreement**, split G/I, measured against the chips' headings.
+
+**Done:**
+- **Root fix — rolling composite columns were US-only.** The sidebar window sliders silently fell back to full-history for every non-US country. Rolling passes (36/48/60m force + 90/120m inflation) now run inside the pipeline country loop; backfilled for EZ/GB/JP/KR (all 5 countries populated).
+- Canonical defaults wired: sliders + localStorage stores default to 48m/90m (Ray ruled 96m — 90m is the existing DB grid point, Δ documented; policy 36m deferred: rate composite has no rolling variants yet, logged).
+- **Command Center** now honors both window stores (dials, Δs, chips, dynamic-threshold inputs on windowed columns; "window 48m / 90m" header annotation) and displays **chip agreement G x% · I y%** instead of the legacy confidence.
+- **Relative Cycles**: cards + correlation matrices normalized on canonical 48m/90m for every country (Q1b), annotated in the heatmap titles.
+- **Regime Map/History**: season shading only beyond ±gz/±iz with a central "Transition — no clear season" label; new threshold-aware `_season_label()` replaces every sign-based quadrant re-derivation (scatter hovers, info card accent, history step row); `_hex_to_rgba` hardened for 3-digit hex.
+- **Chip Direction Agreement** on the Regime Map info card: per-force agreement vs the chip heading (inverted signals flipped), G/I sub-line under the headline number; stored legacy `confidence` kept as fallback only.
+- 5 new tests (season-label semantics, agreement math, CC window honoring incl. full-history mode, relative canonical windows); 445 total pass.
+
+**Still open:** rate-basket rolling variants (36m policy default), stored `quadrant` column retirement (kept for legacy/backtest compat).

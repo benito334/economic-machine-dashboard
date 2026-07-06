@@ -93,11 +93,14 @@ _QUADRANT_COLOR = {
     "Inflationary Boom": "#F4C842",
     "Stagflation": "#E8734C",
     "Disinflationary Slowdown": "#4C9BE8",
+    "Transition — no clear season": "#888888",   # Ray Q2: inside the threshold band
 }
 
 
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
     h = hex_color.lstrip("#")
+    if len(h) == 3:                       # expand shorthand (#888 → #888888)
+        h = "".join(ch * 2 for ch in h)
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"rgba({r},{g},{b},{alpha:.2f})"
 
@@ -879,7 +882,7 @@ def _left_nav() -> html.Div:
                 id="zscore-window-slider",
                 min=0, max=60, step=None,
                 marks={0: _sm(0,"Full"), 36: _sm(36,"36m"), 48: _sm(48,"48m"), 60: _sm(60,"60m")},
-                value=0,
+                value=48,   # canonical default per Ray audit ruling 2026-07-06 (Q1c)
                 tooltip={"always_visible": False, "style": {"display": "none"}},
                 className="sidebar-slider",
             ),
@@ -892,7 +895,7 @@ def _left_nav() -> html.Div:
                 id="inflation-window-slider",
                 min=0, max=120, step=None,
                 marks={0: _sm(0,"Full"), 60: _sm(60,"60m"), 90: _sm(90,"90m"), 120: _sm(120,"120m")},
-                value=0,
+                value=90,   # canonical default per Ray ruling (his 96m → nearest 90m grid point)
                 tooltip={"always_visible": False, "style": {"display": "none"}},
                 className="sidebar-slider",
             ),
@@ -1345,9 +1348,9 @@ _SETTINGS_MODAL = dbc.Modal([
             dcc.Slider(
                 id="zscore-window-modal-slider",
                 min=0, max=60, step=None,
-                marks={0: _modal_mark("Full · default"), 36: _modal_mark("36m"),
-                       48: _modal_mark("48m ★"), 60: _modal_mark("60m")},
-                value=0,
+                marks={0: _modal_mark("Full"), 36: _modal_mark("36m"),
+                       48: _modal_mark("48m ★ default"), 60: _modal_mark("60m")},
+                value=48,
                 tooltip={"always_visible": False, "style": {"display": "none"}},
                 className="sidebar-slider",
             ),
@@ -1370,9 +1373,9 @@ _SETTINGS_MODAL = dbc.Modal([
             dcc.Slider(
                 id="inflation-window-modal-slider",
                 min=0, max=120, step=None,
-                marks={0: _modal_mark("Full · default"), 60: _modal_mark("60m"),
-                       90: _modal_mark("90m ★"), 120: _modal_mark("120m")},
-                value=0,
+                marks={0: _modal_mark("Full"), 60: _modal_mark("60m"),
+                       90: _modal_mark("90m ★ default"), 120: _modal_mark("120m")},
+                value=90,
                 tooltip={"always_visible": False, "style": {"display": "none"}},
                 className="sidebar-slider",
             ),
@@ -1556,9 +1559,9 @@ app.layout = html.Div([
     dcc.Store(id="regime-components-open",          data=False),
     dcc.Store(id="regime-components-toggle-init",   data=None),
     # Settings: growth Z-score rolling window (0 = full history)
-    dcc.Store(id="zscore-window-store",     data=0, storage_type="local"),
+    dcc.Store(id="zscore-window-store",     data=48, storage_type="local"),   # Ray Q1c canonical default
     # Settings: inflation Z-score rolling window (0 = full history; separate from growth)
-    dcc.Store(id="inflation-window-store",  data=0, storage_type="local"),
+    dcc.Store(id="inflation-window-store",  data=90, storage_type="local"),   # Ray ruled 96m; 90m is the existing grid point
     # Settings: disequilibrium rolling window (0 = full history)
     dcc.Store(id="diseq-window-store",      data=0, storage_type="local"),
     # Active country (Phase 2 multi-country support)
@@ -2538,6 +2541,27 @@ def _classify_regime(
     return g_regime, i_regime
 
 
+def _season_label(g_score, i_score, thresholds: "dict | None" = None) -> str:
+    """Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06, Q2).
+
+    A season name applies only when BOTH scores sit beyond the ±gz/±iz
+    threshold lines — inside the band the honest label is Transition. This is
+    map geography / display shorthand; the chips are the decision rule.
+    """
+    t = thresholds or _DEFAULT_THRESHOLDS
+    gz, iz = float(t.get("gz", 0.5)), float(t.get("iz", 0.5))
+    if (g_score is None or i_score is None
+            or (isinstance(g_score, float) and pd.isna(g_score))
+            or (isinstance(i_score, float) and pd.isna(i_score))):
+        return "—"
+    g, i = float(g_score), float(i_score)
+    if abs(g) <= gz or abs(i) <= iz:
+        return "Transition — no clear season"
+    return {(True, True): "Inflationary Boom", (True, False): "Expansion",
+            (False, True): "Stagflation", (False, False): "Disinflationary Slowdown"}[
+        (g > 0, i > 0)]
+
+
 def _regime_info_children(
     row: dict,
     is_current: bool,
@@ -2580,58 +2604,49 @@ def _regime_info_children(
     _t = thresholds or _DEFAULT_THRESHOLDS
     g_regime, i_regime = _classify_regime(g_score, i_score, _g_delta_active, _i_delta_active, _t)
 
-    # Keep legacy quadrant for backward-compat color lookups
-    if g_score is not None and i_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
-        _RQ_LEGACY = {
-            (True,  True):  "Inflationary Boom",
-            (True,  False): "Expansion",
-            (False, True):  "Stagflation",
-            (False, False): "Disinflationary Slowdown",
-        }
+    # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
+    # Q2) — used for the color accent only; the chips are the decision rule.
+    quadrant = _season_label(g_score, i_score, _t)
+
+    # ── Chip Direction Agreement (Ray audit ruling 2026-07-06, Q3) ────────────
+    # Replaces the legacy quadrant-based confidence. Per force: the fraction of
+    # signals whose direction matches the chip's heading (the sign of the
+    # composite's MoM delta), with inverted signals flipped. Shown as G/I
+    # sub-metrics; the averaged number keeps the old display slot.
+    confidence = row.get("confidence")   # stored legacy value = fallback
+    g_agree_frac: "float | None" = None
+    i_agree_frac: "float | None" = None
+    if comp_df is not None and not comp_df.empty:
         try:
-            quadrant = _RQ_LEGACY[(float(g_score) >= 0, float(i_score) >= 0)]
+            def _heading(delta) -> "str | None":
+                if delta is None or (isinstance(delta, float) and pd.isna(delta)):
+                    return None
+                return "rising" if float(delta) > 0 else ("falling" if float(delta) < 0 else None)
+
+            def _agree(direction: str, exp: str, invert: bool) -> float:
+                if not direction:
+                    return 0.5
+                if invert:
+                    exp = "falling" if exp == "rising" else "rising"
+                return 1.0 if direction == exp else 0.0
+
+            def _frac(df_part, exp) -> "float | None":
+                if exp is None:
+                    return None
+                vals = [_agree(str(r.direction or ""), exp, bool(r.invert))
+                        for r in df_part.itertuples(index=False)
+                        if r.zscore is not None and not (isinstance(r.zscore, float) and pd.isna(r.zscore))]
+                return sum(vals) / len(vals) if vals else None
+
+            g_agree_frac = _frac(comp_df[comp_df["composite"] == "growth"],
+                                 _heading(_g_delta_active))
+            i_agree_frac = _frac(comp_df[comp_df["composite"] == "inflation"],
+                                 _heading(_i_delta_active))
+            known = [v for v in (g_agree_frac, i_agree_frac) if v is not None]
+            if known:
+                confidence = sum(known) / len(known)
         except Exception:
-            quadrant = row.get("quadrant") or "—"
-    else:
-        quadrant = row.get("quadrant") or "—"
-
-    # Confidence: recompute from per-signal directions when rolling windows are
-    # active, because the stored value was computed for the stored (not rolling)
-    # quadrant and may no longer match.
-    confidence = row.get("confidence")
-    if use_rolling and comp_df is not None and not comp_df.empty:
-        try:
-            _EXP_DIR = {
-                (True,  True):  ("rising",  "rising"),
-                (True,  False): ("rising",  "falling"),
-                (False, True):  ("falling", "rising"),
-                (False, False): ("falling", "falling"),
-            }
-            if g_score is not None and i_score is not None:
-                growth_up    = float(g_score) >= 0
-                inflation_up = float(i_score) >= 0
-                exp_g, exp_i = _EXP_DIR[(growth_up, inflation_up)]
-
-                def _agree(direction: str, exp: str, invert: bool) -> float:
-                    if not direction:
-                        return 0.5
-                    if invert:
-                        exp = "falling" if exp == "rising" else "rising"
-                    return 1.0 if direction == exp else 0.0
-
-                df_g = comp_df[comp_df["composite"] == "growth"]
-                df_i = comp_df[comp_df["composite"] == "inflation"]
-                g_vals = [_agree(str(r.direction or ""), exp_g, bool(r.invert))
-                          for r in df_g.itertuples(index=False)
-                          if r.zscore is not None and not (isinstance(r.zscore, float) and pd.isna(r.zscore))]
-                i_vals = [_agree(str(r.direction or ""), exp_i, bool(r.invert))
-                          for r in df_i.itertuples(index=False)
-                          if r.zscore is not None and not (isinstance(r.zscore, float) and pd.isna(r.zscore))]
-                g_frac = sum(g_vals) / len(g_vals) if g_vals else 0.5
-                i_frac = sum(i_vals) / len(i_vals) if i_vals else 0.5
-                confidence = (g_frac + i_frac) / 2.0
-        except Exception:
-            pass  # fall back to stored confidence
+            pass  # fall back to stored legacy confidence
     # Use rolling disequilibrium score when a diseq window is active
     use_rolling_diseq = rolling.get("diseq_window", 0) > 0
     diseq = (
@@ -2682,15 +2697,16 @@ def _regime_info_children(
             html.Div(sub, style={"fontSize": "0.65rem", "color": "var(--muted-color)"}),
         ], style={"minWidth": "105px"})
 
-    def _stat_block(label: str, val_str: str, color: str = "var(--font-color)") -> html.Div:
-        """Confidence / Disequilibrium — same visual size as _val_block but no arrow."""
+    def _stat_block(label: str, val_str: str, color: str = "var(--font-color)",
+                    sub: str = " ") -> html.Div:
+        """Chip Agreement / Disequilibrium — same visual size as _val_block but no arrow."""
         return html.Div([
             html.Div(label, style={"fontSize": "0.65rem", "color": "var(--muted-color)",
                                    "marginBottom": "3px", "whiteSpace": "nowrap"}),
             html.Div(val_str, style={"fontSize": _SZ, "fontWeight": "700",
                                      "color": color, "fontFamily": "monospace",
                                      "lineHeight": "1.1", "marginBottom": "2px"}),
-            html.Div(" ", style={"fontSize": "0.65rem"}),  # spacer to align baseline
+            html.Div(sub, style={"fontSize": "0.65rem", "color": "var(--muted-color)"}),
         ], style={"minWidth": "105px"})
 
     def _group(header: str, blocks: list) -> html.Div:
@@ -2744,6 +2760,12 @@ def _regime_info_children(
     ], style={"marginTop": "8px"})
 
     conf_str = (f"{confidence:.0%}" if confidence is not None and not pd.isna(confidence) else "—")
+    _cda_bits = []
+    if g_agree_frac is not None:
+        _cda_bits.append(f"G {g_agree_frac:.0%}")
+    if i_agree_frac is not None:
+        _cda_bits.append(f"I {i_agree_frac:.0%}")
+    cda_sub = " · ".join(_cda_bits) if _cda_bits else "vs chip headings"
     diseq_str = _fmt(diseq)
 
     # Window label for the Force Z-Scores group header
@@ -2814,9 +2836,10 @@ def _regime_info_children(
                            "Z of Δ MoM"),
             ]),
 
-            # ── Confidence + Disequilibrium ────────────────────────────────────
+            # ── Chip Direction Agreement + Disequilibrium (Ray Q3: agreement
+            # is measured against the chips' headings, not the old quadrant) ──
             _group("Regime Quality", [
-                _stat_block("Confidence",     conf_str),
+                _stat_block("Chip Agreement", conf_str, sub=cda_sub),
                 _stat_block("Disequilibrium", diseq_str),
             ]),
         ],
@@ -3450,8 +3473,9 @@ def update_regime_chart(
         return fig
 
     # Resolve which columns to use — Growth and Inflation have independent windows.
-    # For non-US countries the pre-computed rolling columns are all null —
-    # fall back to the base column when the rolling column has no data.
+    # Rolling columns exist for every country as of the 2026-07-06 audit;
+    # the base-column fallback remains for freshly-added countries whose
+    # rolling passes haven't run yet.
     g_sfx = _FORCE_WINDOW_COL.get(zscore_window)
     i_sfx = _INFLATION_WINDOW_COL.get(inflation_window)
     diseq_sfx = _DISEQ_WINDOW_COL.get(diseq_window)
@@ -3461,23 +3485,11 @@ def update_regime_chart(
     i_col = f"inflation_score_{i_sfx}" if i_sfx and _has_data(comp, f"inflation_score_{i_sfx}") else "inflation_score"
     d_col = f"disequilibrium_{diseq_sfx}" if diseq_sfx and _has_data(comp, f"disequilibrium_{diseq_sfx}") else "disequilibrium_score"
 
-    # Derive quadrant from rolling scores when either force window is active
-    use_rolling_quadrant = g_col != "growth_score" or i_col != "inflation_score"
-    if use_rolling_quadrant:
-        _RQ = {
-            (True,  True):  "Inflationary Boom",
-            (True,  False): "Expansion",
-            (False, True):  "Stagflation",
-            (False, False): "Disinflationary Slowdown",
-        }
-        def _roll_quadrant(row):
-            g, i = row[g_col], row[i_col]
-            if pd.isna(g) or pd.isna(i):
-                return row.get("quadrant")
-            return _RQ[(float(g) >= 0, float(i) >= 0)]
-        quadrant_series = comp.apply(_roll_quadrant, axis=1)
-    else:
-        quadrant_series = comp["quadrant"]
+    # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
+    # Q2): a season name applies only beyond the ±gz/±iz lines; inside the
+    # band the label is Transition. Uses the active (rolling or full) columns.
+    quadrant_series = comp.apply(
+        lambda row: _season_label(row.get(g_col), row.get(i_col), thresholds), axis=1)
 
     win_label_g = f"G:{zscore_window}mo" if (g_sfx and g_col != "growth_score") else ""
     win_label_i = f"I:{inflation_window}mo" if (i_sfx and i_col != "inflation_score") else ""
@@ -4106,12 +4118,19 @@ def update_scatter_chart(
     else:
         x_range, y_range = [-3.0, 3.0], [-3.0, 3.0]
 
-    # ── Quadrant background rectangles (±100 so they always fill the viewport)
+    # ── Seasonal-archetype background shading (Ray audit ruling 2026-07-06,
+    # Q2): the four season colors shade ONLY the outer corner regions beyond
+    # the ±gz/±iz threshold lines — the operative classifier's Transition band
+    # between the lines stays neutral. Season names are map geography ("modes
+    # of behavior"), not the decision rule; the chips are the decision rule.
+    _bg_th = thresholds or _DEFAULT_THRESHOLDS
+    _bgz = float(_bg_th.get("gz", 0.5))
+    _biz = float(_bg_th.get("iz", 0.5))
     quad_bg = [
-        (0,    100, 0,    100, "Inflationary Boom",        "#F4C842"),
-        (0,    100, -100, 0,   "Expansion",                "#5CBA8A"),
-        (-100, 0,   0,    100, "Stagflation",              "#E8734C"),
-        (-100, 0,   -100, 0,   "Disinflationary Slowdown", "#4C9BE8"),
+        (_bgz,  100,  _biz,  100, "Inflationary Boom",        "#F4C842"),
+        (_bgz,  100,  -100, -_biz, "Expansion",                "#5CBA8A"),
+        (-100, -_bgz, _biz,  100, "Stagflation",              "#E8734C"),
+        (-100, -_bgz, -100, -_biz, "Disinflationary Slowdown", "#4C9BE8"),
     ]
     shapes = [
         dict(type="rect", xref="x", yref="y",
@@ -4149,12 +4168,10 @@ def update_scatter_chart(
     except StopIteration:
         sel_idx_all = len(comp_all) - 1
 
-    # ── Derive quadrant for rolling columns ───────────────────────────────────
+    # ── Threshold-aware season label for hovers (Ray Q2: Transition inside
+    # the band; season names only beyond the ±gz/±iz lines) ───────────────────
     def _quadrant_for(row):
-        g, i = row.get(g_col), row.get(i_col)
-        if g is None or i is None or pd.isna(g) or pd.isna(i):
-            return row.get("quadrant") or "—"
-        return _RQ_MAP[(float(g) >= 0, float(i) >= 0)]
+        return _season_label(row.get(g_col), row.get(i_col), thresholds)
 
     eff_quadrant = comp_all.apply(_quadrant_for, axis=1)
 
@@ -4223,7 +4240,7 @@ def update_scatter_chart(
         showlegend=False,
     ))
 
-    # ── Quadrant corner labels (paper-coord: stay in corners at any zoom) ────
+    # ── Season corner labels + explicit Transition band label (Ray Q2) ───────
     q_annotations = [
         dict(text="Inflationary Boom",       x=0.98, y=0.98, xanchor="right",  yanchor="top"),
         dict(text="Expansion",               x=0.98, y=0.02, xanchor="right",  yanchor="bottom"),
@@ -4237,6 +4254,11 @@ def update_scatter_chart(
              bgcolor="rgba(0,0,0,0)", **ann)
         for ann, color in zip(q_annotations, q_colors)
     ]
+    annotations.append(dict(
+        text="Transition — no clear season", x=0, y=0, xref="x", yref="y",
+        showarrow=False, font=dict(color="#777", size=9, family="monospace"),
+        bgcolor="rgba(0,0,0,0)",
+    ))
 
     _g_win_sfx = f" ({zscore_window}mo)" if (g_sfx and g_col != "growth_score") else ""
     _i_win_sfx = f" ({inflation_window}mo)" if (i_sfx and i_col != "inflation_score") else ""

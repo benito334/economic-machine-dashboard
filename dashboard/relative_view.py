@@ -39,6 +39,19 @@ _NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area", "GB": "�
 
 _RECENT_WINDOW_YEARS = 10           # recent-correlation window
 
+# Ray audit ruling 2026-07-06 (Q1b): every country in the cross-country view
+# is normalized on the SAME canonical rolling windows — never per-country
+# spans, never the user's sidebar selection — so the comparison measures
+# co-movement rather than differences in historical baselines (Korea's
+# development era would otherwise distort its "normal" vs the US).
+_CANON_G_COL = "growth_score_48m"       # Ray Q1c: 48m growth
+_CANON_I_COL = "inflation_score_90m"    # Ray ruled 96m; 90m is the existing grid point
+
+
+def _canon_col(hist: pd.DataFrame, canon: str, base: str) -> str:
+    """Canonical rolling column when populated, else the full-history base."""
+    return canon if canon in hist.columns and hist[canon].notna().any() else base
+
 _CARD = {
     "background": "var(--card-bg)", "border": "1px solid var(--border-color)",
     "borderRadius": "8px", "padding": "14px 16px", "flex": "1 1 280px",
@@ -107,12 +120,17 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
                          html.Div("no data", style={"color": "var(--muted-color)"})],
                         style=_CARD)
 
-    g = _latest(hist, "growth_score"); g_d = _delta(hist, "growth_score")
-    i = _latest(hist, "inflation_score"); i_d = _delta(hist, "inflation_score")
+    g_col = _canon_col(hist, _CANON_G_COL, "growth_score")
+    i_col = _canon_col(hist, _CANON_I_COL, "inflation_score")
+    g = _latest(hist, g_col); g_d = _delta(hist, g_col)
+    i = _latest(hist, i_col); i_d = _delta(hist, i_col)
 
     t = dict(thresholds or _DEFAULT_THRESHOLDS)
     if t.get("dynamic"):
-        dyn = compute_dynamic_thresholds(hist, base_gz=float(t.get("gz", 0.5)),
+        dyn_input = hist[["as_of", g_col, i_col]
+                         + (["credit_score"] if "credit_score" in hist.columns else [])]
+        dyn_input = dyn_input.rename(columns={g_col: "growth_score", i_col: "inflation_score"})
+        dyn = compute_dynamic_thresholds(dyn_input, base_gz=float(t.get("gz", 0.5)),
                                          base_iz=float(t.get("iz", 0.5)))
         if not dyn.empty:
             t["gz"] = float(dyn["dyn_gz"].iloc[-1])
@@ -253,17 +271,30 @@ def render_relative_view(page_trigger, theme_name, thresholds):
 
     histories = {cc: load_composite_history(country=cc) for cc in COUNTRIES}
     recent_start = pd.Timestamp.today() - pd.DateOffset(years=_RECENT_WINDOW_YEARS)
+
+    # Q1b: correlations use the same canonical rolling window for every
+    # country (fall back to full-history only if a rolling column is empty
+    # for every country, which would make the matrix trivially empty).
+    def _corr_col(canon: str, base: str) -> str:
+        return canon if any(
+            canon in h.columns and h[canon].notna().any() for h in histories.values()
+        ) else base
+
+    gc = _corr_col(_CANON_G_COL, "growth_score")
+    ic = _corr_col(_CANON_I_COL, "inflation_score")
+    g_lbl = "48m window" if gc == _CANON_G_COL else "full history"
+    i_lbl = "90m window" if ic == _CANON_I_COL else "full history"
     heatmaps_full = [
-        _corr_heatmap(compute_score_correlations(histories, "growth_score"),
-                      "Growth score — full common history", theme_name),
-        _corr_heatmap(compute_score_correlations(histories, "inflation_score"),
-                      "Inflation score — full common history", theme_name),
+        _corr_heatmap(compute_score_correlations(histories, gc),
+                      f"Growth score ({g_lbl}) — full common history", theme_name),
+        _corr_heatmap(compute_score_correlations(histories, ic),
+                      f"Inflation score ({i_lbl}) — full common history", theme_name),
     ]
     heatmaps_recent = [
-        _corr_heatmap(compute_score_correlations(histories, "growth_score", recent_start),
-                      f"Growth score — last {_RECENT_WINDOW_YEARS}y", theme_name),
-        _corr_heatmap(compute_score_correlations(histories, "inflation_score", recent_start),
-                      f"Inflation score — last {_RECENT_WINDOW_YEARS}y", theme_name),
+        _corr_heatmap(compute_score_correlations(histories, gc, recent_start),
+                      f"Growth score ({g_lbl}) — last {_RECENT_WINDOW_YEARS}y", theme_name),
+        _corr_heatmap(compute_score_correlations(histories, ic, recent_start),
+                      f"Inflation score ({i_lbl}) — last {_RECENT_WINDOW_YEARS}y", theme_name),
     ]
 
     return html.Div([
@@ -271,10 +302,13 @@ def render_relative_view(page_trigger, theme_name, thresholds):
         html.Div(cards, style={"display": "flex", "gap": "12px", "flexWrap": "wrap"}),
 
         html.Div("Cycle correlation — is that diversification real?", style=_H),
-        html.Div("Pairwise correlation of the monthly composite scores. Blue (negative) "
-                 "= economies moving oppositely — real diversification. Orange (positive) "
-                 "= the same cycle in disguise. The recent window matters more than the "
-                 "full history for forward-looking allocation questions.",
+        html.Div("Pairwise correlation of the monthly composite scores, every country "
+                 "normalized on the SAME canonical rolling windows (48m growth / 90m "
+                 "inflation — Ray audit ruling: uniform windows make the matrix measure "
+                 "co-movement, not baseline differences). Blue (negative) = economies "
+                 "moving oppositely — real diversification. Orange (positive) = the same "
+                 "cycle in disguise. The recent window matters more than the full history "
+                 "for forward-looking allocation questions.",
                  style={"fontSize": "0.75rem", "color": "var(--muted-color)",
                         "marginBottom": "8px", "maxWidth": "820px"}),
         html.Div(heatmaps_full, style={"display": "flex", "gap": "12px", "flexWrap": "wrap"}),

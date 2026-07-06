@@ -119,14 +119,37 @@ def _chip_span(text: str, color: str) -> html.Span:
     })
 
 
+def chip_direction_agreement(latest_sig: pd.DataFrame, force: str,
+                             delta: Optional[float]) -> Optional[float]:
+    """% of a force's signals whose direction matches the chip's heading.
+
+    Ray audit ruling 2026-07-06 (Q3): confidence is measured against the chips
+    themselves — the chip's heading is the sign of the composite's MoM delta.
+    Returns None when the heading is flat or no directional signals exist.
+    """
+    if latest_sig.empty or delta is None or (isinstance(delta, float) and pd.isna(delta)):
+        return None
+    heading = "rising" if float(delta) > 0 else ("falling" if float(delta) < 0 else None)
+    if heading is None:
+        return None
+    sigs = latest_sig[(latest_sig["force"] == force)
+                      & (latest_sig["direction"].isin(["rising", "falling"]))]
+    if sigs.empty:
+        return None
+    return float((sigs["direction"] == heading).mean())
+
+
 @callback(
     Output("cc-content", "children"),
     [Input("country-store", "data"),
      Input("page-trigger", "data"),
-     Input("regime-threshold-store", "data")],
+     Input("regime-threshold-store", "data"),
+     Input("zscore-window-store", "data"),
+     Input("inflation-window-store", "data")],
     prevent_initial_call=False,
 )
-def render_command_center(country_data, page_trigger, thresholds):
+def render_command_center(country_data, page_trigger, thresholds,
+                          zscore_window=48, inflation_window=90):
     page = (page_trigger or {}).get("page", "")
     if page and page not in ("/", "/country"):
         return no_update
@@ -134,8 +157,8 @@ def render_command_center(country_data, page_trigger, thresholds):
     # Lazy import — charting.py imports this module, so a top-level import
     # back into charting would be circular. Same pattern as indicators/backtest.
     from dashboard.charting import (
-        _DEFAULT_THRESHOLDS, _GROWTH_CHIP, _INFLAT_CHIP,
-        _classify_regime, compute_dynamic_thresholds,
+        _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
+        _INFLATION_WINDOW_COL, _classify_regime, compute_dynamic_thresholds,
     )
 
     country = str(country_data or "US").upper()
@@ -146,15 +169,33 @@ def render_command_center(country_data, page_trigger, thresholds):
 
     latest_sig = load_latest_signals(country)
 
-    g = _latest(hist, "growth_score");        g_d = _delta(hist, "growth_score")
-    i = _latest(hist, "inflation_score");     i_d = _delta(hist, "inflation_score")
+    # ── Window selection (Ray audit ruling 2026-07-06, Q1a: the front door
+    # honors the user's sidebar windows; canonical defaults 48m/90m) ──────────
+    g_sfx = _FORCE_WINDOW_COL.get(int(zscore_window or 0))
+    i_sfx = _INFLATION_WINDOW_COL.get(int(inflation_window or 0))
+
+    def _usable(col: str) -> bool:
+        return col in hist.columns and hist[col].notna().any()
+
+    g_col = f"growth_score_{g_sfx}" if g_sfx and _usable(f"growth_score_{g_sfx}") else "growth_score"
+    i_col = f"inflation_score_{i_sfx}" if i_sfx and _usable(f"inflation_score_{i_sfx}") else "inflation_score"
+    win_label = (f"{zscore_window}m" if g_col != "growth_score" else "full") + " / " + \
+                (f"{inflation_window}m" if i_col != "inflation_score" else "full")
+
+    g = _latest(hist, g_col);                 g_d = _delta(hist, g_col)
+    i = _latest(hist, i_col);                 i_d = _delta(hist, i_col)
     g_mom = _latest(hist, "growth_momentum"); i_mom = _latest(hist, "inflation_momentum")
-    conf = _latest(hist, "confidence")
     diseq = _latest(hist, "disequilibrium_score")
+
+    # Chip Direction Agreement (replaces the legacy quadrant-based confidence)
+    g_agree = chip_direction_agreement(latest_sig, "growth", g_d)
+    i_agree = chip_direction_agreement(latest_sig, "inflation", i_d)
 
     # ── Thresholds (honoring dynamic mode) + chips + divergence flag ──────────
     t = dict(thresholds or _DEFAULT_THRESHOLDS)
-    dyn_df = compute_dynamic_thresholds(hist, base_gz=float(t.get("gz", 0.5)),
+    dyn_input = hist[["as_of", g_col, i_col] + (["credit_score"] if "credit_score" in hist.columns else [])]
+    dyn_input = dyn_input.rename(columns={g_col: "growth_score", i_col: "inflation_score"})
+    dyn_df = compute_dynamic_thresholds(dyn_input, base_gz=float(t.get("gz", 0.5)),
                                         base_iz=float(t.get("iz", 0.5)))
     dynamic_on = bool(t.get("dynamic", False))
     if dynamic_on and not dyn_df.empty:
@@ -177,10 +218,21 @@ def render_command_center(country_data, page_trigger, thresholds):
         html.Div([
             _chip_span(f"Growth · {g_chip}", _GROWTH_CHIP.get(g_chip, "#888")),
             _chip_span(f"Inflation · {i_chip}", _INFLAT_CHIP.get(i_chip, "#888")),
-            html.Span(f"confidence {conf:.0%}" if conf is not None else "confidence —",
-                      style={"fontSize": "0.74rem", "color": "var(--muted-color)"}),
+            html.Span(
+                "chip agreement "
+                + (f"G {g_agree:.0%}" if g_agree is not None else "G —")
+                + " · "
+                + (f"I {i_agree:.0%}" if i_agree is not None else "I —"),
+                title="Chip Direction Agreement — % of each force's signals moving "
+                      "in the same direction as its chip's heading (Ray audit "
+                      "2026-07-06; replaces the legacy quadrant-based confidence).",
+                style={"fontSize": "0.74rem", "color": "var(--muted-color)"}),
             html.Span(f"diseq {_fmt(diseq, '.2f')}",
                       style={"fontSize": "0.74rem", "color": "var(--muted-color)"}),
+            html.Span(f"window {win_label}",
+                      title="Z-score lookback windows (growth / inflation) from the "
+                            "sidebar sliders — canonical defaults 48m / 90m.",
+                      style={"fontSize": "0.70rem", "color": "var(--muted-color)"}),
             *( [html.Span("DIVERGENCE", title="Growth and inflation have moved in opposite "
                           "directions for 3+ months — historically associated with a "
                           "policy-rate or credit-cycle shift (Ray Dalio review #23).",
