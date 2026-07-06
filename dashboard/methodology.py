@@ -1367,6 +1367,39 @@ def get_layout() -> html.Div:
                 _inline_formula(F("Staleness weight decay")),
                 _inline_formula(F("Aggregate stress score")),
                 _inline_formula(F("Stress band labels")),
+                _sub("Long-term debt-cycle STAGE classifier (added 2026-07-05, roadmap Phase C)"),
+                _p("Debt Stress gives a LEVEL; the stage classifier "
+                   "(indicators/debt_cycle_stage.py, config/debt_cycle_stage.yaml) gives a "
+                   "STAGE — where in the ~50–75yr long-term debt cycle the country sits: "
+                   "leveraging (debt growing productively: debt/GDP rising, debt service "
+                   "manageable, growth above the real rate, nominal growth above yields), "
+                   "squeeze (the top: debt stock high, debt service rising, real rate at/above "
+                   "real growth, nominal growth below yields), deleveraging (debt/GDP falling, "
+                   "debt service unwinding, growth weak), reflation ('beautiful deleveraging': "
+                   "policy engineered so nominal growth runs well above yields and the real "
+                   "rate sits well below real growth while the debt stock stabilizes), or "
+                   "neutral when no stage clears the minimum score."),
+                _p("Five feature families feed a transparent weighted-condition vote per stage "
+                   "(argmax — NOT a fitted model; every threshold and weight is in the YAML): "
+                   "(1) debt/GDP percentile — an expanding rank of the current value against "
+                   "PRIOR history only (shift 1, no look-ahead), averaged across the available "
+                   "government/household/corporate ratios; (2) debt/GDP trajectory — 3-year "
+                   "annualized change in pp of GDP per year; (3) debt-service-ratio trend — "
+                   "2-year change in pp; (4) real policy rate minus real growth — Ray's 'is "
+                   "debt growing faster than income' test; (5) nominal growth minus the 10-year "
+                   "yield — whether burdens erode or compound. Missing features renormalize "
+                   "rather than zero out (EZ/KR run on 4 of 5 — no free debt-service series); "
+                   "a stage whose evidence is mostly missing scores NaN, and fewer than 3 "
+                   "families present means no label at all. The raw label is smoothed with a "
+                   "3-quarter rolling mode (a new stage must persist to take over; smoothing "
+                   "never carries a label across a data gap). Confidence = top score minus "
+                   "runner-up."),
+                _p("Where it surfaces: the Cycle Stage card on the Command Center, and the "
+                   "colored stage timeline + per-stage score chart on this Debt Stress page. "
+                   "US timeline sanity anchors: 1989–91 squeeze (S&L), 1992–95 reflation, "
+                   "2007 pre-GFC squeeze, 2012–2020 reflation (the ZIRP 'beautiful "
+                   "deleveraging'), 2020–23 COVID leveraging surge. Threshold calibration "
+                   "against the point-in-time backtest is an explicit Phase G3 task."),
             ], title="9 · Long-Term Debt Stress"),
 
             # 10 ── Data Quality Flags ──────────────────────────────────────────
@@ -1968,7 +2001,9 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
-                            ["2026-07-05", "Command Center added as the default landing page (/): regime strip with divergence badge, short-cycle lever cards, debt-stress + DSR, productivity-vs-cycle, what-changed feed — display-only synthesis, no formula changes (roadmap Phase CC)", "8, 9 (display only)"],
+                            ["2026-07-05", "Long-term debt-cycle STAGE classifier added (leveraging / squeeze / deleveraging / reflation; 5-feature weighted-condition vote, config-driven thresholds, 3-quarter mode smoothing) — Cycle Stage card + Debt Stress page timeline (roadmap Phase C)", "9"],
+                            ["2026-07-05", "Long-term debt-cycle STAGE classifier added (leveraging / squeeze / deleveraging / reflation; 5-feature weighted-condition vote, config-driven thresholds, 3-quarter mode smoothing) — Cycle Stage card + Debt Stress page timeline (roadmap Phase C)", "9"],
+                        ["2026-07-05", "Command Center added as the default landing page (/): regime strip with divergence badge, short-cycle lever cards, debt-stress + DSR, productivity-vs-cycle, what-changed feed — display-only synthesis, no formula changes (roadmap Phase CC)", "8, 9 (display only)"],
                             ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
                             ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],
                             ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
@@ -1998,6 +2033,7 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
+                        ["2026-07-05", "Long-term debt-cycle STAGE classifier added (leveraging / squeeze / deleveraging / reflation; 5-feature weighted-condition vote, config-driven thresholds, 3-quarter mode smoothing) — Cycle Stage card + Debt Stress page timeline (roadmap Phase C)", "9"],
                         ["2026-07-05", "Command Center added as the default landing page (/): regime strip with divergence badge, short-cycle lever cards, debt-stress + DSR, productivity-vs-cycle, what-changed feed — display-only synthesis, no formula changes (roadmap Phase CC)", "8, 9 (display only)"],
                         ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
                         ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],

@@ -91,6 +91,7 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_SIGNALS)
     conn.execute(_CREATE_COMPOSITES)
     conn.execute(_CREATE_DEBT_STRESS)
+    conn.execute(_CREATE_DEBT_CYCLE_STAGE)
     conn.execute(_CREATE_WEIGHT_CHANGE_LOG)
     # Migrations for databases created by earlier releases.
     conn.execute(
@@ -541,6 +542,103 @@ def query_debt_stress_history(
         ).df()
     return conn.execute(
         "SELECT * FROM debt_stress_snapshots WHERE country = ? ORDER BY as_of", [country]
+    ).df()
+
+
+# ─── Long-Term Debt-Cycle Stage table (roadmap Phase C) ──────────────────────
+
+_CREATE_DEBT_CYCLE_STAGE = """
+CREATE TABLE IF NOT EXISTS debt_cycle_stage_snapshots (
+    country                 VARCHAR   NOT NULL,
+    as_of                   DATE      NOT NULL,
+    stage                   VARCHAR,
+    stage_raw               VARCHAR,
+    confidence              DOUBLE,
+    n_features              INTEGER   DEFAULT 0,
+    missing_features        VARCHAR   DEFAULT '',
+    score_leveraging        DOUBLE,
+    score_squeeze           DOUBLE,
+    score_deleveraging      DOUBLE,
+    score_reflation         DOUBLE,
+    feat_debt_pct           DOUBLE,
+    feat_debt_traj          DOUBLE,
+    feat_dsr_trend          DOUBLE,
+    feat_r_minus_g          DOUBLE,
+    feat_ngdp_minus_yield   DOUBLE,
+    feat_real_growth        DOUBLE,
+    created_at              TIMESTAMP NOT NULL,
+    PRIMARY KEY (country, as_of)
+)
+"""
+
+_DEBT_CYCLE_STAGE_COLUMNS = [
+    "country", "as_of", "stage", "stage_raw", "confidence", "n_features",
+    "missing_features",
+    "score_leveraging", "score_squeeze", "score_deleveraging", "score_reflation",
+    "feat_debt_pct", "feat_debt_traj", "feat_dsr_trend", "feat_r_minus_g",
+    "feat_ngdp_minus_yield", "feat_real_growth",
+    "created_at",
+]
+
+
+def upsert_debt_cycle_stage(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
+    """Idempotent upsert of DebtCycleStageSnapshot rows on (country, quarter)."""
+    if not snapshots:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for s in snapshots:
+        row = s.model_dump()
+        if row["as_of"] > date.today():
+            continue
+        row["as_of"] = row["as_of"].isoformat()
+        row["created_at"] = now
+        row["missing_features"] = ",".join(row.get("missing_features") or [])
+        rows.append(row)
+
+    if not rows:
+        return 0
+
+    df = pd.DataFrame(rows)
+    conn.register("_stage_staging", df)
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute("""
+            DELETE FROM debt_cycle_stage_snapshots
+            WHERE EXISTS (
+                SELECT 1 FROM _stage_staging
+                WHERE _stage_staging.country = debt_cycle_stage_snapshots.country
+                  AND DATE_TRUNC('quarter', _stage_staging.as_of::DATE)
+                      = DATE_TRUNC('quarter', debt_cycle_stage_snapshots.as_of)
+            )
+        """)
+        cols = ", ".join(_DEBT_CYCLE_STAGE_COLUMNS)
+        conn.execute(
+            f"INSERT INTO debt_cycle_stage_snapshots ({cols}) SELECT {cols} FROM _stage_staging"
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.unregister("_stage_staging")
+
+    return len(df)
+
+
+def query_debt_cycle_stage_history(
+    conn: duckdb.DuckDBPyConnection,
+    country: str,
+    start: str | None = None,
+) -> pd.DataFrame:
+    if start:
+        return conn.execute(
+            "SELECT * FROM debt_cycle_stage_snapshots WHERE country = ? AND as_of >= ? ORDER BY as_of",
+            [country, start],
+        ).df()
+    return conn.execute(
+        "SELECT * FROM debt_cycle_stage_snapshots WHERE country = ? ORDER BY as_of", [country]
     ).df()
 
 

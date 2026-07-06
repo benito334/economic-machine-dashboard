@@ -1149,3 +1149,19 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Validation:** 407 passed, 1 pre-existing failure (dtype). Docker rebuilt; verified live in browser at `/` and `/country` — US renders all cards, card click navigates to `/signals/credit`, nav highlights Command Center; EZ/KR verified via direct callback tests.
 
 **Next (per roadmap sequence):** Phase C — long-term debt-cycle *stage* classifier (calibrated against Phase G output; upgrades its CC placeholder card). Then Phase D research spike in parallel.
+
+---
+
+## 2026-07-05 — Roadmap Phase C: long-term debt-cycle stage classifier
+
+**Done:**
+- `indicators/debt_cycle_stage.py` + `config/debt_cycle_stage.yaml` (every threshold/weight TUNABLE-annotated): classifies leveraging / squeeze / deleveraging / reflation / neutral from 5 feature families — debt/GDP expanding percentile (ranked vs PRIOR history only, no look-ahead) + 3y trajectory (pp/yr), DSR 2y trend, real-rate−real-growth, nominal-growth−yield. Transparent weighted-condition argmax; per-quarter renormalization over available features (EZ/KR honestly run on 4/5 — no free debt-service series); <3 families → no label; 3-quarter rolling-mode smoothing that never carries a label across a data gap.
+- Storage/pipeline: `DebtCycleStageSnapshot` model, `debt_cycle_stage_snapshots` DuckDB table (+ upsert/query in store.py), pipeline Pass 7 looping all configured countries.
+- Dashboard: Command Center Cycle Stage card now LIVE (stage-colored, confidence + n/5 features, links to /debt-stress); Debt Stress page gained a Long-Term Cycle Stage section (current-stage chip + driving-features readout + colored quarterly stage band + per-stage score chart). Works for US/EZ/KR (stage section renders even where the US-only stress model shows its placeholder).
+- Bugs fixed during build: empty pd.Series RangeIndex corrupting the feature-frame index union (EZ/KR produced zero features); resample().last() not reaching the current quarter (annual ratios went NaN at the newest quarters — added extend-to-current-quarter within ffill limit); smoothing carrying a stale label across raw=None gaps; in-progress future quarter emitted as "latest"; Python strftime %q (only plotly supports %q).
+- US timeline sanity anchors hit: 1989–91 squeeze (S&L), 1992–95 reflation, 2007 pre-GFC squeeze, 2012–2020 reflation ("beautiful deleveraging"), 2020–23 COVID leveraging. Current reads: US=reflation, EZ=reflation, KR=leveraging.
+- 17 new tests (`tests/test_debt_cycle_stage.py`); CC test updated (stage card live, Phase D placeholder remains). Methodology §9 subsection + §15 revision-log row; roadmap Phase C ✅.
+
+**Deferred to G3 (explicit):** stage-threshold calibration against the PIT backtest.
+
+**Next:** Phase D research spike (order-layer data hunt), then E (cross-country view), F (Japan), G3.

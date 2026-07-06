@@ -35,6 +35,7 @@ from dashboard.charting_data import (
     load_composite_component_status,
     load_composite_history,
     load_composite_signal_values,
+    load_debt_cycle_stage_history,
     load_debt_stress_component_dates,
     load_debt_stress_history,
     load_latest_signals,
@@ -1283,6 +1284,19 @@ def _page_debt_stress() -> html.Div:
                 width=12,
             ),
         ], className="pt-2 pb-2"),
+        # ── Long-term cycle STAGE (roadmap Phase C) ───────────────────────────
+        dbc.Row([
+            dbc.Col(
+                dbc.Card(dbc.CardBody([
+                    html.Div(id="debt-stage-info"),
+                    dcc.Graph(id="debt-stage-timeline",
+                              responsive=True,
+                              config={"displayModeBar": False},
+                              style={"height": "300px"}),
+                ], style={"padding": "16px"})),
+                width=12,
+            ),
+        ], className="pb-2"),
         dbc.Row([
             dbc.Col(
                 dcc.Graph(id="debt-stress-chart",
@@ -4728,6 +4742,117 @@ def update_debt_stress_info(date_range: dict, theme_name: str, country: str = "U
         country="US", as_of=str(latest.get("as_of")) if latest is not None else end
     )
     return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME, comp_dates)
+
+
+# ── Long-term debt-cycle STAGE section (roadmap Phase C) ─────────────────────
+
+_STAGE_FEATURE_LABELS = [
+    ("feat_debt_pct",         "Debt/GDP percentile", "{:.0%} of own history"),
+    ("feat_debt_traj",        "Debt/GDP trajectory", "{:+.1f} pp/yr"),
+    ("feat_dsr_trend",        "Debt-service trend",  "{:+.2f} pp / 2y"),
+    ("feat_r_minus_g",        "Real rate − growth",  "{:+.2f} pp"),
+    ("feat_ngdp_minus_yield", "NGDP − yield",        "{:+.2f} pp"),
+]
+
+
+@callback(
+    [Output("debt-stage-info", "children"),
+     Output("debt-stage-timeline", "figure")],
+    [Input("date-range", "data"),
+     Input("theme-store", "data"),
+     Input("country-store", "data"),
+     Input("page-trigger", "data")],
+    prevent_initial_call=False,
+)
+def update_debt_stage_section(date_range: dict, theme_name: str,
+                              country: str = "US", _trigger: Any = None):
+    country = (country or "US").upper()
+    theme_name = theme_name or DEFAULT_THEME
+    stage_colors = _command_center.STAGE_COLORS
+
+    df = load_debt_cycle_stage_history(country=country)
+    if df.empty:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "No stage data — run the pipeline"))
+        return [html.Div("Long-Term Cycle Stage — no data yet.",
+                         style={"color": "var(--muted-color)"})], fig
+
+    start = (date_range or {}).get("start")
+    plot_df = df[df["as_of"] >= pd.Timestamp(start)] if start else df
+
+    labeled = df[df["stage"].notna()]
+    latest = labeled.iloc[-1] if not labeled.empty else None
+
+    # ── Info strip: current stage chip + driving features ────────────────────
+    children: list = [html.Span("Long-Term Cycle Stage",
+                                style={"fontWeight": "700", "fontSize": "0.9rem",
+                                       "marginRight": "14px"})]
+    if latest is not None:
+        stage = str(latest["stage"])
+        color = stage_colors.get(stage, "#888")
+        conf = latest.get("confidence")
+        children.append(html.Span(stage.upper(), style={
+            "background": f"{color}26", "border": f"1px solid {color}", "color": color,
+            "borderRadius": "4px", "padding": "2px 10px", "fontWeight": "700",
+            "fontSize": "0.8rem", "marginRight": "12px"}))
+        as_of_ts = pd.Timestamp(latest["as_of"])
+        meta = f"{as_of_ts.year}-Q{as_of_ts.quarter} · {int(latest['n_features'])}/5 features"
+        if conf is not None and not pd.isna(conf):
+            meta += f" · margin {float(conf):.2f}"
+        children.append(html.Span(meta, style={"color": "var(--muted-color)",
+                                               "fontSize": "0.75rem"}))
+        feat_bits = []
+        for col, lbl, fmt in _STAGE_FEATURE_LABELS:
+            v = latest.get(col)
+            if v is not None and not pd.isna(v):
+                feat_bits.append(f"{lbl}: {fmt.format(float(v))}")
+        children.append(html.Div("  ·  ".join(feat_bits),
+                                 style={"color": "var(--muted-color)",
+                                        "fontSize": "0.72rem", "marginTop": "4px"}))
+    else:
+        children.append(html.Span("no current label — insufficient features",
+                                  style={"color": "var(--muted-color)",
+                                         "fontSize": "0.8rem"}))
+
+    # ── Timeline: colored quarterly band (row 1) + stage scores (row 2) ──────
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.10, row_heights=[0.28, 0.72])
+    seen_stages: set = set()
+    band = plot_df[plot_df["stage"].notna()]
+    for stage in ("leveraging", "squeeze", "deleveraging", "reflation", "neutral"):
+        seg = band[band["stage"] == stage]
+        if seg.empty:
+            continue
+        seen_stages.add(stage)
+        fig.add_trace(go.Bar(
+            x=seg["as_of"], y=[1.0] * len(seg),
+            width=86400000 * 88,                        # ~one quarter in ms
+            marker={"color": stage_colors[stage], "line": {"width": 0}},
+            name=stage,
+            hovertemplate="%{x|%Y-Q%q}<br>" + stage + "<extra></extra>",
+        ), row=1, col=1)
+    score_traces = [
+        ("score_leveraging", "leveraging"), ("score_squeeze", "squeeze"),
+        ("score_deleveraging", "deleveraging"), ("score_reflation", "reflation"),
+    ]
+    for col, stage in score_traces:
+        if col in plot_df.columns:
+            fig.add_trace(go.Scatter(
+                x=plot_df["as_of"], y=plot_df[col],
+                name=f"{stage} score", line={"color": stage_colors[stage], "width": 1.3},
+                showlegend=False,
+                hovertemplate="%{x|%Y-Q%q}<br>" + stage + ": %{y:.2f}<extra></extra>",
+            ), row=2, col=1)
+    layout = figure_layout(theme_name, "")
+    layout["barmode"] = "overlay"
+    layout["bargap"] = 0
+    layout["margin"] = {"l": 40, "r": 20, "t": 10, "b": 30}
+    layout["legend"] = {"orientation": "h", "y": 1.18, "font": {"size": 10}}
+    fig.update_layout(**layout)
+    fig.update_yaxes(visible=False, range=[0, 1], row=1, col=1)
+    fig.update_yaxes(title_text="stage scores", range=[0, 1.05],
+                     tickfont={"size": 9}, row=2, col=1)
+    return children, fig
 
 
 @callback(

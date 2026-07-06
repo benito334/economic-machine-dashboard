@@ -49,11 +49,11 @@ Ray treats productivity growth as one of the three big forces, distinct from the
 - **B2 ✅** — "Productivity Trend" is now a sixth section on /signals plus a full force-detail page at /signals/productivity whose composite panel overlays the cyclical Growth Z (dotted) — "cyclically strong but trend-decelerating" visible at a glance. Documented in Methodology §7 + revision log.
 - **DoD:** ✅ met (panel lives on the Signals pages rather than the regime page — the command-center card in Phase CC is the eventual front-door surface).
 
-### Phase C — Long-term debt-cycle STAGE classifier (L3/L4)  ·  Effort: M
+### Phase C — Long-term debt-cycle STAGE classifier (L3/L4)  ·  Effort: M  ·  ✅ **done 2026-07-05**
 Debt Stress gives a *level*; Ray's framework wants a *stage* — where in the ~50–75yr cycle the country sits.
-- **C1** — `indicators/debt_cycle_stage.py`: classify into stages (e.g. *early / mid — leveraging*, *top — debt-service squeeze*, *deleveraging*, *reflation*) from a small feature set: debt/GDP level + trajectory (rising/falling), debt-service ratio trend, real policy rate vs. real growth (the "is debt growing faster than income" test), and nominal-growth-minus-yield.
-- **C2** — Dashboard "Long-term cycle" panel: current stage, the features driving it, and a historical stage timeline.
-- **Data:** mostly already have (debt/GDP, debt-service ratio, real rate, real growth). **Deps:** benefits from Phase G backtesting to calibrate stage thresholds. **DoD:** stage label + timeline render; thresholds are config-driven and documented.
+- **C1 ✅** — `indicators/debt_cycle_stage.py` + `config/debt_cycle_stage.yaml` (all thresholds/weights TUNABLE-annotated): stages *leveraging / squeeze / deleveraging / reflation / neutral* from a 5-feature vote — debt/GDP expanding percentile (shift-1, no look-ahead) + 3y trajectory, DSR 2y trend, real-rate-minus-real-growth, nominal-growth-minus-yield. Weighted-condition argmax with per-quarter renormalization over available features (EZ/KR run honestly on 4/5 — no free DSR), min-3-families gate, 3-quarter rolling-mode smoothing that never carries a label across a data gap. `debt_cycle_stage_snapshots` DuckDB table; pipeline Pass 7 (all configured countries); `DebtCycleStageSnapshot` model; 17 unit tests. US timeline sanity anchors hit: 1989–91 squeeze, 1992–95 reflation, 2007 pre-GFC squeeze, 2012–2020 reflation, 2020–23 COVID leveraging. Current: US=reflation, EZ=reflation, KR=leveraging.
+- **C2 ✅** — Command Center Cycle Stage card is live (stage + confidence + n/5 features, stage-colored); Debt Stress page gained a Long-Term Cycle Stage section: current-stage chip + driving-feature readout + colored quarterly stage band + per-stage score chart. Methodology §9 subsection + revision-log row.
+- **Data:** mostly already have (debt/GDP, debt-service ratio, real rate, real growth). **Deps:** threshold calibration against the PIT backtest is an explicit **G3 task**. **DoD:** ✅ met — stage label + timeline render for US/EZ/KR; thresholds config-driven and documented.
 
 ### Phase D — Big-cycle / "order" dimension (L4)  ·  Effort: L + R
 The genuinely new capability Ray stresses for choosing *which* countries to diversify into: internal order (wealth/political stress) and external order (geopolitics, reserve-currency status). **Start with a research spike** — several of these have no clean free API.
@@ -106,7 +106,7 @@ Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, 
 2. **Phase G — backtesting** (validate what we already have, incl. dynamic thresholds, before building more speculative layers)
 3. **Phase B** (small, data already exists; feeds the command center's productivity card)
 4. **Phase CC — command center v1** ✅ done 2026-07-05 (assembly-only; placeholder cards for C/D)
-5. **Phase C** (long-term-cycle stage — calibrated against G's output; upgrades its CC card)
+5. **Phase C** ✅ done 2026-07-05 (long-term-cycle stage classifier; upgraded its CC card; threshold calibration deferred to G3)
 6. **Phase D research spike** in parallel from here (it gates the biggest new capability; start the data hunt early)
 7. **Phase E** (the diversification payoff view)
 8. **Phase F — Japan** can slot in wherever there's a natural break (it's independent)

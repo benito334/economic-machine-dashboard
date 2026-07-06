@@ -139,3 +139,35 @@ class DebtStressSnapshot(BaseModel):
     # because the raw value was older than max_carry_quarters.
     # Stored as "cid:excess_lag_q". Only populated when extrapolation is enabled.
     extrapolated_components: list[str] = Field(default_factory=list)
+
+
+class DebtCycleStageSnapshot(BaseModel):
+    """One long-term debt-cycle STAGE reading for a country at a quarter-end.
+
+    Stage ∈ {leveraging, squeeze, deleveraging, reflation, neutral} — the Ray
+    Dalio long-cycle framing (roadmap Phase C). All thresholds/weights live in
+    config/debt_cycle_stage.yaml; scores and features are stored per quarter
+    for auditability and the dashboard timeline.
+    """
+
+    country: str
+    as_of: date                              # quarter-end date
+    stage: Optional[str] = None              # smoothed label (rolling mode)
+    stage_raw: Optional[str] = None          # pre-smoothing label
+    confidence: Optional[float] = None       # top score minus runner-up (0–1)
+    n_features: int = 0                      # feature families present (of 5)
+    missing_features: list[str] = Field(default_factory=list)
+
+    # Per-stage scores (renormalized weighted-condition votes, 0–1)
+    score_leveraging: Optional[float] = None
+    score_squeeze: Optional[float] = None
+    score_deleveraging: Optional[float] = None
+    score_reflation: Optional[float] = None
+
+    # Feature values (pp unless noted) — what drove the label
+    feat_debt_pct: Optional[float] = None        # debt/GDP expanding percentile [0,1]
+    feat_debt_traj: Optional[float] = None       # pp of GDP per year
+    feat_dsr_trend: Optional[float] = None       # pp over the trend window
+    feat_r_minus_g: Optional[float] = None       # real rate − real growth
+    feat_ngdp_minus_yield: Optional[float] = None
+    feat_real_growth: Optional[float] = None     # yoy %, smoothed

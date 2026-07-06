@@ -27,6 +27,7 @@ from indicators.composites import (
 )
 from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
+from indicators.debt_cycle_stage import compute_stage_history, load_stage_config
 from indicators.models import CountryBinding, Signal
 from indicators.normalize import build_signals, sanity_check
 from indicators.transform import apply_transformation
@@ -34,7 +35,7 @@ from store.store import (
     delete_future_signals, get_connection, init_schema,
     upsert_signals, upsert_composites, update_rolling_composites,
     update_inflation_rolling,
-    upsert_debt_stress, query_latest,
+    upsert_debt_stress, upsert_debt_cycle_stage, query_latest,
 )
 
 logging.basicConfig(
@@ -676,6 +677,30 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             post_ingestion_errors += 1
     except Exception as exc:
         logger.exception("[ERROR] Debt stress pass: %s", exc)
+        post_ingestion_errors += 1
+
+    # ── Pass 7: Long-Term Debt-Cycle Stage Classifier (all configured) ────
+    print("\n─── Pass 7: Debt-Cycle Stage Classifier ───────────────────────────")
+    try:
+        stage_cfg = load_stage_config()
+        for stage_country in stage_cfg.get("countries", {}):
+            try:
+                stage_snaps = compute_stage_history(conn, stage_country, stage_cfg)
+                n_stage = upsert_debt_cycle_stage(conn, stage_snaps)
+                latest_stage = stage_snaps[-1] if stage_snaps else None
+                if latest_stage and latest_stage.stage:
+                    cf = f"{latest_stage.confidence:.2f}" if latest_stage.confidence is not None else "?"
+                    print(f"  [{stage_country}] {n_stage} snapshots — latest ({latest_stage.as_of}): "
+                          f"stage={latest_stage.stage}  confidence={cf}  "
+                          f"features={latest_stage.n_features}/5")
+                else:
+                    print(f"  [{stage_country}] {n_stage} snapshots — no current stage label "
+                          f"(insufficient features)")
+            except Exception as exc:
+                logger.exception("[ERROR] Stage classifier [%s]: %s", stage_country, exc)
+                post_ingestion_errors += 1
+    except Exception as exc:
+        logger.exception("[ERROR] Stage classifier pass: %s", exc)
         post_ingestion_errors += 1
 
     # ── Additional countries from config/countries/ ───────────────────────

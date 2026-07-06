@@ -1,0 +1,152 @@
+# Long-Term Debt-Cycle STAGE Classifier — configuration (roadmap Phase C)
+# ─────────────────────────────────────────────────────────────────────────────
+# Debt Stress (longterm_stress.yaml) gives a LEVEL; this classifier gives a
+# STAGE — where in the ~50–75yr long-term debt cycle the country sits, in the
+# Ray Dalio framing:
+#
+#   leveraging     early/mid — debt growing but productively: debt/GDP rising,
+#                  debt service manageable, growth above the real rate,
+#                  nominal growth above yields (burdens erode as they grow)
+#   squeeze        the top — debt-service squeeze: debt stock high, debt
+#                  service rising, real rate at/above real growth, nominal
+#                  growth below yields (burdens compound)
+#   deleveraging   the bust — debt/GDP falling, debt service unwinding from a
+#                  high, growth weak
+#   reflation      "beautiful deleveraging" — policy engineered so nominal
+#                  growth runs well above yields and the real rate sits well
+#                  below real growth while the debt stock stabilizes/falls
+#   neutral        no stage clears min_score — the features genuinely disagree
+#
+# Classification is a transparent weighted-condition vote per stage (argmax),
+# NOT a fitted model: every threshold and weight is in this file. Parameters
+# marked # TUNABLE encode modelling judgements; Phase G3 backtesting against
+# named episodes (2008 GFC deleveraging, 2010s reflation, 2022 squeeze) is the
+# intended calibration loop.
+# ─────────────────────────────────────────────────────────────────────────────
+
+features:
+  # Annualized slope window for debt/GDP trajectory (pp of GDP per year).
+  # TUNABLE: shorter → reacts to credit impulses; longer → structural read.
+  debt_traj_window_years: 3
+
+  # Debt-service-ratio trend window (pp change over the window).
+  # TUNABLE: 2y captures a hiking cycle passing through to debt service.
+  dsr_trend_window_years: 2
+
+  # Minimum quarterly observations before the expanding debt/GDP percentile
+  # is emitted. Percentiles use only data through t-1 (shift 1) — no look-ahead.
+  # TUNABLE: raising discards more early history but stabilizes the percentile.
+  percentile_min_periods: 20
+
+  # Annual series (World Bank/IMF debt ratios) are forward-filled onto the
+  # quarterly grid at most this many quarters — beyond it the feature goes
+  # missing rather than silently carrying stale data (CLAUDE.md rule 7).
+  ffill_limit_quarters: 5
+
+  # Smoothing on real growth and inflation inputs before r−g / ngdp−yield are
+  # formed (trailing mean, quarters). 1 = no smoothing.
+  # TUNABLE: 4 dampens single-quarter GDP noise from flipping the stage.
+  growth_smooth_quarters: 4
+
+thresholds:              # all in percentage points unless noted
+  debt_pct_high: 0.70    # TUNABLE percentile above which the debt stock is "high"
+  debt_traj_rising: 1.0  # TUNABLE pp/yr — debt/GDP rising materially
+  debt_traj_falling: -0.5 # TUNABLE pp/yr — actively deleveraging
+  dsr_rising: 0.3        # TUNABLE pp over the trend window
+  dsr_falling: -0.3      # TUNABLE
+  r_minus_g_pos: 0.0     # TUNABLE r ≥ g — the "debt grows faster than income" line
+  r_minus_g_deep_neg: -1.0 # TUNABLE r well below g — reflation-engineered
+  ngdp_yield_pos: 0.5    # TUNABLE nominal growth comfortably above yields
+  ngdp_yield_neg: -0.5   # TUNABLE nominal growth below yields — burdens compound
+  growth_weak: 1.0       # TUNABLE real growth (yoy %) below this = weak
+
+# Condition weights per stage. Each stage's score = Σ weight × condition,
+# renormalized over the conditions whose features are AVAILABLE that quarter
+# (a country with no debt-service series still gets a stage from the rest).
+# TUNABLE: weights encode which evidence matters most for each stage.
+weights:
+  leveraging:
+    debt_rising: 0.30            # debt_traj > debt_traj_rising
+    dsr_not_rising: 0.20         # dsr_trend ≤ dsr_rising
+    g_above_r: 0.30              # r_minus_g < r_minus_g_pos
+    ngdp_above_yield: 0.20       # ngdp_minus_yield > 0
+  squeeze:
+    debt_high: 0.30              # debt_pct > debt_pct_high
+    dsr_rising: 0.30             # dsr_trend > dsr_rising
+    r_at_or_above_g: 0.25        # r_minus_g ≥ r_minus_g_pos
+    ngdp_below_yield: 0.15       # ngdp_minus_yield < ngdp_yield_neg
+  deleveraging:
+    debt_falling: 0.40           # debt_traj < debt_traj_falling
+    dsr_falling: 0.25            # dsr_trend < dsr_falling
+    growth_weak: 0.20            # real growth < growth_weak
+    ngdp_below_yield: 0.15
+  reflation:
+    debt_not_rising: 0.25        # debt_traj ≤ debt_traj_rising
+    r_deep_below_g: 0.35         # r_minus_g < r_minus_g_deep_neg
+    ngdp_well_above_yield: 0.30  # ngdp_minus_yield > ngdp_yield_pos
+    dsr_falling: 0.10
+
+classification:
+  # A stage must clear this score to be labeled; otherwise "neutral".
+  # TUNABLE: raise for fewer, higher-conviction labels.
+  min_score: 0.45
+
+  # A stage's conditions must have at least this much of their weight
+  # evaluable (features present) or that stage scores NaN that quarter.
+  min_condition_weight: 0.50
+
+  # At least this many of the 5 feature families (debt level, debt trajectory,
+  # DSR trend, r−g, ngdp−yield) must be present or no label is emitted.
+  min_features: 3
+
+  # Rolling-mode smoothing of the raw label (quarters). Prevents single-quarter
+  # flapping between adjacent stages. 1 = no smoothing.
+  # TUNABLE: 3 requires a stage to persist ~2 of 3 quarters to take over.
+  smoothing_quarters: 3
+
+# ── Per-country feature bindings ─────────────────────────────────────────────
+# Signal IDs are concept tails (country prefix added at runtime). Missing
+# blocks degrade gracefully: the classifier runs on whatever is present.
+# Unit conventions handled in code: yields/rates are pct_level (2.5 = 2.5%);
+# gdp_real & cpi are yoy decimal fractions (0.026 = 2.6%); debt ratios are
+# pct of GDP (122.8); us.master.ngdp_minus_yield is a decimal spread (0.016).
+countries:
+  US:
+    debt_components:             # averaged per-component (different start dates)
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: credit.debt_service_ratio
+    real_rate:
+      signal: policy.real_fed_funds        # already real, pct_level
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      signal: master.ngdp_minus_yield
+      scale: 100                            # decimal spread → pp
+  EZ:
+    debt_components:
+      - credit.gov_debt_gdp                 # govt only — household/corporate n/a free
+    dsr_signal: null                        # no free EA debt-service series (wishlist)
+    real_rate:
+      nominal_signal: policy.fed_funds_target   # ECB policy rate binding
+      inflation_signal: inflation.cpi_headline  # deflate: nominal − CPI yoy
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true                         # (real g + CPI yoy)×100 − 10y yield
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_headline
+  KR:
+    debt_components:
+      - credit.gov_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y      # PROXY: no free BoK base-rate series
+      inflation_signal: inflation.cpi_headline
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_headline

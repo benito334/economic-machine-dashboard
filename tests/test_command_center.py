@@ -67,10 +67,11 @@ def test_render_us_has_all_cards_and_chips():
     assert "confidence" in text
     # Lever cards
     for label in ("Credit conditions", "Policy stance", "Debt stress",
-                  "Debt-service ratio", "Productivity trend"):
+                  "Debt-service ratio", "Productivity trend", "Cycle stage"):
         assert label in text, f"missing card: {label}"
-    # Planned placeholders for the two unbuilt layers
-    assert "Phase C" in text and "Phase D" in text
+    # Planned placeholder for the remaining unbuilt layer (Phase D order);
+    # the Phase C stage card is live as of the debt-cycle stage classifier.
+    assert "Phase D" in text
     # What-changed feed section
     assert "What changed" in text
 

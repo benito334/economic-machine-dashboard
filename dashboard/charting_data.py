@@ -449,6 +449,33 @@ def load_debt_stress_history(
     return df
 
 
+def load_debt_cycle_stage_history(
+    country: str = "US",
+    start_date: Optional[str] = None,
+) -> pd.DataFrame:
+    """Return debt_cycle_stage_snapshots for one country (roadmap Phase C)."""
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        clauses = ["country = ?"]
+        params: list = [country]
+        if start_date:
+            clauses.append("as_of >= ?")
+            params.append(start_date)
+        where = " AND ".join(clauses)
+        df = con.execute(
+            f"SELECT * FROM debt_cycle_stage_snapshots WHERE {where} ORDER BY as_of",
+            params,
+        ).df()
+    except duckdb.CatalogException:
+        return pd.DataFrame()          # table not created yet — pipeline not run
+    finally:
+        con.close()
+
+    if not df.empty:
+        df["as_of"] = pd.to_datetime(df["as_of"])
+    return df
+
+
 # ── Signal overview helpers (for Regime Map panels) ───────────────────────────
 
 def load_latest_signals(

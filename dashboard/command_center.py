@@ -10,8 +10,8 @@ policy stance + expected path), the debt-service ratio as the earliest
 long-cycle signal, the productivity trend as the baseline, the growth/inflation
 divergence flag as the cycle-shift alarm, and change-over-level throughout.
 
-Routes "/" and "/country". Placeholder cards mark the two unbuilt layers
-(long-term-cycle STAGE — Phase C; big-cycle ORDER — Phase D).
+Routes "/" and "/country". The long-term-cycle STAGE card is live (Phase C);
+a placeholder card marks the remaining unbuilt layer (big-cycle ORDER — Phase D).
 """
 from __future__ import annotations
 
@@ -25,9 +25,16 @@ from dash import Input, Output, callback, dcc, html, no_update
 from dashboard.charting_data import (
     load_change_feed,
     load_composite_history,
+    load_debt_cycle_stage_history,
     load_debt_stress_history,
     load_latest_signals,
 )
+
+# Stage chip colors — shared with the Debt Stress page timeline.
+STAGE_COLORS = {
+    "leveraging": "#4C9BE8", "squeeze": "#E8734C",
+    "deleveraging": "#B07FD4", "reflation": "#5CBA8A", "neutral": "#888888",
+}
 
 _COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area", "KR": "South Korea"}
 
@@ -254,14 +261,36 @@ def render_command_center(country_data, page_trigger, thresholds):
     else:
         dsr_sub = "no data for this country"
 
+    # Long-term cycle STAGE (Phase C classifier)
+    try:
+        stage_hist = load_debt_cycle_stage_history(country=country)
+    except Exception:
+        stage_hist = pd.DataFrame()
+    if not stage_hist.empty:
+        labeled = stage_hist[stage_hist["stage"].notna()]
+        srow = labeled.iloc[-1] if not labeled.empty else None
+    else:
+        srow = None
+    if srow is not None:
+        stage_lbl = str(srow["stage"])
+        s_conf = srow.get("confidence")
+        n_feat = int(srow.get("n_features") or 0)
+        stage_card = _card(
+            "Cycle stage", stage_lbl,
+            (f"confidence {s_conf:.2f} · " if s_conf is not None and not pd.isna(s_conf) else "")
+            + f"{n_feat}/5 features · {pd.Timestamp(srow['as_of']):%b %Y}",
+            "/debt-stress", STAGE_COLORS.get(stage_lbl, "var(--font-color)"))
+    else:
+        stage_card = _card("Cycle stage", "—",
+                           "no stage read yet — run the pipeline", "/debt-stress")
+
     longcycle = html.Div([
         html.Div("Long-term debt cycle", style=_H),
         html.Div([
             stress_card,
             _card("Debt-service ratio", _fmt(dsr.get("zscore"), "+.2f"),
                   dsr_sub + " — the earliest stress signal", "/debt-stress"),
-            _card("Cycle stage", "planned", "Phase C — leveraging / squeeze / deleveraging",
-                  planned=True),
+            stage_card,
         ], style=_ROW),
     ])
 
@@ -297,8 +326,8 @@ def render_command_center(country_data, page_trigger, thresholds):
         html.Div("What changed — biggest Z-score moves vs. prior observation", style=_H),
         html.Div(_what_changed_children(feed),
                  style={**_CARD, "flex": "none"}),
-        html.Div("Every card links to its detail page. Dashed cards are the two "
-                 "planned layers (Phase C stage · Phase D order).",
+        html.Div("Every card links to its detail page. The dashed card is the "
+                 "remaining planned layer (Phase D — big-cycle order).",
                  style={"fontSize": "0.68rem", "color": "var(--muted-color)",
                         "marginTop": "10px"}),
     ])
