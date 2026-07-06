@@ -21,12 +21,15 @@
 `tests/test_explorer.py::test_compare_raw_vs_processed_level_signal` — pandas datetime-unit mismatch (`M8[us]` vs `M8[ns]`) in `dashboard/explorer_data.py::compare_raw_vs_processed` `merge_asof`. Reproduces on main before all 2026-07-05 work. Fix: normalize both sides to `datetime64[ns]` before the merge. (A spun-off fix session was started then deleted — still open.)
 
 ### Roadmap position (see docs/Guidance/ray_framework_roadmap.md)
-Done: A, B, G1+G2. Next: **Phase CC (command center v1)** → C → D spike → E → F (Japan) → G3.
+**ALL major roadmap phases complete as of 2026-07-06** (A, B, CC, C, D spike+subset, E, F Japan, G1–G3) plus the UK rollout, the Ray unification audit (canonical 48m/90m windows everywhere, threshold-aware season backdrop, Chip Direction Agreement), and the User Guide (/guide). Open tails, rough priority: **China rollout** (Phase 2 order; WB/IMF harmonized only — NBS out of scope), **D4** (manual-load infrastructure for V-Dem/Polity governance + GPR index), ONS (free, unregistered) for live GB monthly CPI + e-Stat registration for JP, rate-basket rolling variants (for Ray's 36m policy window default), the 2007-squeeze stage-threshold tweak candidate (needs more episodes), stored 4-season `quadrant` column retirement decision.
 
 ### EA current account — accepted gap
 All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidance/EU_singals_guidance.md` for full investigation table. Resolution requires ECB Data License or manual Eurostat bulk download. Accept gap for now — Global Overview shows dash for EZ current account column.
 
 ---
+
+## Completed 2026-07-05/06 — roadmap finished (CC, C, D, E, F, G3) + UK + audit + User Guide
+Full detail in `docs/worklog.md` (nine entries) and the review log. One-line version: Command Center default landing page; debt-cycle stage classifier (US/EZ/JP reflation, KR leveraging, GB squeeze); order lens (Gini + COFER via the new IMF SDMX API); Relative Cycles page with 5×5 correlation matrices; Japan (25 signals, daily-Nikkei vol, IMF-bridge inflation) + UK (27 signals) rollouts — 188 signals across 5 countries; G3 ALFRED vintage replay (direction validation survives; A1 closed: rate_expectations keeps CONTEXT 0.45; dynamic stays opt-in); Ray unification audit (per-country rolling columns — were US-only, canonical 48m/90m defaults, seasons as threshold-aware backdrop, Chip Direction Agreement, dynamic thresholds re-paired with windows + time-stepping map band); 9-lesson User Guide with Ray pedagogy pass. 455 tests pass.
 
 ## Completed 2026-07-05 — Ray review + roadmap phases A/B/G1-G2
 Full detail in `docs/worklog.md` (five entries dated 2026-07-05) and `docs/Guidance/ray_dalio_review_log.md`. One-line version: systematic Ray Dalio AI review → 24-item punch list → all implemented or explicitly deferred; roadmap created (`ray_framework_roadmap.md`); Phases A (loan_demand, rate_expectations), B (productivity_score composite + /signals/productivity), G1+G2 (PIT backtest engine, direction validation passed, dynamic ≥ fixed) shipped; dynamic-threshold checkbox UX fixed (applies on click); Methodology page fully revised + Revision Log section added.
