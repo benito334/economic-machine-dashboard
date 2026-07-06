@@ -40,7 +40,13 @@ _Q_COLORS: dict[str, str] = {
     "Inflationary Boom":        "#F4C842",
     "Stagflation":              "#E8734C",
     "Disinflationary Slowdown": "#4C9BE8",
+    "Transition — no clear season": "#888888",   # inside the ±threshold band (Ray Q2)
 }
+# Monte Carlo trials are classified with the threshold-aware season label at
+# the static default thresholds (importance perturbation moves only the Z
+# levels — momentum deltas are unavailable per trial, so the chips proper
+# can't be computed; the season zones are the honest sensitivity read).
+_MC_THRESHOLDS = {"gz": 0.5, "iz": 0.5}
 _BALANCE_OK_COLOR   = "#5CBA8A"
 _BALANCE_WARN_COLOR = "#E8734C"
 _BALANCE_LO, _BALANCE_HI = 0.75, 1.33
@@ -579,29 +585,29 @@ def update_monte_carlo(country: str, _, theme_name: str, _run=None):
         e = _empty_fig(theme_name, "No signal data in DB")
         return e, e, "No data"
 
+    # Lazy import — charting imports this module; the season label is the
+    # single Ray-approved (threshold-aware) zone definition (audit 2026-07-06).
+    from dashboard.charting import _season_label
+
     outcomes_df = pd.DataFrame(result["outcomes"])
-    q_counts = result["quadrant_counts"]
     n_total = len(result["outcomes"])
     base_g = result["base_growth"]
     base_i = result["base_inflation"]
 
-    # Identify base quadrant
-    if base_g >= 0 and base_i >= 0:
-        base_q = "Inflationary Boom"
-    elif base_g >= 0 and base_i < 0:
-        base_q = "Expansion"
-    elif base_g < 0 and base_i >= 0:
-        base_q = "Stagflation"
-    else:
-        base_q = "Disinflationary Slowdown"
-
+    outcomes_df["zone"] = [
+        _season_label(gg, ii, _MC_THRESHOLDS)
+        for gg, ii in zip(outcomes_df["growth_score"], outcomes_df["inflation_score"])
+    ]
+    q_counts = outcomes_df["zone"].value_counts().to_dict()
+    base_q = _season_label(base_g, base_i, _MC_THRESHOLDS)
     pct_same = round(q_counts.get(base_q, 0) / n_total * 100, 1)
 
     scatter_fig = _mc_scatter(outcomes_df, base_g, base_i, base_q, theme_name)
     donut_fig   = _mc_donut(q_counts, n_total, theme_name)
     caption = (
-        f"{pct_same}% of trials confirm current {base_q} reading "
-        f"(±15% importance perturbation, 500 trials). "
+        f"{pct_same}% of trials stay in the base zone ({base_q}) "
+        f"(±15% importance perturbation, 500 trials; zones use the "
+        f"threshold-aware season geography at static ±{_MC_THRESHOLDS['gz']:.1f}). "
         f"Unperturbed: Growth={base_g:+.3f}, Inflation={base_i:+.3f}."
     )
     return scatter_fig, donut_fig, caption
@@ -742,36 +748,36 @@ def _mc_scatter(
     t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
     fig = go.Figure()
 
-    # Quadrant background shading
-    for (g_pos, i_pos), q_label in [
-        ((True, True),   "Inflationary Boom"),
-        ((True, False),  "Expansion"),
-        ((False, True),  "Stagflation"),
-        ((False, False), "Disinflationary Slowdown"),
+    # Season shading only beyond the ±threshold lines; the middle cross-band
+    # is the Transition zone (Ray audit ruling 2026-07-06, Q2 — geometry
+    # matches the Regime Map).
+    _gz, _iz = _MC_THRESHOLDS["gz"], _MC_THRESHOLDS["iz"]
+    for x0, x1, y0, y1, q_label in [
+        (_gz, 10,  _iz, 10,  "Inflationary Boom"),
+        (_gz, 10,  -10, -_iz, "Expansion"),
+        (-10, -_gz, _iz, 10,  "Stagflation"),
+        (-10, -_gz, -10, -_iz, "Disinflationary Slowdown"),
     ]:
-        x0 = 0 if g_pos else -10
-        x1 = 10 if g_pos else 0
-        y0 = 0 if i_pos else -10
-        y1 = 10 if i_pos else 0
         fig.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
                       fillcolor=_hex_alpha(_Q_COLORS[q_label]),
                       line={"width": 0}, layer="below")
-        fig.add_annotation(
-            x=(x0 + x1) / 2, y=(y0 + y1) / 2,
-            text=q_label, showarrow=False,
-            font={"size": 8, "color": _Q_COLORS[q_label]},
-            opacity=0.6,
-        )
+    for v, axis in [(_gz, "v"), (-_gz, "v"), (_iz, "h"), (-_iz, "h")]:
+        line = {"color": "rgba(255,255,255,0.20)", "width": 1, "dash": "dash"}
+        if axis == "v":
+            fig.add_vline(x=v, line=line)
+        else:
+            fig.add_hline(y=v, line=line)
 
-    # Trial scatter points
+    # Trial scatter points, colored by threshold-aware zone
+    zone_col = df["zone"] if "zone" in df.columns else df.get("quadrant")
     for q, color in _Q_COLORS.items():
-        sub = df[df["quadrant"] == q]
+        sub = df[zone_col == q]
         if sub.empty:
             continue
         fig.add_trace(go.Scatter(
             x=sub["growth_score"], y=sub["inflation_score"],
             mode="markers",
-            name=q,
+            name=q if "Transition" not in q else "Transition band",
             marker={"color": color, "size": 4, "opacity": 0.55},
         ))
 

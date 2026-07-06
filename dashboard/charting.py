@@ -50,7 +50,6 @@ from dashboard import global_overview as _global_overview
 from dashboard import methodology as _methodology
 from dashboard import weight_audit as _weight_audit
 from dashboard import weight_history as _weight_history
-from dashboard import regime_classifier_page as _regime_classifier
 from dashboard import signals_page as _signals_page
 from dashboard import force_detail as _force_detail
 from dashboard import command_center as _command_center
@@ -121,7 +120,7 @@ def _compute_rolling_history(country: str, window: int) -> pd.DataFrame:
         as_of (datetime), rolling_growth, rolling_inflation.
 
     Used when the Settings panel selects a finite look-back window.
-    Nominal weights from composites.yaml are applied; no momentum tilts
+    Nominal weights from config/countries/{cc}_composites.yaml are applied; no momentum tilts
     (those depend on Z-sign which would be circular at this layer).
     """
     from indicators.normalize import zscore_rolling, ZSCORE_CAP_SIGMA
@@ -856,12 +855,6 @@ def _left_nav() -> html.Div:
             _nl("🔬", "Data Explorer",  "/explorer",       nav_id="navlnk-explorer"),
         ], vertical=True, pills=True, className="mb-1"),
 
-        # ── Analysis ──────────────────────────────────────────────────────────
-        _label("Analysis"),
-        dbc.Nav([
-            _nl("🎯", "Regime Classifier", "/regime-classifier", nav_id="navlnk-regime-classifier"),
-        ], vertical=True, pills=True, className="mb-1"),
-
         # ── Reference ─────────────────────────────────────────────────────────
         _label("Reference"),
         dbc.Nav([
@@ -1025,10 +1018,6 @@ def _page_weight_history() -> html.Div:
     return _weight_history.get_layout()
 
 
-def _page_regime_classifier() -> html.Div:
-    return _regime_classifier.get_layout()
-
-
 def _page_signals() -> html.Div:
     return _signals_page.get_layout()
 
@@ -1152,67 +1141,84 @@ def _build_rh_help_panel() -> html.Div:
         html.P("Regime History — all metrics explained.",
                style={"fontSize": "0.74rem", "color": "var(--muted-color)", "marginBottom": "0"}),
 
-        html.Div("Regime Quadrant", style=_H),
-        *_row(None, "The macro season, determined by the sign of both force Z-scores."),
-        *_row("Expansion", "Growth ↑, Inflation ↓ — output recovering faster than prices."),
-        *_row("Inflationary Boom", "Growth ↑, Inflation ↑ — both above long-run normal."),
-        *_row("Stagflation", "Growth ↓, Inflation ↑ — weak output with elevated prices."),
-        *_row("Disinflationary Slowdown", "Growth ↓, Inflation ↓ — both below normal."),
+        html.Div("Regime Chips  (the classification)", style=_H),
+        *_row(None, ("Two independent chips — Growth (Growth / Transition / Retraction) and "
+                     "Inflation (Inflation / Transition / Disinflation). Each requires BOTH "
+                     "conditions: the force Z-score beyond its ±threshold AND the momentum "
+                     "agreeing. Miss either → Transition (honesty, not indecision).")),
+        *_row("Thresholds", ("±gz / ±iz — set in the Regime Thresholds modal. With dynamic mode "
+                             "on (Ray's algorithm) they adapt per month: calm eras tighten the "
+                             "band, chaotic eras widen it, tight credit raises the inflation bar.")),
+        *_row("Windows", ("The sidebar sliders choose what counts as 'normal': growth vs the "
+                          "last 48 months and inflation vs 90 by default (Ray's canonical "
+                          "ruling — inflation regimes run longer).")),
+        *_row("Seasons", ("The four season names (Expansion, Inflationary Boom, Stagflation, "
+                          "Disinflationary Slowdown) survive only as map geography beyond the "
+                          "threshold lines — display shorthand, not the decision rule.")),
+        *_row(None, html.Span(["New to these tools? The ",
+                               dcc.Link("User Guide", href="/guide",
+                                        style={"color": "#E8A317"}),
+                               " is a full 9-lesson walkthrough."])),
 
         html.Div("Force Z-Scores", style=_H),
-        *_row("Growth  (blue)", ("Dynamically weighted composite of 9 growth signals, each standardised "
-                                  "vs. its own history. Positive = above long-run average; negative = below.")),
-        *_row("Inflation  (orange)", ("Same for 8 inflation signals. "
+        *_row("Growth  (blue)", ("Dynamically weighted composite of the growth basket, each signal "
+                                  "standardised vs. its own history over the selected window. "
+                                  "Positive = above that baseline; negative = below.")),
+        *_row("Inflation  (orange)", ("Same for the inflation basket. "
                                       "Positive = inflationary pressure above baseline.")),
-        *_row(None, ("The zero reference line is the historical mean. "
+        *_row(None, ("The zero reference line is the window mean. "
                      "Magnitude shows how far conditions have deviated from 'normal'.")),
 
         html.Div("Dynamic Weighting", style=_H),
         *_row("Config Weight", ("Normalized base share × editable importance × data-quality factor. "
-                                 "Importance defaults live in config/composites.yaml.")),
+                                 "Importance defaults live in config/countries/{cc}_composites.yaml; "
+                                 "methodology settings in config/composites_policy.yaml.")),
         *_row("Momentum Tilt", ("Force and momentum agreement boosts weight up to 1.5×; "
                                   "conflict reduces it to 0.5×; neutral leaves it unchanged.")),
-        *_row("Time Decay", ("Observation weight halves every 3 months after its last data point. "
-                               "Per-frequency carry caps still remove data that is too old.")),
+        *_row("Time Decay", ("Observation weight decays on a per-signal half-life after its last "
+                               "data point. Per-frequency carry caps still remove data that is too old.")),
         *_row("Effective Weight", "Config weight × momentum tilt × time-decay fraction."),
 
         html.Div("Momentum  Δ MoM  (info box)", style=_H),
         *_row(None, ("Month-over-month change in the force score: "
                      "this month's composite Z-score minus last month's. "
                      "↑ = score rose · ↓ = score fell · → = flat (|Δ| < 0.001).")),
-        *_row(None, "Distinct from the signal fraction in chart rows 2 & 4 — see 'Chart Rows' below."),
+        *_row(None, "Distinct from the signal fraction in the momentum chart rows — see 'Chart Rows' below."),
 
-        html.Div("Confidence", style=_H),
-        *_row(None, ("Fraction of constituent signals whose 3-month direction "
-                     "agrees with the assigned quadrant label.")),
-        *_row(None, ("In Stagflation we expect growth signals falling AND inflation signals rising. "
-                     "80% = 80% of all signals are moving in the expected direction.")),
-        *_row(None, "Below 50% = mixed signals; low conviction in the quadrant label."),
+        html.Div("Chip Agreement", style=_H),
+        *_row(None, ("Per force: the fraction of constituent signals whose 3-month direction "
+                     "matches the chip's heading (the sign of the composite's MoM delta), "
+                     "with inverted signals flipped. Shown as G / I sub-metrics.")),
+        *_row(None, ("G 85% / I 55% = the growth call is broad-based, the inflation call is "
+                     "contested — weight your conviction accordingly.")),
+        *_row(None, ("The chart's bottom row plots the STORED direction-agreement series "
+                     "(the legacy quadrant-based definition) for history; the live per-chip "
+                     "numbers are in the card above.")),
 
         html.Div("Disequilibrium", style=_H),
         *_row(None, ("Mean absolute Z-score across five structural force groups: "
                      "Debt, External/Trade, Technology, Governance, Climate.")),
-        *_row(None, ("Unlike the cyclical quadrant, Disequilibrium captures slow-moving "
+        *_row(None, ("Unlike the cyclical chips, Disequilibrium captures slow-moving "
                      "structural imbalances that build over years.")),
         *_row("0 – 0.5", "Low structural tension."),
         *_row("0.5 – 1.5", "Moderate tension."),
         *_row("> 1.5", "High — system stretched far from long-run equilibrium."),
 
         html.Div("Chart Rows", style=_H),
-        *_row("Row 1 · Growth Force Z-Score",
-              "Level of the growth composite over time. Fill shows magnitude above/below zero."),
-        *_row("Row 2 · Growth Momentum  (signal fraction)",
-              ("Fraction of the 9 growth signals whose 3-month direction is growth-positive. "
-               "50% = neutral split. 70% = 7 of 9 signals trending growth-positive, "
-               "independent of the absolute level. Note: 7/9 signals can be growth-positive "
-               "even when the Z-score is negative if the score is rising from a low base.")),
-        *_row("Row 3 · Inflation Force Z-Score",
-              "Level of the inflation composite over time."),
-        *_row("Row 4 · Inflation Momentum  (signal fraction)",
-              "Fraction of the 8 inflation signals trending inflation-positive. 50% = neutral."),
-        *_row("Row 5 · Regime Quadrant",
-              ("Discrete step-function: 0 = Dis. Slowdown · 1 = Expansion "
-               "· 2 = Inf. Boom · 3 = Stagflation.")),
+        *_row("Row 1 · Regime  (Growth · Inflation)",
+              ("Dual-band chip history: each month's Growth chip (lower band) and "
+               "Inflation chip (upper band), colored by label.")),
+        *_row("Rows 2–3 · Growth Z + Momentum",
+              ("Level of the growth composite (amber dashed lines = the ±threshold), then the "
+               "fraction of growth signals whose 3-month direction is growth-positive. "
+               "50% = neutral split — the fraction can exceed 50% while the Z is still "
+               "negative if the score is rising from a low base.")),
+        *_row("Rows 4–5 · Inflation Z + Momentum",
+              "Same pair for the inflation composite."),
+        *_row("Row 6 · Direction Agreement (legacy)",
+              ("The stored per-month direction-agreement series, kept for historical "
+               "context. Its definition predates the chips — read trends, not the "
+               "absolute level, and use the live Chip Agreement in the card for today.")),
 
         html.Div("Force Component Table", style=_H),
         *_row("Signal", "Constituent indicator name."),
@@ -1998,7 +2004,6 @@ _PAGE_MAP = {
     "/debt-stress":   _page_debt_stress,
     "/weight-audit":        _page_weight_audit,
     "/weight-history":      _page_weight_history,
-    "/regime-classifier":   _page_regime_classifier,
     "/signals":             _page_signals,
     "/signals/growth":     lambda: _page_force("growth"),
     "/signals/inflation":  lambda: _page_force("inflation"),
@@ -3174,7 +3179,7 @@ def _regime_info_children(
         "Config Wt = normalized base share × editable importance × data quality · "
         "Eff Wt = Config Wt × momentum agreement tilt × 3-month half-life decay · "
         "Force Z-Score = weighted average using effective weights · "
-        "Confidence = direction-agreement fraction vs. expected quadrant · "
+        "Chip Agreement = % of each force's signals moving with its chip's heading (Ray audit 2026-07-06) · "
         "Provider-stale/low-history signals excluded; carried observations remain active with decay",
         style={"fontSize": "0.65rem", "color": "#555", "marginTop": "10px"},
     )
@@ -3290,14 +3295,6 @@ def select_regime_point(click_data: dict, date_range: dict, current_step: int) -
 _FORCE_WINDOW_COL     = {36: "36m", 48: "48m", 60: "60m"}           # growth window → col suffix
 _INFLATION_WINDOW_COL = {60: "60m", 90: "90m", 120: "120m"}          # inflation window → col suffix
 _DISEQ_WINDOW_COL     = {12: "12m", 18: "18m", 24: "24m"}
-
-# Quadrant classification from (growth_positive, inflation_positive) booleans
-_RQ_MAP = {
-    (True,  True):  "Inflationary Boom",
-    (True,  False): "Expansion",
-    (False, True):  "Stagflation",
-    (False, False): "Disinflationary Slowdown",
-}
 
 
 @callback(
@@ -3576,7 +3573,7 @@ def update_regime_chart(
             "Growth Momentum (fraction of signals growth-positive)",
             f"Inflation Force Z-Score (composite{win_label})",
             "Inflation Momentum (fraction of signals inflation-positive)",
-            "Confidence (direction-agreement across signals)",
+            "Direction Agreement (stored series — legacy definition; live Chip Agreement is in the card above)",
             f"Disequilibrium Score (mean distance from equilibrium{diseq_label})",
         ],
     )
@@ -3690,9 +3687,9 @@ def update_regime_chart(
         fig.add_trace(
             go.Scatter(
                 x=comp["as_of"], y=comp["confidence"],
-                name="Confidence",
+                name="Direction Agreement (legacy)",
                 line={"color": _COLORS[4], "width": 1.5},
-                hovertemplate="%{x|%Y-%m-%d}<br>Confidence: %{y:.0%}<extra></extra>",
+                hovertemplate="%{x|%Y-%m-%d}<br>Direction agreement (stored, legacy definition): %{y:.0%}<extra></extra>",
                 fill="tozeroy",
                 fillcolor="rgba(176, 127, 212, 0.15)",
             ),

@@ -1284,3 +1284,16 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Live data in every lesson ("On your dashboard right now" green boxes) — country/theme/window/threshold aware, same code paths as the Command Center; Methodology §N links wherever formulas live.
 - 3 plotly diagrams: three-lines-and-band machine chart, stage-colored debt-cycle arc with a "you are here" marker, regime-map geography miniature with the live dot.
 - 10 tests (Ray's teaching order asserted, traps present, live boxes ≥5, all countries render, page guard, route). Suite 455 passing. Verified live in browser.
+
+---
+
+## 2026-07-06 — UI cleanup: retired pre-Ray surfaces, fixed stale content
+
+**Audit-driven cleanup (user-approved, full A+B scope):**
+- **Retired to `archive/`** (with README): the standalone Regime Classifier page + engine (`/regime-classifier` — a second, sign-based 4-season classifier that could contradict the chips; nothing else imported it), the Streamlit :8501 proof (`dashboard/app.py` + its 41 tests — 4-quadrant HUD, legacy confidence), and the TradingView :8503/:8004 SPA (`charting_lc/` — quadrant history, duplicated Chart Overlay). docker-compose is now 2 services (pipeline + charting). The "Analysis" nav group is gone (was only the classifier).
+- **Deleted outright:** `config/composites.yaml` (deprecated since 2026-06-22, read by nothing) and the dead `_RQ_MAP` constant.
+- **Stale content fixed:** Regime History help panel rewritten to chips/thresholds/windows language (+ User Guide link; the old panel taught sign-based seasons, referenced a step-function chart removed in June, and pointed at the deleted composites.yaml); chart Row 6 relabeled "Direction Agreement (legacy)" with honest hover; footer "Confidence" definition → Chip Agreement; Weight Audit Monte Carlo now classifies trials by the threshold-aware season zones (`_season_label`, static ±0.5) with band-aware shading instead of sign quadrants; CLAUDE.md "What This Project Is" rewritten (three clocks, chips as the rule, seasons as map geography).
+
+**Incident during rollout (resolved):** `docker compose up -d --remove-orphans` started the pipeline service, whose image was stale (June code — 63 US signals, 2 countries, no rate/credit/vol/productivity or rolling columns). Its Pass 5/6 overwrote composites + debt-stress for US/EZ/KR with old-schema output (signals + stage tables unharmed — upsert-only / not in old image). Recovery: stopped charting, re-ran the current pipeline from the host (188 signals, all 5 stages correct, all columns verified restored to exact pre-clobber counts), rebuilt BOTH images so the pipeline image can't lag the code again. **Lesson (worth remembering): `docker compose build` must build all services, not just charting — a stale pipeline image silently rewrites the DB with old formulas.**
+
+**Validation:** 414 tests pass (455 − 41 archived Streamlit tests); MC smoke-tested; Command Center/Regime Map/Guide verified live post-rebuild.
