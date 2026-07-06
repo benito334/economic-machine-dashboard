@@ -174,6 +174,15 @@ rate_score:
       quality_factor: 0.95
       half_life_months: 4.0 # forward-prices 2 years out; slightly smoother than overnight rate
       invert: true          # rising 2y yield = market pricing in more tightening
+    - id: policy.rate_expectations
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — 2Y minus fed funds = market-implied EXPECTED policy change
+                             # (vs. the rate LEVELS above). Ray Dalio review A1: chose this over the
+                             # non-viable FOMC dot-plot; distinct forward-looking dimension, but kept
+                             # modest pending Phase G backtest validation of its incremental value.
+      quality_factor: 0.95
+      half_life_months: 4.0 # front-end slope; same cadence as yield_2y
+      invert: true          # positive spread = market pricing hikes = tightening ahead = less accommodative
     - id: policy.yield_10y
       base_share: 0.5
       importance: 0.45      # CONTEXT — highly correlated with real_yield_10y; limited incremental info

@@ -166,6 +166,18 @@ def compute_derived(
         combined.columns = ["be5", "be10"]
         return ((combined["be5"] + combined["be10"]) / 2.0).dropna()
 
+    if bid == "policy.rate_expectations":
+        # 2Y Treasury yield − effective fed funds (both pct_level, daily).
+        # Market-implied expected policy change over ~2 years (Ray review A1).
+        y2 = transformed_store.get("policy.yield_2y")
+        ff = transformed_store.get("policy.fed_funds")
+        if y2 is None or ff is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        combined = pd.concat([y2, ff], axis=1, join="inner")
+        combined.columns = ["y2", "ff"]
+        return (combined["y2"] - combined["ff"]).dropna()
+
     if bid == "volatility.realized_vol":
         # Ray Dalio review 2026-07-05 (#13): annualized rolling std of log returns
         # on the country's own equity-index level. Uses transformed_store (keyed by

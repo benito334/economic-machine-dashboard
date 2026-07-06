@@ -851,6 +851,14 @@ def get_layout() -> html.Div:
                          "forward-looking tightening or easing, especially when the Fed's "
                          "balance-sheet actions are large.",
                          "STRONG", "0.70", "4 m"],
+                        ["Rate Expectations (2Y − fed funds)",
+                         "Front-end slope = the market-implied EXPECTED CHANGE in policy over ~2 "
+                         "years (positive = pricing hikes, negative = pricing cuts), vs. the rate "
+                         "LEVELS elsewhere in the basket. Added on Ray Dalio's advice (review A1) as "
+                         "the forward-looking dimension, since free Fed-funds-futures aren't available "
+                         "and the FOMC dot-plot has no Z-scoreable history. Kept CONTEXT-tier pending "
+                         "Phase G backtest validation of its incremental value over the 2Y level.",
+                         "CONTEXT", "0.45", "4 m"],
                         ["Real Yield 10Y",
                          "Long-term real rate that captures the market's view of the long-run "
                          "discount rate after stripping out inflation expectations. It is a key "

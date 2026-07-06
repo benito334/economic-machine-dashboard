@@ -496,6 +496,22 @@ bindings:
     sanity_min: 0.0
     sanity_max: 20.0
 
+  - id: policy.rate_expectations
+    provider: derived
+    frequency: D
+    force: policy
+    lead_lag: leading
+    transformation: derived
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.0
+    linkage: "2Y Treasury yield minus effective fed funds rate — the market-implied EXPECTED CHANGE in policy over ~2 years (positive = pricing hikes, negative = pricing cuts). Ray Dalio review 2026-07-05 (A1): captures where policy is HEADING vs. the rate levels' where-it-IS, since free Fed-funds-futures aren't available and the FOMC dot-plot has no Z-scoreable history. Distinct forward-looking dimension from the yield_2y level; validate its incremental value in Phase G backtesting."
+    sanity_min: -5.0
+    sanity_max: 5.0
+
   - id: policy.yield_10y
     series_id: DGS10
     provider: FRED

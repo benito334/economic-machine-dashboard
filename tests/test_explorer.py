@@ -161,8 +161,8 @@ def test_overview_columns_structure():
 def test_load_signal_overview_returns_all_signals():
     from dashboard.explorer_data import load_signal_overview
     df = load_signal_overview()
-    # 65 + inflation.breakeven_avg (#2) + volatility.equity_index/vix/realized_vol (#13) + credit.loan_demand (#9)
-    assert len(df) == 70
+    # 70 (see history) + policy.rate_expectations (A1)
+    assert len(df) == 71
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns
@@ -320,8 +320,8 @@ def test_explorer_signal_table_callback():
     overview = load_signal_overview()
     rows = _format_overview(overview)
     assert isinstance(rows, list)
-    # 65 + inflation.breakeven_avg (#2) + volatility.equity_index/vix/realized_vol (#13) + credit.loan_demand (#9)
-    assert len(rows) == 70
+    # 70 (see history) + policy.rate_expectations (A1)
+    assert len(rows) == 71
     assert all("id" in r for r in rows)
     assert all("zscore_fmt" in r for r in rows)
     assert all("flags" in r for r in rows)

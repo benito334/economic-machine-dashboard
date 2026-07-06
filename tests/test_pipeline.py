@@ -150,6 +150,24 @@ def test_compute_derived_breakeven_avg_missing_input_returns_none():
     assert compute_derived(binding, {"T5YIE": pd.Series([1.0])}, {}) is None
 
 
+def test_compute_derived_rate_expectations():
+    # Ray review A1: policy.rate_expectations = yield_2y - fed_funds
+    idx = pd.date_range("2026-01-01", periods=3, freq="D")
+    transformed = {
+        "policy.yield_2y": pd.Series([4.5, 4.6, 4.7], index=idx),
+        "policy.fed_funds": pd.Series([4.3, 4.3, 4.3], index=idx),
+    }
+    binding = SimpleNamespace(id="policy.rate_expectations", frequency="D")
+    result = compute_derived(binding, {}, transformed)
+    assert result is not None
+    assert result.tolist() == pytest.approx([0.2, 0.3, 0.4])
+
+
+def test_compute_derived_rate_expectations_missing_input_returns_none():
+    binding = SimpleNamespace(id="policy.rate_expectations", frequency="D")
+    assert compute_derived(binding, {}, {"policy.yield_2y": pd.Series([4.5])}) is None
+
+
 def test_compute_derived_realized_vol_daily_annualizes_with_sqrt_252():
     idx = pd.date_range("2020-01-01", periods=40, freq="D")
     rng = np.random.default_rng(42)
