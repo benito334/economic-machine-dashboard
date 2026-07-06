@@ -805,3 +805,27 @@ bindings:
     linkage: "Annualized rolling standard deviation of monthly log returns on the EA share-price index (12-month window) — a monthly-resolution proxy for realized volatility; no daily EA equity feed is free via FRED."
     sanity_min: 0.0
     sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER (roadmap Phase D, added 2026-07-05) ──────────
+  # EZ Gini: WB EMU aggregate returns empty (verified 2026-07-05); member-state
+  # Ginis (DE/FR/IT/ES) exist but a constructed weighted average is deferred —
+  # documented in data_source_wishlist.md.
+
+  - id: order.reserve_currency_share
+    series_id: "IMF.STA,COFER/G001.AFXRA.CI_EUR.SHRO_PT.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: pct_level
+    country: EZ
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 20.0
+    linkage: "EUR share of allocated global FX reserves (IMF COFER) — the external-order read: the euro's standing as the #2 reserve currency underpins the bloc's borrowing privilege."
+    sanity_min: 5.0
+    sanity_max: 40.0
+    notes: "Verified 2026-07-05: quarterly 1999-Q1 → 2026-Q1 (20.0%)."

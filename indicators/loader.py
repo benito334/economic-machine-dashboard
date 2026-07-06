@@ -620,3 +620,97 @@ def fetch_ecb_series(
     series.to_frame().to_parquet(cache)
     logger.debug("[cached] ECB %s/%s → %s (%d obs)", flow, key, cache.name, len(series))
     return series
+
+
+# ─── IMF SDMX 2.1 API (api.imf.org — the post-2024 data portal) ──────────────
+# Distinct from the Datamapper API above (annual WEO-style aggregates). This
+# endpoint serves statistical datasets like COFER (currency composition of
+# official FX reserves). The legacy dataservices.imf.org SDMX host is dead.
+
+_IMF_SDMX_BASE = "https://api.imf.org/external/sdmx/2.1/data"
+
+
+def _imf_sdmx_cache_path(dataset: str, key: str) -> Path:
+    safe = key.replace(".", "_").replace(",", "-")
+    return RAW_CACHE_DIR / f"imfsdmx_{dataset.replace('.', '-')}_{safe}.parquet"
+
+
+def _parse_imf_sdmx_period(p: str) -> pd.Timestamp:
+    """'1999-Q1' → quarter-end; '1999' → year-end; monthly 'YYYY-MM' → month-end."""
+    p = p.strip()
+    if "-Q" in p:
+        return pd.Period(p, freq="Q").to_timestamp("Q")
+    if len(p) == 4 and p.isdigit():
+        return pd.Timestamp(f"{p}-12-31")
+    return pd.Period(p, freq="M").to_timestamp("M")
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_imf_sdmx_from_api(dataset: str, key: str) -> pd.Series:
+    resp = requests.get(
+        f"{_IMF_SDMX_BASE}/{dataset}/{key}",
+        headers={"Accept": "application/vnd.sdmx.data+csv"},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    import csv as _csv
+    import io
+    records = []
+    for row in _csv.DictReader(io.StringIO(resp.text)):
+        period = row.get("TIME_PERIOD")
+        val = row.get("OBS_VALUE")
+        if not period or val in (None, ""):
+            continue
+        records.append((_parse_imf_sdmx_period(period), float(val)))
+    if not records:
+        raise ValueError(f"Empty IMF SDMX response for {dataset}/{key}")
+    dates, values = zip(*sorted(records))
+    return pd.Series(list(values), index=pd.DatetimeIndex(dates), name="value", dtype=float)
+
+
+def fetch_imf_sdmx_series(
+    dataset: str,
+    key: str,
+    frequency: str = "Q",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """
+    Fetch one series from the new IMF SDMX 2.1 API (api.imf.org).
+
+    dataset: SDMX dataflow ref, e.g. "IMF.STA,COFER"
+    key: full dimension key, e.g. "G001.AFXRA.CI_USD.SHRO_PT.Q"
+         (COUNTRY.INDICATOR.FXR_CURRENCY.TYPE_OF_TRANSFORMATION.FREQUENCY)
+    Caches to parquet; returns None and logs on failure.
+    """
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _imf_sdmx_cache_path(dataset, key)
+
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] IMF SDMX %s/%s", dataset, key)
+        df = pd.read_parquet(cache)
+        return df["value"]
+
+    logger.info("[IMF SDMX fetch] %s/%s", dataset, key)
+
+    try:
+        series = _fetch_imf_sdmx_from_api(dataset, key)
+    except Exception as exc:
+        logger.error("[IMF SDMX] Failed to fetch %s/%s: %s", dataset, key, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for IMF SDMX %s/%s", dataset, key)
+            df = pd.read_parquet(cache)
+            return df["value"]
+        return None
+
+    try:
+        series.to_frame().to_parquet(cache)
+        logger.debug("[cached] IMF SDMX %s/%s → %s (%d obs)", dataset, key, cache.name, len(series))
+    except PermissionError as exc:
+        logger.warning("[cache write failed] IMF SDMX %s/%s: %s — proceeding uncached", dataset, key, exc)
+    return series

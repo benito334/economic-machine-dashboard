@@ -92,7 +92,8 @@ def _sig(latest: pd.DataFrame, concept: str) -> dict:
         return {}
     r = hit.iloc[0]
     return {"value": r.get("value"), "direction": r.get("direction"),
-            "zscore": r.get("zscore"), "as_of": r.get("as_of")}
+            "zscore": r.get("zscore"), "as_of": r.get("as_of"),
+            "change_12m": r.get("change_12m")}
 
 
 def _card(label: str, big: str, sub: str, href: Optional[str] = None,
@@ -307,12 +308,33 @@ def render_command_center(country_data, page_trigger, thresholds):
     if prod_mom is not None:
         trend_sub += f" · {prod_mom:.0%} mom"
 
+    # Big-cycle ORDER reads (Phase D — partial: governance/GPR feeds deferred)
+    rcs = _sig(latest_sig, "order.reserve_currency_share")
+    gini = _sig(latest_sig, "order.gini")
+    order_bits = []
+    if rcs.get("value") is not None:
+        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY"}.get(country, "FX")
+        d12 = rcs.get("change_12m")
+        d12_txt = f" ({float(d12):+.1f}pp/yr)" if d12 is not None and not pd.isna(d12) else ""
+        order_bits.append(f"{cur} reserve share {float(rcs['value']):.1f}%{d12_txt}")
+    if gini.get("value") is not None:
+        gini_yr = pd.Timestamp(gini["as_of"]).year if gini.get("as_of") is not None else "?"
+        order_bits.append(f"Gini {float(gini['value']):.1f} ({gini_yr})")
+    if order_bits:
+        order_big = (f"{float(rcs['value']):.1f}%" if rcs.get("value") is not None
+                     else f"{float(gini['value']):.1f}")
+        order_card = _card("Big-cycle position", order_big,
+                           " · ".join(order_bits) + " — governance/GPR deferred",
+                           "/data-dashboard")
+    else:
+        order_card = _card("Big-cycle position", "planned",
+                           "Phase D — internal & external order", planned=True)
+
     trend = html.Div([
         html.Div("Trend & big cycle", style=_H),
         html.Div([
             _card("Productivity trend", _fmt(prod), trend_sub, "/signals/productivity"),
-            _card("Big-cycle position", "planned",
-                  "Phase D — internal & external order", planned=True),
+            order_card,
         ], style=_ROW),
     ])
 

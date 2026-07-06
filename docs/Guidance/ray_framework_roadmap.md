@@ -55,17 +55,17 @@ Debt Stress gives a *level*; Ray's framework wants a *stage* — where in the ~5
 - **C2 ✅** — Command Center Cycle Stage card is live (stage + confidence + n/5 features, stage-colored); Debt Stress page gained a Long-Term Cycle Stage section: current-stage chip + driving-feature readout + colored quarterly stage band + per-stage score chart. Methodology §9 subsection + revision-log row.
 - **Data:** mostly already have (debt/GDP, debt-service ratio, real rate, real growth). **Deps:** threshold calibration against the PIT backtest is an explicit **G3 task**. **DoD:** ✅ met — stage label + timeline render for US/EZ/KR; thresholds config-driven and documented.
 
-### Phase D — Big-cycle / "order" dimension (L4)  ·  Effort: L + R
-The genuinely new capability Ray stresses for choosing *which* countries to diversify into: internal order (wealth/political stress) and external order (geopolitics, reserve-currency status). **Start with a research spike** — several of these have no clean free API.
-- **D1 — Research spike (R):** confirm free feeds for each candidate before building. Known/likely:
-  - Internal order — wealth gap: World Bank Gini `SI.POV.GINI` (annual, sparse) `⚠ VERIFY cadence/coverage`.
-  - Internal order — political polarization / governance: WB WGI is deleted (see deferred items); alternatives V-Dem / Polity5 are academic annual datasets, not simple APIs `⚠ RESEARCH` (may need a manual bulk-load slot, like the EA current-account gap).
-  - External order — external debt: WB `DT.DOD.DECT.CD` `⚠ VERIFY`.
-  - External order — reserve-currency status: IMF COFER (currency composition of global reserves) — only meaningful for reserve-issuer countries (US/EZ/JP/GB); would be a *constructed* "share of global reserves in this currency" indicator `⚠ RESEARCH`.
-  - External order — geopolitical risk: GPR index (Caldara–Iacoviello) is downloadable but not a clean free API `⚠ RESEARCH` (candidate manual-load slot).
-- **D2 — Build the confirmed subset** as new lens(es) with the same basket → weighted-Z pattern; honestly flag deferred/empty slots (as done for WGI/Lens H).
-- **D3 — Dashboard "Big-cycle position" panel.**
-- **Deps:** research spike gates everything. **DoD:** whatever has a confirmed free feed is live; everything else is a documented deferred slot in the data-source wishlist.
+### Phase D — Big-cycle / "order" dimension (L4)  ·  Effort: L + R  ·  ✅ **spike + confirmed subset done 2026-07-05**
+The genuinely new capability Ray stresses for choosing *which* countries to diversify into: internal order (wealth/political stress) and external order (geopolitics, reserve-currency status).
+- **D1 ✅ — Research spike results** (full detail in [data_source_wishlist.md](data_source_wishlist.md)):
+  - Wealth gap: WB `SI.POV.GINI` **✔ viable** — US 2024, KR 2021, JP 2020; EMU aggregate empty (constructed big-4 proxy deferred).
+  - Reserve-currency status: **✔ viable** via the *new* IMF SDMX 2.1 API (`api.imf.org`), COFER pre-computed shares `G001.AFXRA.CI_{CUR}.SHRO_PT.Q`, quarterly 1999→2026 (USD 71.2%→57.1%). Legacy dataservices host is dead. KRW not separately identified — KR honestly gets no slot.
+  - External debt: WB `DT.DOD.DECT.CD` **✘ NULL for all high-income countries** — EM-rollout-only, deferred.
+  - Governance (V-Dem/Polity5) + GPR index: **✘ no clean free API** — manual-load slots, deferred.
+- **D2 ✅ — Confirmed subset built** as Lens J `order.*` bindings: `us.order.gini`, `us.order.reserve_currency_share`, `ez.order.reserve_currency_share`, `kr.order.gini` (136 signals total). New `fetch_imf_sdmx_series()` loader + pipeline Pass 3.5 (`provider: IMF_SDMX`, series_id `"DATAFLOW/KEY"` like ECB). `lead_lag: structural`, `transformation: level` — these feed no composite; they are slow structural reads.
+- **D3 ✅ — Command Center "Big-cycle position" card live-partial**: reserve share (level + 12m change) + Gini (level + year) with an explicit "governance/GPR deferred" note; falls back to the planned placeholder for countries with neither.
+- **Still open (D4, needs manual-load infrastructure):** V-Dem/Polity governance + GPR bulk loads; a composite "order score" is premature until those land — revisit after Japan (F).
+- **DoD:** ✅ met as scoped — everything with a confirmed free feed is live; everything else is a documented deferred slot in the wishlist.
 
 ### Phase CC — Country command center (the front door)  ·  Effort: M  ·  ✅ **done 2026-07-05**
 One synthesis page per country that answers "where is this country, on all three clocks, and what's changing" — with the existing detail pages demoted to drill-downs. Built around the handful of things Ray said actually matter: the two dials + the credit/rate *levers* (supply AND demand side, policy stance + expected path), the debt-service ratio as the earliest long-cycle signal, the productivity trend as the baseline, the growth/inflation divergence flag as the cycle-shift alarm, and change-over-level throughout.
@@ -107,7 +107,7 @@ Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, 
 3. **Phase B** (small, data already exists; feeds the command center's productivity card)
 4. **Phase CC — command center v1** ✅ done 2026-07-05 (assembly-only; placeholder cards for C/D)
 5. **Phase C** ✅ done 2026-07-05 (long-term-cycle stage classifier; upgraded its CC card; threshold calibration deferred to G3)
-6. **Phase D research spike** in parallel from here (it gates the biggest new capability; start the data hunt early)
+6. **Phase D research spike + confirmed subset** ✅ done 2026-07-05 (Gini + COFER live; governance/GPR manual-load slots open as D4)
 7. **Phase E** (the diversification payoff view)
 8. **Phase F — Japan** can slot in wherever there's a natural break (it's independent)
 9. **Phase H** — separate project, whenever the diagnostic layer is trusted

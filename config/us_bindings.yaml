@@ -1355,10 +1355,55 @@ bindings:
     sanity_max: 10.0
     notes: "Available from 2001 (IMF WEO vintage). Current-year estimates and future forecasts are excluded."
 
+  # ─── Lens J — Big-cycle ORDER (roadmap Phase D, added 2026-07-05) ──────────
+  # Internal order (wealth gap) + external order (reserve-currency status).
+  # Governance (V-Dem/Polity) and geopolitical risk (GPR) have no clean free
+  # API — documented as manual-load slots in data_source_wishlist.md.
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 38.0
+    linkage: "Gini index of income inequality — Ray's internal-order read: widening wealth gaps precede internal political stress and populist policy shifts that reshape the long-term cycle."
+    sanity_min: 20.0
+    sanity_max: 60.0
+    notes: "World Bank Poverty & Inequality Platform. Verified 2026-07-05: US annual through 2024 (41.8). Multi-year publication lag is inherent — this is a slow structural read."
+
+  - id: order.reserve_currency_share
+    series_id: "IMF.STA,COFER/G001.AFXRA.CI_USD.SHRO_PT.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 60.0
+    linkage: "USD share of allocated global FX reserves (IMF COFER) — Ray's external-order read: reserve-currency status is the last privilege an empire loses; a sustained falling share marks big-cycle decline."
+    sanity_min: 30.0
+    sanity_max: 90.0
+    notes: "New IMF SDMX 2.1 API (api.imf.org), dataflow IMF.STA/COFER, key COUNTRY.INDICATOR.FXR_CURRENCY.TYPE_OF_TRANSFORMATION.FREQ. Verified 2026-07-05: 109 quarterly obs 1999-Q1 (71.2%) → 2026-Q1 (57.1%)."
+
   # ─── DEFERRED — not yet ingested ──────────────────────────────────────────
   # capital.portfolio_flows → IMF BOP / Treasury TIC — Phase 2
   # currency.ppp_gap        → OECD/WB PPP derived    — Phase 2
   # climate.*               → EM-DAT (manual)         — slot only
+  # order.governance        → V-Dem / Polity5 bulk CSV (no API) — manual-load slot
+  # order.geopolitical_risk → GPR index xls download (no API)   — manual-load slot
+  # order.external_debt     → WB DT.DOD.DECT.CD is NULL for high-income countries
+  #                           (verified 2026-07-05) — only relevant for future EM rollouts
 
   - id: climate.disaster_loss
     series_id: null

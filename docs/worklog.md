@@ -1165,3 +1165,15 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Deferred to G3 (explicit):** stage-threshold calibration against the PIT backtest.
 
 **Next:** Phase D research spike (order-layer data hunt), then E (cross-country view), F (Japan), G3.
+
+---
+
+## 2026-07-05 — Roadmap Phase D: big-cycle ORDER layer (research spike + confirmed subset)
+
+**Done:**
+- **D1 research spike** (all feeds verified against provider endpoints, results in data_source_wishlist.md): WB Gini `SI.POV.GINI` ✔ (US 2024 / KR 2021 / JP 2020; EMU aggregate empty; WB v2 API intermittently 400s — retries recover); IMF COFER reserve-currency shares ✔ via the NEW IMF SDMX 2.1 API (`api.imf.org`, legacy dataservices host is dead) — pre-computed quarterly shares `G001.AFXRA.CI_{CUR}.SHRO_PT.Q`, 109 obs 1999→2026, USD 71.2%→57.1%; WB external debt `DT.DOD.DECT.CD` ✘ NULL for all high-income countries; V-Dem/Polity governance + GPR index ✘ no API → manual-load slots.
+- **D2 build**: `fetch_imf_sdmx_series()` in loader.py (CSV Accept header, parquet cache, tenacity retry, stale-cache fallback); pipeline Pass 3.5 for `provider: IMF_SDMX` (series_id `"DATAFLOW/KEY"`, ECB convention); Lens J `order.*` bindings — us.order.gini (41.8), us.order.reserve_currency_share (57.1%), ez.order.reserve_currency_share (20.0%), kr.order.gini (32.9). KR reserve share honestly N/A (KRW inside "Other"); EZ Gini deferred (constructed big-4 proxy). 136 signals total. All `lead_lag: structural`, feed no composite.
+- **D3**: Command Center Big-cycle position card live-partial — reserve share (level + 12m Δ) + Gini (level + year) + "governance/GPR deferred" note; placeholder retained for countries with neither.
+- Wishlist: new ORDER section + A1 rate-expectations entry marked resolved. Roadmap Phase D ✅ (D4 = manual-load governance/GPR remains open). Methodology §15 revision row.
+
+**Next:** Phase E — cross-country / relative-cycle view. Then F (Japan), G3.

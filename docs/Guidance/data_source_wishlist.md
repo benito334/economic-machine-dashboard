@@ -15,7 +15,7 @@ Format per entry: **Concept** — desired frequency — current status — candi
 
 ## Interest Rate force
 
-- **Forward-looking policy-rate expectations** — needs to reflect market-implied path, ideally daily/weekly — **Not viable as a standard signal (found 2026-07-05).** True market-based Fed funds futures (CME FedWatch) are not free/not on FRED. The apparent substitute `FEDTARMD` (FOMC dot-plot median) *exists free* but is a forecast snapshot, NOT a historical series: it serves only the latest FOMC's projections for future year-ends (rows dated 2026/2027/2028), all future-dated (deleted by the no-future-observations guard) with no history to Z-score. It cannot feed a Z-scored basket. Viable paths instead: (a) display-only dot-plot readout on the Rate page; (b) derived `yield_2y − fed_funds` expected-change signal (has history, but overlaps the existing `policy.yield_2y` which already represents market forward-pricing); (c) treat `policy.yield_2y` as sufficient. Awaiting a design decision (roadmap Phase A1).
+- **Forward-looking policy-rate expectations** — needs to reflect market-implied path, ideally daily/weekly — **Not viable as a standard signal (found 2026-07-05).** True market-based Fed funds futures (CME FedWatch) are not free/not on FRED. The apparent substitute `FEDTARMD` (FOMC dot-plot median) *exists free* but is a forecast snapshot, NOT a historical series: it serves only the latest FOMC's projections for future year-ends (rows dated 2026/2027/2028), all future-dated (deleted by the no-future-observations guard) with no history to Z-score. It cannot feed a Z-scored basket. Viable paths instead: (a) display-only dot-plot readout on the Rate page; (b) derived `yield_2y − fed_funds` expected-change signal (has history, but overlaps the existing `policy.yield_2y` which already represents market forward-pricing); (c) treat `policy.yield_2y` as sufficient. **Resolved 2026-07-05 (Phase A1):** Ray chose option (b) — `policy.rate_expectations` = yield_2y − fed_funds is live at CONTEXT tier; its keep/weight decision is revisited after the Phase G3 asset-outcome backtest.
 - **EA/KR equivalent forward guidance** — not yet researched. ECB SDW may carry policy-rate-expectation series; BOK equivalent unconfirmed.
 
 ## Credit force
@@ -27,6 +27,18 @@ Format per entry: **Concept** — desired frequency — current status — candi
 - **Debt-service-to-consumption denominator** — quarterly, US — **Not yet sourced.** Needs household/government debt-service payments over a consumption base — likely FRED PCE (`PCE` or `PCEC`) as the denominator; numerator could reuse the existing debt-service-ratio construction. Confirm via FRED series-search before binding (punch item #18).
 - **Debt-service-to-investment denominator** — quarterly, US — **Not yet sourced.** Needs a gross private investment series (FRED `GPDI` or similar) as the denominator. Ray prioritized this one over the consumption version for a "universal" model since it ties to the productivity-growth force (punch item #18).
 - **Sparse-country component set** — see `config/longterm_stress.yaml` header for the documented minimum-viable 3-component fallback (debt/GDP, debt-service ratio, primary balance) — use this checklist to look for those 3 series specifically first when standing up a new country's Debt Stress composite, rather than attempting all 7 components at once.
+
+## Big-cycle ORDER layer (roadmap Phase D — research spike run 2026-07-05)
+
+**Confirmed viable (built as Lens J `order.*` bindings):**
+- **Wealth gap (Gini)** — annual — World Bank `SI.POV.GINI` verified: US through 2024 (41.8), KR through 2021 (32.9), JP through 2020 (32.3), FR/IT/ES through 2023. Multi-year publication lag is inherent — treat as a slow structural read, never gate on freshness. The WB v2 API intermittently returns HTTP 400 on some country codes (DEU was flaky across retries) — tenacity retries usually recover it.
+- **Reserve-currency share (COFER)** — quarterly — the **new IMF SDMX 2.1 API** (`api.imf.org/external/sdmx/2.1/data/IMF.STA,COFER/{KEY}`, CSV via Accept header) serves pre-computed currency shares: key `G001.AFXRA.CI_{USD|EUR|JPY|GBP|CNY}.SHRO_PT.Q`, 109 obs 1999-Q1 → 2026-Q1 (USD 71.2% → 57.1%). Loader: `fetch_imf_sdmx_series()`. The legacy `dataservices.imf.org` SDMX host is dead. Only meaningful for reserve-issuer countries — KRW sits inside "Other currencies" (KR gets no slot, honest gap).
+
+**Checked and NOT viable / deferred:**
+- **External debt** — WB `DT.DOD.DECT.CD` returns NULL for US/EMU/KR/JP (verified 2026-07-05) — the debtor-reporting-system series only covers low/middle-income countries. Revisit when rolling out China/India/Brazil.
+- **EZ aggregate Gini** — WB `EMU` aggregate is empty. A constructed GDP-weighted big-4 average (DE/FR/IT/ES) is feasible but deferred — flaky member-code fetches plus a constructed-proxy design decision.
+- **Governance / political polarization (post-WGI)** — V-Dem and Polity5 are annual academic bulk-CSV downloads, no REST API → **manual-load slot** (same pattern as EM-DAT). WB WGI `.EST` series remain deleted from the v2 API.
+- **Geopolitical risk (GPR, Caldara–Iacoviello)** — monthly xls from matteoiacoviello.com, no API → **manual-load slot**.
 
 ## General — next country rollout (Japan)
 

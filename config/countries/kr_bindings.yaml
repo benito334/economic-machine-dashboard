@@ -496,3 +496,26 @@ bindings:
     linkage: "Annualized rolling standard deviation of monthly log returns on the Korea share-price index (12-month window) — a monthly-resolution proxy for realized volatility; no daily KOSPI feed is free via FRED."
     sanity_min: 0.0
     sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER (roadmap Phase D, added 2026-07-05) ──────────
+  # KR reserve-currency share: N/A — the won is inside COFER's "Other
+  # currencies" bucket, not separately identified. Honest gap, not a slot.
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 33.0
+    linkage: "Gini index of income inequality — the internal-order read: widening wealth gaps precede internal political stress and populist policy shifts."
+    sanity_min: 20.0
+    sanity_max: 60.0
+    notes: "World Bank Poverty & Inequality Platform, KOR. Verified 2026-07-05: annual through 2021 (32.9). Multi-year publication lag is inherent — slow structural read."

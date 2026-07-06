@@ -25,7 +25,7 @@ from indicators.composites import (
     compute_composite_history,
     load_composites_config,
 )
-from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.debt_cycle_stage import compute_stage_history, load_stage_config
 from indicators.models import CountryBinding, Signal
@@ -248,6 +248,7 @@ def run_country(
     ecb_bindings      = [b for b in bindings if b.provider == "ECB"        and b.verified]
     wb_bindings       = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
     imf_bindings      = [b for b in bindings if b.provider == "IMF"        and b.verified]
+    imf_sdmx_bindings = [b for b in bindings if b.provider == "IMF_SDMX"   and b.verified]
     derived_bindings  = [b for b in bindings if b.provider == "derived"    and b.verified]
     skipped           = [b for b in bindings if not b.verified]
 
@@ -519,6 +520,61 @@ def run_country(
             latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
             latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
             print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  A  {latest_dt}  {latest_val}  ({n} rows)")
+            results["ok"] += 1
+
+        except Exception as exc:
+            logger.exception("[ERROR] %s: %s", binding.id, exc)
+            results["error"] += 1
+            if is_primary:
+                sys.exit(1)
+
+    # ── Pass 3.5: IMF SDMX series (api.imf.org — COFER etc.) ───────────────
+    if imf_sdmx_bindings:
+        print(f"\n─── Pass 3.5: IMF SDMX series [{country_code}] ─────────────────────────")
+    for binding in imf_sdmx_bindings:
+        try:
+            # series_id convention mirrors ECB: "DATAFLOW/KEY"
+            dataset, _, sdmx_key = (binding.series_id or "").partition("/")
+            if not dataset or not sdmx_key:
+                print(f"  [SKIP] {binding.id}: series_id must be 'DATAFLOW/KEY', got '{binding.series_id}'")
+                results["error"] += 1
+                continue
+            raw = fetch_imf_sdmx_series(
+                dataset, sdmx_key,
+                frequency=binding.frequency,
+                force_refresh=force_refresh,
+            )
+            if raw is None or raw.empty:
+                print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                results["empty"] += 1
+                continue
+
+            if binding.raw_scale:
+                raw = raw / binding.raw_scale
+
+            transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+            transformed = transformed.dropna()
+
+            if transformed.empty:
+                print(f"  [EMPTY after transform] {binding.id}")
+                results["empty"] += 1
+                continue
+
+            transformed_store[binding.id] = transformed
+            signals = build_signals(transformed, binding, raw)
+            latest = signals[-1] if signals else None
+
+            if latest:
+                warns = sanity_check(latest, binding)
+                for w in warns:
+                    print(f"  [SANITY WARN] {w}")
+                    results["sanity_warn"] += 1
+
+            n = upsert_signals(conn, signals)
+            status = "PROXY" if binding.is_proxy else "OK"
+            latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+            latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
             results["ok"] += 1
 
         except Exception as exc:
