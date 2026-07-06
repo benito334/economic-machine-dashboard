@@ -1252,3 +1252,16 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - 5 new tests (season-label semantics, agreement math, CC window honoring incl. full-history mode, relative canonical windows); 445 total pass.
 
 **Still open:** rate-basket rolling variants (36m policy default), stored `quadrant` column retirement (kept for legacy/backtest compat).
+
+---
+
+## 2026-07-06 — Dynamic thresholds re-paired with the window unification
+
+**Trigger:** user asked how the Ray dynamic-threshold algorithm composes with the audit's rolling windows — the trace found a real seam.
+
+**The bug:** the Regime History chart + regime info card fed FULL-HISTORY `growth_score`/`inflation_score` into `compute_dynamic_thresholds` while classifying the WINDOWED columns. Ray's step 1 scales by the σ of "the composite's own Z-score" — post-audit that is the windowed series, so thresholds were scaled to the wrong distribution. Material: at 48m/90m the correct US values are gz=0.205/iz=0.082 vs the mismatched 0.093/0.116 (growth threshold more than doubles). The CC and Relative pages were already correct (wired during the audit).
+
+**Done:**
+- `_dyn_threshold_input(comp, g_col, i_col)` shared helper — every dynamic call site now builds the input from the ACTIVE (windowed or full) columns: regime info card, Regime History chart, scatter, CC, Relative.
+- Regime Map in dynamic mode: corner shading, threshold lines, and hover season labels all positioned by the latest dynamic gz/iz on the windowed series (latest-row convention, same as the Regime History hlines) — geometry and labels always agree.
+- Regression test: windowed-vs-full dynamic thresholds genuinely differ AND the scatter geometry matches the windowed-input values. 445 tests pass.

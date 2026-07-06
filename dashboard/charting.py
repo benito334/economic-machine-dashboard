@@ -2541,6 +2541,21 @@ def _classify_regime(
     return g_regime, i_regime
 
 
+def _dyn_threshold_input(comp: "pd.DataFrame", g_col: str, i_col: str) -> "pd.DataFrame":
+    """Frame for compute_dynamic_thresholds using the ACTIVE score columns.
+
+    Ray's step 1 scales the baseline by the rolling σ of "the composite's own
+    Z-score" — under the 2026-07-06 window unification that means the SAME
+    windowed series the classifier sees, not the full-history base columns.
+    Feeding mismatched series would scale thresholds to the wrong
+    distribution's volatility.
+    """
+    cols = (["as_of"] if "as_of" in comp.columns else []) + [g_col, i_col]
+    if "credit_score" in comp.columns:
+        cols.append("credit_score")
+    return comp[cols].rename(columns={g_col: "growth_score", i_col: "inflation_score"})
+
+
 def _season_label(g_score, i_score, thresholds: "dict | None" = None) -> str:
     """Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06, Q2).
 
@@ -3407,11 +3422,15 @@ def update_regime_info(
 
     # Dynamic thresholds (Ray Dalio review 2026-07-05, #23) — override the
     # static gz/iz with the country-vol-scaled, credit/vol-adjusted values
-    # for this specific row when dynamic mode is enabled.
+    # for this specific row when dynamic mode is enabled. Computed on the
+    # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
     _t = thresholds or _DEFAULT_THRESHOLDS
     if bool(_t.get("dynamic", False)):
+        _eff_g = f"growth_score_{g_sfx}" if (g_sfx and rolling.get("window")) else "growth_score"
+        _eff_i = f"inflation_score_{i_sfx}" if (i_sfx and rolling.get("inflation_window")) else "inflation_score"
         dyn_df = compute_dynamic_thresholds(
-            comp, base_gz=float(_t.get("gz", 0.5)), base_iz=float(_t.get("iz", 0.5)),
+            _dyn_threshold_input(comp, _eff_g, _eff_i),
+            base_gz=float(_t.get("gz", 0.5)), base_iz=float(_t.get("iz", 0.5)),
         )
         row_dyn = dyn_df.iloc[idx]
         thresholds_for_row = {**_t, "gz": float(row_dyn["dyn_gz"]), "iz": float(row_dyn["dyn_iz"])}
@@ -3505,9 +3524,12 @@ def update_regime_chart(
 
     # Dynamic thresholds (Ray Dalio review 2026-07-05, #23) — per-row gz/iz
     # computed from each country's own rolling volatility + credit tightness,
-    # rather than one flat value for the whole history.
+    # rather than one flat value for the whole history. Computed on the
+    # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
     _dynamic = bool(_t.get("dynamic", False))
-    _dyn_df = compute_dynamic_thresholds(comp, base_gz=_gz, base_iz=_iz) if _dynamic else None
+    _dyn_df = compute_dynamic_thresholds(
+        _dyn_threshold_input(comp, g_col, i_col), base_gz=_gz, base_iz=_iz,
+    ) if _dynamic else None
     if _dynamic and not _dyn_df.empty:
         # Use the latest row's dynamic threshold as the reference hline —
         # a single static line can't represent a time-varying threshold.
@@ -4123,7 +4145,19 @@ def update_scatter_chart(
     # the ±gz/±iz threshold lines — the operative classifier's Transition band
     # between the lines stays neutral. Season names are map geography ("modes
     # of behavior"), not the decision rule; the chips are the decision rule.
-    _bg_th = thresholds or _DEFAULT_THRESHOLDS
+    # In dynamic mode the latest dynamic thresholds position the geometry
+    # (a static rectangle can't represent a time-varying threshold — same
+    # latest-row convention as the Regime History hlines), computed on the
+    # ACTIVE score columns.
+    _bg_th = dict(thresholds or _DEFAULT_THRESHOLDS)
+    if bool(_bg_th.get("dynamic", False)):
+        _dyn_bg = compute_dynamic_thresholds(
+            _dyn_threshold_input(comp_all, g_col, i_col),
+            base_gz=float(_bg_th.get("gz", 0.5)), base_iz=float(_bg_th.get("iz", 0.5)),
+        )
+        if not _dyn_bg.empty:
+            _bg_th["gz"] = float(_dyn_bg["dyn_gz"].iloc[-1])
+            _bg_th["iz"] = float(_dyn_bg["dyn_iz"].iloc[-1])
     _bgz = float(_bg_th.get("gz", 0.5))
     _biz = float(_bg_th.get("iz", 0.5))
     quad_bg = [
@@ -4145,10 +4179,9 @@ def update_scatter_chart(
         dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=0,
              line=dict(color="#555", width=1, dash="dot")),
     ]
-    # Configurable threshold lines
-    _th = thresholds or _DEFAULT_THRESHOLDS
-    _gz = float(_th.get("gz", 0.5))
-    _iz = float(_th.get("iz", 0.5))
+    # Configurable threshold lines — same effective (static or latest-dynamic)
+    # values as the corner shading above, so geometry and lines always agree.
+    _gz, _iz = _bgz, _biz
     _th_line = dict(color="rgba(255,255,255,0.22)", width=1, dash="dash")
     shapes += [
         dict(type="line", xref="x", yref="paper", x0=_gz,  x1=_gz,  y0=0, y1=1, line=_th_line),
@@ -4171,7 +4204,9 @@ def update_scatter_chart(
     # ── Threshold-aware season label for hovers (Ray Q2: Transition inside
     # the band; season names only beyond the ±gz/±iz lines) ───────────────────
     def _quadrant_for(row):
-        return _season_label(row.get(g_col), row.get(i_col), thresholds)
+        # Effective thresholds (static, or latest-dynamic when dynamic mode is
+        # on) so hover labels agree with the shading geometry.
+        return _season_label(row.get(g_col), row.get(i_col), _bg_th)
 
     eff_quadrant = comp_all.apply(_quadrant_for, axis=1)
 

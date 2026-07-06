@@ -155,3 +155,23 @@ def test_relative_uses_canonical_windows():
     out = rv.render_relative_view({"page": "/relative"}, "carbon", None)
     s = _tree_text(out)
     assert "48m" in s and "90m" in s
+
+
+def test_dynamic_thresholds_computed_on_windowed_series():
+    """Dynamic thresholds must be scaled to the SAME (windowed) series the
+    classifier sees — not the full-history base columns (2026-07-06 fix)."""
+    import dashboard.charting as charting
+    from dashboard.charting_data import load_composite_history
+    hist = load_composite_history(country="US")
+    dyn_full = charting.compute_dynamic_thresholds(hist, 0.5, 0.5)
+    dyn_win = charting.compute_dynamic_thresholds(
+        charting._dyn_threshold_input(hist, "growth_score_48m", "inflation_score_90m"),
+        0.5, 0.5)
+    # the two constructions genuinely differ — pairing them wrongly is material
+    assert dyn_full["dyn_gz"].iloc[-1] != pytest.approx(dyn_win["dyn_gz"].iloc[-1])
+    # scatter geometry in dynamic mode uses the windowed-input values
+    thr = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": True}
+    fig = charting.update_scatter_chart(0, None, "carbon", 48, 90, "US",
+                                        {"page": "/regime-map"}, thr)
+    rects = [s for s in (fig.layout.shapes or []) if s.type == "rect"]
+    assert rects[0].x0 == pytest.approx(float(dyn_win["dyn_gz"].iloc[-1]), abs=1e-6)
