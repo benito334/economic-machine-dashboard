@@ -33,8 +33,8 @@ from dashboard.charting_data import (
 )
 from dashboard.command_center import STAGE_COLORS
 
-COUNTRIES = ["US", "EZ", "JP", "KR"]      # extend as Phase 2 rollout continues
-_NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area",
+COUNTRIES = ["US", "EZ", "GB", "JP", "KR"]      # extend as Phase 2 rollout continues
+_NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area", "GB": "🇬🇧 United Kingdom",
           "JP": "🇯🇵 Japan", "KR": "🇰🇷 South Korea"}
 
 _RECENT_WINDOW_YEARS = 10           # recent-correlation window
@@ -158,7 +158,7 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
 
     order_bits = []
     if rcs is not None:
-        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY"}.get(country, "FX")
+        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY", "GB": "GBP"}.get(country, "FX")
         order_bits.append(f"{cur} reserves {float(rcs):.1f}%")
     if gini is not None:
         yr = pd.Timestamp(gini_dt).year if gini_dt is not None else "?"

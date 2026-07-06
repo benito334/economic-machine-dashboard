@@ -749,9 +749,9 @@ def _left_nav() -> html.Div:
     _country_options = [
         {"label": "🇺🇸 United States",          "value": "US"},
         {"label": "🇪🇺 Eurozone",               "value": "EZ"},
+        {"label": "🇬🇧 United Kingdom",         "value": "GB"},
         {"label": "🇯🇵 Japan",                  "value": "JP"},
         {"label": "🇰🇷 South Korea",            "value": "KR"},
-        {"label": "🇬🇧 United Kingdom  (soon)",   "value": "GB", "disabled": True},
     ]
 
     return html.Div([

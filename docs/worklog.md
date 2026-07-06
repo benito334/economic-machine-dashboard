@@ -1220,3 +1220,18 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - 6 new tests (`tests/test_backtest_g3.py`: as-known semantics incl. future-vintage invisibility, no-overlap forward windows, bond-return sign); backtest.py header updated. **Phase G fully complete.**
 
 **Remaining open (small):** D4 (manual-load governance/GPR), UK rollout, e-Stat JP CPI registration, pre-existing dtype test failure, 2007-squeeze threshold tweak candidate.
+
+---
+
+## 2026-07-06 — UK rollout (Phase 2 continuation): 27 signals, 6 composites, stage classifier
+
+**Done:**
+- `config/countries/gb_bindings.yaml` (27 bindings, every FRED/WB/IMF ID verified against provider endpoints with ranges noted) + `gb_composites.yaml` (all 6 forces, KR structure). Pipeline: **27/27 OK, 0 errors, 0 sanity warnings**; 188 signals total (73 US + 37 EZ + 27 GB + 25 JP + 26 KR).
+- **GB data findings** (wishlist updated): monthly CPI (headline + core) ends 2025-03 — same OECD cutoff as KR; IMF annual bridge covers; **ONS API (free, unregistered) is the highest-value follow-up**. No daily FTSE on FRED → monthly-proxy volatility (quality 0.70). ILO monthly unemployment is the LRHUTTTT form (LRUNTTTT 400s). Industrial-production index form died 2024-03 (same as JP) — GYSAM YoY form is live.
+- GB added to `debt_cycle_stage.yaml` (4/5 features) — **current stage: squeeze, confidence 0.53, the strongest stage read of any country** (gov debt 102% GDP, gilts 4.94% vs real growth +0.9% → r > g, credit composite −1.76). A coherent Ray read for the UK.
+- Dashboard: country selector enabled (GB was the last "soon" entry — dropdown is now fully live), Relative Cycles 5-country grid + 5×5 correlation matrices, Command Center + stage section render GB, GBP currency labels.
+- Cross-country reads with 5 countries: GB inflation correlates 0.94 with EZ (last 10y) — no diversification there; GB growth 0.51 vs US. JP inflation (+0.03 vs US) remains the only real diversifier.
+- Spot-check passed: CPI 3.4% (Mar-25), unemployment 4.9%, gilt 4.94%, gov debt 102.3%, CA −2.4% (the UK's structural deficit), GBP reserve share 4.40%, REER 111. All vintage_available=false, honest flags.
+- 440 tests pass. Methodology §15 revision row.
+
+**Next:** China is next in the Phase 2 order (WB/IMF harmonized only — NBS out of scope). Other open tails: D4 manual-load slots, ONS/e-Stat registrations, dtype test failure, 2007-squeeze threshold tweak.

@@ -49,9 +49,19 @@ The pre-rollout checklist below was worked through; results:
 4. Loan-demand survey (BoJ Tankan analog) and policy-rate expectations — not researched this pass; same registration-wall expectation as BoK ECOS.
 5. Debt Stress minimum-viable 3-component set for JP — still open (needs a JP DSR source; BIS DSR is a bulk download, not an API).
 
-## General — next country rollout (UK is next in the Phase 2 order)
+## United Kingdom (rolled out 2026-07-06)
 
-Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP section above shows both directions of surprise (daily Nikkei better, dead CPI worse).
+Results of the pre-rollout verification:
+1. **Monthly CPI ages out 2025-03** — `CPALTT01GBM659N` / `CPGRLE01GBM659N` end Mar 2025 (the same OECD-feed cutoff as KR). The IMF WEO annual bridge covers the gap. **Open gap: the ONS API (api.beta.ons.gov.uk) is free and unregistered** — the highest-value UK follow-up for a live monthly CPI (and could replace the aging retail/IP feeds too if OECD feeds keep dying).
+2. **No daily FTSE on FRED** — volatility uses the monthly share-price proxy (`SPASTT01GBM661N`), EZ/KR pattern, quality 0.70.
+3. Unemployment: the ILO **monthly** form is `LRHUTTTTGBM156S` (→2026-01); the `LRUNTTTT` monthly variant 400s for GB.
+4. Industrial production: index form `GBRPROINDMISMEI` died 2024-03 (same as JP) — the live feed is the GYSAM YoY form.
+5. GBP COFER share confirmed (4.40%, quarterly 1999→2026); Gini through 2021 (32.4).
+6. Debt Stress minimum-viable set for GB — still open (needs a UK DSR source; BoE/BIS candidates are bulk downloads).
+
+## General — next country rollout (China is next in the Phase 2 order)
+
+Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP and GB sections above show surprises in both directions. China notes from the original plan: NBS automated pull is out of scope — use WB/IMF harmonized series only.
 
 ---
 

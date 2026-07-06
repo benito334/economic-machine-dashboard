@@ -1,0 +1,95 @@
+# United Kingdom composite indicator lists (Phase 2, added 2026-07-06).
+# Methodology params live in config/composites_policy.yaml.
+#
+# ── Weight-setting principles (docs/Guidance/signal_weight_guidance.md) ──────
+# Importance tiers:
+#   PRIMARY   (0.85–1.00): non-redundant anchors; drive the composite
+#   STRONG    (0.60–0.84): reliable supplementary; some correlation to primary
+#   CONTEXT   (0.30–0.59): adds marginal info; volatile, lagging, or redundant
+#   VOLATILE  (0.10–0.29): high noise or annual-only; included but not drivers
+#
+# GB-specific notes:
+#   - Mirrors the KR structure: 3-signal growth, core-anchored inflation with
+#     the headline at CONTEXT (correlated) and the IMF annual bridge at
+#     VOLATILE (activates when the monthly OECD feeds — stale since 2025-03 —
+#     age out).
+#   - Volatility is the monthly-return proxy (no free daily FTSE) —
+#     quality_factor 0.70 like EZ/KR.
+#   - Industrial production gets a slightly lower importance than in KR:
+#     manufacturing is a small share of the services-dominated UK economy.
+
+growth_score:
+  description: "GB growth-force composite — FRED monthly indicators"
+  indicators:
+    - id: growth.retail_sales
+      base_share: 0.7
+      importance: 0.80      # PRIMARY — consumption-led economy; retail is the anchor
+      quality_factor: 0.95
+    - id: growth.industrial_prod
+      base_share: 0.6
+      importance: 0.65      # STRONG — cyclical read, but manufacturing is a small GDP share
+      quality_factor: 0.95
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — lagging indicator
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+
+inflation_score:
+  description: "GB inflation-force composite — OECD monthly CPI + IMF annual bridge"
+  indicators:
+    - id: inflation.cpi_core
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — core is the anchor
+      quality_factor: 1.00
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.45      # CONTEXT — correlated with core; energy swings add noise
+      quality_factor: 0.90
+    # Annual IMF bridge — activates when monthly signals are stale (post-Mar 2025)
+    - id: inflation.cpi_imf_annual
+      base_share: 0.5
+      importance: 0.30      # VOLATILE — annual resolution; bridge only
+      quality_factor: 0.70
+
+# ── GB Financial Accommodation Score ─────────────────────────────────────────
+# NOTE: single rate signal — directional indicator only, not a robust composite.
+rate_score:
+  description: "GB financial accommodation — 10y gilt yield (single signal; low coverage)"
+  indicators:
+    - id: policy.yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available GB rate signal
+      quality_factor: 1.00
+      invert: true          # high yield = restrictive
+
+# ── GB Credit Health Score ────────────────────────────────────────────────────
+credit_score:
+  description: "GB credit health — govt debt/GDP (single signal; low coverage)"
+  indicators:
+    - id: credit.gov_debt_gdp
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available GB credit signal
+      quality_factor: 1.00
+      invert: true          # high debt/GDP = stress
+
+# ── GB Volatility Score ───────────────────────────────────────────────────────
+# Monthly-return proxy — no free daily FTSE feed via FRED (wishlist).
+volatility_score:
+  description: "GB market volatility — monthly-return proxy on share-price index (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available GB volatility signal
+      quality_factor: 0.70  # reduced: monthly-resolution proxy, not true daily realized vol
+
+# ── GB Productivity Trend Score ───────────────────────────────────────────────
+# Single signal — only annual R&D intensity is available free.
+productivity_score:
+  description: "GB productivity trend — R&D intensity only (single signal; low coverage)"
+  indicators:
+    - id: growth.rnd_intensity
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available GB productivity signal
+      quality_factor: 0.70  # reduced: annual-only, structural proxy for the trend
+      half_life_months: 12.0

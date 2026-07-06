@@ -1,0 +1,554 @@
+# United Kingdom (GB) indicator bindings — Phase 2 (added 2026-07-06)
+# Country code: GB (ISO 3166-1 alpha-2); WB/IMF map to GBR in loader.py.
+# All vintage_available: false — FRED vintages cover US only.
+#
+# Every series_id verified against the FRED metadata endpoint on 2026-07-06
+# (frequency + observation range noted per binding).
+#
+# GB-specific data facts found during verification:
+#   - Monthly CPI (CPALTT01GBM659N / CPGRLE01GBM659N) ends 2025-03 — the same
+#     OECD-feed aging as KR (Apr 2025 cutoff). The IMF WEO annual bridge
+#     covers the gap (KR pattern). ONS has a free API for a live monthly
+#     replacement → data_source_wishlist.md.
+#   - No daily FTSE feed exists free on FRED — volatility uses the monthly
+#     share-price proxy (EZ/KR pattern), NOT the daily treatment JP got.
+#   - Unemployment: the ILO monthly form is LRHUTTTTGBM156S (→2026-01);
+#     the LRUNTTTT monthly variant 400s on FRED.
+#   - GBRPRINTO01GYSAM / GBRSLRTTO01GYSAM are already YoY% (GYSAM suffix)
+#     → raw_scale: 100 + transformation: level.
+#
+# raw_scale: 100 converts already-YoY% OECD/FRED series to decimal form.
+# Equilibrium values in transformed units (yoy_pct → decimal; rates → % level).
+
+country: GB
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_real
+    series_id: NGDPRSAXDCGBQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "UK real GDP (SA, quarterly, 1955→). Post-2008 trend growth ~1.5%; Brexit-era supply constraints define the current baseline."
+    sanity_min: -0.15
+    sanity_max: 0.15
+    notes: "Verified 2026-07-06: Q, 1955-01→2026-01."
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3500.0
+    linkage: "UK nominal GDP in current USD billions (IMF). Used for cross-country size comparison in the Global Overview table."
+    sanity_min: 1000.0
+    sanity_max: 8000.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+  # Monthly OECD feeds end 2025-03 (same aging as KR) — IMF annual bridge
+  # covers the gap. ONS API is the live-replacement candidate (wishlist).
+
+  - id: inflation.cpi_headline
+    series_id: CPALTT01GBM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.020
+    linkage: "UK CPI all items YoY (OECD, already in % form on FRED). Bank of England target: 2%."
+    sanity_min: -0.05
+    sanity_max: 0.25
+    notes: "Verified 2026-07-06: M, 1956-01→2025-03 — aging out; the IMF bridge below activates when stale."
+
+  - id: inflation.cpi_core
+    series_id: CPGRLE01GBM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.020
+    linkage: "UK CPI excluding energy YoY (OECD, already in % form). Underlying price pressures less distorted by the energy-price swings that dominate UK headline inflation."
+    sanity_min: -0.05
+    sanity_max: 0.20
+    notes: "Verified 2026-07-06: M, 1971-01→2025-03 — same aging as headline."
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.020
+    linkage: "UK CPI % change (IMF WEO annual). Bridge signal while the monthly OECD FRED series is stale (post-Mar 2025); annual resolution limits precision."
+    sanity_min: -0.05
+    sanity_max: 0.25
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+
+  - id: growth.unemployment
+    series_id: LRHUTTTTGBM156S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4.3
+    linkage: "UK ILO monthly unemployment rate (%). Moves above 5% historically mark meaningful labor-market deterioration."
+    sanity_min: 2.0
+    sanity_max: 15.0
+    notes: "Verified 2026-07-06: M, 1983-01→2026-01. The LRUNTTTT monthly variant does not exist on FRED for GB."
+
+  - id: growth.retail_sales
+    series_id: GBRSLRTTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.020
+    linkage: "UK retail trade volume YoY (OECD, already in % form on FRED). Household demand tracker in a consumption-led economy."
+    sanity_min: -0.25
+    sanity_max: 0.30
+    notes: "Verified 2026-07-06: M, 1958-01→2026-04."
+
+  - id: growth.industrial_prod
+    series_id: GBRPRINTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.000
+    linkage: "UK industrial production YoY (OECD, already in % form on FRED). Manufacturing is a shrinking share of a services-dominated economy — treat as a cyclical read, not the whole story."
+    sanity_min: -0.30
+    sanity_max: 0.30
+    notes: "Verified 2026-07-06: M, 1949-01→2026-03. The index form GBRPROINDMISMEI ends 2024-03 (same pattern as JP)."
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.7
+    linkage: "R&D expenditure as % of GDP. Mid-pack among advanced economies; the productivity-trend anchor for the UK."
+    sanity_min: 0.0
+    sanity_max: 8.0
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01GBM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.5
+    linkage: "UK 10-year gilt yield. The 2022 LDI/mini-budget episode showed how fast this market can reprice fiscal credibility."
+    sanity_min: 0.0
+    sanity_max: 20.0
+    notes: "Verified 2026-07-06: M, 1960-01→2026-05."
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBGBBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2010eq100
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "UK real broad effective exchange rate (BIS, 2010=100). Sterling took a structural step down after the 2016 referendum."
+    sanity_min: 60.0
+    sanity_max: 160.0
+
+  # ─── Fiscal (IMF GBR) ──────────────────────────────────────────────────────
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 90.0
+    linkage: "UK general government gross debt as % of GDP (IMF). Around 100% post-COVID; gilt-market sensitivity to fiscal announcements is the constraint."
+    sanity_min: 20.0
+    sanity_max: 200.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -3.0
+    linkage: "UK general government net lending/borrowing as % of GDP (IMF). Persistent structural deficits."
+    sanity_min: -15.0
+    sanity_max: 10.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.5
+    linkage: "UK IMF primary balance as % of GDP (excl. interest). The fiscal-rules anchor successive governments target."
+    sanity_min: -15.0
+    sanity_max: 10.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 35.0
+    linkage: "General government revenue as % of GDP. UK tax take is at a post-war high — limited headroom for revenue-led consolidation."
+    sanity_min: 15.0
+    sanity_max: 55.0
+    notes: "Verified 2026-07-06: WB GBR annual through 2024 (34.8)."
+
+  # ─── External & Trade (WorldBank / GBR) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -3.0
+    linkage: "UK current account balance as % of GDP. A persistent structural deficit — 'reliant on the kindness of strangers' (Carney); the external-funding fragility is the UK's defining macro exposure."
+    sanity_min: -10.0
+    sanity_max: 5.0
+    notes: "Verified 2026-07-06: WB GBR annual through 2025 (-2.4)."
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 30.0
+    linkage: "Exports of goods and services as % of GDP. Services (finance, professional) dominate — goods trade took the Brexit hit."
+    sanity_min: 10.0
+    sanity_max: 50.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 32.0
+    linkage: "Imports of goods and services as % of GDP. Energy import dependence re-emerged as the key swing factor in 2022."
+    sanity_min: 10.0
+    sanity_max: 50.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "FDI net inflows as % of GDP. Historically a top FDI destination; the post-2016 trend is the structural question."
+    sanity_min: -10.0
+    sanity_max: 30.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "UK total population (World Bank). Still growing on net migration — the demographic offset the rest of the G7 mostly lacks."
+    sanity_min: 40000000.0
+    sanity_max: 90000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "Annual population growth rate %. Migration-driven; natural change is near zero."
+    sanity_min: -1.0
+    sanity_max: 2.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 57.0
+    linkage: "Age dependency ratio (dependents per 100 working-age). Aging, but far less severely than Japan or Korea."
+    sanity_min: 30.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 63.0
+    linkage: "ILO-modeled labor force participation rate (% population 15+). Post-COVID inactivity (long-term sickness) is the UK-specific labor-supply story."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  # ─── Volatility Force ──────────────────────────────────────────────────────
+  # No free daily FTSE feed exists via FRED — monthly-return proxy (EZ/KR
+  # pattern). See data_source_wishlist.md.
+
+  - id: volatility.equity_index
+    series_id: SPASTT01GBM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "OECD MEI share price index for the UK (monthly) — raw level, used only as input to realized volatility."
+    sanity_min: 0.0
+    sanity_max: 1000.0
+    notes: "Verified 2026-07-06: M, 1957-12→2026-05."
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.15
+    linkage: "Annualized rolling standard deviation of monthly log returns on the UK share-price index (12-month window) — a monthly-resolution proxy; no daily FTSE feed is free via FRED."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER ──────────────────────────────────────────────
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 33.0
+    linkage: "Gini index of income inequality — the internal-order read: widening wealth gaps precede internal political stress and populist policy shifts."
+    sanity_min: 20.0
+    sanity_max: 60.0
+    notes: "World Bank Poverty & Inequality Platform, GBR. Verified 2026-07-06: annual through 2021 (32.4)."
+
+  - id: order.reserve_currency_share
+    series_id: "IMF.STA,COFER/G001.AFXRA.CI_GBP.SHRO_PT.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: pct_level
+    country: GB
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4.5
+    linkage: "GBP share of allocated global FX reserves (IMF COFER) — the external-order read: sterling's residual reserve role, a century after losing primacy, still underpins gilt demand."
+    sanity_min: 1.0
+    sanity_max: 10.0
+    notes: "Verified 2026-07-05 during the Phase D COFER sweep: quarterly 1999-Q1 → 2026-Q1 (4.40%)."

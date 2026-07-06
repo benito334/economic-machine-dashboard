@@ -36,7 +36,7 @@ STAGE_COLORS = {
     "deleveraging": "#B07FD4", "reflation": "#5CBA8A", "neutral": "#888888",
 }
 
-_COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area",
+_COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area", "GB": "United Kingdom",
                   "JP": "Japan", "KR": "South Korea"}
 
 _CARD = {
@@ -314,7 +314,7 @@ def render_command_center(country_data, page_trigger, thresholds):
     gini = _sig(latest_sig, "order.gini")
     order_bits = []
     if rcs.get("value") is not None:
-        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY"}.get(country, "FX")
+        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY", "GB": "GBP"}.get(country, "FX")
         d12 = rcs.get("change_12m")
         d12_txt = f" ({float(d12):+.1f}pp/yr)" if d12 is not None and not pd.isna(d12) else ""
         order_bits.append(f"{cur} reserve share {float(rcs['value']):.1f}%{d12_txt}")

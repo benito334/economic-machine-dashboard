@@ -164,3 +164,17 @@ countries:
       yield_signal: policy.yield_10y
       growth_signal: master.gdp_real
       inflation_signal: inflation.cpi_imf_annual
+  GB:
+    debt_components:
+      - credit.gov_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y      # PROXY: 10y gilt minus monthly CPI
+      inflation_signal: inflation.cpi_headline
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_headline
