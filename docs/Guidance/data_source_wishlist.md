@@ -40,13 +40,18 @@ Format per entry: **Concept** — desired frequency — current status — candi
 - **Governance / political polarization (post-WGI)** — V-Dem and Polity5 are annual academic bulk-CSV downloads, no REST API → **manual-load slot** (same pattern as EM-DAT). WB WGI `.EST` series remain deleted from the v2 API.
 - **Geopolitical risk (GPR, Caldara–Iacoviello)** — monthly xls from matteoiacoviello.com, no API → **manual-load slot**.
 
-## General — next country rollout (Japan)
+## Japan (rolled out 2026-07-05 — roadmap Phase F results)
 
-When building `jp_bindings.yaml` / `jp_composites.yaml`, work through this file's entries country-by-country rather than assuming US-parity data exists. Specifically check early:
-1. Daily equity index (Nikkei 225 / TOPIX) — likely similar gap to EZ/KR (FRED probably only carries a lower-frequency OECD share-price series for Japan too — confirm, don't assume).
-2. SLOOS-equivalent loan-demand survey (Bank of Japan Tankan survey may have an analog).
-3. Forward-guidance / policy-rate-expectation series (BoJ has had negative/ZIRP policy for years — confirm whether a meaningful "expectations" series exists at all before allocating a binding slot to it).
-4. Debt Stress minimum-viable 3-component set (Japan's public debt/GDP is a headline global figure — likely has strong free coverage; household/primary-balance data quality unconfirmed).
+The pre-rollout checklist below was worked through; results:
+1. **Daily equity index — RESOLVED, better than expected**: `NIKKEI225` is a free DAILY FRED feed (1949→current). JP volatility is true daily realized vol, US-quality — the EZ/KR monthly-proxy gap does NOT apply to Japan.
+2. **Monthly CPI — WORSE than expected**: every OECD FRED CPI series for Japan (JPNCPALTT01CTGYM, CPALTT01JPM659N, CPGRLE01JPM659N, JPNCPIALLMINMEI, CPALCY01JPM661N) ended 2021-06/2022-04. JP inflation rests entirely on the IMF WEO annual bridge (`jp.inflation.cpi_imf_annual`, is_proxy). **Open gap: e-Stat (www.e-stat.go.jp) has a free API but requires registration** — the highest-value JP follow-up.
+3. **Industrial production**: the index form `JPNPRINTO01IXOBM` died 2024-03; the live feed is the YoY form `JPNPRINTO01GYSAM` (→2026-04, raw_scale 100).
+4. Loan-demand survey (BoJ Tankan analog) and policy-rate expectations — not researched this pass; same registration-wall expectation as BoK ECOS.
+5. Debt Stress minimum-viable 3-component set for JP — still open (needs a JP DSR source; BIS DSR is a bulk download, not an API).
+
+## General — next country rollout (UK is next in the Phase 2 order)
+
+Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP section above shows both directions of surprise (daily Nikkei better, dead CPI worse).
 
 ---
 

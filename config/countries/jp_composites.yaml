@@ -1,0 +1,87 @@
+# Japan composite indicator lists (roadmap Phase F, added 2026-07-05).
+# Methodology params live in config/composites_policy.yaml.
+#
+# ── Weight-setting principles (docs/Guidance/signal_weight_guidance.md) ──────
+# Importance tiers:
+#   PRIMARY   (0.85–1.00): non-redundant anchors; drive the composite
+#   STRONG    (0.60–0.84): reliable supplementary; some correlation to primary
+#   CONTEXT   (0.30–0.59): adds marginal info; volatile, lagging, or redundant
+#   VOLATILE  (0.10–0.29): high noise or annual-only; included but not drivers
+#
+# JP-specific notes:
+#   - Inflation rests ENTIRELY on the IMF WEO annual bridge — no live monthly
+#     CPI exists free (every OECD FRED feed ended 2021-06; e-Stat needs
+#     registration, see data_source_wishlist.md). The inflation score is
+#     therefore annual-resolution and low-precision: treat the inflation chip
+#     as directional only until a monthly feed lands.
+#   - Volatility is TRUE DAILY realized vol (Nikkei 225 via FRED) — full
+#     quality, unlike the EZ/KR monthly proxies.
+#   - Growth mirrors the KR 3-signal structure (industrial prod, retail,
+#     unemployment) — all three feeds verified live through 2026.
+
+growth_score:
+  description: "JP growth-force composite — FRED monthly indicators"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.7
+      importance: 0.80      # PRIMARY — strongest coincident output signal
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.65
+      importance: 0.75      # STRONG — household demand
+      quality_factor: 0.95
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — lagging, structurally pinned low in Japan
+      quality_factor: 0.90
+      invert: true          # lower unemployment = better growth
+
+inflation_score:
+  description: "JP inflation-force composite — IMF annual bridge ONLY (no free monthly CPI)"
+  indicators:
+    - id: inflation.cpi_imf_annual
+      base_share: 1.0
+      importance: 0.90      # PRIMARY by necessity — the only free inflation feed
+      quality_factor: 0.70  # reduced: annual resolution, is_proxy
+
+# ── JP Financial Accommodation Score ─────────────────────────────────────────
+# NOTE: single rate signal — directional indicator only, not a robust composite.
+rate_score:
+  description: "JP financial accommodation — 10y JGB yield (single signal; low coverage)"
+  indicators:
+    - id: policy.yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available JP rate signal
+      quality_factor: 1.00
+      invert: true          # high yield = restrictive
+
+# ── JP Credit Health Score ────────────────────────────────────────────────────
+credit_score:
+  description: "JP credit health — govt debt/GDP (single signal; low coverage)"
+  indicators:
+    - id: credit.gov_debt_gdp
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available JP credit signal
+      quality_factor: 1.00
+      invert: true          # high debt/GDP = stress
+
+# ── JP Volatility Score ───────────────────────────────────────────────────────
+# TRUE daily realized vol (Nikkei 225) — full quality, unlike EZ/KR proxies.
+volatility_score:
+  description: "JP market volatility — daily Nikkei 225 realized vol (single signal)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available JP volatility signal
+      quality_factor: 1.00  # full quality: true daily realized vol, US-equivalent
+
+# ── JP Productivity Trend Score ───────────────────────────────────────────────
+# Single signal — only annual R&D intensity is available free.
+productivity_score:
+  description: "JP productivity trend — R&D intensity only (single signal; low coverage)"
+  indicators:
+    - id: growth.rnd_intensity
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available JP productivity signal
+      quality_factor: 0.70  # reduced: annual-only, structural proxy for the trend
+      half_life_months: 12.0

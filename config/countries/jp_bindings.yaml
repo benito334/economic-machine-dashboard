@@ -1,0 +1,514 @@
+# Japan (JP) indicator bindings — Phase 2 / roadmap Phase F (added 2026-07-05)
+# Country code: JP (ISO 3166-1 alpha-2); WB/IMF map to JPN in loader.py.
+# All vintage_available: false — FRED vintages cover US only.
+#
+# Every series_id below was verified against the FRED metadata endpoint on
+# 2026-07-05 (frequency + observation range noted per binding).
+#
+# JP-specific data facts found during verification:
+#   - NO live monthly CPI on FRED: every OECD JP CPI series (JPNCPALTT01CTGYM,
+#     CPALTT01JPM659N, CPGRLE01JPM659N, JPNCPIALLMINMEI, CPALCY01JPM661N) ends
+#     2021-06/2022-04. Inflation therefore rests on the IMF WEO annual bridge
+#     (is_proxy) — the same pattern as KR's post-Apr-2025 gap, but total.
+#     e-Stat (Japan's official portal) has a free API but requires registration
+#     → documented in data_source_wishlist.md.
+#   - NIKKEI225 is a FREE DAILY feed on FRED (1949→current) — Japan gets the
+#     US-style daily realized-vol treatment, better than the EZ/KR monthly proxy.
+#   - JPNPRINTO01GYSAM (industrial production) is already in YoY% form
+#     (GYSAM suffix) → raw_scale: 100 + transformation: level, like KR retail.
+#   - Government debt/GDP ≈ 250% — sanity_max raised accordingly.
+#
+# raw_scale: 100 converts already-YoY% OECD/FRED series to decimal form.
+# Equilibrium values in transformed units (yoy_pct → decimal; rates → % level).
+
+country: JP
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_real
+    series_id: NGDPRSAXDCJPQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.008
+    linkage: "Japan real GDP (SA, quarterly, 1994→). Trend growth ~0.5–1%: three decades of near-zero growth define the deleveraging-era baseline."
+    sanity_min: -0.15
+    sanity_max: 0.15
+    notes: "Verified 2026-07-05: Q, 1994-01→2026-01."
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4200.0
+    linkage: "Japan nominal GDP in current USD billions (IMF). Used for cross-country size comparison in the Global Overview table."
+    sanity_min: 1000.0
+    sanity_max: 10000.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+  # NO live monthly CPI exists free (all OECD FRED feeds end 2021-06) — the IMF
+  # annual bridge is the PRIMARY inflation read for Japan, honestly flagged
+  # is_proxy. See data_source_wishlist.md (e-Stat API requires registration).
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.010
+    linkage: "Japan CPI % change (IMF WEO annual). The ONLY free inflation feed — every monthly OECD FRED CPI series for Japan ended 2021-06. Annual resolution limits precision; BoJ target is 2%."
+    sanity_min: -0.05
+    sanity_max: 0.20
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+
+  - id: growth.unemployment
+    series_id: LRUNTTTTJPM156S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.7
+    linkage: "Japan harmonised unemployment rate (%). Structurally very low (lifetime-employment legacy); moves above 3.5% signal genuine labor-market stress."
+    sanity_min: 1.0
+    sanity_max: 10.0
+    notes: "Verified 2026-07-05: M, 1955-01→2026-04."
+
+  - id: growth.retail_sales
+    series_id: JPNSLRTTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.005
+    linkage: "Japan retail trade volume YoY (OECD, already in % form on FRED). Household demand tracker in a consumption-cautious economy."
+    sanity_min: -0.20
+    sanity_max: 0.30
+    notes: "Verified 2026-07-05: M, 1956-01→2026-03."
+
+  - id: growth.industrial_prod
+    series_id: JPNPRINTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    raw_scale: 100
+    equilibrium: 0.005
+    linkage: "Japan industrial production YoY (OECD, already in % form on FRED). Export-machinery and autos dominate the cycle."
+    sanity_min: -0.35
+    sanity_max: 0.35
+    notes: "Verified 2026-07-05: M, 1956-01→2026-04. The index-form JPNPRINTO01IXOBM ends 2024-03 — the GYSAM YoY form is the live feed."
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.3
+    linkage: "R&D expenditure as % of GDP. Japan remains a top-tier R&D investor; the structural offset to shrinking labor input."
+    sanity_min: 0.0
+    sanity_max: 8.0
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01JPM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.0
+    linkage: "Japan 10-year JGB yield. Decades pinned near zero under YCC; the post-2024 normalization is the defining policy story."
+    sanity_min: -1.0
+    sanity_max: 10.0
+    notes: "Verified 2026-07-05: M, 1989-01→2026-05."
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBJPBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2010eq100
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Japan real broad effective exchange rate (BIS, 2010=100). Multi-decade yen depreciation is both an export subsidy and an imported-inflation channel."
+    sanity_min: 40.0
+    sanity_max: 160.0
+
+  # ─── Fiscal (IMF JPN) ──────────────────────────────────────────────────────
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 200.0
+    linkage: "Japan general government gross debt as % of GDP (IMF) — the highest in the developed world (~250%); sustainable only while r stays below g and the BoJ anchors the curve."
+    sanity_min: 50.0
+    sanity_max: 350.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -4.0
+    linkage: "Japan general government net lending/borrowing as % of GDP (IMF). Persistently negative for three decades."
+    sanity_min: -15.0
+    sanity_max: 10.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -3.0
+    linkage: "Japan IMF primary balance as % of GDP (excl. interest). The government's own stated anchor (primary surplus target) — chronically missed."
+    sanity_min: -15.0
+    sanity_max: 10.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 20.0
+    linkage: "General government revenue as % of GDP. Consumption-tax increases are the recurring (and politically costly) revenue lever."
+    sanity_min: 5.0
+    sanity_max: 55.0
+
+  # ─── External & Trade (WorldBank / JPN) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "Japan current account balance as % of GDP. Structurally in surplus — increasingly from investment income (NIIP), not trade."
+    sanity_min: -5.0
+    sanity_max: 10.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 18.0
+    linkage: "Exports of goods and services as % of GDP. Lower than commonly assumed (~20%) — Japan is far less export-dependent than Korea or Germany."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 18.0
+    linkage: "Imports of goods and services as % of GDP. Energy imports are the dominant swing factor — the yen/oil interaction drives terms-of-trade shocks."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "FDI net inflows as % of GDP. Persistently the lowest in the G7 — inbound investment barriers are a structural reform marker."
+    sanity_min: -5.0
+    sanity_max: 10.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Japan total population (World Bank). Peaked 2008 (~128mn) and declining ~0.5%/yr — the defining structural constraint."
+    sanity_min: 50000000.0
+    sanity_max: 150000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -0.5
+    linkage: "Annual population growth rate %. Negative since ~2010; the world's most advanced demographic decline among major economies."
+    sanity_min: -2.0
+    sanity_max: 2.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 70.0
+    linkage: "Age dependency ratio (dependents per 100 working-age) — the world's highest; drives the fiscal arithmetic behind the debt stock."
+    sanity_min: 30.0
+    sanity_max: 120.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 62.0
+    linkage: "ILO-modeled labor force participation rate (% population 15+). Rising female and elderly participation has offset ~half the demographic drag."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  # ─── Volatility Force ──────────────────────────────────────────────────────
+  # NIKKEI225 is a FREE DAILY feed on FRED (unlike EZ/KR) — Japan gets the
+  # US-style daily realized-vol treatment (21-day window, √252 annualization).
+
+  - id: volatility.equity_index
+    series_id: NIKKEI225
+    provider: FRED
+    frequency: D
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Nikkei 225 daily close — raw level, used only as input to realized volatility."
+    sanity_min: 0.0
+    sanity_max: 100000.0
+    notes: "Verified 2026-07-05: D, 1949-05→current. Daily — better than the EZ/KR monthly proxies."
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: D
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: false
+    verified: true
+    equilibrium: 0.18
+    linkage: "Annualized 21-day rolling standard deviation of daily Nikkei 225 log returns — true daily realized volatility, same construction as the US."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER (roadmap Phase D pattern) ────────────────────
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 33.0
+    linkage: "Gini index of income inequality — the internal-order read: widening wealth gaps precede internal political stress and populist policy shifts."
+    sanity_min: 20.0
+    sanity_max: 60.0
+    notes: "World Bank Poverty & Inequality Platform, JPN. Verified 2026-07-05: annual through 2020 (32.3). Multi-year lag inherent — slow structural read."
+
+  - id: order.reserve_currency_share
+    series_id: "IMF.STA,COFER/G001.AFXRA.CI_JPY.SHRO_PT.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: pct_level
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 5.0
+    linkage: "JPY share of allocated global FX reserves (IMF COFER) — the external-order read: the yen's #3 reserve status underpins Japan's borrowing privilege despite the debt stock."
+    sanity_min: 1.0
+    sanity_max: 15.0
+    notes: "Verified 2026-07-05: quarterly 1999-Q1 → 2026-Q1 (5.4%)."

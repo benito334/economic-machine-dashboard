@@ -36,7 +36,8 @@ STAGE_COLORS = {
     "deleveraging": "#B07FD4", "reflation": "#5CBA8A", "neutral": "#888888",
 }
 
-_COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area", "KR": "South Korea"}
+_COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area",
+                  "JP": "Japan", "KR": "South Korea"}
 
 _CARD = {
     "background": "var(--card-bg)", "border": "1px solid var(--border-color)",

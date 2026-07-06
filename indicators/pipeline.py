@@ -735,30 +735,6 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         logger.exception("[ERROR] Debt stress pass: %s", exc)
         post_ingestion_errors += 1
 
-    # ── Pass 7: Long-Term Debt-Cycle Stage Classifier (all configured) ────
-    print("\n─── Pass 7: Debt-Cycle Stage Classifier ───────────────────────────")
-    try:
-        stage_cfg = load_stage_config()
-        for stage_country in stage_cfg.get("countries", {}):
-            try:
-                stage_snaps = compute_stage_history(conn, stage_country, stage_cfg)
-                n_stage = upsert_debt_cycle_stage(conn, stage_snaps)
-                latest_stage = stage_snaps[-1] if stage_snaps else None
-                if latest_stage and latest_stage.stage:
-                    cf = f"{latest_stage.confidence:.2f}" if latest_stage.confidence is not None else "?"
-                    print(f"  [{stage_country}] {n_stage} snapshots — latest ({latest_stage.as_of}): "
-                          f"stage={latest_stage.stage}  confidence={cf}  "
-                          f"features={latest_stage.n_features}/5")
-                else:
-                    print(f"  [{stage_country}] {n_stage} snapshots — no current stage label "
-                          f"(insufficient features)")
-            except Exception as exc:
-                logger.exception("[ERROR] Stage classifier [%s]: %s", stage_country, exc)
-                post_ingestion_errors += 1
-    except Exception as exc:
-        logger.exception("[ERROR] Stage classifier pass: %s", exc)
-        post_ingestion_errors += 1
-
     # ── Additional countries from config/countries/ ───────────────────────
     country_dir = _CONFIG_DIR / "countries"
     country_yamls = sorted(country_dir.glob("*_bindings.yaml")) if country_dir.exists() else []
@@ -807,6 +783,32 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             logger.exception("[ERROR] Composites pass [%s]: %s", country_code.upper(), exc)
             country_results["error"] += 1
         country_summaries.append((country_code.upper(), country_results))
+
+    # ── Pass 7: Long-Term Debt-Cycle Stage Classifier (all configured) ────
+    # Runs AFTER the country loop so newly-ingested countries have their
+    # signals in the DB before their stage features are built.
+    print("\n─── Pass 7: Debt-Cycle Stage Classifier ───────────────────────────")
+    try:
+        stage_cfg = load_stage_config()
+        for stage_country in stage_cfg.get("countries", {}):
+            try:
+                stage_snaps = compute_stage_history(conn, stage_country, stage_cfg)
+                n_stage = upsert_debt_cycle_stage(conn, stage_snaps)
+                latest_stage = stage_snaps[-1] if stage_snaps else None
+                if latest_stage and latest_stage.stage:
+                    cf = f"{latest_stage.confidence:.2f}" if latest_stage.confidence is not None else "?"
+                    print(f"  [{stage_country}] {n_stage} snapshots — latest ({latest_stage.as_of}): "
+                          f"stage={latest_stage.stage}  confidence={cf}  "
+                          f"features={latest_stage.n_features}/5")
+                else:
+                    print(f"  [{stage_country}] {n_stage} snapshots — no current stage label "
+                          f"(insufficient features)")
+            except Exception as exc:
+                logger.exception("[ERROR] Stage classifier [%s]: %s", stage_country, exc)
+                post_ingestion_errors += 1
+    except Exception as exc:
+        logger.exception("[ERROR] Stage classifier pass: %s", exc)
+        post_ingestion_errors += 1
 
     # ── Summary ────────────────────────────────────────────────────────────
     print()

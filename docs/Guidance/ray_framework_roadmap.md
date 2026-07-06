@@ -79,10 +79,13 @@ The point of the whole exercise for global investing: see which countries are at
 - **E2 ✅** — four correlation heatmaps: growth-score and inflation-score pairwise Pearson correlations over the full common history AND the last 10y (month-period alignment handles per-country as_of day differences; <24 common months → NaN, never a spurious number). Current answer to the diversification question: US–EZ growth 0.86 over the last decade (same cycle in disguise), KR 0.53 (partial diversifier); inflation correlations 0.84–0.90 everywhere (the 2021–23 global wave dominates).
 - **Data:** derived from existing per-country composites. **DoD:** ✅ met — the page answers "where can I diversify to that isn't moving with the US?"; 9 unit tests. Gets more valuable automatically as Phase F adds Japan (extend `relative_view.COUNTRIES`).
 
-### Phase F — Japan rollout (Phase 2 continuation)  ·  Effort: M
+### Phase F — Japan rollout (Phase 2 continuation)  ·  Effort: M  ·  ✅ **done 2026-07-05**
 Validates the sparse-country patterns end to end.
-- Create `config/countries/jp_bindings.yaml` + `jp_composites.yaml`; apply the documented minimum-viable Debt Stress subset; use the monthly-proxy Volatility pattern; honest `vintage_available` and human sign-off.
-- **Deps:** none (can slot in anytime). **DoD:** JP appears across all pages with the same honesty flags as EZ/KR.
+- ✅ `config/countries/jp_bindings.yaml` (25 signals, every FRED ID verified via metadata endpoint with ranges noted per binding) + `jp_composites.yaml` (all 6 force composites). Pipeline: 25/25 OK, 0 errors, 0 sanity warnings. Values spot-checked (unemployment 2.5%, 10y JGB 2.65% post-normalization, gov debt 206% GDP, CA +4.9%, JPY reserve share 5.4%). All `vintage_available: false`, honest flags throughout.
+- **JP-specific findings:** (a) **no live monthly CPI exists free** — every OECD FRED CPI series ends 2021-06, so JP inflation rests entirely on the IMF WEO annual bridge (`is_proxy`, quality 0.70; e-Stat API needs registration → wishlist); (b) **NIKKEI225 is a free DAILY feed** — JP volatility is true daily realized vol, US-quality, better than the EZ/KR monthly proxies; (c) `JPNPRINTO01GYSAM` is the live industrial-production feed (the index form died 2024-03).
+- ✅ JP added to `debt_cycle_stage.yaml` (4/5 features; current stage = **reflation** — the textbook Japan read: r engineered below g at an extreme debt stock), the country selector (no longer "soon"), Relative Cycles, Command Center names. Pipeline Pass 7 moved after the country loop so newly-ingested countries are staged in the same run. Diversification payoff visible immediately: **JP inflation correlates +0.03 with US over the last 10y** — the only real inflation diversifier among the four.
+- Not built (documented, honest): JP Debt Stress composite — the model is still US-only; the minimum-viable 3-component subset for JP is future work alongside the wishlist DSR search.
+- **DoD:** ✅ met — JP appears across all pages with the same honesty flags as EZ/KR.
 
 ### Phase G — Backtesting engine (Phase 3)  ·  Effort: L  ·  **G1+G2 done 2026-07-05, G3 open**
 Highest-leverage validation. Ray's own emphasis: systematically test every change. Staged:
@@ -109,7 +112,7 @@ Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, 
 5. **Phase C** ✅ done 2026-07-05 (long-term-cycle stage classifier; upgraded its CC card; threshold calibration deferred to G3)
 6. **Phase D research spike + confirmed subset** ✅ done 2026-07-05 (Gini + COFER live; governance/GPR manual-load slots open as D4)
 7. **Phase E** ✅ done 2026-07-05 (the diversification payoff view — /relative)
-8. **Phase F — Japan** can slot in wherever there's a natural break (it's independent)
+8. **Phase F — Japan** ✅ done 2026-07-05 (25 signals, 6 composites, stage=reflation; JP inflation is the only real diversifier)
 9. **Phase H** — separate project, whenever the diagnostic layer is trusted
 
 Note: CC v1 is presentation-layer only (no new modeling risk), so it can be pulled forward ahead of G at any time without violating the validate-before-extend rationale.

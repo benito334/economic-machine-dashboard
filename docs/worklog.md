@@ -1189,3 +1189,20 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - 9 tests (`tests/test_relative_view.py`): correlation identities (±1), NaN on short overlap, start-window filter, day-of-month alignment, full-page render, route registration. Verified live in browser. Methodology §15 revision rows (script-inserted into both tables to avoid the duplicate-row bug pattern). Roadmap Phase E ✅.
 
 **Next:** Phase F — Japan rollout (jp_bindings.yaml + jp_composites.yaml, sparse-country patterns end to end). Then G3, D4.
+
+---
+
+## 2026-07-05 — Roadmap Phase F: Japan rollout (25 signals, 6 composites, stage classifier)
+
+**Done:**
+- `config/countries/jp_bindings.yaml` (25 bindings, every FRED series verified via the metadata endpoint with observation ranges recorded per binding) + `jp_composites.yaml` (all 6 forces). Pipeline: **25/25 OK, 0 errors, 0 sanity warnings**; 161 signals total (73 US + 37 EZ + 25 JP + 26 KR).
+- **JP data findings** (documented in the wishlist): NO live monthly CPI free — all OECD FRED CPI feeds ended 2021-06, so inflation = IMF WEO annual bridge only (is_proxy, quality 0.70; e-Stat API needs registration = highest-value follow-up). NIKKEI225 is a free DAILY feed → JP volatility is TRUE daily realized vol, US-quality (unlike EZ/KR proxies). Industrial production: index form died 2024-03, live feed is the GYSAM YoY form.
+- JP added to `debt_cycle_stage.yaml` (4/5 features) — current stage **reflation** (textbook: r engineered below g at a 206%-of-GDP debt stock). Pipeline Pass 7 moved AFTER the country loop (was staging before new countries ingested).
+- Dashboard: country selector enabled (was "soon"), Relative Cycles + Command Center + stage section all render JP; currency label map extended (JPY).
+- **The payoff read**: JP inflation correlates +0.03 with US over the last 10y — the only real inflation diversifier among the four economies. JP growth correlates 0.74 with US/EZ.
+- Spot-check passed: unemployment 2.5%, 10y JGB 2.65% (post-normalization), gov debt 206.5% (IMF), CA +4.9%, JPY reserve share 5.44%, REER 65.9 (weak-yen era). All vintage_available=false, honest flags.
+- 433 tests pass. Roadmap Phase F ✅; wishlist JP section rewritten with results; UK noted as next rollout.
+
+**Not built (honest):** JP Debt Stress composite — model stays US-only pending a JP DSR source.
+
+**Next:** Phase G3 (ALFRED vintage replay + asset-outcome tests) — the last major open roadmap item; then D4 (manual-load governance/GPR).
