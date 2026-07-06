@@ -14,15 +14,22 @@
 
 ## Pending / Blockers
 
-### BEA data refresh — due 2026-06-26
-Run after June 26 to pick up BEA Q1 2026 data:
-```
-python3 -m indicators.pipeline
-```
-Will clear 3 stale US signals: current account, NIIP, debt service ratio.
+### BEA data refresh — partially resolved 2026-07-05
+`debt_service_ratio` picked up Q1 2026 during the 2026-07-05 pipeline runs. `current_account` and `NIIP` are still stale (BEA hasn't published). Re-run `python3 -m indicators.pipeline` when it lands.
+
+### Pre-existing test failure (unrelated, tracked)
+`tests/test_explorer.py::test_compare_raw_vs_processed_level_signal` — pandas datetime-unit mismatch (`M8[us]` vs `M8[ns]`) in `dashboard/explorer_data.py::compare_raw_vs_processed` `merge_asof`. Reproduces on main before all 2026-07-05 work. Fix: normalize both sides to `datetime64[ns]` before the merge. (A spun-off fix session was started then deleted — still open.)
+
+### Roadmap position (see docs/Guidance/ray_framework_roadmap.md)
+Done: A, B, G1+G2. Next: **Phase CC (command center v1)** → C → D spike → E → F (Japan) → G3.
 
 ### EA current account — accepted gap
 All free API sources exhausted (WB, ECB, FRED, Eurostat, IMF). See `docs/Guidance/EU_singals_guidance.md` for full investigation table. Resolution requires ECB Data License or manual Eurostat bulk download. Accept gap for now — Global Overview shows dash for EZ current account column.
+
+---
+
+## Completed 2026-07-05 — Ray review + roadmap phases A/B/G1-G2
+Full detail in `docs/worklog.md` (five entries dated 2026-07-05) and `docs/Guidance/ray_dalio_review_log.md`. One-line version: systematic Ray Dalio AI review → 24-item punch list → all implemented or explicitly deferred; roadmap created (`ray_framework_roadmap.md`); Phases A (loan_demand, rate_expectations), B (productivity_score composite + /signals/productivity), G1+G2 (PIT backtest engine, direction validation passed, dynamic ≥ fixed) shipped; dynamic-threshold checkbox UX fixed (applies on click); Methodology page fully revised + Revision Log section added.
 
 ---
 
