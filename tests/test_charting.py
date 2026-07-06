@@ -509,27 +509,8 @@ def test_load_yield_curve_term_structure_future_returns_empty():
 
 
 @pytest.mark.integration
-def test_overlay_chart_callback_no_series():
-    """Overlay chart returns a figure with no traces when no series selected."""
-    import plotly.graph_objects as go
-    from dashboard.charting import update_overlay_chart
-    fig = update_overlay_chart([], {"start": None, "end": None})
-    assert isinstance(fig, go.Figure)
 
 
-@pytest.mark.integration
-def test_overlay_chart_callback_with_series():
-    import plotly.graph_objects as go
-    from dashboard.charting import update_overlay_chart
-    fig = update_overlay_chart(
-        ["us.policy.yield_10y", "us.policy.yield_2y"],
-        {"start": "2020-01-01", "end": "2024-01-01"},
-    )
-    assert isinstance(fig, go.Figure)
-    assert len(fig.data) >= 2
-
-
-@pytest.mark.integration
 def test_regime_chart_callback():
     import plotly.graph_objects as go
     from dashboard.charting import update_regime_chart

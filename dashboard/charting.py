@@ -45,7 +45,6 @@ from dashboard.charting_data import (
 )
 from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import data_dashboard as _data_dashboard
-from dashboard import explorer as _explorer
 from dashboard import global_overview as _global_overview
 from dashboard import methodology as _methodology
 from dashboard import weight_audit as _weight_audit
@@ -54,6 +53,7 @@ from dashboard import signals_page as _signals_page
 from dashboard import force_detail as _force_detail
 from dashboard import command_center as _command_center
 from dashboard import relative_view as _relative_view
+from dashboard import workbench as _workbench
 from dashboard import user_guide as _user_guide
 from dashboard.shared_components import _signal_link
 
@@ -67,11 +67,25 @@ app = dash.Dash(
     suppress_callback_exceptions=True,
 )
 server = app.server  # expose Flask for Gunicorn / production
-_explorer.register_callbacks(app)       # Phase 1E Data Explorer callbacks
 _data_dashboard.register_callbacks(app) # Data Feed Monitor sort + filter
 _global_overview.register_callbacks(app) # Global Overview Cycle Health config
 for _fd_force in _force_detail._FORCES:  # Force detail sub-pages (/signals/{force})
     _force_detail.register_callbacks(app, _fd_force)
+
+# Workbench clientside hooks: "/" hotkey focuses the omnibox; the shared
+# crosshair spike (same JS as the force-detail pages) syncs stacked panes.
+app.clientside_callback(
+    _workbench.HOTKEY_JS,
+    Output("wb-hover-dummy", "data"),
+    Input("page-trigger", "data"),
+    prevent_initial_call=False,
+)
+app.clientside_callback(
+    _force_detail._hover_sync_js("wb-chart", "wb-hover-dummy"),
+    Output("wb-hover-dummy", "data", allow_duplicate=True),
+    Input("wb-chart", "figure"),
+    prevent_initial_call=True,
+)
 
 # ── Palette ──────────────────────────────────────────────────────────────────
 
@@ -602,42 +616,6 @@ _BY_ID: dict[str, dict] = {e["signal_id"]: e for e in _CATALOG}
 
 # ── Layout ────────────────────────────────────────────────────────────────────
 
-def _series_selector() -> dbc.Card:
-    """Build the left-sidebar shell; content is populated by update_series_selector callback."""
-    return dbc.Card(
-        dbc.CardBody([
-            html.H6("Series", className="mb-0"),
-            html.Hr(className="my-2"),
-            html.Div(id="series-selector-body", children=[], style={"overflowY": "auto", "maxHeight": "78vh"}),
-            html.Hr(className="my-2"),
-            dbc.Button("Clear all", id="btn-clear-all", color="secondary", size="sm", className="w-100 mb-1"),
-        ]),
-        className="h-100",
-        style={"minWidth": "220px", "maxWidth": "240px"},
-    )
-
-
-def _build_series_groups_us() -> list:
-    """Static US series groups from the chart_series.yaml catalog."""
-    groups = []
-    for group_name, entries in _GROUPS.items():
-        options = [
-            {"label": e["label"], "value": e["signal_id"], "title": e.get("description", "")}
-            for e in entries
-        ]
-        groups.append(html.Div([
-            html.P(group_name, className="text-muted small mb-1 mt-2 fw-semibold"),
-            dcc.Checklist(
-                id={"type": "group-checklist", "group": group_name},
-                options=options,
-                value=[],
-                inputStyle={"marginRight": "6px"},
-                labelStyle={"display": "block", "fontSize": "0.82rem", "marginBottom": "3px"},
-            ),
-        ]))
-    return groups
-
-
 def _time_controls() -> html.Div:
     """Preset buttons + range slider row."""
     presets = ["1Y", "3Y", "5Y", "10Y", "MAX"]
@@ -851,8 +829,7 @@ def _left_nav() -> html.Div:
         _label("Data"),
         dbc.Nav([
             _nl("📋", "Data Dashboard", "/data-dashboard", nav_id="navlnk-data-dashboard"),
-            _nl("📊", "Chart Overlay",  "/charts",         nav_id="navlnk-charts"),
-            _nl("🔬", "Data Explorer",  "/explorer",       nav_id="navlnk-explorer"),
+            _nl("📈", "Workbench",      "/workbench",      nav_id="navlnk-workbench"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Reference ─────────────────────────────────────────────────────────
@@ -947,43 +924,8 @@ def _left_nav() -> html.Div:
     })
 
 
-def _page_chart_overlay() -> html.Div:
-    presets = ["1Y", "3Y", "5Y", "10Y", "MAX"]
-    return html.Div([
-        dbc.Row([
-            dbc.Col([
-                dbc.ButtonGroup(
-                    [dbc.Button(p, id=f"btn-{p}", color="secondary", size="sm", outline=True)
-                     for p in presets],
-                    className="me-3",
-                ),
-                html.Span("or drag the range slider", className="text-muted small align-middle"),
-            ], className="d-flex align-items-center mb-1 pt-2 pe-0", width=True),
-        ]),
-        dbc.Row([
-            dbc.Col(
-                dcc.RangeSlider(
-                    id="range-slider", min=0, max=1, step=0.001, value=[0, 1], marks=None,
-                    tooltip={"placement": "bottom", "always_visible": False},
-                    className="mb-1",
-                ),
-            ),
-        ]),
-        dbc.Row([
-            dbc.Col(
-                dcc.Graph(
-                    id="overlay-chart",
-                    config={"displayModeBar": True, "scrollZoom": True},
-                    style={"height": "76vh"},
-                ),
-            ),
-            dbc.Col(_series_selector(), width="auto", className="ps-0"),
-        ]),
-    ], className="pe-2 pt-1", style={"maxWidth": "1600px", "margin": "0 auto"})
-
-
-def _page_explorer() -> html.Div:
-    return html.Div(_explorer.get_layout(), className="pe-2 pt-2", style={"maxWidth": "1600px", "margin": "0 auto"})
+def _page_workbench() -> html.Div:
+    return _workbench.get_layout()
 
 
 def _page_command_center() -> html.Div:
@@ -1558,12 +1500,11 @@ _SIGNAL_DRILL_MODAL = dbc.Modal(
 app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     # Top-level stores — persist across page navigations
-    dcc.Store(id="selected-series",      data=[]),
     dcc.Store(id="date-range",           data={"start": None, "end": None}),
     dcc.Store(id="theme-store",          data=DEFAULT_THEME),
     dcc.Store(id="regime-step-index",    data=0),
     # Fired by routing callback so page callbacks wait until components exist in DOM
-    dcc.Store(id="page-trigger",         data={"page": "/charts"}),
+    dcc.Store(id="page-trigger",         data={"page": "/"}),
     # Keyboard navigation: interval polls the delta set by the key listener
     dcc.Store(id="nav-event",            data=None),
     dcc.Interval(id="key-interval",      interval=80, disabled=True, n_intervals=0),
@@ -1993,10 +1934,11 @@ _PAGE_MAP = {
     "/country":       _page_command_center,
     "/relative":      _page_relative_view,
     "/guide":         _page_user_guide,
-    "/charts":        _page_chart_overlay,
+    "/workbench":     _page_workbench,
+    "/charts":        _page_workbench,   # legacy route
     "/overview":      _page_overview,
     "/data-dashboard":_page_data_dashboard,
-    "/explorer":      _page_explorer,
+    "/explorer":      _page_workbench,   # legacy route
     "/methodology":   _page_methodology,
     "/yield-curve":   _page_yield_curve,
     "/regime-map":    _page_regime_map,
@@ -2046,214 +1988,6 @@ app.clientside_callback(
 )
 
 # ── Callbacks — aggregate selected series ─────────────────────────────────────
-
-@callback(
-    Output("series-selector-body", "children"),
-    Input("country-store", "data"),
-    prevent_initial_call=False,
-)
-def update_series_selector(country: str) -> list:
-    """Populate the chart overlay series sidebar for the selected country."""
-    from dashboard.data_dashboard import _SIGNAL_NAMES as _DN
-    from dashboard.data_dashboard import _FORCE_LABELS as _FL
-    country = (country or "US").upper()
-    if country == "US":
-        return _build_series_groups_us()
-    # Dynamic: build groups from signals table for non-US country
-    try:
-        con = duckdb.connect(str(DB_PATH), read_only=True)
-        df = con.execute(
-            "SELECT id, force FROM signals WHERE country = ? "
-            "QUALIFY ROW_NUMBER() OVER (PARTITION BY id ORDER BY as_of DESC) = 1 "
-            "ORDER BY force, id",
-            [country],
-        ).df()
-        con.close()
-    except Exception:
-        return [html.Div("Could not load signals.", className="text-muted small")]
-    if df.empty:
-        return [html.Div(f"No signals found for {country}.", className="text-muted small")]
-    groups = []
-    for force in df["force"].unique():
-        force_df = df[df["force"] == force]
-        group_name = _FL.get(force, force.replace("_", " ").title())
-        options = []
-        for _, row in force_df.iterrows():
-            concept = ".".join(row["id"].split(".")[1:])
-            label = _DN.get(concept, concept.split(".")[-1].replace("_", " ").title())
-            options.append({"label": label, "value": row["id"]})
-        groups.append(html.Div([
-            html.P(group_name, className="text-muted small mb-1 mt-2 fw-semibold"),
-            dcc.Checklist(
-                id={"type": "group-checklist", "group": group_name},
-                options=options,
-                value=[],
-                inputStyle={"marginRight": "6px"},
-                labelStyle={"display": "block", "fontSize": "0.82rem", "marginBottom": "3px"},
-            ),
-        ]))
-    return groups
-
-
-@callback(
-    Output("selected-series", "data"),
-    [Input({"type": "group-checklist", "group": dash.ALL}, "value"),
-     Input("btn-clear-all", "n_clicks"),
-     Input("country-store", "data")],
-    prevent_initial_call=False,
-)
-def aggregate_selected(group_values: list[list[str]], _clear: Any, _country: Any) -> list[str]:
-    triggered = dash.callback_context.triggered_id
-    if triggered == "btn-clear-all" or triggered == "country-store":
-        return []
-    result = []
-    for vals in (group_values or []):
-        result.extend(vals or [])
-    return result
-
-
-# ── Callbacks — time range ────────────────────────────────────────────────────
-
-@callback(
-    Output("date-range", "data"),
-    [Input("btn-1Y", "n_clicks"),
-     Input("btn-3Y", "n_clicks"),
-     Input("btn-5Y", "n_clicks"),
-     Input("btn-10Y", "n_clicks"),
-     Input("btn-MAX", "n_clicks"),
-     Input("range-slider", "value")],
-    State("date-range", "data"),
-    prevent_initial_call=True,
-)
-def update_date_range(
-    _1y: Any, _3y: Any, _5y: Any, _10y: Any, _max: Any,
-    slider_val: list[float],
-    current: dict,
-) -> dict:
-    today = datetime.date.today()
-    ctx = dash.callback_context.triggered_id
-
-    preset_map = {
-        "btn-1Y": 365,
-        "btn-3Y": 365 * 3,
-        "btn-5Y": 365 * 5,
-        "btn-10Y": 365 * 10,
-    }
-    if ctx in preset_map:
-        start = (today - datetime.timedelta(days=preset_map[ctx])).isoformat()
-        return {"start": start, "end": today.isoformat()}
-    if ctx == "btn-MAX":
-        return {"start": None, "end": None}
-
-    # Slider: map [0,1] fractions onto full history (1980–today)
-    epoch_start = datetime.date(1980, 1, 1)
-    total_days = (today - epoch_start).days
-    s_frac, e_frac = (slider_val or [0, 1])
-    start = (epoch_start + datetime.timedelta(days=int(s_frac * total_days))).isoformat()
-    end = (epoch_start + datetime.timedelta(days=int(e_frac * total_days))).isoformat()
-    return {"start": start, "end": end}
-
-
-# ── Callbacks — overlay chart ─────────────────────────────────────────────────
-
-@callback(
-    Output("overlay-chart", "figure"),
-    [Input("selected-series", "data"),
-     Input("date-range", "data"),
-     Input("theme-store", "data"),
-     Input("page-trigger", "data")],
-    prevent_initial_call=False,
-)
-def update_overlay_chart(
-    selected_ids: list[str],
-    date_range: dict,
-    theme_name: str = DEFAULT_THEME,
-    _trigger: Any = None,
-) -> go.Figure:
-    t = THEMES.get(theme_name, THEMES[DEFAULT_THEME])
-    if not selected_ids:
-        fig = go.Figure()
-        fig.update_layout(**figure_layout(theme_name, "Select series from the left sidebar"))
-        return fig
-
-    start = (date_range or {}).get("start")
-    end = (date_range or {}).get("end")
-
-    from dashboard.data_dashboard import _SIGNAL_NAMES as _DN
-    from dashboard.data_dashboard import _FORCE_LABELS as _FL
-
-    def _entry_for(sid: str) -> dict:
-        if sid in _BY_ID:
-            return _BY_ID[sid]
-        # Non-US signal not in the catalog: build a minimal entry on the fly
-        parts = sid.split(".")
-        concept = ".".join(parts[1:]) if len(parts) >= 2 else sid
-        force = parts[1] if len(parts) >= 3 else "other"
-        return {
-            "label": _DN.get(concept, parts[-1].replace("_", " ").title()),
-            "default_pane": _FL.get(force, force.title()),
-            "units": "",
-            "value_col": "value",
-        }
-
-    # Group selected series by their default_pane
-    pane_series: dict[str, list[str]] = defaultdict(list)
-    for sid in selected_ids:
-        entry = _entry_for(sid)
-        pane = entry.get("default_pane", "other")
-        pane_series[pane].append(sid)
-
-    panes = list(pane_series.keys())
-    n_panes = len(panes)
-
-    fig = make_subplots(
-        rows=n_panes,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.04,
-        subplot_titles=panes,
-    )
-
-    color_idx = 0
-    for row_idx, pane in enumerate(panes, start=1):
-        for sid in pane_series[pane]:
-            entry = _entry_for(sid)
-            df = load_signal_history(
-                sid,
-                value_col=entry.get("value_col", "value"),
-                start_date=start,
-                end_date=end,
-            )
-            if df.empty:
-                continue
-            color = _COLORS[color_idx % len(_COLORS)]
-            color_idx += 1
-            fig.add_trace(
-                go.Scatter(
-                    x=df["as_of"],
-                    y=df["value"],
-                    name=entry.get("label", sid),
-                    line={"color": color, "width": 1.5},
-                    hovertemplate=f"<b>{entry.get('label', sid)}</b><br>%{{x|%Y-%m-%d}}<br>%{{y:.2f}} {entry.get('units', '')}<extra></extra>",
-                ),
-                row=row_idx,
-                col=1,
-            )
-        # Y-axis label per pane
-        units_in_pane = {_entry_for(s).get("units", "") for s in pane_series[pane]}
-        y_title = " / ".join(u for u in units_in_pane if u) or ""
-        fig.update_yaxes(title_text=y_title, row=row_idx, col=1)
-
-    fig.update_layout(
-        **figure_layout(theme_name),
-        hovermode="x unified",
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.01, "xanchor": "left", "x": 0},
-        height=max(300 * n_panes, 400),
-        uirevision="chart-overlay",
-    )
-    fig.update_xaxes(showgrid=True, gridcolor=t["grid_color"], row=n_panes, col=1)
-    return fig
-
 
 # ── Callbacks — yield curve ───────────────────────────────────────────────────
 

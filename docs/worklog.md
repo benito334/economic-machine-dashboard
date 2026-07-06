@@ -1297,3 +1297,18 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Incident during rollout (resolved):** `docker compose up -d --remove-orphans` started the pipeline service, whose image was stale (June code — 63 US signals, 2 countries, no rate/credit/vol/productivity or rolling columns). Its Pass 5/6 overwrote composites + debt-stress for US/EZ/KR with old-schema output (signals + stage tables unharmed — upsert-only / not in old image). Recovery: stopped charting, re-ran the current pipeline from the host (188 signals, all 5 stages correct, all columns verified restored to exact pre-clobber counts), rebuilt BOTH images so the pipeline image can't lag the code again. **Lesson (worth remembering): `docker compose build` must build all services, not just charting — a stale pipeline image silently rewrites the DB with old formulas.**
 
 **Validation:** 414 tests pass (455 − 41 archived Streamlit tests); MC smoke-tested; Command Center/Regime Map/Guide verified live post-rebuild.
+
+---
+
+## 2026-07-06 — Workbench: TV-style chart studio (replaces Chart Overlay + Data Explorer)
+
+**Done (user-approved design: Plotly-in-Dash, JSON saved views, clean replacement):**
+- `dashboard/workbench.py` + `dashboard/workbench_data.py` (route `/workbench`, "📈 Workbench" nav; `/charts` + `/explorer` are legacy routes landing there).
+- **Search**: TV-style omnibox ("/" hotkey) over a unified index of all 321 plottable series — 188 signals, 35 composite scores, debt stress, 97 raw FRED cache series (titles from meta sidecars); all-token fuzzy match + country/force facet dropdowns; result rows show flag, label, force chip, span.
+- **Charting**: overlay mode (one pane, right-side scale, minimap range slider) and stacked mode (pane-number per pill groups series into shared-X panes; the force-detail crosshair-sync JS reused). Per-series transform pills: Raw · Rebase=100 · % from start · YoY % · Z (stored) — window-anchored rebasing = TV "compare". Pan default, scroll zoom.
+- **Inspector drawer** per series (🔍 on the pill): metadata + stats + Observations table with CSV export + Quality/Gaps + Raw-vs-Processed — the whole Data Explorer, docked. Reuses `explorer_data.py` (kept; UI archived as `archive/explorer_page.py`).
+- **Saved views**: named layouts in `DATA_DIR/saved_views.json` (deliberately NOT signals.duckdb — dashboard readers + a writer would recreate the DuckDB lock conflict), 4 built-in ★ presets (US Inflation Stack, Policy Rates ×5, US Credit Conditions, The Two Dials), URL deep links `/workbench?view=name` verified live.
+- **Retired**: chart-overlay layout + 4 callbacks + series-selector helpers excised from charting.py; `selected-series` store dropped; `date-range` store kept (many readers; None = full history as before). 8 old-UI tests removed; 14 new workbench tests.
+- **Bonus fix**: the long-standing `test_compare_raw_vs_processed_level_signal` dtype failure (merge_asof `datetime64[us]` vs `[ns]`) — fixed in explorer_data; **the suite now runs 421 passed with ZERO exclusions** (first time since 2026-06).
+
+**Verified live**: search → add US+JP 10Y, overlay + stacked with pane grouping, save "us vs jp 10y", deep-link reload restores the view.

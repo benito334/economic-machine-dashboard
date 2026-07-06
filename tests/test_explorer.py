@@ -101,34 +101,6 @@ def test_flag_anomalies_detects_nan_value():
     assert mask[1]   # NaN value → anomaly
 
 
-def test_explorer_layout_returns_div():
-    from dashboard.explorer import get_layout
-    from dash import html
-    layout = get_layout()
-    assert isinstance(layout, html.Div)
-
-
-def test_explorer_layout_has_required_ids():
-    """Verify key component IDs are present in the layout."""
-    from dashboard.explorer import get_layout
-    import json
-    layout = get_layout()
-    layout_str = str(layout)
-    required_ids = [
-        "exp-selected-signal",
-        "exp-force-filter",
-        "exp-flag-filter",
-        "exp-signal-table",
-        "exp-ts-chart",
-        "exp-obs-table",
-        "exp-ref-input",
-        "exp-ref-btn",
-        "exp-gaps-content",
-        "exp-raw-content",
-    ]
-    for id_ in required_ids:
-        assert id_ in layout_str, f"Missing component id: {id_}"
-
 
 def test_charting_imports_explorer():
     """Explorer is wired into the Dash app."""
@@ -138,26 +110,7 @@ def test_charting_imports_explorer():
     assert isinstance(charting.server, flask.Flask)
 
 
-def test_latest_card_has_one_callback_owner():
-    from dashboard.charting import app
-    owners = [key for key in app.callback_map if "exp-stat-latest.children" in key]
-    assert len(owners) == 1
 
-
-def test_overview_columns_structure():
-    from dashboard.explorer import _overview_columns
-    cols = _overview_columns()
-    ids = {c["id"] for c in cols}
-    assert "id" in ids
-    assert "force" in ids
-    assert "zscore_fmt" in ids
-    assert "flags" in ids
-    assert "days_since_update" in ids
-
-
-# ── Integration tests — require real DuckDB ───────────────────────────────────
-
-@pytest.mark.integration
 def test_load_signal_overview_returns_all_signals():
     from dashboard.explorer_data import load_signal_overview
     df = load_signal_overview()
@@ -313,21 +266,6 @@ def test_compare_raw_vs_processed_derived_has_no_raw():
 
 
 @pytest.mark.integration
-def test_explorer_signal_table_callback():
-    """Smoke test the filter callback returns correctly typed data."""
-    from dashboard.explorer import _format_overview
-    from dashboard.explorer_data import load_signal_overview
-    overview = load_signal_overview()
-    rows = _format_overview(overview)
-    assert isinstance(rows, list)
-    # 71 (see history) + order.gini + order.reserve_currency_share (Phase D)
-    assert len(rows) == 73
-    assert all("id" in r for r in rows)
-    assert all("zscore_fmt" in r for r in rows)
-    assert all("flags" in r for r in rows)
-
-
-# ── A2/I2: Composite Analysis (correlation + PCA) ────────────────────────────
 
 class TestCompositeZscoreMatrix:
     @pytest.mark.integration
@@ -421,26 +359,3 @@ class TestComputePca:
         # PC1 should explain at least 15% (typical for mixed macro signals)
         assert pca["explained_variance_ratio"][0] >= 0.10
 
-    def test_analysis_tab_graph_ids_in_layout(self):
-        """Verify the analysis tab graph components are present in the explorer layout."""
-        from dashboard.explorer import get_layout
-
-        def _find_ids(component, found=None):
-            if found is None:
-                found = set()
-            if hasattr(component, "id") and component.id:
-                found.add(component.id)
-            for attr in ("children",):
-                child = getattr(component, attr, None)
-                if child is None:
-                    continue
-                items = child if isinstance(child, list) else [child]
-                for item in items:
-                    if hasattr(item, "id") or hasattr(item, "children"):
-                        _find_ids(item, found)
-            return found
-
-        layout = get_layout()
-        ids = _find_ids(layout)
-        assert "exp-corr-chart" in ids, f"exp-corr-chart not found in layout IDs: {ids}"
-        assert "exp-pca-chart"  in ids, f"exp-pca-chart not found in layout IDs: {ids}"

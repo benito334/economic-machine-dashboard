@@ -1,4 +1,4 @@
-"""Data access layer for the Phase 1E Data Explorer tab."""
+"""Data access layer for signal inspection (used by the Workbench inspector; formerly the Phase 1E Data Explorer tab)."""
 from __future__ import annotations
 
 import os
@@ -281,6 +281,11 @@ def compare_raw_vs_processed(signal_id: str, source: str, n_recent: int = 36) ->
     detail_reset = detail.reset_index()
     detail_reset = detail_reset.sort_values("as_of")
     raw_df = raw_df.sort_values("raw_date")
+
+    # DuckDB returns datetime64[us]; parquet indexes are datetime64[ns] —
+    # merge_asof requires identical dtypes on the join keys.
+    detail_reset["as_of"] = pd.to_datetime(detail_reset["as_of"]).astype("datetime64[ns]")
+    raw_df["raw_date"] = pd.to_datetime(raw_df["raw_date"]).astype("datetime64[ns]")
 
     merged = pd.merge_asof(
         detail_reset,
