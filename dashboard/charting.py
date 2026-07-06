@@ -52,6 +52,7 @@ from dashboard import weight_history as _weight_history
 from dashboard import regime_classifier_page as _regime_classifier
 from dashboard import signals_page as _signals_page
 from dashboard import force_detail as _force_detail
+from dashboard import command_center as _command_center
 from dashboard.shared_components import _signal_link
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -789,6 +790,7 @@ def _left_nav() -> html.Div:
         # ── Overviews (placeholder — Phase 2+) ───────────────────────────────
         _label("Overviews"),
         dbc.Nav([
+            _nl("🎛", "Command Center", "/country", nav_id="navlnk-command-center"),
             _nl("🌐", "Overview", "/overview", nav_id="navlnk-overview"),
         ], vertical=True, pills=True, className="mb-1"),
 
@@ -981,6 +983,10 @@ def _page_chart_overlay() -> html.Div:
 
 def _page_explorer() -> html.Div:
     return html.Div(_explorer.get_layout(), className="pe-2 pt-2", style={"maxWidth": "1600px", "margin": "0 auto"})
+
+
+def _page_command_center() -> html.Div:
+    return _command_center.get_layout()
 
 
 def _page_overview() -> html.Div:
@@ -1948,7 +1954,8 @@ app.clientside_callback(
 # ── Routing callback ──────────────────────────────────────────────────────────
 
 _PAGE_MAP = {
-    "/":              _page_chart_overlay,
+    "/":              _page_command_center,   # command center is the front door (roadmap Phase CC)
+    "/country":       _page_command_center,
     "/charts":        _page_chart_overlay,
     "/overview":      _page_overview,
     "/data-dashboard":_page_data_dashboard,
@@ -1978,7 +1985,7 @@ _PAGE_MAP = {
     prevent_initial_call=False,
 )
 def route_page(pathname: str):
-    pathname = pathname or "/charts"
+    pathname = pathname or "/"
     fn = _PAGE_MAP.get(pathname)
     layout = fn() if fn else html.Div(f"Page '{pathname}' not found", className="p-4 text-muted")
     return layout, {"page": pathname}

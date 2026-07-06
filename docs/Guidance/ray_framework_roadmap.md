@@ -67,11 +67,11 @@ The genuinely new capability Ray stresses for choosing *which* countries to dive
 - **D3 — Dashboard "Big-cycle position" panel.**
 - **Deps:** research spike gates everything. **DoD:** whatever has a confirmed free feed is live; everything else is a documented deferred slot in the data-source wishlist.
 
-### Phase CC — Country command center (the front door)  ·  Effort: M
+### Phase CC — Country command center (the front door)  ·  Effort: M  ·  ✅ **done 2026-07-05**
 One synthesis page per country that answers "where is this country, on all three clocks, and what's changing" — with the existing detail pages demoted to drill-downs. Built around the handful of things Ray said actually matter: the two dials + the credit/rate *levers* (supply AND demand side, policy stance + expected path), the debt-service ratio as the earliest long-cycle signal, the productivity trend as the baseline, the growth/inflation divergence flag as the cycle-shift alarm, and change-over-level throughout.
-- **CC1 — v1 from existing data (no new modeling):** regime strip (chips + confidence + "heading" direction), short-cycle lever cards (Growth/Inflation dials, Credit supply+demand, Policy stance incl. `rate_expectations`), Debt Stress card with DSR trend callout, productivity-vs-cyclical-growth card, disequilibrium + what-changed watch list. Every card links to its existing detail page. Surfacing the divergence flag as a badge here **closes the open #23 follow-up**.
-- **CC2 — placeholder cards** for the two unbuilt layers (long-term-cycle *stage* from Phase C, big-cycle *order* from Phase D), clearly marked as planned; they light up when those phases land.
-- **Data:** all computed today (composites, regime, debt stress, divergence flag, what-changed). **Deps:** none for v1; C and D upgrade their cards later. **DoD:** a `/country` route is the default landing page for the selected country; every card drills down; divergence badge live.
+- **CC1 ✅ — v1 from existing data (no new modeling):** `dashboard/command_center.py`, routes `/` (default landing) + `/country`, nav entry at the top of Overviews. Regime strip (chips + confidence + diseq + DYNAMIC badge when dynamic thresholds are on — honors the store's dynamic mode when classifying), short-cycle lever cards (Growth/Inflation dials with Δ + momentum, Credit supply `lending_standards` + demand `loan_demand`, Policy stance `rate_score` + `rate_expectations` hikes/hold/cuts read), Debt Stress card (score + n/7 components), DSR card (Z + % of income + direction), productivity-vs-cyclical-growth card (trend above/below cycle read), what-changed watch list (top-8 Z movers, reuses `load_change_feed` + `_what_changed_children`). Every card links to its detail page. The divergence flag is surfaced as an amber DIVERGENCE badge with an explanatory tooltip — **closes the open #23 follow-up**.
+- **CC2 ✅ — placeholder cards** for the two unbuilt layers (long-term-cycle *stage* from Phase C, big-cycle *order* from Phase D), dashed-border + "planned"; they light up when those phases land.
+- **Data:** all computed today (composites, regime, debt stress, divergence flag, what-changed). **Deps:** none for v1; C and D upgrade their cards later. **DoD:** ✅ met — `/` and `/country` render the command center for US/EZ/KR; every card drills down; divergence badge live; 8 unit tests (`tests/test_command_center.py`); Methodology §15 revision-log entry added.
 
 ### Phase E — Cross-country / relative-cycle view for diversification (L4 payoff)  ·  Effort: M
 The point of the whole exercise for global investing: see which countries are at *different* cycle stages and are least correlated.
@@ -105,7 +105,7 @@ Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, 
 1. **Phase A** ✅ done (quick wins, closed the open review loops)
 2. **Phase G — backtesting** (validate what we already have, incl. dynamic thresholds, before building more speculative layers)
 3. **Phase B** (small, data already exists; feeds the command center's productivity card)
-4. **Phase CC — command center v1** (assembly-only, high daily value; placeholder cards for C/D)
+4. **Phase CC — command center v1** ✅ done 2026-07-05 (assembly-only; placeholder cards for C/D)
 5. **Phase C** (long-term-cycle stage — calibrated against G's output; upgrades its CC card)
 6. **Phase D research spike** in parallel from here (it gates the biggest new capability; start the data hunt early)
 7. **Phase E** (the diversification payoff view)

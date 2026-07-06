@@ -1968,11 +1968,10 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-05", "Command Center added as the default landing page (/): regime strip with divergence badge, short-cycle lever cards, debt-stress + DSR, productivity-vs-cycle, what-changed feed — display-only synthesis, no formula changes (roadmap Phase CC)", "8, 9 (display only)"],
                             ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
                             ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],
-                            ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
-                        ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],
-                        ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
+                            ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
                             ["2026-07-05", "Documented what actually feeds the regime label (Growth+Inflation direct; Credit indirect via dynamic thresholds; Rate/Volatility/Debt Stress/CHI not in the label) + input-flow diagram", "8"],
                             ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],
                             ["2026-07-05", "Cycle Health Index: conditional growth/rate/inflation weight tilt; nominal/real policy-rate toggle", "13"],
@@ -1999,6 +1998,9 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
+                        ["2026-07-05", "Command Center added as the default landing page (/): regime strip with divergence badge, short-cycle lever cards, debt-stress + DSR, productivity-vs-cycle, what-changed feed — display-only synthesis, no formula changes (roadmap Phase CC)", "8, 9 (display only)"],
+                        ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
+                        ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],
                         ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
                         ["2026-07-05", "Documented what actually feeds the regime label (Growth+Inflation direct; Credit indirect via dynamic thresholds; Rate/Volatility/Debt Stress/CHI not in the label) + input-flow diagram", "8"],
                         ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],

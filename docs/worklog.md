@@ -1133,3 +1133,19 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Validation:** 399 passed, 1 pre-existing failure. Pipeline populates all three countries (EZ/KR trend read ends 2023 — annual R&D source aging out honestly). Verified live.
 
 **Next:** Phase CC — country command center v1 (assembly-only front-door page; closes the divergence-badge follow-up).
+
+---
+
+## 2026-07-05 — Roadmap Phase CC: country command center v1 (new default landing page)
+
+**Done:**
+- `dashboard/command_center.py` (new): one synthesis page per country answering "where is this country, on all three clocks, and what's changing." Routes `/` (now the default landing page — was Chart Overlay) + `/country`; "🎛 Command Center" nav entry at the top of Overviews.
+- Cards (each links to its detail page): regime strip (Growth/Inflation chips via the production `_classify_regime`, honoring the threshold store *including dynamic mode* — computes `compute_dynamic_thresholds` and uses the latest dyn_gz/dyn_iz when dynamic is on; confidence, diseq, DYNAMIC badge); short-cycle levers (Growth/Inflation dials with Δ + momentum %, Credit conditions = composite + SLOOS supply-tightening/easing + loan-demand reads, Policy stance = rate_score accommodative/restrictive + 2y−funds hikes/hold/cuts read); long-term debt cycle (Debt Stress score + n/7 components, DSR Z + % of income + direction — "the earliest stress signal"); trend & big cycle (productivity trend with above/below-cycle read); what-changed top-8 Z movers (reuses `load_change_feed` + `_what_changed_children`).
+- **Divergence badge live** — amber DIVERGENCE chip with tooltip when growth/inflation Z-scores have opposed signs for 3+ consecutive months (closes the open review-log #23 follow-up; the flag was computed but never surfaced).
+- CC2 placeholder cards (dashed border, "planned") for Phase C cycle *stage* and Phase D big-cycle *order*.
+- Lazy imports from `dashboard.charting` inside the callback (avoids circular import); module-level `@callback` pattern matching signals_page.
+- `tests/test_command_center.py` (8 tests: layout, all cards present, drill-down hrefs, no_update on other pages, dynamic badge, EZ/KR no-crash, route registration). Methodology §15 revision-log row (also fixed a duplicated-row bug in the §15 copy-text table). Roadmap Phase CC marked ✅.
+
+**Validation:** 407 passed, 1 pre-existing failure (dtype). Docker rebuilt; verified live in browser at `/` and `/country` — US renders all cards, card click navigates to `/signals/credit`, nav highlights Command Center; EZ/KR verified via direct callback tests.
+
+**Next (per roadmap sequence):** Phase C — long-term debt-cycle *stage* classifier (calibrated against Phase G output; upgrades its CC placeholder card). Then Phase D research spike in parallel.
