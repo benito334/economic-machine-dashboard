@@ -54,6 +54,7 @@ from dashboard import regime_classifier_page as _regime_classifier
 from dashboard import signals_page as _signals_page
 from dashboard import force_detail as _force_detail
 from dashboard import command_center as _command_center
+from dashboard import relative_view as _relative_view
 from dashboard.shared_components import _signal_link
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -793,6 +794,7 @@ def _left_nav() -> html.Div:
         dbc.Nav([
             _nl("🎛", "Command Center", "/country", nav_id="navlnk-command-center"),
             _nl("🌐", "Overview", "/overview", nav_id="navlnk-overview"),
+            _nl("🌍", "Relative Cycles", "/relative", nav_id="navlnk-relative"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Indicators ────────────────────────────────────────────────────────
@@ -988,6 +990,10 @@ def _page_explorer() -> html.Div:
 
 def _page_command_center() -> html.Div:
     return _command_center.get_layout()
+
+
+def _page_relative_view() -> html.Div:
+    return _relative_view.get_layout()
 
 
 def _page_overview() -> html.Div:
@@ -1970,6 +1976,7 @@ app.clientside_callback(
 _PAGE_MAP = {
     "/":              _page_command_center,   # command center is the front door (roadmap Phase CC)
     "/country":       _page_command_center,
+    "/relative":      _page_relative_view,
     "/charts":        _page_chart_overlay,
     "/overview":      _page_overview,
     "/data-dashboard":_page_data_dashboard,

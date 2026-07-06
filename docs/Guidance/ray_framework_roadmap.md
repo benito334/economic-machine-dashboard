@@ -73,11 +73,11 @@ One synthesis page per country that answers "where is this country, on all three
 - **CC2 ✅ — placeholder cards** for the two unbuilt layers (long-term-cycle *stage* from Phase C, big-cycle *order* from Phase D), dashed-border + "planned"; they light up when those phases land.
 - **Data:** all computed today (composites, regime, debt stress, divergence flag, what-changed). **Deps:** none for v1; C and D upgrade their cards later. **DoD:** ✅ met — `/` and `/country` render the command center for US/EZ/KR; every card drills down; divergence badge live; 8 unit tests (`tests/test_command_center.py`); Methodology §15 revision-log entry added.
 
-### Phase E — Cross-country / relative-cycle view for diversification (L4 payoff)  ·  Effort: M
+### Phase E — Cross-country / relative-cycle view for diversification (L4 payoff)  ·  Effort: M  ·  ✅ **done 2026-07-05**
 The point of the whole exercise for global investing: see which countries are at *different* cycle stages and are least correlated.
-- **E1** — A relative view: each rolled-out country's short-term regime + long-term-cycle stage + big-cycle position side by side.
-- **E2** — A cross-country regime-correlation matrix (are these economies actually uncorrelated?).
-- **Data:** derived from existing per-country composites. **Deps:** more valuable after C and D exist; works with just the regime engine too. **DoD:** a cross-country page that answers "where can I diversify to that isn't moving with the US?"
+- **E1 ✅** — `dashboard/relative_view.py`, route `/relative`, "🌍 Relative Cycles" nav under Overviews: one card per country with regime chips (threshold-store aware incl. dynamic mode), stage chip, Growth/Inflation Z + Δ, debt stress, productivity Z, and the order reads (reserve share / Gini) — all three clocks side by side.
+- **E2 ✅** — four correlation heatmaps: growth-score and inflation-score pairwise Pearson correlations over the full common history AND the last 10y (month-period alignment handles per-country as_of day differences; <24 common months → NaN, never a spurious number). Current answer to the diversification question: US–EZ growth 0.86 over the last decade (same cycle in disguise), KR 0.53 (partial diversifier); inflation correlations 0.84–0.90 everywhere (the 2021–23 global wave dominates).
+- **Data:** derived from existing per-country composites. **DoD:** ✅ met — the page answers "where can I diversify to that isn't moving with the US?"; 9 unit tests. Gets more valuable automatically as Phase F adds Japan (extend `relative_view.COUNTRIES`).
 
 ### Phase F — Japan rollout (Phase 2 continuation)  ·  Effort: M
 Validates the sparse-country patterns end to end.
@@ -108,7 +108,7 @@ Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, 
 4. **Phase CC — command center v1** ✅ done 2026-07-05 (assembly-only; placeholder cards for C/D)
 5. **Phase C** ✅ done 2026-07-05 (long-term-cycle stage classifier; upgraded its CC card; threshold calibration deferred to G3)
 6. **Phase D research spike + confirmed subset** ✅ done 2026-07-05 (Gini + COFER live; governance/GPR manual-load slots open as D4)
-7. **Phase E** (the diversification payoff view)
+7. **Phase E** ✅ done 2026-07-05 (the diversification payoff view — /relative)
 8. **Phase F — Japan** can slot in wherever there's a natural break (it's independent)
 9. **Phase H** — separate project, whenever the diagnostic layer is trusted
 

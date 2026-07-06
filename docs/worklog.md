@@ -1177,3 +1177,15 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Wishlist: new ORDER section + A1 rate-expectations entry marked resolved. Roadmap Phase D ✅ (D4 = manual-load governance/GPR remains open). Methodology §15 revision row.
 
 **Next:** Phase E — cross-country / relative-cycle view. Then F (Japan), G3.
+
+---
+
+## 2026-07-05 — Roadmap Phase E: cross-country relative-cycle view
+
+**Done:**
+- `dashboard/relative_view.py` (route `/relative`, "🌍 Relative Cycles" nav under Overviews): per-country cards showing all three clocks side by side — regime chips (threshold-store aware incl. dynamic mode, computed per country), debt-cycle stage chip, Growth/Inflation Z + Δ, debt stress, productivity Z, order reads (reserve share / Gini); each card links to the command center.
+- Correlation section: 4 heatmaps — growth-score + inflation-score pairwise Pearson correlation over full common history AND last 10y. Month-period alignment (US composites land on the 5th, KR on month-end); <24 common months → NaN, never spurious.
+- **The diversification answer as of today**: US–EZ growth correlation 0.86 over the last decade (same cycle in disguise; 0.60 full-history), US–KR 0.53. Inflation correlations 0.84–0.90 everywhere in the last 10y — the 2021–23 global inflation wave dominates; there is currently no inflation-cycle diversification among US/EZ/KR.
+- 9 tests (`tests/test_relative_view.py`): correlation identities (±1), NaN on short overlap, start-window filter, day-of-month alignment, full-page render, route registration. Verified live in browser. Methodology §15 revision rows (script-inserted into both tables to avoid the duplicate-row bug pattern). Roadmap Phase E ✅.
+
+**Next:** Phase F — Japan rollout (jp_bindings.yaml + jp_composites.yaml, sparse-country patterns end to end). Then G3, D4.
