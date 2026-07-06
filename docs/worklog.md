@@ -1265,3 +1265,11 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - `_dyn_threshold_input(comp, g_col, i_col)` shared helper — every dynamic call site now builds the input from the ACTIVE (windowed or full) columns: regime info card, Regime History chart, scatter, CC, Relative.
 - Regime Map in dynamic mode: corner shading, threshold lines, and hover season labels all positioned by the latest dynamic gz/iz on the windowed series (latest-row convention, same as the Regime History hlines) — geometry and labels always agree.
 - Regression test: windowed-vs-full dynamic thresholds genuinely differ AND the scatter geometry matches the windowed-input values. 445 tests pass.
+
+---
+
+## 2026-07-06 — Regime Map: dynamic band follows the time step
+
+**Trigger:** user asked whether walking back in time moves the dynamic threshold bounds on the map. It didn't (geometry was pinned to the latest month, inconsistent with the info card's per-row values).
+
+**Done:** selected-index resolution moved above the shading block; in dynamic mode the corner shading + threshold lines are positioned by the SELECTED month's dyn_gz/dyn_iz (on the active windowed columns), so Prev/Next steps move the band to what the classifier used that month. Hover labels are per-row — each history dot judged against its own month's thresholds. Verified: US step 0 → gz 0.205 (calm era, tight); step 60 (COVID-vol era) → gz 1.02/iz 1.13 (wide); fixed mode static at 0.5. 445 tests pass.

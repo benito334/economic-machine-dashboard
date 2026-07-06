@@ -4140,24 +4140,37 @@ def update_scatter_chart(
     else:
         x_range, y_range = [-3.0, 3.0], [-3.0, 3.0]
 
+    # ── Resolve selected index in all-history (needed before the shading so
+    # dynamic-mode geometry can follow the SELECTED month when stepping back) ─
+    n_filtered = len(comp_filtered)
+    sel_idx_f = max(0, min(n_filtered - 1 - step, n_filtered - 1))
+    sel_date = pd.Timestamp(comp_filtered.iloc[sel_idx_f]["as_of"])
+
+    all_ts = [pd.Timestamp(d) for d in comp_all["as_of"]]
+    try:
+        sel_idx_all = next(i for i, d in enumerate(all_ts) if d == sel_date)
+    except StopIteration:
+        sel_idx_all = len(comp_all) - 1
+
     # ── Seasonal-archetype background shading (Ray audit ruling 2026-07-06,
     # Q2): the four season colors shade ONLY the outer corner regions beyond
     # the ±gz/±iz threshold lines — the operative classifier's Transition band
     # between the lines stays neutral. Season names are map geography ("modes
     # of behavior"), not the decision rule; the chips are the decision rule.
-    # In dynamic mode the latest dynamic thresholds position the geometry
-    # (a static rectangle can't represent a time-varying threshold — same
-    # latest-row convention as the Regime History hlines), computed on the
-    # ACTIVE score columns.
+    # In dynamic mode the geometry is positioned by the SELECTED month's
+    # dynamic thresholds (computed on the ACTIVE score columns) — walking back
+    # in time moves the band to what the classifier used that month, matching
+    # the regime info card's per-row values.
     _bg_th = dict(thresholds or _DEFAULT_THRESHOLDS)
+    _dyn_bg = None
     if bool(_bg_th.get("dynamic", False)):
         _dyn_bg = compute_dynamic_thresholds(
             _dyn_threshold_input(comp_all, g_col, i_col),
             base_gz=float(_bg_th.get("gz", 0.5)), base_iz=float(_bg_th.get("iz", 0.5)),
         )
         if not _dyn_bg.empty:
-            _bg_th["gz"] = float(_dyn_bg["dyn_gz"].iloc[-1])
-            _bg_th["iz"] = float(_dyn_bg["dyn_iz"].iloc[-1])
+            _bg_th["gz"] = float(_dyn_bg["dyn_gz"].iloc[sel_idx_all])
+            _bg_th["iz"] = float(_dyn_bg["dyn_iz"].iloc[sel_idx_all])
     _bgz = float(_bg_th.get("gz", 0.5))
     _biz = float(_bg_th.get("iz", 0.5))
     quad_bg = [
@@ -4179,8 +4192,8 @@ def update_scatter_chart(
         dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=0, y1=0,
              line=dict(color="#555", width=1, dash="dot")),
     ]
-    # Configurable threshold lines — same effective (static or latest-dynamic)
-    # values as the corner shading above, so geometry and lines always agree.
+    # Configurable threshold lines — same effective (static or selected-month
+    # dynamic) values as the corner shading above, so geometry and lines agree.
     _gz, _iz = _bgz, _biz
     _th_line = dict(color="rgba(255,255,255,0.22)", width=1, dash="dash")
     shapes += [
@@ -4190,25 +4203,22 @@ def update_scatter_chart(
         dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=-_iz, y1=-_iz, line=_th_line),
     ]
 
-    # ── Resolve selected index in all-history ────────────────────────────────
-    n_filtered = len(comp_filtered)
-    sel_idx_f = max(0, min(n_filtered - 1 - step, n_filtered - 1))
-    sel_date = pd.Timestamp(comp_filtered.iloc[sel_idx_f]["as_of"])
-
-    all_ts = [pd.Timestamp(d) for d in comp_all["as_of"]]
-    try:
-        sel_idx_all = next(i for i, d in enumerate(all_ts) if d == sel_date)
-    except StopIteration:
-        sel_idx_all = len(comp_all) - 1
-
     # ── Threshold-aware season label for hovers (Ray Q2: Transition inside
-    # the band; season names only beyond the ±gz/±iz lines) ───────────────────
-    def _quadrant_for(row):
-        # Effective thresholds (static, or latest-dynamic when dynamic mode is
-        # on) so hover labels agree with the shading geometry.
-        return _season_label(row.get(g_col), row.get(i_col), _bg_th)
-
-    eff_quadrant = comp_all.apply(_quadrant_for, axis=1)
+    # the band; season names only beyond the lines). In dynamic mode each
+    # history dot is labeled against ITS OWN month's thresholds — the honest
+    # per-row read, matching how the classifier judged that month. ───────────
+    if _dyn_bg is not None and not _dyn_bg.empty:
+        eff_quadrant = pd.Series([
+            _season_label(
+                comp_all.iloc[pos].get(g_col), comp_all.iloc[pos].get(i_col),
+                {"gz": float(_dyn_bg["dyn_gz"].iloc[pos]),
+                 "iz": float(_dyn_bg["dyn_iz"].iloc[pos])},
+            )
+            for pos in range(len(comp_all))
+        ], index=comp_all.index)
+    else:
+        eff_quadrant = comp_all.apply(
+            lambda row: _season_label(row.get(g_col), row.get(i_col), _bg_th), axis=1)
 
     # ── All-history grey context dots ────────────────────────────────────────
     hist_dates = [str(d)[:7] for d in comp_all["as_of"]]
