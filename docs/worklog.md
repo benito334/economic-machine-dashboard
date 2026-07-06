@@ -1273,3 +1273,14 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Trigger:** user asked whether walking back in time moves the dynamic threshold bounds on the map. It didn't (geometry was pinned to the latest month, inconsistent with the info card's per-row values).
 
 **Done:** selected-index resolution moved above the shading block; in dynamic mode the corner shading + threshold lines are positioned by the SELECTED month's dyn_gz/dyn_iz (on the active windowed columns), so Prev/Next steps move the band to what the classifier used that month. Hover labels are per-row — each history dot judged against its own month's thresholds. Verified: US step 0 → gz 0.205 (calm era, tight); step 60 (COVID-vol era) → gz 1.02/iz 1.13 (wide); fixed mode static at 0.5. 445 tests pass.
+
+---
+
+## 2026-07-06 — User Guide tab: a training course on the Dalio machine
+
+**Done:**
+- `dashboard/user_guide.py` (route `/guide`, "🎓 User Guide" nav in Reference): 9-lesson sequential course for someone who knows Dalio's concepts but hasn't operated a live diagnostic — L0 machine-in-one-picture, L1 debt-cycle hook, L2 dials/Z-scores, L3 chips/thresholds/windows/agreement/divergence, L4 Regime Map, L5 stress-vs-stage, L6 productivity/order, L7 diversification, L8 reading routine (daily/weekly/monthly + when-a-chip-flips playbook + scope boundary).
+- **Ray pedagogy pass first** (logged in review log): 3 newcomer traps front-loaded as amber callouts (Z≠grade; magnitude≠direction; never the two dials alone); debt-cycle hook moved BEFORE the dial mechanics per his ordering ruling; L0 diagram upgraded with data-source labels, credit feedback loop, adaptive "normal" band (previews dynamic thresholds), order as background shading.
+- Live data in every lesson ("On your dashboard right now" green boxes) — country/theme/window/threshold aware, same code paths as the Command Center; Methodology §N links wherever formulas live.
+- 3 plotly diagrams: three-lines-and-band machine chart, stage-colored debt-cycle arc with a "you are here" marker, regime-map geography miniature with the live dot.
+- 10 tests (Ray's teaching order asserted, traps present, live boxes ≥5, all countries render, page guard, route). Suite 455 passing. Verified live in browser.

@@ -151,3 +151,19 @@ Worked numerical example (Ray's own, sanity-checked): tight credit (credit_z=2.0
 **Still open from this session:** rate-basket rolling variants (for the 36m policy default), stored-quadrant column retirement decision (kept for backtest/legacy compatibility for now).
 
 **Follow-up fix (same session, 2026-07-06):** the dynamic-threshold algorithm (#23) had to be re-paired with the window unification. Two older call sites (Regime History chart, regime info card) were feeding the FULL-HISTORY score columns into `compute_dynamic_thresholds` while classifying the WINDOWED scores — thresholds scaled to the wrong distribution's volatility. Ray's step 1 is "0.6 × 24-mo σ of the composite's own Z-score"; under the audit the composite's Z IS the windowed series. All call sites now build the input from the active columns via `_dyn_threshold_input()`. Material: at 48m/90m the correct US thresholds are gz=0.205/iz=0.082 vs the mismatched 0.093/0.116. The Regime Map's shading geometry and threshold lines follow the SELECTED month's dynamic thresholds — walking back in time moves the band to what the classifier used that month (matching the info card's per-row values); hover season labels are per-row, each history dot judged against its own month's thresholds.
+
+---
+
+## Session 2026-07-06 (2) — User Guide pedagogy review
+
+Briefed Ray with the lesson outline for the new in-dashboard User Guide (route `/guide` — a training course on the Ray-reviewed tools for someone who knows the books but has never operated a live diagnostic). His pedagogy rulings, all implemented:
+
+1. **Three newcomer traps to front-load** (each is an amber "Common trap" callout in the guide):
+   - *Z-scores are not grades* — Z is relative to the country's own recent normal, never "is this economy healthy"; cross-country levels are not comparable (taught in Lesson 2).
+   - *Magnitude is not direction* — a big |Z| with opposing momentum is not a regime call; most premature calls come from reading only the level (Lesson 3, beside the dual-condition table).
+   - *Never trust the two dials alone* — check chip agreement, the divergence badge, and the signal table before acting; one lens is never enough (Lesson 3).
+2. **Teaching order**: insert a brief long-term debt-cycle hook right after the machine overview and BEFORE the dial mechanics — the big wave sets the amplitude of everything the short-term tools measure; keep it lightweight (four stages + DSR as the earliest signal), full detail later. Implemented as Lesson 1; full stage/stress detail stays in Lesson 5.
+3. **L0 diagram additions**: label each force with its actual data sources (observable, not abstract); draw the credit feedback loop (Credit → Spending → Income → Borrowing ↺ Debt); shade an adaptive "normal" band around the productivity trend that expands/contracts (previews dynamic thresholds); render the order cycle as background shading. All in the Lesson 0 figure + tables.
+4. **Live-data touchpoints per lesson** ("clear metrics — constantly compare outcomes to goals"): every lesson carries a green "On your dashboard right now" box reading the selected country's live values through the same code paths as the Command Center.
+
+Guide shipped same-day: `dashboard/user_guide.py`, 9 lessons (0–8), 3 plotly diagrams (machine three-lines+band, debt-cycle arc with "you are here", regime-map geography miniature), country/theme/window/threshold-aware, 10 tests.
