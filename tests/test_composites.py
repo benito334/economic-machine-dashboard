@@ -343,6 +343,41 @@ def test_volatility_score_computed_from_basket(mem_conn):
     assert "us.volatility.vix" in audit["volatility"]
 
 
+def test_productivity_score_computed_from_basket(mem_conn):
+    """Roadmap Phase B (2026-07-05): productivity trend as a first-class composite."""
+    _seed_expansion(mem_conn)
+    months = pd.date_range("2017-01-31", periods=6, freq="ME")
+    for dt in months:
+        ds = str(dt.date())
+        _insert_signals(mem_conn, [
+            {"id": "us.growth.productivity", "as_of": ds, "zscore": 0.6, "direction": "rising", "force": "growth"},
+            {"id": "us.growth.tfp",          "as_of": ds, "zscore": 0.2, "direction": "rising", "force": "growth"},
+        ])
+    cfg = {
+        **_minimal_config(),
+        "productivity_score": {
+            "indicators": [
+                {"id": "growth.productivity", "base_share": 1.0, "importance": 0.80, "quality_factor": 0.90},
+                {"id": "growth.tfp",          "base_share": 0.7, "importance": 0.45, "quality_factor": 0.85},
+            ]
+        },
+    }
+    snapshots = compute_composite_history(mem_conn, "US", cfg)
+    latest = snapshots[-1]
+
+    assert latest.productivity_score is not None
+    assert latest.productivity_score > 0
+    assert latest.productivity_momentum == pytest.approx(1.0)
+    assert "productivity" in json.loads(latest.weight_audit)
+
+
+def test_productivity_score_absent_when_not_configured(mem_conn):
+    _seed_expansion(mem_conn)
+    snapshots = compute_composite_history(mem_conn, "US", _minimal_config())
+    assert snapshots[-1].productivity_score is None
+    assert snapshots[-1].productivity_momentum is None
+
+
 def test_volatility_score_absent_when_not_configured(mem_conn):
     """Countries without a volatility_score section (e.g. old configs) get None, not an error."""
     _seed_expansion(mem_conn)

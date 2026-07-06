@@ -43,11 +43,11 @@ The reframe vs. today: the 5 forces (L2) stop being the top-level story and beco
 - **A1 — Rate force forward guidance.** ✅ **Done 2026-07-05.** The assumed feed (`FEDTARMD` FOMC dot-plot) was found non-viable — it's a future-dated forecast snapshot with no Z-scoreable history. Put the three options (display-only readout / derived `yield_2y − fed_funds` / defer) back to Ray; he chose the **derived expected-policy-change signal** on his principle "money is made by identifying *change* rather than forecasting it" — the 2Y *level* tells you where rates are, the 2Y-minus-funds *spread* tells you where they're heading, a distinct forward-looking dimension. Built `policy.rate_expectations` (`yield_2y − fed_funds`, derived, 11,625 daily obs) into the US `rate_score` basket at CONTEXT tier (importance 0.45, inverted). Ray's caveat, honored: kept modest pending **Phase G backtest** validation of its incremental value over the 2Y level (if the backtest shows no lift, drop it — his fallback to option "defer").
 - **DoD:** ✅ both done. Note the standing dependency: A1's weight/keep decision is revisited after Phase G.
 
-### Phase B — Promote the productivity trend to a first-class read (L3)  ·  Effort: S–M
+### Phase B — Promote the productivity trend to a first-class read (L3)  ·  Effort: S–M  ·  ✅ **Done 2026-07-05**
 Ray treats productivity growth as one of the three big forces, distinct from the cyclical business cycle.
-- **B1** — Build a `productivity_trend` read from the existing `growth.productivity` / `growth.tfp` / `growth.rnd_intensity` signals (they already feed the Growth basket after 2026-07-05; here they also get their own composite/panel).
-- **B2** — New dashboard element: the long-run potential-growth trend line shown *against* cyclical growth, so "cyclically strong but trend-decelerating" is visible at a glance.
-- **Data:** already ingested. **Deps:** none. **DoD:** a productivity-trend panel exists on the regime/overview page; documented in Methodology.
+- **B1 ✅** — `productivity_score`/`productivity_momentum` composite added to the engine (same basket→weighted-Z pattern as every force; new DB columns + migration). US = 3 signals (labor productivity 0.80 / TFP 0.45 / R&D 0.30); EZ/KR = single-signal R&D-only (low-coverage, quality 0.70 — honestly ages out when the annual source lags).
+- **B2 ✅** — "Productivity Trend" is now a sixth section on /signals plus a full force-detail page at /signals/productivity whose composite panel overlays the cyclical Growth Z (dotted) — "cyclically strong but trend-decelerating" visible at a glance. Documented in Methodology §7 + revision log.
+- **DoD:** ✅ met (panel lives on the Signals pages rather than the regime page — the command-center card in Phase CC is the eventual front-door surface).
 
 ### Phase C — Long-term debt-cycle STAGE classifier (L3/L4)  ·  Effort: M
 Debt Stress gives a *level*; Ray's framework wants a *stage* — where in the ~50–75yr cycle the country sits.

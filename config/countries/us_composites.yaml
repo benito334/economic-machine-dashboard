@@ -268,3 +268,28 @@ volatility_score:
       importance: 0.90      # PRIMARY — forward-looking (implied vol), US-only bonus weight
       quality_factor: 1.00
       half_life_months: 3.0
+
+# ── Productivity Trend Score (added 2026-07-05, roadmap Phase B) ─────────────
+# Ray's third big force: the long-run productivity trend everything oscillates
+# around — distinct from the cyclical growth basket (which also carries these
+# three signals at small weights for level effects). Positive = trend
+# improving. Slow-moving by nature: read direction over quarters/years, not
+# months. Does NOT feed the regime label.
+productivity_score:
+  description: "Long-run productivity trend — labor productivity, TFP, R&D intensity"
+  indicators:
+    - id: growth.productivity
+      base_share: 1.0
+      importance: 0.80      # PRIMARY — quarterly labor productivity; most timely trend read
+      quality_factor: 0.90
+      half_life_months: 6.0 # quarterly; trend signal, slow decay
+    - id: growth.tfp
+      base_share: 0.7
+      importance: 0.45      # CONTEXT — annual TFP (Penn World Tables); true productivity concept
+      quality_factor: 0.85
+      half_life_months: 12.0 # annual release cadence
+    - id: growth.rnd_intensity
+      base_share: 0.5
+      importance: 0.30      # CONTEXT — annual R&D/GDP; drives FUTURE productivity
+      quality_factor: 0.85
+      half_life_months: 12.0

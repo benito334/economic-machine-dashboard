@@ -1120,3 +1120,16 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Validation:** `python3 -m pytest` → 397 passed, 1 pre-existing unrelated failure (dtype bug).
 
 **Next (per roadmap sequence):** Phase B (promote productivity trend) → Phase CC (command center v1) → Phase C (debt-cycle stage classifier). G3 (ALFRED vintage replay + asset-outcome tests incl. rate_expectations validation) stays open.
+
+---
+
+## 2026-07-05 — Roadmap Phase B: productivity trend as a first-class read
+
+**Done:**
+- `productivity_score`/`productivity_momentum` composite (Ray's third big force) added end-to-end: models/store (columns+migration), composites engine, per-country configs (US 3-signal basket: labor productivity 0.80 / TFP 0.45 / R&D 0.30; EZ+KR single-signal R&D-only low-coverage), charting_data SELECT + component-status loop.
+- UI: sixth "Productivity Trend" section on /signals (teal #3FBFB0) + full force-detail page /signals/productivity with the cyclical Growth Z overlaid (dotted) on the trend composite panel — the "cyclically strong but trend-decelerating" glance. Subnav link added.
+- Methodology §7 basket table + revision-log entries (Phase A + B). 2 new composite tests.
+
+**Validation:** 399 passed, 1 pre-existing failure. Pipeline populates all three countries (EZ/KR trend read ends 2023 — annual R&D source aging out honestly). Verified live.
+
+**Next:** Phase CC — country command center v1 (assembly-only front-door page; closes the divergence-badge follow-up).

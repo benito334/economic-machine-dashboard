@@ -151,3 +151,15 @@ volatility_score:
       base_share: 1.0
       importance: 0.90      # PRIMARY — only available EZ volatility signal
       quality_factor: 0.70  # reduced quality_factor: monthly-resolution proxy, not true daily realized vol
+
+# ── EZ Productivity Trend Score (added 2026-07-05, roadmap Phase B) ──────────
+# NOTE: single signal — only annual R&D intensity is available free for the EA.
+# Low coverage; directional only. See docs/Guidance/data_source_wishlist.md.
+productivity_score:
+  description: "EZ productivity trend — R&D intensity only (single signal; low coverage)"
+  indicators:
+    - id: growth.rnd_intensity
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available EZ productivity signal
+      quality_factor: 0.70  # reduced: annual-only, structural proxy for the trend
+      half_life_months: 12.0

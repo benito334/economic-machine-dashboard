@@ -34,6 +34,7 @@ _INFLATION_COLOR  = "#E8734C"
 _RATE_COLOR       = "#4C9BE8"
 _CREDIT_COLOR     = "#B07FD4"
 _VOLATILITY_COLOR = "#F4C842"
+_PRODUCTIVITY_COLOR = "#3FBFB0"
 
 # ── Policy force exclusions per country ───────────────────────────────────────
 _RATE_EXCLUDE: dict[str, set] = {
@@ -437,8 +438,8 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
 
     g_z = i_z = None
     g_mom = i_mom = None
-    rate_z_comp = credit_z_comp = volatility_z_comp = None
-    rate_mom_comp = credit_mom_comp = volatility_mom_comp = None
+    rate_z_comp = credit_z_comp = volatility_z_comp = productivity_z_comp = None
+    rate_mom_comp = credit_mom_comp = volatility_mom_comp = productivity_mom_comp = None
     audit_by_signal: dict = {}
     try:
         hist = load_composite_history(country=country)
@@ -471,6 +472,11 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
                 volatility_z_comp = float(row["volatility_score"])
             if "volatility_momentum" in hist.columns and pd.notna(row.get("volatility_momentum")):
                 volatility_mom_comp = float(row["volatility_momentum"])
+            # Productivity trend composite — roadmap Phase B (2026-07-05)
+            if "productivity_score" in hist.columns and pd.notna(row.get("productivity_score")):
+                productivity_z_comp = float(row["productivity_score"])
+            if "productivity_momentum" in hist.columns and pd.notna(row.get("productivity_momentum")):
+                productivity_mom_comp = float(row["productivity_momentum"])
             wa_raw = row.get("weight_audit")
             if wa_raw:
                 raw = json.loads(wa_raw) if isinstance(wa_raw, str) else wa_raw
@@ -494,11 +500,13 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     rate_z   = rate_z_comp   if rate_z_comp   is not None else _mean_z(rate_df)
     credit_z = credit_z_comp if credit_z_comp is not None else _mean_z(credit_df)
     vol_z    = volatility_z_comp
+    prod_z   = productivity_z_comp
 
     # Use stored momentum fractions where available; fall back to direction fraction
     rate_mom   = rate_mom_comp   if rate_mom_comp   is not None else _direction_fraction(rate_df)
     credit_mom = credit_mom_comp if credit_mom_comp is not None else _direction_fraction(credit_df)
     vol_mom    = volatility_mom_comp
+    prod_mom   = productivity_mom_comp
 
     # ── Build rows ────────────────────────────────────────────────────────────
     _thresh_z = float((thresholds or {}).get("gz", 0.5))
@@ -509,12 +517,14 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     # Volatility is now a real basket composite (2026-07-05, Ray Dalio review #13) —
     # same _composite_rows path as Rate/Credit, not the old ad-hoc _vix_df/_signal_rows.
     v_rows,  v_active  = _composite_rows(comp_df, "volatility", _VOLATILITY_COLOR, audit_by_signal, thresh=_thresh_z)
+    p_rows,  p_active  = _composite_rows(comp_df, "productivity", _PRODUCTIVITY_COLOR, audit_by_signal, thresh=_thresh_z)
 
     g_total  = len(comp_df[comp_df["composite"] == "growth"])
     i_total  = len(comp_df[comp_df["composite"] == "inflation"])
     r_total  = len(comp_df[comp_df["composite"] == "rate"])
     cr_total = len(comp_df[comp_df["composite"] == "credit"])
     v_total  = len(comp_df[comp_df["composite"] == "volatility"])
+    p_total  = len(comp_df[comp_df["composite"] == "productivity"])
 
     # ── Sections ──────────────────────────────────────────────────────────────
     last_obs = latest["as_of"].max() if not latest.empty else "—"
@@ -538,6 +548,7 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
         _build_section("Interest Rate", _RATE_COLOR,       "rate",          rate_z,   rate_mom,   _comp_arrow(comp_df, "rate"),       r_active,  r_total,   r_rows),
         _build_section("Credit",        _CREDIT_COLOR,     "credit",        credit_z, credit_mom, _comp_arrow(comp_df, "credit"),     cr_active, cr_total,  cr_rows),
         _build_section("Volatility",    _VOLATILITY_COLOR, "volatility",    vol_z,    vol_mom,    _comp_arrow(comp_df, "volatility"), v_active,  v_total,   v_rows),
+        _build_section("Productivity Trend", _PRODUCTIVITY_COLOR, "productivity", prod_z, prod_mom, _comp_arrow(comp_df, "productivity"), p_active, p_total,  p_rows),
     ]
 
     return html.Div([page_header] + sections + [footer])

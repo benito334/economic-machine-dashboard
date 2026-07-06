@@ -96,6 +96,8 @@ class CompositeSnapshot(BaseModel):
     credit_momentum: Optional[float] = None   # fraction of credit-health-positive direction signals (0–1)
     volatility_score: Optional[float] = None     # market volatility composite (positive = higher vol / risk-off)
     volatility_momentum: Optional[float] = None  # fraction of vol-rising direction signals (0–1)
+    productivity_score: Optional[float] = None    # long-run productivity trend composite (Ray's third big force)
+    productivity_momentum: Optional[float] = None # fraction of productivity-rising direction signals (0–1)
     weight_audit: Optional[str] = None  # JSON: point-in-time nominal/dynamic/decay weights by signal
 
 

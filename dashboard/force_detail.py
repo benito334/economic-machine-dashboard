@@ -33,6 +33,7 @@ from dashboard.signals_page import (
     _RATE_COLOR,
     _CREDIT_COLOR,
     _VOLATILITY_COLOR,
+    _PRODUCTIVITY_COLOR,
     _RATE_EXCLUDE,
     _build_section,
     _composite_rows,
@@ -45,7 +46,7 @@ from indicators.composites import load_composites_config
 
 # ── Force config ───────────────────────────────────────────────────────────────
 
-_FORCES = ["growth", "inflation", "rate", "credit", "volatility"]
+_FORCES = ["growth", "inflation", "rate", "credit", "volatility", "productivity"]
 
 _FORCE_CFG: dict[str, dict] = {
     "growth":    {"label": "Growth",       "color": _GROWTH_COLOR,     "score_col": "growth_score",    "mom_col": "growth_momentum",    "thresh_key": "gz", "is_composite": True},
@@ -53,6 +54,7 @@ _FORCE_CFG: dict[str, dict] = {
     "rate":      {"label": "Interest Rate","color": _RATE_COLOR,       "score_col": "rate_score",      "mom_col": "rate_momentum",      "thresh_key": None, "is_composite": True},
     "credit":    {"label": "Credit",       "color": _CREDIT_COLOR,     "score_col": "credit_score",    "mom_col": "credit_momentum",    "thresh_key": None, "is_composite": True},
     "volatility":{"label": "Volatility",   "color": _VOLATILITY_COLOR, "score_col": "volatility_score", "mom_col": "volatility_momentum", "thresh_key": None, "is_composite": True},
+    "productivity":{"label": "Productivity Trend", "color": _PRODUCTIVITY_COLOR, "score_col": "productivity_score", "mom_col": "productivity_momentum", "thresh_key": None, "is_composite": True},
 }
 
 _GROWTH_WINDOW_COL   = {36: "36m", 48: "48m", 60: "60m"}
@@ -173,6 +175,7 @@ _FORCE_FILL: dict[str, str] = {
     "rate":      "rgba(76, 155, 232, 0.15)",
     "credit":    "rgba(176, 127, 212, 0.15)",
     "volatility":"rgba(244, 200, 66, 0.12)",
+    "productivity":"rgba(63, 191, 176, 0.12)",
 }
 _MOM_COLOR = "#E8A317"          # amber — distinct from all force colours
 _MOM_FILL  = "rgba(232, 163, 23, 0.12)"
@@ -268,6 +271,24 @@ def _build_force_chart(
             tv = float(thresholds.get(thresh_key, 0.5))
             fig.add_hline(y= tv, line=_TH_LINE, row=1, col=1)
             fig.add_hline(y=-tv, line=_TH_LINE, row=1, col=1)
+
+        # Productivity page: overlay cyclical growth so "cyclically strong but
+        # trend-decelerating" (or the reverse) is visible at a glance — Ray's
+        # framing of the trend line vs. the short-term cycle (roadmap Phase B).
+        if force == "productivity" and "growth_score" in comp_hist.columns:
+            g_ser = comp_hist[["as_of", "growth_score"]].dropna().copy()
+            g_ser["as_of"] = pd.to_datetime(g_ser["as_of"]).dt.to_period("M").dt.to_timestamp()
+            fig.add_trace(go.Scatter(
+                x=g_ser["as_of"], y=g_ser["growth_score"],
+                name="Cyclical growth Z",
+                line=dict(color=_GROWTH_COLOR, width=1.0, dash="dot"),
+                hovertemplate="cyclical growth %{x|%b %Y}: %{y:.3f}<extra></extra>",
+                showlegend=True,
+            ), row=1, col=1)
+            fig.update_layout(legend=dict(
+                orientation="h", yanchor="bottom", y=1.005, xanchor="left", x=0,
+                font=dict(size=9), bgcolor="rgba(0,0,0,0)",
+            ))
 
     # ── Row 2 (optional): Composite Momentum — amber fill ─────────────────────
     if has_momentum:
@@ -503,7 +524,8 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
         # #13) — it now uses this same generic path instead of a raw-VIX special case.
         comp_key = {"growth": "growth_score", "inflation": "inflation_score",
                     "rate": "rate_score", "credit": "credit_score",
-                    "volatility": "volatility_score"}[force]
+                    "volatility": "volatility_score",
+                    "productivity": "productivity_score"}[force]
         cfg = load_composites_config(country)
         country_prefix = country.lower()
         indicators = cfg.get(comp_key, {}).get("indicators", [])

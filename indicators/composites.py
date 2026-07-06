@@ -88,7 +88,7 @@ def load_composites_config(
 
 def _validate_weighting_config(config: dict) -> None:
     """Fail fast on invalid tunable importance/quality and dynamic-weight settings."""
-    for section in ("growth_score", "inflation_score", "rate_score", "credit_score", "volatility_score"):
+    for section in ("growth_score", "inflation_score", "rate_score", "credit_score", "volatility_score", "productivity_score"):
         indicators = config.get(section, {}).get("indicators", [])
         for ind in indicators:
             for key in ("importance", "quality_factor"):
@@ -721,6 +721,7 @@ def compute_composite_history(
     rate_cfg      = config.get("rate_score",   {}).get("indicators", [])
     credit_cfg    = config.get("credit_score", {}).get("indicators", [])
     volatility_cfg = config.get("volatility_score", {}).get("indicators", [])
+    productivity_cfg = config.get("productivity_score", {}).get("indicators", [])
     min_signals  = config.get("regime_confidence", {}).get("min_signals_required", 4)
     min_forces   = config.get("disequilibrium_score", {}).get("min_forces_required", 3)
 
@@ -730,7 +731,8 @@ def compute_composite_history(
     rate_ids      = [f"{country_prefix}.{ind['id']}" for ind in rate_cfg]
     credit_ids    = [f"{country_prefix}.{ind['id']}" for ind in credit_cfg]
     volatility_ids = [f"{country_prefix}.{ind['id']}" for ind in volatility_cfg]
-    composite_ids = list(dict.fromkeys(growth_ids + inflation_ids + rate_ids + credit_ids + volatility_ids))
+    productivity_ids = [f"{country_prefix}.{ind['id']}" for ind in productivity_cfg]
+    composite_ids = list(dict.fromkeys(growth_ids + inflation_ids + rate_ids + credit_ids + volatility_ids + productivity_ids))
 
     force_groups = _build_force_groups(conn, country, config)
     diseq_ids    = list(dict.fromkeys(sid for ids in force_groups.values() for sid in ids))
@@ -744,6 +746,7 @@ def compute_composite_history(
     rate_nominal      = normalized_nominal_weights(rate_cfg)   if rate_cfg   else {}
     credit_nominal    = normalized_nominal_weights(credit_cfg) if credit_cfg else {}
     volatility_nominal = normalized_nominal_weights(volatility_cfg) if volatility_cfg else {}
+    productivity_nominal = normalized_nominal_weights(productivity_cfg) if productivity_cfg else {}
     dynamic_cfg = config.get("dynamic_weighting", {})
     dynamic_enabled = bool(dynamic_cfg.get("enabled", False))
 
@@ -913,6 +916,9 @@ def compute_composite_history(
         volatility_score_val, v_ids_contrib, volatility_audit = (
             _score_force(volatility_cfg, volatility_nominal) if volatility_cfg else (None, [], {})
         )
+        productivity_score_val, p_ids_contrib, productivity_audit = (
+            _score_force(productivity_cfg, productivity_nominal) if productivity_cfg else (None, [], {})
+        )
         n_growth = len(g_ids_contrib)
         n_inflation = len(i_ids_contrib)
 
@@ -1020,6 +1026,9 @@ def compute_composite_history(
         volatility_momentum = (
             _momentum_fraction(volatility_cfg, v_ids_contrib) if volatility_cfg else None
         )
+        productivity_momentum = (
+            _momentum_fraction(productivity_cfg, p_ids_contrib) if productivity_cfg else None
+        )
 
         # ── Stale signal audit (L3) ───────────────────────────────────────────
         stale_signals: Optional[str] = None
@@ -1056,12 +1065,15 @@ def compute_composite_history(
                 credit_momentum=round(credit_momentum, 4) if credit_momentum is not None else None,
                 volatility_score=round(volatility_score_val, 4) if volatility_score_val is not None else None,
                 volatility_momentum=round(volatility_momentum, 4) if volatility_momentum is not None else None,
+                productivity_score=round(productivity_score_val, 4) if productivity_score_val is not None else None,
+                productivity_momentum=round(productivity_momentum, 4) if productivity_momentum is not None else None,
                 weight_audit=json.dumps(
                     {
                         "growth": growth_audit, "inflation": inflation_audit,
                         **({"rate":   rate_audit}   if rate_cfg   else {}),
                         **({"credit": credit_audit} if credit_cfg else {}),
                         **({"volatility": volatility_audit} if volatility_cfg else {}),
+                        **({"productivity": productivity_audit} if productivity_cfg else {}),
                     },
                     separators=(",", ":"),
                     sort_keys=True,

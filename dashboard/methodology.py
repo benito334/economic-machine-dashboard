@@ -994,6 +994,35 @@ def get_layout() -> html.Div:
                       "flagged is_proxy=true), and the composite is single-signal / low-coverage "
                       "for those two countries. See docs/Guidance/data_source_wishlist.md for the "
                       "ongoing search for a better daily source."),
+
+                _sub("Productivity Trend basket — US default importances (added 2026-07-05)"),
+                _p("Ray Dalio's framework treats productivity growth as one of the economy's "
+                   "three big forces — the long-run line the two debt cycles oscillate around.  "
+                   "This composite gives that trend a first-class read, separate from the "
+                   "cyclical Growth basket (which also carries these signals at small weights "
+                   "for level effects).  Slow-moving by nature: read its direction over quarters "
+                   "and years, not months.  It does not feed the regime label.  The productivity "
+                   "force-detail page overlays the cyclical Growth composite so 'cyclically "
+                   "strong but trend-decelerating' is visible at a glance."),
+                _table(
+                    ["Signal", "Why it matters", "Tier", "Importance", "Half-life"],
+                    [
+                        ["Labor productivity (nonfarm, quarterly)",
+                         "Most timely trend read; secular gains support real wages and "
+                         "non-inflationary growth.",
+                         "PRIMARY", "0.80", "6 m"],
+                        ["TFP (Penn World Tables, annual)",
+                         "The purest productivity-growth concept; slow-moving secular trend.",
+                         "CONTEXT", "0.45", "12 m"],
+                        ["R&D intensity (R&D/GDP, annual)",
+                         "Structural driver of FUTURE productivity rather than current growth.",
+                         "CONTEXT", "0.30", "12 m"],
+                    ],
+                ),
+                _note("EZ and KR carry only annual R&D intensity free — their productivity "
+                      "composite is single-signal, low-coverage, directional-only (quality_factor "
+                      "0.70), and honestly ages out when the annual source lags. See "
+                      "docs/Guidance/data_source_wishlist.md."),
             ], title="7 · Composite Construction"),
 
             # 8 ── Regime Classification ────────────────────────────────────────
@@ -1939,7 +1968,11 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
-                            ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
+                            ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
+                            ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],
+                            ["2026-07-05", "Productivity Trend promoted to a first-class per-country composite (productivity_score) with its own Signals section and force-detail page overlaying cyclical growth (roadmap Phase B)", "7"],
+                        ["2026-07-05", "Credit force: added SLOOS loan-demand (demand side); Rate force: added rate_expectations = 2Y minus fed funds (Ray's pick after the dot-plot proved non-viable) (roadmap Phase A)", "7"],
+                        ["2026-07-05", "Regime classifier: added an opt-in dynamic-threshold algorithm (country-vol-scaled + credit/volatility-adjusted, off by default)", "8"],
                             ["2026-07-05", "Documented what actually feeds the regime label (Growth+Inflation direct; Credit indirect via dynamic thresholds; Rate/Volatility/Debt Stress/CHI not in the label) + input-flow diagram", "8"],
                             ["2026-07-05", "Volatility force: restructured into a real basket composite (realized vol + VIX for US, monthly proxy for EZ/KR), replacing the old raw-VIX display", "7"],
                             ["2026-07-05", "Cycle Health Index: conditional growth/rate/inflation weight tilt; nominal/real policy-rate toggle", "13"],

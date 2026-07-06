@@ -127,6 +127,7 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         "disequilibrium_12m", "disequilibrium_18m", "disequilibrium_24m",
         "rate_score", "credit_score", "rate_momentum", "credit_momentum",
         "volatility_score", "volatility_momentum",
+        "productivity_score", "productivity_momentum",
     ):
         conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
 
@@ -227,6 +228,8 @@ CREATE TABLE IF NOT EXISTS composites (
     credit_momentum      DOUBLE,
     volatility_score     DOUBLE,
     volatility_momentum  DOUBLE,
+    productivity_score   DOUBLE,
+    productivity_momentum DOUBLE,
     created_at           TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -239,6 +242,7 @@ _COMPOSITE_COLUMNS = [
     "growth_momentum", "inflation_momentum",
     "rate_score", "credit_score", "rate_momentum", "credit_momentum",
     "volatility_score", "volatility_momentum",
+    "productivity_score", "productivity_momentum",
     "weight_audit",
     "created_at",
 ]

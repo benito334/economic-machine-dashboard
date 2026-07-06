@@ -833,6 +833,9 @@ def _left_nav() -> html.Div:
                 dbc.NavLink(html.Span("↳ Volatility",   className="sidebar-text"),
                             href="/signals/volatility", active="exact",
                             className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+                dbc.NavLink(html.Span("↳ Productivity",  className="sidebar-text"),
+                            href="/signals/productivity", active="exact",
+                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
             ], className="signals-subnav"),
         ], className="signals-nav-group mb-1"),
 
@@ -1964,6 +1967,7 @@ _PAGE_MAP = {
     "/signals/rate":       lambda: _page_force("rate"),
     "/signals/credit":     lambda: _page_force("credit"),
     "/signals/volatility": lambda: _page_force("volatility"),
+    "/signals/productivity": lambda: _page_force("productivity"),
 }
 
 
