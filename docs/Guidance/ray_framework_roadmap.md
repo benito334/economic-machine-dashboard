@@ -87,7 +87,7 @@ Validates the sparse-country patterns end to end.
 - Not built (documented, honest): JP Debt Stress composite — the model is still US-only; the minimum-viable 3-component subset for JP is future work alongside the wishlist DSR search.
 - **DoD:** ✅ met — JP appears across all pages with the same honesty flags as EZ/KR.
 
-### Phase G — Backtesting engine (Phase 3)  ·  Effort: L  ·  **G1+G2 done 2026-07-05, G3 open**
+### Phase G — Backtesting engine (Phase 3)  ·  Effort: L  ·  ✅ **complete (G1+G2 2026-07-05, G3 2026-07-06)**
 Highest-leverage validation. Ray's own emphasis: systematically test every change. Staged:
 - **G1 ✅ — point-in-time engine** (`indicators/backtest.py`): expanding-window shift(1) Z-scores so the classifier at month t uses only data available before t — eliminates *statistical* look-ahead. 36-month warm-up; scored era 1983→2026 (559 months). Data starts 1980-81, so no 1970s scenario is possible; 8 named scenarios from the 1990-91 recession through the 2023 disinflation. Run via `python -m indicators.backtest`; reproducible report at `docs/backtests/pit_regime_backtest_us.md`; 9 unit tests.
 - **G2 ✅ — scenario scoring + fixed-vs-dynamic comparison.** Findings:
@@ -95,8 +95,13 @@ Highest-leverage validation. Ray's own emphasis: systematically test every chang
   2. **Dynamic ≥ fixed.** Dynamic won 2 scenarios outright (1990-91 recession strict 50%→88%; late-90s boom 33%→54%) and tied the other 6, at the cost of one mislabeled month in 48 during the boom (+2% wrong). Mechanism: the country-vol-scaled baseline sets thresholds well below the flat 0.5 in low-volatility eras, giving more decisive labels. **Verdict: supportive of dynamic, not yet conclusive — keep it opt-in; revisit the default after G3** (only 8 scenarios, final-revised data).
   3. **Design insight — the momentum gate dominates strict scores.** In fast V-shaped episodes (COVID: 33% strict) the ΔMoM gate flips positive during the rebound while Z is still deeply negative, parking months in Transition. If "still-in-recession persistence" is ever wanted, the *exit* condition needs asymmetry (e.g. require Z to recross, not just delta to flip) — logged as a future refinement candidate, possibly one to put to Ray.
   4. 2023 disinflation scoring 0% strict is *correct* semantics: cooling from a high level ≠ below-average inflation, so Transition is the right chip.
-- **G3 ⬜ — remaining:** ALFRED vintage replay (data as known at the time — eliminates data-*revision* look-ahead); asset-outcome predictive tests (incl. Ray's suggested validation of `rate_expectations` against bond/credit outcomes, which decides whether that signal keeps its slot); Phase C stage-threshold calibration.
-- **DoD:** ✅ reproducible per-scenario report + dynamic-vs-fixed comparison exist. G3 items tracked above.
+- **G3 ✅ — done 2026-07-06** (`indicators/backtest_g3.py`, report `docs/backtests/pit_regime_backtest_g3_us.md`, run via `python -m indicators.backtest_g3`; ALFRED vintages cached as `raw_cache/alfred_{id}.parquet`). 15 of 19 basket signals fully vintage-replayed (market-priced/derived ones use final values, flagged). Verdicts:
+  1. **Direction validation survives vintage replay** — wrong-direction ≈0% on as-known-at-the-time data; strict scores move both ways (GFC 67%→89%, late-90s boom degrades — the era's well-known soft real-time prints), so no systematic revision bias.
+  2. **`rate_expectations` KEEPS its slot (A1 closed):** incremental Spearman IC +0.15 on forward 3m bond returns after residualizing on the 2Y level (n=555). Weight stays CONTEXT 0.45 (the 2Y level's own IC 0.25 is still stronger).
+  3. **Dynamic thresholds stay OPT-IN:** mixed scenario results under vintages; the bond-outcome test shows dynamic labels more months decisively at comparable per-chip separation — supportive, not decisive.
+  4. **Stage calibration:** post-GFC reflation + COVID leveraging = 100% hit; 2007-08 pre-GFC squeeze = 50% (engages late) — logged as the one candidate threshold tweak, deliberately not tuned on a single episode.
+  5. Honest limits: equity-outcome samples are tiny (free SP500 ≈ 10y) — the 558-month bond test is the load-bearing one (Inflation chip → −10% ann. fwd bond returns vs +5% under Disinflation: the chip carries real information).
+- **DoD:** ✅ fully met — vintage replay + asset outcomes + calibration all reproducible.
 
 ### Phase H — Investment bridge  ·  ⛔ OUT OF SCOPE
 Regime-conditional return models, factor-tilt overlays, dynamic risk budgeting, scenario stress-testing (Ray's 5-step roadmap, review-log #12). Belongs to the separate Allocation Layer project. Listed here only so the hand-off point is explicit.

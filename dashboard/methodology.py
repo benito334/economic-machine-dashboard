@@ -2001,6 +2001,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-06", "Phase G3 backtest verdicts: direction validation survives ALFRED vintage replay (wrong-direction ~0% on as-known data); rate_expectations keeps its Rate-basket slot at CONTEXT 0.45 (incremental IC +0.15 on fwd bond returns); dynamic thresholds stay opt-in; stage classifier calibration confirmed except late-engaging 2007 squeeze", "7, 8, 9 (validation, no formula change)"],
                             ["2026-07-05", "Japan rolled out (roadmap Phase F): 25 signals, all 6 force composites, stage classifier (current: reflation) — inflation is IMF-annual-bridge-only (no free monthly JP CPI); volatility is true daily Nikkei realized vol", "7 (JP-specific coverage notes)"],
                             ["2026-07-05", "Relative Cycles page added (/relative): per-country regime + stage + order cards and growth/inflation cycle-correlation heatmaps (full history + last 10y) — display-only, no formula changes (roadmap Phase E)", "— (display only)"],
                             ["2026-07-05", "Big-cycle ORDER lens added (roadmap Phase D): order.gini (WB) + order.reserve_currency_share (IMF COFER via new SDMX API) — structural signals, feed no composite; Command Center Big-cycle card live-partial (governance/GPR deferred)", "— (new data lens)"],
@@ -2035,6 +2036,7 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
+                        ["2026-07-06", "Phase G3 backtest verdicts: direction validation survives ALFRED vintage replay (wrong-direction ~0% on as-known data); rate_expectations keeps its Rate-basket slot at CONTEXT 0.45 (incremental IC +0.15 on fwd bond returns); dynamic thresholds stay opt-in; stage classifier calibration confirmed except late-engaging 2007 squeeze", "7, 8, 9 (validation, no formula change)"],
                         ["2026-07-05", "Japan rolled out (roadmap Phase F): 25 signals, all 6 force composites, stage classifier (current: reflation) — inflation is IMF-annual-bridge-only (no free monthly JP CPI); volatility is true daily Nikkei realized vol", "7 (JP-specific coverage notes)"],
                         ["2026-07-05", "Relative Cycles page added (/relative): per-country regime + stage + order cards and growth/inflation cycle-correlation heatmaps (full history + last 10y) — display-only, no formula changes (roadmap Phase E)", "— (display only)"],
                         ["2026-07-05", "Big-cycle ORDER lens added (roadmap Phase D): order.gini (WB) + order.reserve_currency_share (IMF COFER via new SDMX API) — structural signals, feed no composite; Command Center Big-cycle card live-partial (governance/GPR deferred)", "— (new data lens)"],

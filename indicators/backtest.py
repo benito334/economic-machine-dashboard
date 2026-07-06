@@ -12,10 +12,11 @@ window; we score what fraction of months the point-in-time classifier produced
 the strict expected label, an acceptable label, or the wrong-direction label —
 under BOTH the fixed default thresholds and the dynamic (Ray Dalio) algorithm.
 
-Stage G3 (NOT implemented — future): ALFRED vintage replay (data as it was
-known at the time, eliminating data-REVISION look-ahead) and asset-outcome
-predictive tests (e.g. does rate_expectations improve prediction of bond/
-credit outcomes — Ray's suggested validation for that signal).
+Stage G3 lives in indicators/backtest_g3.py (implemented 2026-07-06): ALFRED
+vintage replay (data as known at the time — kills data-REVISION look-ahead),
+chip-conditioned forward asset returns, the rate_expectations IC test (A1
+decision: signal KEEPS its slot at CONTEXT weight), and the debt-cycle stage
+episode calibration. Report: docs/backtests/pit_regime_backtest_g3_us.md.
 
 Honest simplifications in G1 (documented, revisit if results look off):
   * The momentum weight tilt and observation-age decay used by the production

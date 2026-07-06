@@ -1206,3 +1206,17 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Not built (honest):** JP Debt Stress composite — model stays US-only pending a JP DSR source.
 
 **Next:** Phase G3 (ALFRED vintage replay + asset-outcome tests) — the last major open roadmap item; then D4 (manual-load governance/GPR).
+
+---
+
+## 2026-07-06 — Roadmap Phase G3: ALFRED vintage replay + asset-outcome tests (Phase G complete)
+
+**Done:**
+- `indicators/backtest_g3.py` (run: `python -m indicators.backtest_g3`; report: `docs/backtests/pit_regime_backtest_g3_us.md`): ALFRED full-vintage fetch (`fetch_alfred_vintages`, one call per series via realtime_start=1980/realtime_end=9999, cached `raw_cache/alfred_{id}.parquet`), `VintageSeries.as_known(t)` bisect lookup, `pit_vintage_zscores` (value AND its expanding reference history both from data-as-known-at-t), vintage PIT composites → production classifier → all 8 scenarios × fixed/dynamic vs the G1 final-data baseline. 15/19 basket signals fully replayed (crude oil, breakevens, Philly Fed, WB R&D use final values — market-priced/non-FRED, flagged in report).
+- Chip-conditioned forward returns (no information overlap): 558-month bond test (DGS10 duration proxy) — Inflation chip → −10%/yr fwd bond returns vs +5% under Disinflation, the chip carries real information; equity test honest-flagged as tiny (free SP500 ≈ 10y).
+- `rate_expectations` IC test: raw IC 0.079, 2Y-level IC 0.245, incremental IC (residualized on 2Y) **+0.153** over 555 months.
+- Stage-episode calibration: post-GFC reflation 100%, COVID leveraging 100%, 2007-08 squeeze 50% (modal leveraging — engages late; logged as the one tweak candidate, not tuned on a single episode).
+- **Verdicts** (in the report + roadmap): (1) direction validation survives vintage replay — G1/G2 was not revision-look-ahead; (2) **A1 closed: rate_expectations keeps its slot** at CONTEXT 0.45; (3) dynamic thresholds stay opt-in; (4) stage thresholds confirmed except the late squeeze.
+- 6 new tests (`tests/test_backtest_g3.py`: as-known semantics incl. future-vintage invisibility, no-overlap forward windows, bond-return sign); backtest.py header updated. **Phase G fully complete.**
+
+**Remaining open (small):** D4 (manual-load governance/GPR), UK rollout, e-Stat JP CPI registration, pre-existing dtype test failure, 2007-squeeze threshold tweak candidate.
