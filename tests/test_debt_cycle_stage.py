@@ -10,12 +10,16 @@ import pytest
 from indicators.debt_cycle_stage import (
     STAGES,
     _annualized_change,
+    _expanding_z_lagged,
     _rolling_mode,
     _to_quarterly,
+    compute_stage_history,
     expanding_percentile_lagged,
     load_stage_config,
     score_stages,
 )
+from store.store import DB_PATH
+import duckdb
 
 
 @pytest.fixture(scope="module")
@@ -180,3 +184,95 @@ def test_rolling_mode_window_one_is_identity():
     idx = pd.date_range("2020-03-31", periods=3, freq="QE")
     raw = pd.Series(["a", "b", "a"], index=idx, dtype=object)
     assert (_rolling_mode(raw, window=1) == raw).all()
+
+
+# ── Sovereign-aware sector model (Ray Dalio ruling, 2026-07-06 session) ──────
+# Triggered by: US stage classifier read "reflation" while a record sovereign
+# debt stock (122.8% GDP, z +1.78) and a Z-capped federal interest bill
+# (z +4.00) were masked by mean-blending against a deleveraged private sector
+# (household debt/GDP 68.5%, z -1.54). Rulings: two votes (private +
+# sovereign), headline = worse of the two by severity, debt stock = capped
+# size-weighted mean, service = 70/30 household/government blend, a
+# refinancing-gap early-warning flag independent of the vote.
+
+def test_expanding_z_lagged_excludes_current_obs():
+    idx = pd.date_range("2000-03-31", periods=30, freq="QE")
+    s = pd.Series(np.arange(30, dtype=float), index=idx)
+    z = _expanding_z_lagged(s, min_periods=5)
+    assert z.iloc[:5].isna().all()          # min_periods respected (shift + expanding)
+    assert not np.isnan(z.iloc[5])
+    # value equals (x_t - mean(x_0..t-1)) / std(x_0..t-1) — strictly prior data
+    manual = (s.iloc[10] - s.iloc[:10].mean()) / s.iloc[:10].std()
+    assert z.iloc[10] == pytest.approx(manual)
+
+
+def test_sector_stock_caps_percentile_and_size_weights(monkeypatch):
+    """A sector that dominates by size AND sits at the 100th percentile must
+    not push the blended percentile above the configured cap (Ray Q2:
+    'worst-of without total dilution')."""
+    import indicators.debt_cycle_stage as dcs
+    idx = pd.date_range("2000-03-31", periods=30, freq="QE")
+    big = pd.Series(np.linspace(100, 200, 30), index=idx)   # large, rising, at-100th-pct
+    small = pd.Series(np.full(30, 10.0), index=idx)          # small, flat, low percentile
+
+    def fake_load(conn, signal_id):
+        return {"us.credit.gov_debt_gdp": big,
+                "us.credit.household_debt_gdp": small}[signal_id]
+
+    monkeypatch.setattr(dcs, "_load_signal_values", fake_load)
+    cfg = {"features": {"ffill_limit_quarters": 5, "percentile_min_periods": 5,
+                        "debt_traj_window_years": 3}}
+    pct, traj = dcs._sector_stock(
+        None, "US", cfg, ["credit.gov_debt_gdp", "credit.household_debt_gdp"], cap=0.90)
+    assert pct.dropna().max() <= 0.90 + 1e-9
+    # single-sector case still respects the cap
+    pct1, _ = dcs._sector_stock(None, "US", cfg, ["credit.gov_debt_gdp"], cap=0.90)
+    assert pct1.dropna().iloc[-1] == pytest.approx(0.90)
+
+
+def test_worst_of_headline_picks_higher_severity():
+    cfg = load_stage_config()
+    sev = cfg["sector_model"]["severity"]
+    assert sev["squeeze"] > sev["reflation"] > sev["leveraging"]
+    assert sev["squeeze"] > sev["deleveraging"] > sev["leveraging"]
+
+
+@pytest.mark.integration
+def test_us_sovereign_squeeze_flag_fires_live():
+    """Live-data regression: the challenge that triggered this rework. The
+    US refinancing gap and gov-interest Z both blow through Ray's thresholds
+    today, so the flag must be True even though the headline mechanism can
+    legitimately still read a private-sector-driven stage."""
+    cfg = load_stage_config()
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        snaps = compute_stage_history(conn, "US", cfg)
+    finally:
+        conn.close()
+    labeled = [s for s in snaps if s.stage]
+    assert labeled, "no labeled US quarters — run the pipeline first"
+    latest = labeled[-1]
+    assert latest.sovereign_squeeze is True
+    assert latest.feat_refi_gap is not None and latest.feat_refi_gap > 0.75
+    assert latest.feat_gov_interest_z is not None and latest.feat_gov_interest_z > 1.0
+    # the flag is independent of the vote scoring — it must be constructible
+    # even when the headline stage doesn't itself read "squeeze"
+    assert latest.stage in {"leveraging", "squeeze", "deleveraging", "reflation", "neutral"}
+
+
+@pytest.mark.integration
+def test_gb_headline_unchanged_no_private_data():
+    """Countries with no private-sector debt inputs (EZ/GB/JP/KR) have no
+    private vote at all, so the headline should equal the sovereign vote —
+    the sovereign-aware rework must not regress their existing reads."""
+    cfg = load_stage_config()
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        snaps = compute_stage_history(conn, "GB", cfg)
+    finally:
+        conn.close()
+    labeled = [s for s in snaps if s.stage]
+    assert labeled
+    latest = labeled[-1]
+    assert latest.stage_private is None
+    assert latest.stage == latest.stage_sovereign

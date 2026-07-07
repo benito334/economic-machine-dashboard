@@ -299,21 +299,99 @@ def _rolling_mode(labels: pd.Series, window: int) -> pd.Series:
     return out
 
 
-def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageSnapshot]:
-    """Full quarterly stage history for one country."""
-    feats = build_features(conn, country, cfg)
-    if feats.empty:
-        logger.warning("[STAGE %s] no features — skipping", country)
-        return []
-    # Drop the in-progress quarter: its quarter-end is in the future and its
-    # inputs are partial. The latest snapshot is the last COMPLETED quarter.
-    feats = feats[feats.index <= pd.Timestamp.today()]
+# ── Sovereign-aware sector model (Ray ruling 2026-07-06) ─────────────────────
+# Two stage votes — PRIVATE and SOVEREIGN — with the headline the WORSE of
+# the two by stress severity, plus a SOVEREIGN SQUEEZE early-warning flag.
+# Triggered by the "US reads reflation while the sovereign is squeezed"
+# challenge: mean-of-sectors let the private sector's post-2008 deleveraging
+# mask a record government stock and a Z-capped federal interest bill.
 
+def _expanding_z_lagged(s: pd.Series, min_periods: int = 20) -> pd.Series:
+    """Expanding Z using only PRIOR observations (shift 1) — no look-ahead."""
+    prior = s.shift(1)
+    mu = prior.expanding(min_periods=min_periods).mean()
+    sd = prior.expanding(min_periods=min_periods).std()
+    return (s - mu) / sd.replace(0, np.nan)
+
+
+def _sector_stock(conn, country: str, cfg: dict, tails: list,
+                  cap: float) -> tuple[pd.Series, pd.Series]:
+    """Size-weighted stock percentile (each sector CAPPED at `cap` — Ray Q2:
+    'worst-of without total dilution') and size-weighted trajectory.
+
+    Weights are the per-quarter debt/GDP shares of the AVAILABLE sectors, so
+    a large sector has proportionally more say and coverage changes are honest.
+    """
+    fcfg = cfg["features"]
+    prefix = country.lower()
+    ffill = int(fcfg["ffill_limit_quarters"])
+    levels, pcts, trajs = [], [], []
+    for tail in tails or []:
+        comp = _to_quarterly(_load_signal_values(conn, f"{prefix}.{tail}"), ffill)
+        if comp.empty:
+            continue
+        levels.append(comp)
+        pcts.append(expanding_percentile_lagged(
+            comp, int(fcfg["percentile_min_periods"])).clip(upper=cap))
+        trajs.append(_annualized_change(comp, float(fcfg["debt_traj_window_years"])))
+    if not levels:
+        return _empty(), _empty()
+    lv = pd.concat(levels, axis=1)
+    w = lv.div(lv.sum(axis=1), axis=0)                      # per-quarter shares
+    pct = (pd.concat(pcts, axis=1) * w.values).sum(axis=1, min_count=1) / \
+          w.where(pd.concat(pcts, axis=1).notna().values).sum(axis=1, min_count=1)
+    traj = (pd.concat(trajs, axis=1) * w.values).sum(axis=1, min_count=1) / \
+           w.where(pd.concat(trajs, axis=1).notna().values).sum(axis=1, min_count=1)
+    return pct, traj
+
+
+def build_sovereign_features(conn, country: str, cfg: dict) -> pd.DataFrame:
+    """Sovereign-side gauges: gov interest/GDP (+Z, +2y trend), gov DSR
+    (interest/revenue, +Z), and the refinancing gap (marginal − effective
+    rate on the stock). Empty columns where a country lacks the inputs."""
+    scfg = (cfg.get("sovereign_inputs") or {}).get(country, {})
+    fcfg = cfg["features"]
+    prefix = country.lower()
+    ffill = int(fcfg["ffill_limit_quarters"])
+
+    def sig(tail):
+        return (_to_quarterly(_load_signal_values(conn, f"{prefix}.{tail}"), ffill)
+                if tail else _empty())
+
+    out = {}
+    gdp = sig(scfg.get("gdp_level"))                        # $B
+    interest = sig(scfg.get("gov_interest"))                # $M annual
+    gov_debt = sig(scfg.get("gov_debt"))                    # % GDP
+    revenue = sig(scfg.get("gov_revenue"))                  # % GDP
+    if not interest.empty and not gdp.empty:
+        gi_gdp = (interest / 1000.0) / gdp * 100.0          # % of GDP
+        gi_gdp = gi_gdp.dropna()
+        out["gov_interest_gdp"] = gi_gdp
+        out["gov_interest_z"] = _expanding_z_lagged(gi_gdp)
+        periods = max(1, int(round(float(fcfg["dsr_trend_window_years"]) * 4)))
+        out["gov_service_trend"] = gi_gdp - gi_gdp.shift(periods)
+        if not revenue.empty:
+            gov_dsr = (gi_gdp / revenue * 100.0).dropna()   # % of revenue
+            out["gov_dsr"] = gov_dsr
+            out["gov_dsr_z"] = _expanding_z_lagged(gov_dsr)
+        if not gov_debt.empty:
+            debt_bn = gov_debt / 100.0 * gdp
+            effective = ((interest / 1000.0) / debt_bn * 100.0).dropna()
+            ylds = [sig(t) for t in scfg.get("marginal_yields", [])]
+            ylds = [y for y in ylds if not y.empty]
+            if ylds:
+                marginal = pd.concat(ylds, axis=1).mean(axis=1)
+                out["refi_gap"] = (marginal - effective).dropna()
+    return pd.DataFrame(out) if out else pd.DataFrame()
+
+
+def _vote(feats: pd.DataFrame, cfg: dict) -> list[dict]:
+    """Score one vote (private or sovereign) per quarter — same condition
+    tables as always, applied to that vote's feature frame."""
     ccls = cfg["classification"]
     min_features = int(ccls["min_features"])
     min_score = float(ccls["min_score"])
     families = ["debt_pct", "debt_traj", "dsr_trend", "r_minus_g", "ngdp_minus_yield"]
-
     rows = []
     for qt, frow in feats.iterrows():
         n_feat = int(sum(
@@ -323,8 +401,7 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
         scores = score_stages(frow, cfg)
         valid = {k: v for k, v in scores.items() if not np.isnan(v)}
         if n_feat < min_features or not valid:
-            raw = None
-            confidence = None
+            raw, confidence = None, None
         else:
             ordered = sorted(valid.items(), key=lambda kv: kv[1], reverse=True)
             top_stage, top = ordered[0]
@@ -332,42 +409,144 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
             raw = top_stage if top >= min_score else "neutral"
             confidence = round(min(1.0, max(0.0, top - second)), 4)
         rows.append({"as_of": qt, "raw": raw, "confidence": confidence,
-                     "n_features": n_feat, "scores": scores, "feats": frow})
+                     "n_features": n_feat, "scores": scores})
+    return rows
 
-    # Smooth the label sequence (rolling mode; ties keep the current label).
-    raw_series = pd.Series([r["raw"] for r in rows],
-                           index=[r["as_of"] for r in rows], dtype=object)
-    smoothed = _rolling_mode(raw_series, int(ccls["smoothing_quarters"]))
+
+def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageSnapshot]:
+    """Quarterly stage history: private + sovereign votes, worst-of headline,
+    sovereign-squeeze flag (Ray ruling 2026-07-06)."""
+    shared = build_features(conn, country, cfg)      # macro + legacy blends
+    if shared.empty:
+        logger.warning("[STAGE %s] no features — skipping", country)
+        return []
+    shared = shared[shared.index <= pd.Timestamp.today()]
+    idx = shared.index
+
+    sm = cfg.get("sector_model") or {}
+    cap = float(sm.get("percentile_cap", 0.90))
+    svc_w = sm.get("service_weights", {"household": 0.70, "government": 0.30})
+    refi_thr = float(sm.get("refinancing_gap_threshold", 0.75))
+    flag_cfg = sm.get("sovereign_flag", {})
+    severity = sm.get("severity", {"squeeze": 3, "deleveraging": 2,
+                                   "reflation": 1, "leveraging": 0})
+
+    scfg = (cfg.get("sovereign_inputs") or {}).get(country, {})
+    gov_pct, gov_traj = _sector_stock(
+        conn, country, cfg, [scfg.get("gov_debt")] if scfg.get("gov_debt") else [], cap)
+    priv_pct, priv_traj = _sector_stock(conn, country, cfg,
+                                        scfg.get("private_debt") or [], cap)
+    sov_extra = build_sovereign_features(conn, country, cfg)
+
+    macro_cols = shared[["r_minus_g", "ngdp_minus_yield", "real_growth"]]
+
+    # ── Private vote frame ────────────────────────────────────────────────────
+    private = macro_cols.copy()
+    private["debt_pct"] = priv_pct.reindex(idx) if not priv_pct.empty else np.nan
+    private["debt_traj"] = priv_traj.reindex(idx) if not priv_traj.empty else np.nan
+    private["dsr_trend"] = shared.get("dsr_trend", pd.Series(np.nan, index=idx))
+
+    # ── Sovereign vote frame ──────────────────────────────────────────────────
+    sovereign = macro_cols.copy()
+    sovereign["debt_pct"] = gov_pct.reindex(idx) if not gov_pct.empty else np.nan
+    sovereign["debt_traj"] = gov_traj.reindex(idx) if not gov_traj.empty else np.nan
+    gov_svc = (sov_extra["gov_service_trend"].reindex(idx)
+               if "gov_service_trend" in sov_extra else pd.Series(np.nan, index=idx))
+    refi = (sov_extra["refi_gap"].reindex(idx)
+            if "refi_gap" in sov_extra else pd.Series(np.nan, index=idx))
+    # Ray Q4 pre-interest-bill filter: when the refinancing gap exceeded the
+    # threshold LAST quarter, treat sovereign debt service as tightening one
+    # quarter early — the squeeze arriving on a schedule.
+    dsr_rising_thr = float(cfg["thresholds"]["dsr_rising"])
+    early = refi.shift(1) > refi_thr
+    sovereign["dsr_trend"] = gov_svc.where(~early,
+                                           np.maximum(gov_svc.fillna(0), dsr_rising_thr + 0.01))
+
+    # ── Display/legacy blend (backwards-compatible feat_* columns) ────────────
+    display = shared.copy()
+    all_tails = ([scfg.get("gov_debt")] if scfg.get("gov_debt") else []) + \
+        (scfg.get("private_debt") or [])
+    if all_tails:
+        blend_pct, blend_traj = _sector_stock(conn, country, cfg, all_tails, cap)
+        if not blend_pct.empty:
+            display["debt_pct"] = blend_pct.reindex(idx)
+            display["debt_traj"] = blend_traj.reindex(idx)
+    hh_svc = shared.get("dsr_trend", pd.Series(np.nan, index=idx))
+    both = hh_svc.notna() & gov_svc.notna()
+    display.loc[both, "dsr_trend"] = (float(svc_w.get("household", 0.7)) * hh_svc[both]
+                                      + float(svc_w.get("government", 0.3)) * gov_svc[both])
+
+    # ── Votes + worst-of headline ─────────────────────────────────────────────
+    priv_rows = _vote(private, cfg)
+    sov_rows = _vote(sovereign, cfg)
+    ccls = cfg["classification"]
+
+    def _sev(label):
+        return severity.get(label, -1) if isinstance(label, str) else -2
+
+    headline_raw, head_conf, head_scores, head_nfeat = [], [], [], []
+    for p, s in zip(priv_rows, sov_rows):
+        pick = s if _sev(s["raw"]) >= _sev(p["raw"]) else p
+        headline_raw.append(pick["raw"])
+        head_conf.append(pick["confidence"])
+        head_scores.append(pick["scores"])
+        head_nfeat.append(max(p["n_features"], s["n_features"]))
+
+    smoothed = _rolling_mode(pd.Series(headline_raw, index=idx, dtype=object),
+                             int(ccls["smoothing_quarters"]))
+    priv_smoothed = _rolling_mode(pd.Series([r["raw"] for r in priv_rows],
+                                            index=idx, dtype=object),
+                                  int(ccls["smoothing_quarters"]))
+    sov_smoothed = _rolling_mode(pd.Series([r["raw"] for r in sov_rows],
+                                           index=idx, dtype=object),
+                                 int(ccls["smoothing_quarters"]))
+
+    # ── Sovereign-squeeze flag (any condition fires — Ray Q5) ─────────────────
+    gi_z = (sov_extra["gov_interest_z"].reindex(idx)
+            if "gov_interest_z" in sov_extra else pd.Series(np.nan, index=idx))
+    gd_z = (sov_extra["gov_dsr_z"].reindex(idx)
+            if "gov_dsr_z" in sov_extra else pd.Series(np.nan, index=idx))
+    flag = ((refi > float(flag_cfg.get("refinancing_gap", refi_thr)))
+            | (gi_z > float(flag_cfg.get("gov_interest_z", 1.5)))
+            | (gd_z > float(flag_cfg.get("gov_dsr_z", 1.0)))).fillna(False)
 
     def _f(v) -> Optional[float]:
         if v is None or (isinstance(v, float) and np.isnan(v)):
             return None
         return round(float(v), 4)
 
-    missing_all = set(families)
+    families = ["debt_pct", "debt_traj", "dsr_trend", "r_minus_g", "ngdp_minus_yield"]
     snaps = []
-    for r, stage in zip(rows, smoothed.tolist()):
-        frow = r["feats"]
+    for i, qt in enumerate(idx):
+        frow = display.loc[qt]
         present = {f for f in families
                    if frow.get(f) is not None
                    and not (isinstance(frow[f], float) and np.isnan(frow[f]))}
+        stage = smoothed.iloc[i]
         snaps.append(DebtCycleStageSnapshot(
             country=country,
-            as_of=r["as_of"].date(),
+            as_of=qt.date(),
             stage=stage if isinstance(stage, str) else None,
-            stage_raw=r["raw"],
-            confidence=r["confidence"],
-            n_features=r["n_features"],
-            missing_features=sorted(missing_all - present),
-            score_leveraging=_f(r["scores"].get("leveraging")),
-            score_squeeze=_f(r["scores"].get("squeeze")),
-            score_deleveraging=_f(r["scores"].get("deleveraging")),
-            score_reflation=_f(r["scores"].get("reflation")),
+            stage_raw=headline_raw[i],
+            stage_private=(priv_smoothed.iloc[i]
+                           if isinstance(priv_smoothed.iloc[i], str) else None),
+            stage_sovereign=(sov_smoothed.iloc[i]
+                             if isinstance(sov_smoothed.iloc[i], str) else None),
+            sovereign_squeeze=bool(flag.iloc[i]),
+            confidence=head_conf[i],
+            n_features=head_nfeat[i],
+            missing_features=sorted(set(families) - present),
+            score_leveraging=_f(head_scores[i].get("leveraging")),
+            score_squeeze=_f(head_scores[i].get("squeeze")),
+            score_deleveraging=_f(head_scores[i].get("deleveraging")),
+            score_reflation=_f(head_scores[i].get("reflation")),
             feat_debt_pct=_f(frow.get("debt_pct")),
             feat_debt_traj=_f(frow.get("debt_traj")),
             feat_dsr_trend=_f(frow.get("dsr_trend")),
             feat_r_minus_g=_f(frow.get("r_minus_g")),
             feat_ngdp_minus_yield=_f(frow.get("ngdp_minus_yield")),
             feat_real_growth=_f(frow.get("real_growth")),
+            feat_gov_interest_z=_f(gi_z.iloc[i]),
+            feat_refi_gap=_f(refi.iloc[i]),
         ))
     return snaps

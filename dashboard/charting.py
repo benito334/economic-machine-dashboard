@@ -4564,6 +4564,8 @@ _STAGE_FEATURE_LABELS = [
     ("feat_dsr_trend",        "Debt-service trend",  "{:+.2f} pp / 2y"),
     ("feat_r_minus_g",        "Real rate − growth",  "{:+.2f} pp"),
     ("feat_ngdp_minus_yield", "NGDP − yield",        "{:+.2f} pp"),
+    ("feat_gov_interest_z",   "Gov interest Z",       "{:+.2f}"),
+    ("feat_refi_gap",         "Refinancing gap",      "{:+.2f} pp"),
 ]
 
 
@@ -4607,6 +4609,23 @@ def update_debt_stage_section(date_range: dict, theme_name: str,
             "background": f"{color}26", "border": f"1px solid {color}", "color": color,
             "borderRadius": "4px", "padding": "2px 10px", "fontWeight": "700",
             "fontSize": "0.8rem", "marginRight": "12px"}))
+        # Private/sovereign votes (Ray ruling 2026-07-06): headline = worse of
+        # the two; show both when they diverge, plus the early-warning flag.
+        priv, sov = latest.get("stage_private"), latest.get("stage_sovereign")
+        if priv and sov and priv != sov:
+            children.append(html.Span(f"private: {priv} · sovereign: {sov}",
+                                      style={"color": "var(--muted-color)",
+                                             "fontSize": "0.72rem", "marginRight": "12px"}))
+        if bool(latest.get("sovereign_squeeze")):
+            children.append(html.Span(
+                "SOVEREIGN SQUEEZE",
+                title="Refinancing gap, government interest/GDP, or government "
+                      "debt-service has crossed its threshold — an early-warning "
+                      "signal independent of the stage vote (Ray Dalio ruling, "
+                      "2026-07-06).",
+                style={"color": "#E8A317", "fontSize": "0.68rem", "fontWeight": "800",
+                       "letterSpacing": "0.04em", "border": "1px solid #E8A317",
+                       "borderRadius": "4px", "padding": "1px 8px", "marginRight": "12px"}))
         as_of_ts = pd.Timestamp(latest["as_of"])
         meta = f"{as_of_ts.year}-Q{as_of_ts.quarter} · {int(latest['n_features'])}/5 features"
         if conf is not None and not pd.isna(conf):

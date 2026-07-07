@@ -141,9 +141,13 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     try:
         stage_hist = load_debt_cycle_stage_history(country=country)
         labeled = stage_hist[stage_hist["stage"].notna()] if not stage_hist.empty else pd.DataFrame()
-        stage = str(labeled.iloc[-1]["stage"]) if not labeled.empty else None
+        stage_row = labeled.iloc[-1] if not labeled.empty else None
+        stage = str(stage_row["stage"]) if stage_row is not None else None
+        # Ray ruling 2026-07-06: an early-warning flag independent of the
+        # headline stage — surfaced as a ⚠ suffix on the stage chip.
+        squeeze_flag = bool(stage_row.get("sovereign_squeeze")) if stage_row is not None else False
     except Exception:
-        stage = None
+        stage, squeeze_flag = None, False
 
     # Debt stress (US-only model today)
     try:
@@ -172,7 +176,8 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         _chip(f"Inflation · {i_chip}", _INFLAT_CHIP.get(i_chip, "#888")),
     ]
     if stage:
-        chips.append(_chip(f"Stage · {stage}", STAGE_COLORS.get(stage, "#888")))
+        label = f"Stage · {stage}" + (" ⚠" if squeeze_flag else "")
+        chips.append(_chip(label, STAGE_COLORS.get(stage, "#888")))
 
     order_bits = []
     if rcs is not None:

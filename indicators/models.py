@@ -158,6 +158,14 @@ class DebtCycleStageSnapshot(BaseModel):
     n_features: int = 0                      # feature families present (of 5)
     missing_features: list[str] = Field(default_factory=list)
 
+    # Sovereign-aware sector model (Ray Dalio ruling, 2026-07-06 session):
+    # the headline `stage` above is the WORSE of these two votes by severity
+    # (squeeze > deleveraging > reflation > leveraging) — a record sovereign
+    # debt stock must not hide behind a deleveraged private sector.
+    stage_private: Optional[str] = None      # private-sector-only vote (smoothed)
+    stage_sovereign: Optional[str] = None    # sovereign-only vote (smoothed)
+    sovereign_squeeze: bool = False          # early-warning flag (see feat_refi_gap)
+
     # Per-stage scores (renormalized weighted-condition votes, 0–1)
     score_leveraging: Optional[float] = None
     score_squeeze: Optional[float] = None
@@ -171,3 +179,5 @@ class DebtCycleStageSnapshot(BaseModel):
     feat_r_minus_g: Optional[float] = None       # real rate − real growth
     feat_ngdp_minus_yield: Optional[float] = None
     feat_real_growth: Optional[float] = None     # yoy %, smoothed
+    feat_gov_interest_z: Optional[float] = None  # expanding Z of gov interest / GDP
+    feat_refi_gap: Optional[float] = None        # pp, marginal rate − effective rate on the gov stock

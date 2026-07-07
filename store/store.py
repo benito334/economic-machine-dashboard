@@ -118,6 +118,31 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         "ALTER TABLE signals ADD COLUMN IF NOT EXISTS momentum_percentile DOUBLE"
     )
+    # Sovereign-aware stage classifier (Ray Dalio ruling, 2026-07-06 session).
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS stage_private VARCHAR"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS stage_sovereign VARCHAR"
+    )
+    # NOTE: no DEFAULT clause on this ALTER — DuckDB (verified 1.5.4) silently
+    # RESETS EVERY EXISTING ROW to the default when a BOOLEAN column with an
+    # explicit DEFAULT is re-added via ADD COLUMN IF NOT EXISTS on a column
+    # that already exists (VARCHAR/DOUBLE/INTEGER defaults and BOOLEAN with
+    # no default are all unaffected — reproduced and confirmed in isolation).
+    # Since init_schema() runs on every process start, a DEFAULT here would
+    # wipe sovereign_squeeze back to NULL/false on every restart. New rows
+    # always set it explicitly via model_dump(); the CREATE TABLE above still
+    # carries DEFAULT FALSE for genuinely fresh databases.
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS sovereign_squeeze BOOLEAN"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_gov_interest_z DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_refi_gap DOUBLE"
+    )
     for _col in ("zscore_12m", "zscore_18m", "zscore_24m", "zscore_36m", "zscore_48m", "zscore_60m",
                  "zscore_90m", "zscore_120m"):
         conn.execute(f"ALTER TABLE signals ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
@@ -553,6 +578,9 @@ CREATE TABLE IF NOT EXISTS debt_cycle_stage_snapshots (
     as_of                   DATE      NOT NULL,
     stage                   VARCHAR,
     stage_raw               VARCHAR,
+    stage_private           VARCHAR,
+    stage_sovereign         VARCHAR,
+    sovereign_squeeze        BOOLEAN   DEFAULT FALSE,
     confidence              DOUBLE,
     n_features              INTEGER   DEFAULT 0,
     missing_features        VARCHAR   DEFAULT '',
@@ -566,17 +594,22 @@ CREATE TABLE IF NOT EXISTS debt_cycle_stage_snapshots (
     feat_r_minus_g          DOUBLE,
     feat_ngdp_minus_yield   DOUBLE,
     feat_real_growth        DOUBLE,
+    feat_gov_interest_z     DOUBLE,
+    feat_refi_gap           DOUBLE,
     created_at              TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
 """
 
 _DEBT_CYCLE_STAGE_COLUMNS = [
-    "country", "as_of", "stage", "stage_raw", "confidence", "n_features",
+    "country", "as_of", "stage", "stage_raw",
+    "stage_private", "stage_sovereign", "sovereign_squeeze",
+    "confidence", "n_features",
     "missing_features",
     "score_leveraging", "score_squeeze", "score_deleveraging", "score_reflation",
     "feat_debt_pct", "feat_debt_traj", "feat_dsr_trend", "feat_r_minus_g",
     "feat_ngdp_minus_yield", "feat_real_growth",
+    "feat_gov_interest_z", "feat_refi_gap",
     "created_at",
 ]
 

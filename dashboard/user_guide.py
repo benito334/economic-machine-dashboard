@@ -578,11 +578,23 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
         _p("Reading the pair: the earliest trouble signal is the ", html.B("debt-service "
            "ratio rising"), " while r − g crosses positive — that combination is the "
            "squeeze forming, and it appears BEFORE the stress composite peaks."),
+        _p("The stage is actually two independent votes — ", html.B("private"),
+           " (household + corporate debt) and ", html.B("sovereign"),
+           " (government debt only) — with the headline being whichever reads worse. "
+           "This matters because a deleveraged private sector can mask a stressed "
+           "government: a separate ", html.B("SOVEREIGN SQUEEZE"),
+           " flag fires independently of the headline whenever refinancing pressure "
+           "or the government's own interest bill crosses its threshold — so you can "
+           "see \"the current mechanism\" and \"the sovereign warning\" at the same time, "
+           "even when they disagree."),
         _live_box([f"{cname}: stage ",
                    chip_style(stage_now or "—", STAGE_COLORS.get(stage_now or "", "#888")),
                    (f" · Debt Stress {_fmt(ds_val)}" if ds_val is not None
                     else " · Debt Stress composite is US-only today"),
-                   (". Driving features — " + " · ".join(feats)) if feats else ""]),
+                   (". Driving features — " + " · ".join(feats)) if feats else "",
+                   (" · ⚠ SOVEREIGN SQUEEZE flag is active" if
+                    (stage_row is not None and bool(stage_row.get("sovereign_squeeze")))
+                    else "")]),
         html.Div([_mlink("9", "Methodology §9 (formulas + stage conditions)")]),
     ]
 

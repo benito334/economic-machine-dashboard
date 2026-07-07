@@ -329,11 +329,44 @@ def render_command_center(country_data, page_trigger, thresholds,
         stage_lbl = str(srow["stage"])
         s_conf = srow.get("confidence")
         n_feat = int(srow.get("n_features") or 0)
-        stage_card = _card(
-            "Cycle stage", stage_lbl,
-            (f"confidence {s_conf:.2f} · " if s_conf is not None and not pd.isna(s_conf) else "")
-            + f"{n_feat}/5 features · {pd.Timestamp(srow['as_of']):%b %Y}",
-            "/debt-stress", STAGE_COLORS.get(stage_lbl, "var(--font-color)"))
+        stage_color = STAGE_COLORS.get(stage_lbl, "var(--font-color)")
+        squeeze_flag = bool(srow.get("sovereign_squeeze"))
+        priv = srow.get("stage_private")
+        sov = srow.get("stage_sovereign")
+        sub_bits = []
+        if s_conf is not None and not pd.isna(s_conf):
+            sub_bits.append(f"confidence {s_conf:.2f}")
+        sub_bits.append(f"{n_feat}/5 features")
+        sub_bits.append(f"{pd.Timestamp(srow['as_of']):%b %Y}")
+        # Headline is the WORSE-of the private/sovereign votes (Ray ruling
+        # 2026-07-06) — show both when they diverge so the read isn't opaque.
+        if priv and sov and priv != sov:
+            sub_bits.append(f"private: {priv} · sovereign: {sov}")
+        stage_body = [
+            html.Div("Cycle stage", style=_LABEL),
+            html.Div([
+                html.Span(stage_lbl, style={**_BIG, "color": stage_color}),
+                *([html.Span(
+                    "SOVEREIGN SQUEEZE",
+                    title="Refinancing gap, government interest/GDP, or government "
+                          "debt-service (interest/revenue) has crossed its threshold — "
+                          "an early-warning signal that can fire even while the "
+                          "headline still reads the current mechanism (Ray Dalio "
+                          "ruling, 2026-07-06: 'reflation as a headline can be "
+                          "misleading when the private side masks a sovereign "
+                          "squeeze — keep the mechanism headline, add a separate flag').",
+                    style={"color": "#E8A317", "fontSize": "0.62rem", "fontWeight": "800",
+                           "letterSpacing": "0.04em", "border": "1px solid #E8A317",
+                           "borderRadius": "4px", "padding": "1px 6px",
+                           "marginLeft": "8px", "whiteSpace": "nowrap"})]
+                  if squeeze_flag else []),
+            ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap",
+                      "gap": "2px"}),
+            html.Div(" · ".join(sub_bits), style=_SUB),
+        ]
+        stage_card = dcc.Link(html.Div(stage_body, style=_CARD), href="/debt-stress",
+                              style={"textDecoration": "none", "display": "flex",
+                                     "flex": "1 1 170px"})
     else:
         stage_card = _card("Cycle stage", "—",
                            "no stage read yet — run the pipeline", "/debt-stress")

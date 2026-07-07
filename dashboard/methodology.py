@@ -1400,6 +1400,41 @@ def get_layout() -> html.Div:
                    "2007 pre-GFC squeeze, 2012–2020 reflation (the ZIRP 'beautiful "
                    "deleveraging'), 2020–23 COVID leveraging surge. Threshold calibration "
                    "against the point-in-time backtest is an explicit Phase G3 task."),
+                _sub("Sovereign-aware sector model (added 2026-07-06, Ray Dalio ruling)"),
+                _p("A user challenge exposed a real gap: the stage classifier read the US as "
+                   "'reflation' while a record sovereign debt stock (122.8% of GDP) and a "
+                   "Z-capped federal interest bill were being diluted by a private sector "
+                   "that had genuinely deleveraged since 2008. The fix, per Ray's ruling, is "
+                   "TWO independent stage votes — a PRIVATE vote (household + corporate debt) "
+                   "and a SOVEREIGN vote (government debt only) — with the headline being the "
+                   "WORSE of the two by severity (squeeze > deleveraging > reflation > "
+                   "leveraging). The debt-stock feature is a size-weighted mean of sector "
+                   "percentiles, each sector CAPPED at the 90th percentile — 'a worst-of "
+                   "signal without total dilution': a single ultra-high-debt sector can't be "
+                   "drowned out by a healthier one, but also can't blow the composite past "
+                   "what its own history supports."),
+                _p("The debt-service gauge blends household DSR (70%) with government "
+                   "interest/GDP (30%) — household DSR is the direct private-side cash-flow "
+                   "burden; government interest is the fastest-rising series in the system "
+                   "and signals fiscal dominance. A REFINANCING-GAP feature (marginal rate — "
+                   "the mean of the 2y/10y yields — minus the effective rate actually paid on "
+                   "the government debt stock) acts as a pre-interest-bill squeeze trigger: "
+                   "when the gap exceeded +0.75pp last quarter, the sovereign vote treats debt "
+                   "service as tightening ONE QUARTER EARLY — the squeeze arriving on a "
+                   "refinancing schedule before it fully lands in the headline interest bill."),
+                _p("A separate 'SOVEREIGN SQUEEZE' warning flag — independent of the vote "
+                   "scoring — fires when ANY of the refinancing gap (>0.75pp), the government-"
+                   "interest Z-score (>1.5), or the government debt-service ratio (interest ÷ "
+                   "revenue) Z-score (>1.0) crosses its threshold. Ray's ruling was explicit "
+                   "that the headline should stay 'the mechanism currently operating' — for "
+                   "the US that is still reflation-shaped (real rate well below real growth, "
+                   "nominal growth above yields) — while the flag independently carries the "
+                   "early warning. As of 2026-Q2 the US flag has been continuously True since "
+                   "2022-Q2 (refinancing gap +1.81pp, government-interest Z +1.43) even while "
+                   "the headline mechanism read has stayed reflation — exactly the dual-layer "
+                   "read the ruling intended. The flag and the private/sovereign sub-votes are "
+                   "shown on the Command Center, this page, and the Relative Cycles country "
+                   "cards (⚠ suffix on the stage chip)."),
             ], title="9 · Long-Term Debt Stress"),
 
             # 10 ── Data Quality Flags ──────────────────────────────────────────
@@ -2001,6 +2036,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
                             ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                             ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
                             ["2026-07-06", "Fixed the long-standing raw-vs-processed dtype bug (merge_asof datetime64[us] vs [ns]) — the suite's one known failure is gone; 421 tests, zero exclusions", "10"],
@@ -2046,6 +2082,7 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
+                        ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
                         ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                         ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
                         ["2026-07-06", "Fixed the long-standing raw-vs-processed dtype bug (merge_asof datetime64[us] vs [ns]) — the suite's one known failure is gone; 421 tests, zero exclusions", "10"],

@@ -178,3 +178,57 @@ countries:
       yield_signal: policy.yield_10y
       growth_signal: master.gdp_real
       inflation_signal: inflation.cpi_headline
+
+# ── Sovereign-aware sector model (Ray ruling 2026-07-06) ─────────────────────
+# Triggered by the "US reads reflation while Ray calls for deleveraging"
+# challenge: the private sector's post-2008 deleveraging was masking the
+# sovereign. Rulings (full session in ray_dalio_review_log.md):
+#   Q1/Q5 — TWO stage votes (private + sovereign), headline = the WORSE of
+#           the two by stress severity, plus a separate SOVEREIGN SQUEEZE flag
+#   Q2   — debt stock = size-weighted mean of sector percentiles, each
+#           sector's percentile CAPPED at percentile_cap ("worst-of without
+#           total dilution")
+#   Q3   — service z = 0.70 × household DSR + 0.30 × government interest/GDP
+#   Q4   — refinancing gap (marginal rate − effective rate on the stock) is a
+#           pre-interest-bill squeeze trigger: when it exceeds the threshold,
+#           the sovereign vote treats debt service as tightening one quarter
+#           EARLY (the squeeze arriving on a schedule)
+sector_model:
+  percentile_cap: 0.90        # TUNABLE — Ray: cap each sector's percentile
+  service_weights:            # TUNABLE — Ray's 70/30 split
+    household: 0.70
+    government: 0.30
+  refinancing_gap_threshold: 0.75   # pp — TUNABLE; Ray: 0.5 in high-inflation regimes
+  sovereign_flag:             # ANY condition fires the SOVEREIGN SQUEEZE flag
+    refinancing_gap: 0.75     # pp, marginal − effective
+    gov_interest_z: 1.5       # expanding Z of gov interest / GDP
+    gov_dsr_z: 1.0            # expanding Z of gov interest / gov revenue
+  # Severity ranking for the worst-of headline (higher = worse stress)
+  severity: {squeeze: 3, deleveraging: 2, reflation: 1, leveraging: 0}
+
+# Per-country sovereign inputs (concept tails; missing entries degrade
+# honestly — the sovereign vote runs on whatever exists).
+sovereign_inputs:
+  US:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    gov_interest: fiscal.interest_payments     # $M annual (FYOINT)
+    gdp_level: master.gdp_level_bn             # $B
+    gov_revenue: fiscal.govt_revenue_gdp       # % GDP → GovDSR = interest% / revenue%
+    marginal_yields: [policy.yield_2y, policy.yield_10y]
+  EZ:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: []
+    marginal_yields: [policy.yield_10y]
+  GB:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: []
+    marginal_yields: [policy.yield_10y]
+  JP:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: []
+    marginal_yields: [policy.yield_10y]
+  KR:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: []
+    marginal_yields: [policy.yield_10y]
