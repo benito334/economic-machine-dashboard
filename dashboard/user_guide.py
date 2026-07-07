@@ -558,10 +558,14 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
                               ("feat_debt_traj", "debt/GDP trajectory", "{:+.1f} pp/yr"),
                               ("feat_dsr_trend", "debt-service trend", "{:+.2f} pp / 2y"),
                               ("feat_r_minus_g", "real rate − growth", "{:+.2f} pp"),
-                              ("feat_ngdp_minus_yield", "nominal growth − yield", "{:+.2f} pp")]:
+                              ("feat_ngdp_minus_yield", "nominal growth − yield", "{:+.2f} pp"),
+                              ("feat_gov_interest_z", "gov interest Z", "{:+.2f}"),
+                              ("feat_refi_gap", "refinancing gap", "{:+.2f} pp")]:
             v = stage_row.get(col)
             if v is not None and not pd.isna(v):
                 feats.append(f"{lbl}: {fmt.format(float(v))}")
+    priv_now = str(stage_row.get("stage_private")) if stage_row is not None and stage_row.get("stage_private") else None
+    sov_now = str(stage_row.get("stage_sovereign")) if stage_row is not None and stage_row.get("stage_sovereign") else None
     l5 = [
         _p("Two different questions about the long cycle: ", html.B("Debt Stress"),
            " asks \"how much pressure?\" (a weighted composite of debt stocks and "
@@ -591,6 +595,8 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
                    chip_style(stage_now or "—", STAGE_COLORS.get(stage_now or "", "#888")),
                    (f" · Debt Stress {_fmt(ds_val)}" if ds_val is not None
                     else " · Debt Stress composite is US-only today"),
+                   (f" · private: {priv_now} · sovereign: {sov_now}"
+                    if priv_now and sov_now and priv_now != sov_now else ""),
                    (". Driving features — " + " · ".join(feats)) if feats else "",
                    (" · ⚠ SOVEREIGN SQUEEZE flag is active" if
                     (stage_row is not None and bool(stage_row.get("sovereign_squeeze")))
