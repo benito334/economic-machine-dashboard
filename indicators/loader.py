@@ -172,6 +172,8 @@ _WB_COUNTRY_MAP: dict[str, str] = {
     "KR": "KOR",
     "CN": "CHN",
     "IN": "IND",
+    "DE": "DEU",   # standalone Germany (also inside the EZ aggregate)
+    "LU": "LUX",   # standalone Luxembourg (also inside the EZ aggregate)
     "BR": "BRA",
     "SA": "SAU",
     "RU": "RUS",
@@ -283,6 +285,8 @@ _IMF_COUNTRY_MAP: dict[str, str] = {
     "CN": "CHN",
     "KR": "KOR",
     "IN": "IND",
+    "DE": "DEU",   # standalone Germany (also inside the EZ aggregate)
+    "LU": "LUX",   # standalone Luxembourg (also inside the EZ aggregate)
     "BR": "BRA",
     "SA": "SAU",
     "RU": "RUS",

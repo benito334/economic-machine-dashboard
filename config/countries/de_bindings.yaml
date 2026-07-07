@@ -1,0 +1,581 @@
+# Germany (DE) indicator bindings — user-requested standalone rollout
+# Country code: DE (ISO 3166-1 alpha-2)
+# NOTE: Germany is ALSO inside the EZ aggregate — this standalone build lets
+# the machine read the euro area's core economy on its own three clocks
+# (Germany's cycle can diverge sharply from the EA aggregate: energy-shock
+# manufacturing recession, debt-brake fiscal stance, Bund-vs-periphery rates).
+# All vintage_available: false — FRED vintages cover US only.
+# Verified 2026-07-07. Germany is the richest non-US dataset in the system:
+#   - LIVE monthly HICP (Eurostat via FRED, index → YoY transform) — no IMF
+#     bridge needed, unlike KR/GB/JP/CN/IN
+#   - LIVE quarterly real GDP, monthly unemployment, retail sales, 10y Bund,
+#     3m interbank, REER, share prices
+#   - LIVE monthly industrial production via the Eurostat JSON API (geo=DE) —
+#     the OECD FRED IP feeds died 2023/2024 (recurring pattern)
+#   - BIS 3-sector credit quarterly from 1970 (household 48.9% / corporate
+#     87.8% / private 136.7% GDP) → private/sovereign two-vote stage split
+#   - OECD monthly CPI feeds (incl. core) died 2025-03 — HICP replaces them
+# Equilibrium values in transformed units (yoy_pct → decimal).
+
+country: DE
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_real
+    series_id: CLVMNACSCAB1GQDE
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.012
+    linkage: "Germany real GDP YoY (Eurostat chained 2010 EUR via FRED, quarterly from 1991). Trend growth ~1%; the energy-shock manufacturing recession made Germany the G7 laggard."
+    sanity_min: -0.15
+    sanity_max: 0.15
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 5000.0
+    linkage: "Germany nominal GDP in current USD billions (IMF) — the euro area's core economy (~35% of EA output)."
+    sanity_min: 1000.0
+    sanity_max: 15000.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+  # HICP (Eurostat via FRED) is LIVE monthly — the OECD COICOP feeds
+  # (CPALTT01DEM659N headline, CPGRLE01DEM659N core) died 2025-03.
+
+  - id: inflation.cpi_headline
+    series_id: CP0000DEM086NEST
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Germany HICP all items YoY (Eurostat via FRED, live → 2026-05). ECB 2% target; German inflation aversion makes this the politically loudest number in the euro area."
+    sanity_min: -0.02
+    sanity_max: 0.15
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+
+  - id: growth.industrial_prod
+    series_id: sts_inpr_m
+    provider: Eurostat
+    eurostat_params:
+      geo: DE
+      nace_r2: B-D
+      s_adj: CA
+      unit: PCH_SM
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.010
+    linkage: "Germany industrial production YoY (Eurostat JSON API, geo=DE, calendar-adjusted, live → 2026-04). THE German cyclical read — the OECD FRED IP feeds died 2023/24; Eurostat replaces them."
+    sanity_min: -0.30
+    sanity_max: 0.30
+
+  - id: growth.retail_sales
+    series_id: DEUSLRTTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.010
+    linkage: "Germany retail sales volume YoY (OECD GYSAM form, live → 2026-04). The domestic-demand counterweight to export-led manufacturing."
+    sanity_min: -0.20
+    sanity_max: 0.20
+
+  - id: growth.unemployment
+    series_id: LRHUTTTTDEM156S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4.0
+    linkage: "Germany harmonised monthly unemployment rate (ILO form, live → 2026-04). Structurally low since the Hartz reforms; rises above 5% mark genuine labor-market stress."
+    sanity_min: 2.0
+    sanity_max: 15.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "R&D expenditure as % of GDP (3.15%) — among the world's highest; the Mittelstand engineering base is the structural counterargument to German industrial decline."
+    sanity_min: 0.0
+    sanity_max: 6.0
+
+  - id: growth.tfp
+    series_id: RTFPNADEA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.005
+    linkage: "Germany Total Factor Productivity YoY% (Penn World Tables, annual through 2023). Stagnant-to-negative since 2018 — the deindustrialization question in one series."
+    sanity_min: -0.08
+    sanity_max: 0.08
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01DEM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "Germany 10-year Bund yield (from 1956, live). THE euro-area risk-free rate — every periphery spread prices off it."
+    sanity_min: -1.0
+    sanity_max: 12.0
+
+  - id: policy.rate_3m_interbank
+    series_id: IR3TIB01DEM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "Germany 3-month interbank rate (EURIBOR since 1999, from 1960). The short end of the German curve — pairs with the Bund for a slope read."
+    sanity_min: -1.0
+    sanity_max: 15.0
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBDEBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Germany real broad effective exchange rate (BIS, 2020=100). Germany's REER runs structurally undervalued inside the euro — the export-surplus machine's quiet subsidy."
+    sanity_min: 70.0
+    sanity_max: 130.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "FDI net inflows as % of GDP. Energy costs and bureaucracy have made inward German FDI a live competitiveness question."
+    sanity_min: -5.0
+    sanity_max: 10.0
+
+  # ─── Credit (BIS quarterly, from 1970 — deep history) ──────────────────────
+
+  - id: credit.private_debt_gdp
+    series_id: QDEPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 120.0
+    linkage: "Total credit to the private non-financial sector, % GDP (BIS, from 1960s). At ~137% moderate for an advanced economy — German private-sector leverage aversion is structural."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: credit.household_debt_gdp
+    series_id: QDEHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Credit to households, % GDP (BIS, from 1970). Falling for two decades (renter culture, no mortgage-equity withdrawal) — the anti-Anglosphere balance sheet."
+    sanity_min: 0.0
+    sanity_max: 120.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QDENAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 75.0
+    linkage: "Credit to non-financial corporations, % GDP (BIS). Mittelstand self-financing keeps this low (~88%) vs France (~160%)."
+    sanity_min: 0.0
+    sanity_max: 200.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 60.0
+    linkage: "Germany general government gross debt % GDP (IMF, ~63%). The debt-brake economy — lowest sovereign leverage in the G7, and the fiscal space everyone wants Berlin to use."
+    sanity_min: 0.0
+    sanity_max: 150.0
+
+  # ─── Fiscal (IMF DEU) ──────────────────────────────────────────────────────
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.0
+    linkage: "Germany general government structural balance % GDP (IMF). The Schuldenbremse keeps it near balance — defense/infrastructure spending is now testing that."
+    sanity_min: -10.0
+    sanity_max: 5.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Germany IMF general government primary balance % GDP (excl. interest). Usually near balance — the fiscal anchor of the euro area."
+    sanity_min: -10.0
+    sanity_max: 6.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 29.0
+    linkage: "General government revenue % GDP (central basis, ~29%). High-capacity state — revenue is never the German fiscal constraint; the rule is."
+    sanity_min: 15.0
+    sanity_max: 50.0
+
+  # ─── External & Trade (WorldBank / DEU) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 5.0
+    linkage: "Germany current account balance % GDP (~4.5%). The world's most persistent large surplus — the global-imbalances counterpart to the US deficit."
+    sanity_min: -5.0
+    sanity_max: 12.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 42.0
+    linkage: "Exports of goods and services % GDP (~40%) — extreme for an economy this size; China demand and US tariffs hit here first."
+    sanity_min: 15.0
+    sanity_max: 60.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 37.0
+    linkage: "Imports of goods and services % GDP. The energy-import bill post-2022 is the structural break in the German cost base."
+    sanity_min: 15.0
+    sanity_max: 60.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Germany total population (World Bank, ~83.5M). Held up only by migration; natural change is deeply negative."
+    sanity_min: 50000000.0
+    sanity_max: 120000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Annual population growth rate %. Hovers around zero — migration-dependent; the workforce is already shrinking."
+    sanity_min: -2.0
+    sanity_max: 3.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 58.0
+    linkage: "Age dependency ratio (60.2 and rising) — among the oldest large economies; the Boomer retirement wave is hitting the pension system now."
+    sanity_min: 30.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 61.0
+    linkage: "ILO-modeled labor force participation (% 15+, ~60.6%). High and rising female/older-worker participation partly offsets the shrinking cohort."
+    sanity_min: 40.0
+    sanity_max: 85.0
+
+  # ─── Volatility Force ──────────────────────────────────────────────────────
+  # No free daily DAX via FRED — monthly OECD MEI share-price proxy
+  # (EZ/KR/GB/CN/IN pattern). See data_source_wishlist.md.
+
+  - id: volatility.equity_index
+    series_id: SPASTT01DEM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "OECD MEI share price index for Germany (monthly, 2015=100, from 1960) — raw level, input to realized volatility only."
+    sanity_min: 0.0
+    sanity_max: 1000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.15
+    linkage: "Annualized rolling std of monthly log returns on the Germany share-price index (12-month window) — monthly-resolution proxy for realized volatility."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER ──────────────────────────────────────────────
+  # No COFER slot: the reserve currency is the euro, read at the EZ level.
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: DE
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 32.0
+    linkage: "Gini index of income inequality (33.7, 2022). Drifting up from the low-30s social-market baseline — the AfD-era distributional backdrop."
+    sanity_min: 20.0
+    sanity_max: 50.0
+    notes: "World Bank PIP, DEU. Verified 2026-07-07: 32 annual obs through 2022. The WB v2 API is intermittently flaky on DEU (HTTP 400s) — tenacity retries recover it."

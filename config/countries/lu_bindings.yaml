@@ -1,0 +1,543 @@
+# Luxembourg (LU) indicator bindings — user-requested standalone rollout
+# Country code: LU (ISO 3166-1 alpha-2)
+# NOTE: Luxembourg is ALSO inside the EZ aggregate. As a ~€80B financial
+# center its ratios are structurally extreme and NOT comparable to normal
+# economies: exports 190% of GDP (entrepôt/funds flows), FDI swings past
+# ±100% of GDP (holding-company round-tripping), BIS private credit 420% of
+# GDP (358.8% corporate — largely intra-group financing vehicles, not
+# domestic leverage). Sanity ranges are set wide accordingly, and the credit
+# force should be read as a financial-center flow gauge, not a domestic
+# debt-stress read. Z-scores against its OWN history remain meaningful.
+# All vintage_available: false — FRED vintages cover US only.
+# Verified 2026-07-07: live monthly HICP / unemployment / IP / 10y yield /
+# REER / share prices; quarterly real GDP; BIS 3-sector credit from 1995
+# (→ private/sovereign two-vote stage split).
+# Equilibrium values in transformed units (yoy_pct → decimal).
+
+country: LU
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_real
+    series_id: CLVMNACSCAB1GQLU
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Luxembourg real GDP YoY (Eurostat chained 2010 EUR via FRED, quarterly from 1995). Volatile for an advanced economy — financial-sector value-added swings with markets."
+    sanity_min: -0.20
+    sanity_max: 0.20
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Luxembourg nominal GDP in current USD billions (IMF, ~$101B). Tiny in level, outsized in per-capita and financial-flow terms."
+    sanity_min: 10.0
+    sanity_max: 500.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+  # HICP (Eurostat via FRED) is LIVE monthly — the OECD COICOP feed died
+  # 2025-04 (the recurring cutoff). No IMF bridge needed.
+
+  - id: inflation.cpi_headline
+    series_id: CP0000LUM086NEST
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "Luxembourg HICP all items YoY (Eurostat via FRED, live → 2026-05). Automatic wage indexation makes Luxembourgish inflation unusually self-propagating."
+    sanity_min: -0.02
+    sanity_max: 0.15
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+
+  - id: growth.industrial_prod
+    series_id: LUXPRINTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.010
+    linkage: "Luxembourg industrial production YoY (OECD GYSAM form, live → 2026-03). Small manufacturing base (steel legacy) — noisy; the financial sector is the real economy."
+    sanity_min: -0.40
+    sanity_max: 0.40
+
+  - id: growth.unemployment
+    series_id: LRHUTTTTLUM156S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 5.5
+    linkage: "Luxembourg harmonised monthly unemployment rate (ILO form, live → 2026-04). Resident-based — excludes the ~200k cross-border commuters who are half the workforce."
+    sanity_min: 1.0
+    sanity_max: 15.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.2
+    linkage: "R&D expenditure as % of GDP (~1.1%). Low vs neighbors — the economy monetizes financial intermediation, not invention."
+    sanity_min: 0.0
+    sanity_max: 4.0
+
+  - id: growth.tfp
+    series_id: RTFPNALUA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Luxembourg Total Factor Productivity YoY% (Penn World Tables, annual through 2023). Declining for a decade — financial-sector productivity measurement is notoriously hard."
+    sanity_min: -0.10
+    sanity_max: 0.10
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01LUM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "Luxembourg 10-year government bond yield (from 1993, live → 2026-04). AAA sovereign trading a whisker over Bunds; the spread is a euro-core stress read."
+    sanity_min: -1.0
+    sanity_max: 10.0
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBLUBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Luxembourg real broad effective exchange rate (BIS, 2020=100). Wage indexation makes the REER drift up — the standing competitiveness complaint of Luxembourgish industry."
+    sanity_min: 70.0
+    sanity_max: 130.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+  # FDI swings past ±100% of GDP — holding-company/fund round-tripping, not
+  # greenfield investment. Wide sanity range; read direction, not level.
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 50.0
+    linkage: "FDI net inflows as % of GDP. PROXY at best — Luxembourg FDI is holding-company round-tripping at ±100%+ of GDP; a global cross-border-flows gauge, not domestic investment."
+    sanity_min: -500.0
+    sanity_max: 800.0
+
+  # ─── Credit (BIS quarterly, from 1995) ─────────────────────────────────────
+  # 420% private / 358.8% corporate — largely intra-group financing vehicles
+  # booked in Luxembourg. A financial-center flow gauge; Z-scores vs its own
+  # history still carry signal (rapid rises = global credit exuberance).
+
+  - id: credit.private_debt_gdp
+    series_id: QLUPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 350.0
+    linkage: "Total credit to the private non-financial sector, % GDP (BIS). At 420% the highest in the system — mostly intra-group corporate vehicles; read as a global credit-conditions gauge."
+    sanity_min: 0.0
+    sanity_max: 700.0
+
+  - id: credit.household_debt_gdp
+    series_id: QLUHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 55.0
+    linkage: "Credit to households, % GDP (BIS, 61.2%). The genuinely domestic number — mortgage debt against some of Europe's highest house prices."
+    sanity_min: 0.0
+    sanity_max: 150.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QLUNAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 300.0
+    linkage: "Credit to non-financial corporations, % GDP (BIS, 358.8%). Dominated by multinational financing vehicles domiciled in Luxembourg — not domestic corporate leverage."
+    sanity_min: 0.0
+    sanity_max: 600.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 25.0
+    linkage: "Luxembourg general government gross debt % GDP (IMF, 27%) — among the lowest in the advanced world; AAA with room to spare."
+    sanity_min: 0.0
+    sanity_max: 100.0
+
+  # ─── Fiscal (IMF LUX) ──────────────────────────────────────────────────────
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Luxembourg general government structural balance % GDP (IMF). Usually near balance — corporate-tax receipts from the fund industry fund the state."
+    sanity_min: -10.0
+    sanity_max: 8.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "Luxembourg IMF general government primary balance % GDP (excl. interest). Structurally positive — one of the few genuine surplus states."
+    sanity_min: -8.0
+    sanity_max: 8.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 44.0
+    linkage: "General government revenue % GDP (~44.6%). High-capacity, high-take state on a financial-sector tax base — concentration risk if fund domiciliation ever migrates."
+    sanity_min: 25.0
+    sanity_max: 60.0
+
+  # ─── External & Trade (WorldBank / LUX) ────────────────────────────────────
+  # Exports 190% / imports 159% of GDP — entrepôt and financial-services
+  # flows. Wide sanity ranges; Z-vs-own-history is the only meaningful read.
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 5.0
+    linkage: "Luxembourg current account balance % GDP (~5.2%). Persistent services surplus from fund management fees."
+    sanity_min: -10.0
+    sanity_max: 25.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 190.0
+    linkage: "Exports of goods and services % GDP (190% — financial services exports). A global-fund-industry activity gauge, not a trade-competitiveness read."
+    sanity_min: 80.0
+    sanity_max: 300.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 160.0
+    linkage: "Imports of goods and services % GDP (159%) — the mirror of the entrepôt export base."
+    sanity_min: 60.0
+    sanity_max: 280.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Luxembourg total population (World Bank, ~687k). Fastest-growing in Western Europe on migration — the workforce doubles daily with cross-border commuters."
+    sanity_min: 300000.0
+    sanity_max: 2000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "Annual population growth rate % (+1.5%) — migration-driven, the demographic outlier of the advanced world."
+    sanity_min: -1.0
+    sanity_max: 5.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 46.0
+    linkage: "Age dependency ratio (46.1) — young for Western Europe thanks to working-age migration."
+    sanity_min: 25.0
+    sanity_max: 90.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 61.0
+    linkage: "ILO-modeled labor force participation (% resident 15+, ~61.5%). Resident-based — the cross-border half of the workforce is invisible here."
+    sanity_min: 40.0
+    sanity_max: 85.0
+
+  # ─── Volatility Force ──────────────────────────────────────────────────────
+  # Monthly OECD MEI share-price proxy (thin local exchange; the LuxX index
+  # has no free daily feed). See data_source_wishlist.md.
+
+  - id: volatility.equity_index
+    series_id: SPASTT01LUM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "OECD MEI share price index for Luxembourg (monthly, 2015=100, from 1999) — raw level, input to realized volatility only. Thin local market."
+    sanity_min: 0.0
+    sanity_max: 1000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.15
+    linkage: "Annualized rolling std of monthly log returns on the Luxembourg share-price index (12-month window) — monthly proxy on a thin index; read direction, not level."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER ──────────────────────────────────────────────
+  # No COFER slot: the reserve currency is the euro, read at the EZ level.
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: LU
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 32.0
+    linkage: "Gini index of income inequality (33.6, 2023). Drifting up — housing costs are the Luxembourgish inequality engine."
+    sanity_min: 20.0
+    sanity_max: 50.0
+    notes: "World Bank PIP, LUX. Verified 2026-07-07: 34 annual obs through 2023."

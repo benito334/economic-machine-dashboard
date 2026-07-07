@@ -1,0 +1,96 @@
+# Germany composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+# Importance tiers: PRIMARY (0.85–1.00) / STRONG (0.60–0.84) /
+#   CONTEXT (0.30–0.59) / VOLATILE (0.10–0.29). Anti-redundancy: same-basket
+#   |r| > 0.80 → secondary ≤ 40% of primary. Force-balance target 0.75–1.33.
+#
+# DE-specific notes:
+#   - The richest non-US dataset in the system — every growth signal is a
+#     LIVE monthly feed (IP via Eurostat geo=DE, retail + unemployment via
+#     FRED). HICP is live monthly, so NO IMF annual bridge (single-signal
+#     inflation basket, like the rate baskets elsewhere).
+#   - The rate basket has TWO live signals (10y Bund + 3m interbank) —
+#     first non-US country with a multi-signal rate read.
+#   - credit: private_debt_gdp anchors; household/corporate are its subsets
+#     (stage-classifier inputs, not weighted here); gov_debt adds the
+#     sovereign side.
+
+growth_score:
+  description: "DE growth-force composite — all-live monthly feeds (IP via Eurostat, retail, unemployment)"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.7
+      importance: 0.80      # PRIMARY — the German cyclical read (manufacturing economy)
+      quality_factor: 0.95
+    - id: growth.retail_sales
+      base_share: 0.65
+      importance: 0.70      # STRONG — domestic-demand counterweight
+      quality_factor: 0.90
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.45      # CONTEXT — lagging; structurally sticky post-Hartz
+      quality_factor: 0.90
+      invert: true
+
+inflation_score:
+  description: "DE inflation-force composite — live monthly HICP (single signal; no bridge needed)"
+  indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — live Eurostat HICP; no core series free (OECD core died 2025-03)
+      quality_factor: 1.00
+
+# ── DE Financial Accommodation Score ─────────────────────────────────────────
+# Two live signals — the first non-US country with a multi-signal rate basket.
+rate_score:
+  description: "DE financial accommodation — 10y Bund + 3m interbank (2 signals)"
+  indicators:
+    - id: policy.yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — the euro-area risk-free rate
+      quality_factor: 1.00
+      invert: true
+    - id: policy.rate_3m_interbank
+      base_share: 0.7
+      importance: 0.36      # CONTEXT — correlated with the Bund (≤40% of primary per anti-redundancy)
+      quality_factor: 0.95
+      invert: true
+
+# ── DE Credit Health Score ────────────────────────────────────────────────────
+credit_score:
+  description: "DE credit health — BIS private credit + IMF gov debt (% GDP levels)"
+  indicators:
+    - id: credit.private_debt_gdp
+      base_share: 1.0
+      importance: 0.85      # PRIMARY — deep BIS history (from 1960s)
+      quality_factor: 0.95
+      invert: true
+    - id: credit.gov_debt_gdp
+      base_share: 0.7
+      importance: 0.55      # CONTEXT — annual only; debt-brake keeps it low-variance
+      quality_factor: 0.85
+      invert: true
+
+# ── DE Volatility Score ───────────────────────────────────────────────────────
+volatility_score:
+  description: "DE market volatility — monthly-return proxy on share-price index (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available DE volatility signal (no free daily DAX)
+      quality_factor: 0.70  # monthly-resolution proxy
+
+# ── DE Productivity Trend Score ───────────────────────────────────────────────
+productivity_score:
+  description: "DE productivity trend — PWT TFP + R&D intensity (annual)"
+  indicators:
+    - id: growth.tfp
+      base_share: 1.0
+      importance: 0.85      # PRIMARY — direct TFP measure (PWT, to 2023)
+      quality_factor: 0.75
+      half_life_months: 12.0
+    - id: growth.rnd_intensity
+      base_share: 0.7
+      importance: 0.50      # CONTEXT — input measure, not outcome
+      quality_factor: 0.70
+      half_life_months: 12.0

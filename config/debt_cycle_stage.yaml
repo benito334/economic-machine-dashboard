@@ -200,6 +200,63 @@ countries:
       yield_signal: policy.rate_3m_interbank    # PROXY: no free CN bond yield
       growth_signal: master.gdp_real
       inflation_signal: inflation.cpi_imf_annual
+  IN:
+    # BIS 3-sector credit from 2007 + a LIVE 10y yield (which CN lacks) —
+    # full two-vote split with a real market rate. CPI = IMF annual bridge
+    # (monthly feed dead 2025-03).
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y      # PROXY: 10y gilt-equivalent minus annual CPI bridge
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
+  DE:
+    # Richest non-US inputs: BIS 3-sector credit from 1970, live monthly
+    # HICP (real deflator, no bridge), live 10y Bund. Only the DSR is missing.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y      # PROXY: 10y Bund minus live monthly HICP
+      inflation_signal: inflation.cpi_headline
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_headline
+  LU:
+    # Financial-center caveat (see lu_bindings.yaml): the corporate debt
+    # stock is mostly intra-group vehicles, so the private vote reads global
+    # credit conditions more than domestic leverage. Percentile-vs-own-history
+    # framing (plus the sector cap) keeps the vote internally consistent.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y      # PROXY: 10y LU sovereign minus live monthly HICP
+      inflation_signal: inflation.cpi_headline
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_headline
 
 # ── Sovereign-aware sector model (Ray ruling 2026-07-06) ─────────────────────
 # Triggered by the "US reads reflation while Ray calls for deleveraging"
@@ -261,3 +318,18 @@ sovereign_inputs:
     # refinancing-gap and gov-DSR flag conditions can't evaluate; the
     # SOVEREIGN SQUEEZE flag degrades honestly to never firing.
     marginal_yields: [policy.rate_3m_interbank]
+  IN:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.yield_10y]
+  DE:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.yield_10y]
+  LU:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.yield_10y]

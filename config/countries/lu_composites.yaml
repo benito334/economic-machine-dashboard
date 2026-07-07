@@ -1,0 +1,82 @@
+# Luxembourg composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+# Importance tiers: PRIMARY (0.85–1.00) / STRONG (0.60–0.84) /
+#   CONTEXT (0.30–0.59) / VOLATILE (0.10–0.29).
+#
+# LU-specific notes (financial-center caveats in lu_bindings.yaml header):
+#   - HICP is live monthly → single-signal inflation basket, no bridge.
+#   - IP is live but a thin manufacturing base — quality reduced; the
+#     financial sector (no free monthly gauge) is the real economy, so the
+#     growth composite systematically under-reads Luxembourg. Documented.
+#   - credit: private_debt_gdp is mostly intra-group corporate vehicles —
+#     read as a global credit-conditions gauge, quality reduced accordingly.
+
+growth_score:
+  description: "LU growth-force composite — live monthly IP + unemployment (financial sector unobserved monthly)"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.7
+      importance: 0.70      # STRONG — live but thin manufacturing base for a finance economy
+      quality_factor: 0.75
+    - id: growth.unemployment
+      base_share: 0.6
+      importance: 0.50      # CONTEXT — resident-based (excludes cross-border half of workforce)
+      quality_factor: 0.85
+      invert: true
+
+inflation_score:
+  description: "LU inflation-force composite — live monthly HICP (single signal; no bridge needed)"
+  indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — live Eurostat HICP; wage indexation amplifies persistence
+      quality_factor: 1.00
+
+# ── LU Financial Accommodation Score ─────────────────────────────────────────
+rate_score:
+  description: "LU financial accommodation — 10y government yield (single signal; low coverage)"
+  indicators:
+    - id: policy.yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available LU rate signal
+      quality_factor: 1.00
+      invert: true
+
+# ── LU Credit Health Score ────────────────────────────────────────────────────
+credit_score:
+  description: "LU credit health — BIS private credit (global-flows gauge) + IMF gov debt"
+  indicators:
+    - id: credit.private_debt_gdp
+      base_share: 1.0
+      importance: 0.85      # PRIMARY within LU — but a financial-center flow gauge, not domestic leverage
+      quality_factor: 0.70  # reduced: intra-group vehicles dominate the level
+      invert: true
+    - id: credit.gov_debt_gdp
+      base_share: 0.7
+      importance: 0.55      # CONTEXT — annual only; structurally tiny (27%)
+      quality_factor: 0.85
+      invert: true
+
+# ── LU Volatility Score ───────────────────────────────────────────────────────
+volatility_score:
+  description: "LU market volatility — monthly-return proxy on a thin share-price index (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available LU volatility signal
+      quality_factor: 0.60  # extra reduction: monthly proxy on a thin local index
+
+# ── LU Productivity Trend Score ───────────────────────────────────────────────
+productivity_score:
+  description: "LU productivity trend — PWT TFP + R&D intensity (annual; finance-sector TFP measurement caveat)"
+  indicators:
+    - id: growth.tfp
+      base_share: 1.0
+      importance: 0.85      # PRIMARY — direct TFP measure (PWT, to 2023)
+      quality_factor: 0.65  # extra reduction: financial-sector TFP is poorly measured
+      half_life_months: 12.0
+    - id: growth.rnd_intensity
+      base_share: 0.7
+      importance: 0.50      # CONTEXT — input measure; structurally low for a finance economy
+      quality_factor: 0.70
+      half_life_months: 12.0

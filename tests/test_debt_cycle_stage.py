@@ -32,7 +32,7 @@ def cfg():
 def test_config_loads_and_has_all_stages(cfg):
     for stage in STAGES:
         assert stage in cfg["weights"]
-    for country in ("US", "EZ", "KR", "CN"):
+    for country in ("US", "EZ", "KR", "CN", "IN", "DE", "LU"):
         assert country in cfg["countries"]
 
 
@@ -63,6 +63,21 @@ def test_config_cn_has_sector_debt_but_no_dsr(cfg):
     assert sov["private_debt"] == [
         "credit.household_debt_gdp", "credit.corporate_debt_gdp"
     ]
+
+
+def test_config_in_de_lu_two_vote_countries(cfg):
+    """IN/DE/LU (added 2026-07-07) all carry BIS household + corporate debt,
+    so all three run the private/sovereign two-vote split. Unlike CN, all
+    three have a real 10y yield for the spreads."""
+    for cc in ("IN", "DE", "LU"):
+        c = cfg["countries"][cc]
+        assert len(c["debt_components"]) == 3
+        assert c["dsr_signal"] is None
+        assert c["ngdp_minus_yield"]["yield_signal"] == "policy.yield_10y"
+        sov = cfg["sovereign_inputs"][cc]
+        assert sov["private_debt"] == [
+            "credit.household_debt_gdp", "credit.corporate_debt_gdp"
+        ]
 
 
 # ── Feature construction ──────────────────────────────────────────────────────
@@ -313,3 +328,22 @@ def test_cn_two_vote_split_live():
     assert latest.stage_sovereign is not None
     assert latest.sovereign_squeeze is False
     assert latest.stage == "leveraging"
+
+
+@pytest.mark.integration
+def test_in_de_lu_two_vote_split_live():
+    """IN/DE/LU (added 2026-07-07) all have BIS household + corporate debt →
+    both votes populated. No gov-interest series → flag honestly False."""
+    cfg = load_stage_config()
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        for cc in ("IN", "DE", "LU"):
+            snaps = compute_stage_history(conn, cc, cfg)
+            labeled = [s for s in snaps if s.stage]
+            assert labeled, f"{cc}: no labeled stage snapshots"
+            latest = labeled[-1]
+            assert latest.stage_private is not None, f"{cc}: private vote missing"
+            assert latest.stage_sovereign is not None, f"{cc}: sovereign vote missing"
+            assert latest.sovereign_squeeze is False, f"{cc}: flag should be False"
+    finally:
+        conn.close()

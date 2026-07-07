@@ -1361,3 +1361,23 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Full pipeline run on host (charting stopped first, restarted after); docker images rebuilt; all 8 routes verified 200; CC/Relative/Guide render CN with live data.
 
 **Next:** India is next in the Phase 2 order (expect the CN pattern: WB/IMF + FRED-mirrored feeds; check `DT.DOD.DECT.CD` early). Other open tails: D4 manual-load slots, ONS/e-Stat CPI registrations, the 2007-squeeze threshold tweak candidate.
+
+---
+
+## 2026-07-07 — India + Germany + Luxembourg rollouts (9 economies live)
+
+**Ask:** India next per the Phase 2 order, plus Germany and Luxembourg by user request (both euro members — standalone codes alongside the EZ aggregate for core-vs-aggregate divergence reads).
+
+**Done:**
+- Three binding + composites file pairs, every series endpoint-verified first: **IN 32 signals / DE 29 / LU 27 — 308 signals total across 9 economies**. All clean (0 empty / 0 errors / 0 sanity warnings). Loader maps gained DE→DEU, LU→LUX (WB + IMF).
+- **India is data-richer than China**: LIVE monthly IP (GYSAM form) + LIVE 10y gov yield (from 2011) + live quarterly real GDP + BIS 3-sector credit (2007→) + WB external debt fills ($716B, as predicted from CN). CPI dead 2025-03 → IMF bridge. INR not in COFER. Latest read: Expansion (G +2.76 / I −1.72); stage = reflation 0.38 (private vote leveraging, sovereign reflation — worst-of picks reflation correctly since leveraging is lower severity).
+- **Germany is the richest non-US dataset in the system**: live monthly HICP (first bridge-free non-US country), live IP via the Eurostat JSON API (`geo=DE` — OECD FRED IP feeds died 2023/24), live retail/unemployment/Bund/3m interbank (first non-US 2-signal rate basket), BIS credit from 1970. Latest read: Stagflation (G −0.30 / I +0.39); **stage = deleveraging on BOTH votes at 0.44 — diverging sharply from the EZ aggregate's reflation, exactly the core-vs-aggregate contrast the standalone build was for.**
+- **Luxembourg works but is structurally weird** (documented prominently in `lu_bindings.yaml` header + wishlist): BIS private credit 420% GDP (358.8% corporate = intra-group financing vehicles — read as a global credit-conditions gauge, quality_factor reduced), FDI ±100%+ GDP (sanity ±500/800), exports 190% GDP. Live HICP/unemployment/IP/10y. The growth composite under-reads LU because the financial sector (the real economy) has no free monthly gauge — LowCov flags honestly. Stage = reflation.
+- **All three carry BIS household+corporate credit → all three run the private/sovereign two-vote stage split** (5 of 9 countries now: US/CN/IN/DE/LU). None has a gov-interest series → their SOVEREIGN SQUEEZE flags degrade honestly to never firing (CN pattern).
+- Stage config: 3 new `countries` + `sovereign_inputs` entries (IN/DE/LU use real 10y yields in the spreads, unlike CN's interbank proxy).
+- Dashboards: country selector (9 entries), CC/User Guide/Relative Cycles/Workbench/Data Dashboard maps all extended; Methodology §11 table updated (Brazil marked next) + §15 revision rows (anchor-split, verified 2 occurrences).
+- Force balance: DE 1.20 / IN 1.03 OK; no CORR AUDIT flags on any new country. 4 new tests (config integrity for IN/DE/LU two-vote entries + live three-country two-vote regression); suite **431 passed, zero exclusions**.
+- Spot-checks vs public references: DE Bund 3.05% / HICP ~2.2% / unemployment 3.8% / gov debt 62.9%; IN 10y 7.02% / growth 7.6% / gov debt 84.1%; LU credit 420% / gov debt 27% — all match.
+- Docker rebuilt, all 8 routes 200, CC renders all three countries with live stage chips.
+
+**Next:** Brazil is next in the original Phase 2 order (expect the IN pattern; check DT.DOD external debt early). Standing tails: D4 manual-loads, ONS/e-Stat CPI registrations, no free German core CPI (wishlist), 2007-squeeze threshold tweak.

@@ -71,9 +71,24 @@ Results of the pre-rollout verification (32 signals bound, all endpoint-verified
 7. **WB external debt fills** (see the ORDER-layer entry above) — first country in the system.
 8. No daily equity index (monthly `SPASTT01CNM661N` proxy, EZ/KR volatility pattern); no gov-interest series (the stage classifier's SOVEREIGN SQUEEZE flag degrades honestly to never firing for CN); Debt Stress composite not attempted (model stays US-only).
 
-## General — next country rollout (India is next in the Phase 2 order)
+## India (rolled out 2026-07-07)
 
-Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP/GB/CN sections above show surprises in both directions. For India expect the CN pattern to repeat: WB/IMF harmonized + whatever OECD/BIS feeds FRED mirrors; check `DT.DOD.DECT.CD` (external debt) early — it fills for debtor-reporting countries.
+Richer than China via free APIs (31 signals):
+1. **LIVE monthly industrial production** (`INDPRINTO01GYSAM` → 2026-04 — the GYSAM YoY form survives while the index form died 2024-03, the recurring pattern) and **LIVE 10y government bond yield** (`INDIRLTLT01STM` → 2026-05, from 2011) — both things China lacks.
+2. LIVE quarterly real GDP (`NGDPRNSAXDCINQ`, NSA → YoY transform), monthly trade, REER, FX reserves, share prices; BIS 3-sector credit from 2007 (private 102.3% / household 47.8% / corporate 54.5%) → two-vote stage split.
+3. `DT.DOD.DECT.CD` external debt fills ($716B) — as predicted from the CN result.
+4. Monthly CPI dead 2025-03 → IMF annual bridge. **Open gaps:** MOSPI CPI has no free API; CMIE unemployment is paywalled; WB R&D intensity lags to 2020; INR sits in COFER's "Other currencies" (no reserve-share slot); WB Gini is consumption-based (25.5) and NOT comparable to income Ginis — treat as trend-only.
+
+## Germany + Luxembourg (rolled out 2026-07-07, user-requested standalone euro members)
+
+Both are ALSO inside the EZ aggregate — standalone codes for core-vs-aggregate divergence reads.
+1. **Germany (29 signals) is the richest non-US dataset**: live monthly HICP via Eurostat-on-FRED (`CP0000DEM086NEST` — NO IMF bridge needed, first bridge-free non-US country), live IP via the Eurostat JSON API (`sts_inpr_m?geo=DE` — the OECD FRED IP feeds died 2023/24), live retail/unemployment/10y Bund/3m interbank (first non-US 2-signal rate basket); BIS 3-sector credit from 1970. OECD core CPI (`CPGRLE01DEM659N`) died 2025-03 — **open gap: no free German core-CPI series** (Eurostat special aggregates via FRED is the candidate to check).
+2. **Luxembourg (26 signals) works but is structurally weird**: live HICP/unemployment/IP/10y yield; BIS private credit **420% of GDP** (358.8% corporate — intra-group financing vehicles, documented as a financial-center flow gauge, not domestic leverage); FDI swings past ±100% GDP (sanity range set to ±500/800); exports 190% GDP (entrepôt). The growth composite under-reads LU because the financial sector (the real economy) has no free monthly gauge.
+3. The WB v2 API is intermittently flaky on DEU (HTTP 400s) — tenacity retries recover it.
+
+## General — next country rollout (Brazil is next in the original Phase 2 order)
+
+Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP/GB/CN/IN/DE/LU sections above show surprises in both directions. For Brazil expect the IN pattern: WB/IMF harmonized + FRED-mirrored BIS/OECD feeds; check `DT.DOD.DECT.CD` (external debt) early — it fills for debtor-reporting countries.
 
 ---
 

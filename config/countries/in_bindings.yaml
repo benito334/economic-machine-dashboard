@@ -1,0 +1,630 @@
+# India (IN) indicator bindings — Phase 2
+# Country code: IN (ISO 3166-1 alpha-2)
+# All vintage_available: false — FRED vintages cover US only.
+# Verified 2026-07-07. India is data-richer than China via free APIs:
+#   - LIVE monthly industrial production (GYSAM YoY form → 2026-04)
+#   - LIVE 10-year government bond yield (INDIRLTLT01STM → 2026-05) — China
+#     has no free yield at any maturity; India does
+#   - LIVE quarterly real GDP (NGDPRNSAXDCINQ, NSA → YoY transform)
+#   - BIS 3-sector credit quarterly+live (private 102.3% / household 47.8% /
+#     corporate 54.5% GDP from 2007) → private/sovereign two-vote stage split
+#   - WB external debt fills ($716B, debtor-reporting country like CN)
+#   - Monthly CPI (OECD COICOP) ages out 2025-03 → IMF annual bridge
+#     (same cutoff pattern as KR/GB/CN)
+#   - INR is NOT separately identified in COFER ("Other currencies") — no
+#     reserve-currency-share slot, honest gap (KR pattern)
+# Note: raw_scale: 100 converts already-YoY% series to decimal form.
+# Equilibrium values in transformed units (yoy_pct → decimal).
+
+country: IN
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+
+  - id: master.gdp_real
+    series_id: NGDPRNSAXDCINQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.065
+    linkage: "India real GDP YoY (quarterly, NSA — YoY transform handles seasonality). The fastest-growing major economy; trend ~6.5–7%."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 4000.0
+    linkage: "India nominal GDP in current USD billions (IMF). Now the world's ~4th-largest economy; used in the Global Overview size comparison."
+    sanity_min: 200.0
+    sanity_max: 20000.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+
+  - id: inflation.cpi_headline
+    series_id: CPALTT01INM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.040
+    linkage: "India CPI all items YoY (OECD COICOP, already % form). RBI target: 4% ± 2pp. Feed ends 2025-03 — bridged by the IMF annual signal."
+    sanity_min: -0.05
+    sanity_max: 0.30
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.040
+    linkage: "India CPI % change (IMF WEO annual). Bridge signal now that the monthly OECD feed is dead; 2025 read of 2.1% sits at the soft end of the RBI band."
+    sanity_min: -0.05
+    sanity_max: 0.30
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+
+  - id: growth.industrial_prod
+    series_id: INDPRINTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.050
+    linkage: "India industrial production YoY (GYSAM form, live → 2026-04). The strongest live monthly output read — the index form died 2024-03, the YoY form survives (the recurring OECD-feed pattern)."
+    sanity_min: -0.40
+    sanity_max: 0.40
+
+  - id: growth.exports_yoy
+    series_id: XTEXVA01INM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.08
+    linkage: "India merchandise exports YoY (USD, seasonally adjusted). Services exports (IT) are the bigger story but have no free monthly feed; goods exports still track global demand."
+    sanity_min: -0.50
+    sanity_max: 0.80
+
+  - id: growth.imports_yoy
+    series_id: XTIMVA01INM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.08
+    linkage: "India merchandise imports YoY (USD). PROXY for domestic demand — oil-import cost swings dominate short-run moves; read alongside exports."
+    sanity_min: -0.50
+    sanity_max: 0.80
+
+  - id: growth.unemployment
+    series_id: SL.UEM.TOTL.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 5.0
+    linkage: "India unemployment rate (ILO modeled, annual). PROXY — vast informal employment makes any Indian unemployment rate a rough read; CMIE's monthly survey has no free API."
+    sanity_min: 2.0
+    sanity_max: 12.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.7
+    linkage: "R&D expenditure as % of GDP. At 0.65% far below China (2.6%) or Korea (5%) — the structural gap in the India-as-next-China thesis. WB series lags badly (last 2020)."
+    sanity_min: 0.0
+    sanity_max: 4.0
+
+  - id: growth.tfp
+    series_id: RTFPNAINA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.015
+    linkage: "India Total Factor Productivity YoY% (Penn World Tables, annual through 2023). Sustained TFP growth is what separates the India boom from a pure demographics story."
+    sanity_min: -0.10
+    sanity_max: 0.10
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+
+  - id: policy.yield_10y
+    series_id: INDIRLTLT01STM
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 7.0
+    linkage: "India 10-year government bond yield (live → 2026-05, from 2011). RBI policy pass-through plus fiscal-supply premium; India has a free yield where China has none."
+    sanity_min: 3.0
+    sanity_max: 15.0
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBINBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "India real broad effective exchange rate (BIS, 2020=100). RBI manages the rupee against imported-inflation pass-through; sub-90 reads mark depreciation stress."
+    sanity_min: 60.0
+    sanity_max: 130.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fx_reserves_yoy
+    series_id: TRESEGINM052N
+    provider: FRED
+    frequency: M
+    force: capital
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.05
+    linkage: "India FX reserves ex-gold YoY (IMF IFS, ~$570B stock). Drawdowns flag RBI defense of the rupee (2013 taper tantrum, 2022); the buffer is the external-stability anchor."
+    sanity_min: -0.40
+    sanity_max: 0.80
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "FDI net inflows as % of GDP. The China-plus-one relocation flow in one number — currently modest (0.7%) relative to the narrative."
+    sanity_min: -2.0
+    sanity_max: 8.0
+
+  # ─── Credit (BIS quarterly, from 2007) ─────────────────────────────────────
+
+  - id: credit.private_debt_gdp
+    series_id: QINPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 90.0
+    linkage: "Total credit to the private non-financial sector, % GDP (BIS). At ~102% modest by East-Asian standards — India's cycle is early-leveraging, credit-deepening is the growth channel."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: credit.household_debt_gdp
+    series_id: QINHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 35.0
+    linkage: "Credit to households, % GDP (BIS, from 2007). Rising fast off a low base — retail-credit boom is the newest leg of the Indian cycle."
+    sanity_min: 0.0
+    sanity_max: 120.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QINNAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Credit to non-financial corporations, % GDP (BIS). Deleveraged after the 2010s twin-balance-sheet crisis; corporate balance sheets are the cleanest in a decade."
+    sanity_min: 0.0
+    sanity_max: 150.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 75.0
+    linkage: "India general government gross debt % GDP (IMF, center + states). Steady ~84% — high for an EM but domestically financed in local currency."
+    sanity_min: 0.0
+    sanity_max: 200.0
+
+  # ─── Fiscal (IMF IND) ──────────────────────────────────────────────────────
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -7.0
+    linkage: "India general government structural balance % GDP (IMF, center + states combined). Persistently deep (−8%) — the chronic Indian fiscal signature."
+    sanity_min: -20.0
+    sanity_max: 5.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -2.5
+    linkage: "India IMF general government primary balance % GDP (excl. interest). The r−g arithmetic works while nominal growth runs ~10% — the debt is outgrown, not repaid."
+    sanity_min: -15.0
+    sanity_max: 5.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 10.0
+    linkage: "General government revenue % GDP (central basis, ~9.4%). One of the lowest tax takes of any major economy — the structural constraint on Indian state capacity."
+    sanity_min: 3.0
+    sanity_max: 30.0
+
+  # ─── External & Trade (WorldBank / IND) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.5
+    linkage: "India current account balance % GDP. Structural mild deficit (oil imports vs services exports); beyond −3% historically marks rupee-stress episodes."
+    sanity_min: -8.0
+    sanity_max: 5.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 21.0
+    linkage: "Exports of goods and services % GDP (~22%, services-heavy). India is less trade-dependent than East Asia — the domestic-demand story dominates."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 23.0
+    linkage: "Imports of goods and services % GDP. Energy imports are the swing factor — every $10/bbl adds ~0.4% of GDP to the import bill."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  - id: external.external_debt_bn
+    series_id: DT.DOD.DECT.CD
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: billions_usd
+    raw_scale: 1.0e9
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 650.0
+    linkage: "Total external debt stock, USD billions (WB debtor reporting system, fills for IN like CN). ~$716B ≈ 18% of GDP with $570B reserves against it — manageable."
+    sanity_min: 0.0
+    sanity_max: 3000.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "India total population (World Bank) — the world's largest at 1.46bn and still growing. Divide by 1,000,000 for display in millions."
+    sanity_min: 500000000.0
+    sanity_max: 2000000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.8
+    linkage: "Annual population growth rate %. Still positive (+0.9%) — the demographic-dividend window China just exited is India's core structural asset."
+    sanity_min: -1.0
+    sanity_max: 3.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 46.0
+    linkage: "Age dependency ratio (dependents per 100 working-age) — still FALLING for India, the mirror image of China/Germany/Japan."
+    sanity_min: 20.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 55.0
+    linkage: "ILO-modeled labor force participation (% 15+). Low (~56%) on very low female participation — the biggest untapped lever in the India growth story."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  # ─── Volatility Force ──────────────────────────────────────────────────────
+  # No free daily NIFTY/SENSEX via FRED — monthly OECD MEI share-price proxy
+  # (EZ/KR/GB/CN pattern). See data_source_wishlist.md.
+
+  - id: volatility.equity_index
+    series_id: SPASTT01INM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "OECD MEI share price index for India (monthly, 2015=100, from 1957) — raw level, input to realized volatility only."
+    sanity_min: 0.0
+    sanity_max: 2000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.18
+    linkage: "Annualized rolling std of monthly log returns on the India share-price index (12-month window) — monthly-resolution proxy for realized volatility."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER ──────────────────────────────────────────────
+  # INR is inside COFER's "Other currencies" bucket — no reserve-share slot
+  # (honest gap, KR pattern).
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 30.0
+    linkage: "Gini index (WB PIP, consumption-based for India — NOT directly comparable to income-based Ginis elsewhere; the 25.5 reading understates wealth concentration)."
+    sanity_min: 15.0
+    sanity_max: 60.0
+    notes: "Only 5 observations (consumption survey years); last 2022 (25.5). India's income-based Gini from other sources is far higher — treat this as a within-India trend read only."

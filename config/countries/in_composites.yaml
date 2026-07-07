@@ -1,0 +1,96 @@
+# India composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+# Importance tiers: PRIMARY (0.85–1.00) / STRONG (0.60–0.84) /
+#   CONTEXT (0.30–0.59) / VOLATILE (0.10–0.29). Anti-redundancy: same-basket
+#   |r| > 0.80 → secondary ≤ 40% of primary. Force-balance target 0.75–1.33.
+#
+# IN-specific notes:
+#   - Industrial production is LIVE monthly (unlike CN) — it anchors growth;
+#     trade YoY supplements it at reduced weight.
+#   - cpi_headline feed died 2025-03 → IMF annual bridge (KR/GB/CN pattern).
+#   - India HAS a live 10y yield (unlike CN) — the rate basket is real.
+#   - credit: private_debt_gdp anchors; household/corporate are its subsets
+#     (stage-classifier inputs, not weighted here); gov_debt adds the
+#     sovereign side.
+
+growth_score:
+  description: "IN growth-force composite — live monthly IP + trade + annual WB reads"
+  indicators:
+    - id: growth.industrial_prod
+      base_share: 0.7
+      importance: 0.80      # PRIMARY — strongest live monthly output signal
+      quality_factor: 0.90
+    - id: growth.exports_yoy
+      base_share: 0.6
+      importance: 0.55      # CONTEXT — goods exports; services (IT) invisible monthly
+      quality_factor: 0.80
+    - id: growth.imports_yoy
+      base_share: 0.5
+      importance: 0.35      # CONTEXT — domestic demand proxy; oil-price noise
+      quality_factor: 0.75
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.25      # VOLATILE — ILO-modeled annual estimate; informal economy
+      quality_factor: 0.70
+      invert: true
+
+inflation_score:
+  description: "IN inflation-force composite — OECD monthly CPI (dead 2025-03) + IMF annual bridge"
+  indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — long history (1958→); RBI targets this at 4%
+      quality_factor: 0.90
+    - id: inflation.cpi_imf_annual
+      base_share: 0.5
+      importance: 0.30      # VOLATILE — annual bridge only
+      quality_factor: 0.70
+
+# ── IN Financial Accommodation Score ─────────────────────────────────────────
+rate_score:
+  description: "IN financial accommodation — 10y government yield (single signal; low coverage)"
+  indicators:
+    - id: policy.yield_10y
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available IN rate signal (from 2011)
+      quality_factor: 1.00
+      invert: true          # high yield = restrictive
+
+# ── IN Credit Health Score ────────────────────────────────────────────────────
+credit_score:
+  description: "IN credit health — BIS private credit + IMF gov debt (% GDP levels)"
+  indicators:
+    - id: credit.private_debt_gdp
+      base_share: 1.0
+      importance: 0.85      # PRIMARY — credit deepening is the India growth channel
+      quality_factor: 0.95
+      invert: true
+    - id: credit.gov_debt_gdp
+      base_share: 0.7
+      importance: 0.55      # CONTEXT — annual only; domestically financed
+      quality_factor: 0.85
+      invert: true
+
+# ── IN Volatility Score ───────────────────────────────────────────────────────
+volatility_score:
+  description: "IN market volatility — monthly-return proxy on share-price index (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90      # PRIMARY — only available IN volatility signal
+      quality_factor: 0.70  # monthly-resolution proxy
+
+# ── IN Productivity Trend Score ───────────────────────────────────────────────
+productivity_score:
+  description: "IN productivity trend — PWT TFP + R&D intensity (annual; R&D lags to 2020)"
+  indicators:
+    - id: growth.tfp
+      base_share: 1.0
+      importance: 0.85      # PRIMARY — direct TFP measure (PWT, to 2023)
+      quality_factor: 0.75
+      half_life_months: 12.0
+    - id: growth.rnd_intensity
+      base_share: 0.7
+      importance: 0.50      # CONTEXT — input measure; WB series lags to 2020
+      quality_factor: 0.60  # extra reduction: 5+ year publication lag
+      half_life_months: 12.0

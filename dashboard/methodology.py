@@ -1530,14 +1530,19 @@ def get_layout() -> html.Div:
                             ["Japan",         "JP", "25", "✅ Live (annual CPI bridge)", "FRED, World Bank, IMF"],
                             ["South Korea",   "KR", "26", "✅ Live (CPI bridge post-2025-04)", "FRED OECD series, World Bank, IMF"],
                             ["China",         "CN", "32", "✅ Live (WB/IMF harmonized; trade = live monthly read)", "FRED (BIS credit, trade, rates), World Bank, IMF, COFER"],
-                            ["India",         "IN", "—",  "🔄 Next", "World Bank, IMF"],
+                            ["India",         "IN", "31", "✅ Live (live IP + 10y yield; CPI bridge)", "FRED (BIS credit, IP, trade, 10y), World Bank, IMF"],
+                            ["Germany",       "DE", "29", "✅ Live (all-live monthly feeds)", "FRED, Eurostat (IP geo=DE), World Bank, IMF"],
+                            ["Luxembourg",    "LU", "26", "✅ Live (financial-center caveats)", "FRED, World Bank, IMF"],
+                            ["Brazil",        "BR", "—",  "🔄 Next", "World Bank, IMF"],
                         ]
                     )],
                 )),
                 _p("Current coverage (Phase 2 in progress): United States (73 signals), "
                    "Eurozone (37), United Kingdom (27), Japan (25), South Korea (26), "
-                   "China (32, added 2026-07-07).  "
-                   "India is next; then Brazil, Saudi Arabia, Russia."),
+                   "China (32), India (31), Germany (29), Luxembourg (26) — the last "
+                   "three added 2026-07-07. Germany and Luxembourg are standalone "
+                   "reads of economies also inside the EZ aggregate. "
+                   "Brazil is next in the original Phase 2 order; then Saudi Arabia, Russia."),
                 _table(
                     ["Country", "Code", "Signals", "Status", "Key data sources"],
                     [
@@ -1562,7 +1567,21 @@ def get_layout() -> html.Div:
                          "pull (out of scope): no live monthly IP/retail/PPI — monthly "
                          "exports/imports are the live cyclical reads; no free bond yield "
                          "at any maturity (3m interbank proxies); CPI = IMF annual bridge"],
-                        ["India",         "IN", "—",  "🔄 Next", "World Bank, IMF"],
+                        ["India",         "IN", "31", "✅ Live (added 2026-07-07)",
+                         "FRED (BIS 3-sector credit, LIVE monthly IP, monthly trade, LIVE "
+                         "10y yield — richer than China); World Bank (external debt fills); "
+                         "IMF DataMapper; CPI = IMF annual bridge (OECD feed dead 2025-03); "
+                         "INR not in COFER (Other currencies)"],
+                        ["Germany",       "DE", "29", "✅ Live (added 2026-07-07)",
+                         "Richest non-US dataset: live monthly HICP (no bridge needed), "
+                         "live IP via Eurostat geo=DE (OECD FRED feeds died 2023/24), live "
+                         "retail/unemployment/10y Bund/3m interbank; BIS 3-sector credit "
+                         "from 1970. Standalone read of the EZ core economy"],
+                        ["Luxembourg",    "LU", "26", "✅ Live (added 2026-07-07)",
+                         "Live HICP/unemployment/IP/10y yield; BIS credit 420% GDP "
+                         "(financial-center intra-group vehicles — flow gauge, not "
+                         "domestic leverage; documented in lu_bindings.yaml header)"],
+                        ["Brazil",        "BR", "—",  "🔄 Next", "World Bank, IMF"],
                     ]
                 ),
                 _p("Each country requires: binding instantiation → series ID verification "
@@ -2054,6 +2073,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-07", "India + Germany + Luxembourg rollouts: 86 new signals (IN 31 / DE 29 / LU 26) — 306 total across 9 economies; all three carry BIS household+corporate credit so all three run the private/sovereign two-vote stage split; DE = richest non-US dataset (live HICP, Eurostat IP, 2-signal rate basket); LU flagged as financial-center read (credit 420% GDP = intra-group vehicles); IN has live IP + 10y yield (richer than CN)", "11"],
                             ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
                             ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
                             ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
@@ -2101,7 +2121,8 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
-                        ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
+                        ["2026-07-07", "India + Germany + Luxembourg rollouts: 86 new signals (IN 31 / DE 29 / LU 26) — 306 total across 9 economies; all three carry BIS household+corporate credit so all three run the private/sovereign two-vote stage split; DE = richest non-US dataset (live HICP, Eurostat IP, 2-signal rate basket); LU flagged as financial-center read (credit 420% GDP = intra-group vehicles); IN has live IP + 10y yield (richer than CN)", "11"],
+                            ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
                             ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
                         ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                         ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
