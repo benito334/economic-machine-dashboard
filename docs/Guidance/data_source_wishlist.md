@@ -1,6 +1,6 @@
 # Data Source Wishlist
 
-Running checklist of data we *want* but don't have a good free source for yet, plus data we have via a lower-fidelity proxy than we'd like. Use this when rolling out a new country (Japan is next) or when revisiting an existing gap — check each candidate source against the provider's own search/metadata endpoint before adding a binding (per [CLAUDE.md](../../CLAUDE.md) rule: never invent series IDs).
+Running checklist of data we *want* but don't have a good free source for yet, plus data we have via a lower-fidelity proxy than we'd like. **Sibling doc:** [signal_sourcing_guide.md](signal_sourcing_guide.md) holds the gold-standard signal spec for any country (Part 1) + the per-country shortcomings punch-list (Part 2) — start there for a deep-search-for-better-signals session. Use this when rolling out a new country (Japan is next) or when revisiting an existing gap — check each candidate source against the provider's own search/metadata endpoint before adding a binding (per [CLAUDE.md](../../CLAUDE.md) rule: never invent series IDs).
 
 Format per entry: **Concept** — desired frequency — current status — candidates to check.
 
