@@ -35,7 +35,7 @@ Format per entry: **Concept** — desired frequency — current status — candi
 - **Reserve-currency share (COFER)** — quarterly — the **new IMF SDMX 2.1 API** (`api.imf.org/external/sdmx/2.1/data/IMF.STA,COFER/{KEY}`, CSV via Accept header) serves pre-computed currency shares: key `G001.AFXRA.CI_{USD|EUR|JPY|GBP|CNY}.SHRO_PT.Q`, 109 obs 1999-Q1 → 2026-Q1 (USD 71.2% → 57.1%). Loader: `fetch_imf_sdmx_series()`. The legacy `dataservices.imf.org` SDMX host is dead. Only meaningful for reserve-issuer countries — KRW sits inside "Other currencies" (KR gets no slot, honest gap).
 
 **Checked and NOT viable / deferred:**
-- **External debt** — WB `DT.DOD.DECT.CD` returns NULL for US/EMU/KR/JP (verified 2026-07-05) — the debtor-reporting-system series only covers low/middle-income countries. Revisit when rolling out China/India/Brazil.
+- **External debt** — WB `DT.DOD.DECT.CD` returns NULL for US/EMU/KR/JP (verified 2026-07-05) — the debtor-reporting-system series only covers low/middle-income countries. **PARTIALLY RESOLVED 2026-07-07: fills for China** ($2.42T through 2024, 35 obs) — bound as `cn.external.external_debt_bn`. Expect it to fill for India/Brazil too.
 - **EZ aggregate Gini** — WB `EMU` aggregate is empty. A constructed GDP-weighted big-4 average (DE/FR/IT/ES) is feasible but deferred — flaky member-code fetches plus a constructed-proxy design decision.
 - **Governance / political polarization (post-WGI)** — V-Dem and Polity5 are annual academic bulk-CSV downloads, no REST API → **manual-load slot** (same pattern as EM-DAT). WB WGI `.EST` series remain deleted from the v2 API.
 - **Geopolitical risk (GPR, Caldara–Iacoviello)** — monthly xls from matteoiacoviello.com, no API → **manual-load slot**.
@@ -59,9 +59,21 @@ Results of the pre-rollout verification:
 5. GBP COFER share confirmed (4.40%, quarterly 1999→2026); Gini through 2021 (32.4).
 6. Debt Stress minimum-viable set for GB — still open (needs a UK DSR source; BoE/BIS candidates are bulk downloads).
 
-## General — next country rollout (China is next in the Phase 2 order)
+## China (rolled out 2026-07-07)
 
-Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP and GB sections above show surprises in both directions. China notes from the original plan: NBS automated pull is out of scope — use WB/IMF harmonized series only.
+Results of the pre-rollout verification (32 signals bound, all endpoint-verified):
+1. **BIS credit is the star dataset** — `QCNPAM770A` (private 200.8% GDP), `QCNHAM770A` (household 58.0%), `QCNNAM770A` (corporate 142.8%), all quarterly and live via FRED. China is the second country (after the US) with a real private/sovereign two-vote split in the stage classifier.
+2. **All OECD monthly activity feeds are dead**: industrial production (`CHNPRINTO01*` → 2023), CLI (→ 2024-01), M2 (→ 2019), quarterly nominal GDP (`CHNGDPNQDSMEI` → 2023-Q3), PPI (→ 2022). The LIVE monthly cyclical reads are merchandise **exports/imports** (`XTEXVA01CNM667S` / `XTIMVA01CNM667S`, USD, → 2026-04) — bound as the growth basket. **Open gap: NBS monthly IP/retail/PMI would be the upgrade, but the NBS pull is explicitly out of scope.**
+3. **No free government bond yield at ANY maturity** (China isn't in the OECD IRLT family; FRED search returns nothing). The 3m interbank rate (`IR3TIB01CNM156N`, live) proxies the market rate everywhere a yield is needed — including both stage-classifier spreads. **Open gap: ChinaBond/CFETS 10y CGB yield has no free API.**
+4. **Monthly CPI ages out 2025-04** (`CPALTT01CNM659N`, same OECD cutoff as KR/GB) → IMF WEO annual bridge. No core-CPI series exists at all.
+5. **Unemployment is annual-only** (WB ILO-modeled `SL.UEM.TOTL.ZS`, is_proxy) — the NBS monthly surveyed rate is not freely automatable.
+6. **CNY COFER share confirmed** (`G001.AFXRA.CI_CNY.SHRO_PT.Q`, 38 obs 2016-Q4 → 2026-Q1 at 1.99%) — China gets the same external-order read as the US.
+7. **WB external debt fills** (see the ORDER-layer entry above) — first country in the system.
+8. No daily equity index (monthly `SPASTT01CNM661N` proxy, EZ/KR volatility pattern); no gov-interest series (the stage classifier's SOVEREIGN SQUEEZE flag degrades honestly to never firing for CN); Debt Stress composite not attempted (model stays US-only).
+
+## General — next country rollout (India is next in the Phase 2 order)
+
+Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP/GB/CN sections above show surprises in both directions. For India expect the CN pattern to repeat: WB/IMF harmonized + whatever OECD/BIS feeds FRED mirrors; check `DT.DOD.DECT.CD` (external debt) early — it fills for debtor-reporting countries.
 
 ---
 

@@ -837,7 +837,8 @@ def register_callbacks(app) -> None:
             status_filter not in ("all", None, ""),
         ])
 
-        country_label = {"US": "United States", "EZ": "Euro Area", "KR": "South Korea"}.get(
+        country_label = {"US": "United States", "EZ": "Euro Area", "KR": "South Korea",
+                         "JP": "Japan", "GB": "United Kingdom", "CN": "China"}.get(
             country, country
         )
         description = (

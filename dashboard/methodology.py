@@ -1524,27 +1524,45 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Country", "Code", "Signals", "Status", "Key data sources"],
                         [
-                            ["United States", "US", "63", "✅ Live", "FRED, World Bank, IMF, OECD"],
-                            ["Eurozone",      "EZ", "34", "✅ Live (current account gap)", "Eurostat JSON, ECB SDW, World Bank, IMF"],
-                            ["South Korea",   "KR", "22", "✅ Live (CPI proxy bridge)", "FRED OECD series, World Bank, IMF"],
-                            ["Japan",         "JP", "—",  "🔄 Next", "FRED, World Bank, IMF"],
+                            ["United States", "US", "73", "✅ Live", "FRED, World Bank, IMF, OECD"],
+                            ["Eurozone",      "EZ", "37", "✅ Live (current account gap)", "Eurostat JSON, ECB SDW, World Bank, IMF"],
+                            ["United Kingdom","GB", "27", "✅ Live (CPI bridge post-2025-03)", "FRED OECD series, World Bank, IMF"],
+                            ["Japan",         "JP", "25", "✅ Live (annual CPI bridge)", "FRED, World Bank, IMF"],
+                            ["South Korea",   "KR", "26", "✅ Live (CPI bridge post-2025-04)", "FRED OECD series, World Bank, IMF"],
+                            ["China",         "CN", "32", "✅ Live (WB/IMF harmonized; trade = live monthly read)", "FRED (BIS credit, trade, rates), World Bank, IMF, COFER"],
+                            ["India",         "IN", "—",  "🔄 Next", "World Bank, IMF"],
                         ]
                     )],
                 )),
-                _p("Current coverage (Phase 2 in progress): United States (63 signals), "
-                   "Eurozone (34 signals), South Korea (22 signals).  "
-                   "Japan is next; then UK, China, India, Brazil, Saudi Arabia, Russia."),
+                _p("Current coverage (Phase 2 in progress): United States (73 signals), "
+                   "Eurozone (37), United Kingdom (27), Japan (25), South Korea (26), "
+                   "China (32, added 2026-07-07).  "
+                   "India is next; then Brazil, Saudi Arabia, Russia."),
                 _table(
                     ["Country", "Code", "Signals", "Status", "Key data sources"],
                     [
-                        ["United States", "US", "63", "✅ Live", "FRED, World Bank, IMF, OECD"],
-                        ["Eurozone",      "EZ", "34", "✅ Live (current account gap)",
+                        ["United States", "US", "73", "✅ Live", "FRED, World Bank, IMF, OECD"],
+                        ["Eurozone",      "EZ", "37", "✅ Live (current account gap)",
                          "Eurostat JSON stats API (industrial prod, retail, unemployment, "
                          "fiscal); ECB SDW SDMX (long-term interest rates); World Bank; IMF"],
-                        ["South Korea",   "KR", "22", "✅ Live (annual CPI proxy)",
+                        ["United Kingdom","GB", "27", "✅ Live (CPI bridge)",
+                         "FRED OECD series; World Bank; IMF DataMapper; monthly CPI bridged "
+                         "via IMF annual PCPIPCH (OECD feed ended Mar 2025; ONS API is the "
+                         "live-replacement candidate)"],
+                        ["Japan",         "JP", "25", "✅ Live (annual CPI bridge)",
+                         "FRED (incl. daily Nikkei for TRUE realized vol); World Bank; IMF; "
+                         "all OECD JP CPI feeds dead since 2021 → IMF annual bridge only"],
+                        ["South Korea",   "KR", "26", "✅ Live (annual CPI proxy)",
                          "FRED OECD series; World Bank; IMF DataMapper; "
                          "monthly CPI bridged via IMF annual PCPIPCH (OECD direct feed ended Apr 2025)"],
-                        ["Japan",         "JP", "—",  "🔄 Next", "FRED, World Bank, IMF"],
+                        ["China",         "CN", "32", "✅ Live (added 2026-07-07)",
+                         "FRED (BIS 3-sector credit, monthly trade, 3m interbank, REER, FX "
+                         "reserves); World Bank (incl. external debt — first country where "
+                         "DT.DOD.DECT.CD fills); IMF DataMapper; COFER RMB share. No NBS "
+                         "pull (out of scope): no live monthly IP/retail/PPI — monthly "
+                         "exports/imports are the live cyclical reads; no free bond yield "
+                         "at any maturity (3m interbank proxies); CPI = IMF annual bridge"],
+                        ["India",         "IN", "—",  "🔄 Next", "World Bank, IMF"],
                     ]
                 ),
                 _p("Each country requires: binding instantiation → series ID verification "
@@ -2036,6 +2054,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
                             ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
                             ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                             ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
@@ -2082,7 +2101,8 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
-                        ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
+                        ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
+                            ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],
                         ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                         ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
                         ["2026-07-06", "Fixed the long-standing raw-vs-processed dtype bug (merge_asof datetime64[us] vs [ns]) — the suite's one known failure is gone; 421 tests, zero exclusions", "10"],

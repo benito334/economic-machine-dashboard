@@ -733,6 +733,7 @@ def _left_nav() -> html.Div:
         {"label": "🇬🇧 United Kingdom",         "value": "GB"},
         {"label": "🇯🇵 Japan",                  "value": "JP"},
         {"label": "🇰🇷 South Korea",            "value": "KR"},
+        {"label": "🇨🇳 China",                  "value": "CN"},
     ]
 
     return html.Div([
@@ -1686,7 +1687,7 @@ def update_toggle_icon(collapsed: bool) -> str:
 
 _COUNTRY_FLAGS = {"US": ("🇺🇸", "United States"), "EZ": ("🇪🇺", "Eurozone"),
                   "KR": ("🇰🇷", "South Korea"),    "JP": ("🇯🇵", "Japan"),
-                  "GB": ("🇬🇧", "United Kingdom")}
+                  "GB": ("🇬🇧", "United Kingdom"), "CN": ("🇨🇳", "China")}
 
 
 @callback(

@@ -1339,3 +1339,25 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Rebuilt the charting image only (NOT the pipeline — running the pipeline container while charting holds read-only connections was the incident two sessions ago; this session only ran the classifier from the host against the live DB with charting's connections already read-only, no conflict). Verified all three UI surfaces live for US and non-US countries.
 
 **Design note carried forward:** the sovereign VOTE itself can read differently from the SQUEEZE FLAG (e.g. sovereign vote = "leveraging" this quarter while the flag is True) — this is intentional per Ray's Q5 ruling, not a bug: the vote scoring shares the country's macro conditions (r−g, ngdp−yield) across both votes by design, while the flag is built directly from independent thresholds specifically so it can fire ahead of the vote catching up.
+
+---
+
+## 2026-07-07 — China rollout (Phase 2 continuation — 6th economy live)
+
+**Done:**
+- `config/countries/cn_bindings.yaml` (32 signals, all endpoint-verified against FRED/WB/IMF/COFER before binding) + `config/countries/cn_composites.yaml` (6 force composites). **220 signals total** (73 US + 37 EZ + 27 GB + 25 JP + 26 KR + 32 CN). All 32 ingested clean: 0 empty, 0 errors, 0 sanity warnings.
+- **The data-availability surprises (both directions), all logged in `data_source_wishlist.md`:**
+  - **BIS credit is the star**: private (200.8% GDP), household (58.0%), corporate (142.8%) — quarterly, live. CN is the **second country after the US with a real private/sovereign two-vote split** in the stage classifier.
+  - **WB external debt fills for China** ($2.42T) — first country in the system where `DT.DOD.DECT.CD` works (wishlist item partially closed).
+  - **CNY COFER share confirmed** (1.99%, 2016-Q4→2026-Q1) — CN gets the same external-order read as the US.
+  - **All OECD monthly activity feeds are dead** (IP → 2023, CLI → 2024-01, M2 → 2019, quarterly GDP → 2023-Q3, PPI → 2022). The live monthly growth reads are **merchandise exports/imports** (USD, → 2026-04), bound as the growth basket with LNY-noise caveats documented.
+  - **No free bond yield at any maturity** — the 3m interbank rate (live) proxies the market rate everywhere, including both stage-classifier spreads (documented is_proxy).
+  - Monthly CPI ages out 2025-04 (same OECD cutoff as KR/GB) → IMF annual bridge; no core CPI exists; unemployment is WB/ILO annual-only.
+- Stage classifier: CN added to `debt_cycle_stage.yaml` (3 debt components + interbank-rate proxies) and `sovereign_inputs` (household+corporate private vote; no gov-interest series → SOVEREIGN SQUEEZE flag degrades honestly to never firing). **CN = leveraging on BOTH votes** (confidence 0.28, 4/5 features) — textbook: debt/GDP still rising, r−g deeply negative, ngdp above the short rate.
+- Composites: 545 monthly snapshots. Latest (2026-05): Disinflationary Slowdown — Growth −0.68 / Inflation −0.77 (the 0.0% CPI deflation read pins inflation Z deeply negative — plausible and the defining China story right now). Growth flips month-to-month on trade YoY noise (documented; the Transition band + momentum gate absorb most of it). Force balance 0.78 OK; no CORR AUDIT flags.
+- Spot-checks vs public references: BIS credit ratios, IMF gov debt 99.2%, FX reserves ~$3.4T, GDP $19.6T, FDI collapse to 0.23% GDP, population decline −0.17%, Gini 36.0, COFER 1.99% — all match.
+- Dashboard: CN added to the country selector, Command Center/User Guide name maps, Relative Cycles `COUNTRIES`, Workbench facet + flags, Data Dashboard label map. Methodology §11 rollout table rewritten (was stale — still said "Japan next"); §15 revision-log row added (anchor-split pattern, verified 2 occurrences).
+- 2 new tests (CN config integrity: 3-sector debt + interbank proxies + private-vote inputs; live CN two-vote regression pinned to leveraging) — suite **429 passed, zero exclusions**.
+- Full pipeline run on host (charting stopped first, restarted after); docker images rebuilt; all 8 routes verified 200; CC/Relative/Guide render CN with live data.
+
+**Next:** India is next in the Phase 2 order (expect the CN pattern: WB/IMF + FRED-mirrored feeds; check `DT.DOD.DECT.CD` early). Other open tails: D4 manual-load slots, ONS/e-Stat CPI registrations, the 2007-squeeze threshold tweak candidate.

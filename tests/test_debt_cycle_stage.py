@@ -32,7 +32,7 @@ def cfg():
 def test_config_loads_and_has_all_stages(cfg):
     for stage in STAGES:
         assert stage in cfg["weights"]
-    for country in ("US", "EZ", "KR"):
+    for country in ("US", "EZ", "KR", "CN"):
         assert country in cfg["countries"]
 
 
@@ -47,6 +47,22 @@ def test_config_sparse_countries_degrade_honestly(cfg):
     for cc in ("EZ", "KR"):
         assert cfg["countries"][cc]["dsr_signal"] is None
         assert cfg["countries"][cc]["ngdp_minus_yield"]["derived"] is True
+
+
+def test_config_cn_has_sector_debt_but_no_dsr(cfg):
+    """CN is the second country (after the US) with full 3-sector debt data
+    (BIS household + corporate), so it participates in the private/sovereign
+    two-vote split — but has no debt-service series and no bond yield (the
+    3m interbank rate proxies the yield in both spreads)."""
+    cn = cfg["countries"]["CN"]
+    assert len(cn["debt_components"]) == 3
+    assert cn["dsr_signal"] is None
+    assert cn["real_rate"]["nominal_signal"] == "policy.rate_3m_interbank"
+    assert cn["ngdp_minus_yield"]["yield_signal"] == "policy.rate_3m_interbank"
+    sov = cfg["sovereign_inputs"]["CN"]
+    assert sov["private_debt"] == [
+        "credit.household_debt_gdp", "credit.corporate_debt_gdp"
+    ]
 
 
 # ── Feature construction ──────────────────────────────────────────────────────
@@ -276,3 +292,24 @@ def test_gb_headline_unchanged_no_private_data():
     latest = labeled[-1]
     assert latest.stage_private is None
     assert latest.stage == latest.stage_sovereign
+
+
+@pytest.mark.integration
+def test_cn_two_vote_split_live():
+    """CN has BIS household + corporate debt, so BOTH votes must be populated
+    (the second real two-vote country after the US). With no gov-interest
+    series the SOVEREIGN SQUEEZE flag must degrade honestly to False, never
+    None/NaN. Live regression pinned to the 2026 read: China is leveraging."""
+    cfg = load_stage_config()
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        snaps = compute_stage_history(conn, "CN", cfg)
+    finally:
+        conn.close()
+    labeled = [s for s in snaps if s.stage]
+    assert labeled
+    latest = labeled[-1]
+    assert latest.stage_private is not None
+    assert latest.stage_sovereign is not None
+    assert latest.sovereign_squeeze is False
+    assert latest.stage == "leveraging"

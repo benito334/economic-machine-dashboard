@@ -37,7 +37,7 @@ STAGE_COLORS = {
 }
 
 _COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area", "GB": "United Kingdom",
-                  "JP": "Japan", "KR": "South Korea"}
+                  "JP": "Japan", "KR": "South Korea", "CN": "China"}
 
 _CARD = {
     "background": "var(--card-bg)", "border": "1px solid var(--border-color)",

@@ -33,9 +33,9 @@ from dashboard.charting_data import (
 )
 from dashboard.command_center import STAGE_COLORS
 
-COUNTRIES = ["US", "EZ", "GB", "JP", "KR"]      # extend as Phase 2 rollout continues
+COUNTRIES = ["US", "EZ", "GB", "JP", "KR", "CN"]  # extend as Phase 2 rollout continues
 _NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area", "GB": "🇬🇧 United Kingdom",
-          "JP": "🇯🇵 Japan", "KR": "🇰🇷 South Korea"}
+          "JP": "🇯🇵 Japan", "KR": "🇰🇷 South Korea", "CN": "🇨🇳 China"}
 
 _RECENT_WINDOW_YEARS = 10           # recent-correlation window
 

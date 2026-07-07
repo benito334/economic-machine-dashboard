@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = Path(os.environ.get("DATA_DIR", "/mnt/data/project_data/all_weather/indicators_machine"))
 SAVED_VIEWS_PATH = _DATA_DIR / "saved_views.json"
 
-_COUNTRY_FLAGS = {"US": "🇺🇸", "EZ": "🇪🇺", "GB": "🇬🇧", "JP": "🇯🇵", "KR": "🇰🇷"}
+_COUNTRY_FLAGS = {"US": "🇺🇸", "EZ": "🇪🇺", "GB": "🇬🇧", "JP": "🇯🇵", "KR": "🇰🇷", "CN": "🇨🇳"}
 
 TRANSFORMS = {
     "raw":       "Raw",

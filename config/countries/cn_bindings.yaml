@@ -1,0 +1,658 @@
+# China (CN) indicator bindings — Phase 2
+# Country code: CN (ISO 3166-1 alpha-2)
+# All vintage_available: false — FRED vintages cover US only.
+# NBS (National Bureau of Statistics) automated pull is OUT OF SCOPE per the
+# project plan — this build uses WB/IMF harmonized series plus the OECD/BIS
+# feeds that FRED mirrors. Consequences (all verified 2026-07-07):
+#   - No live monthly industrial production / retail sales / PPI (OECD China
+#     feeds died 2022–2023). The live monthly cyclical reads are merchandise
+#     exports/imports (through 2026-04) instead.
+#   - No free government bond yield of any maturity. The 3-month interbank
+#     rate (SHIBOR-linked, live) is the only market rate — used as a
+#     documented proxy wherever a yield is required.
+#   - Monthly CPI YoY (OECD COICOP feed) ages out 2025-04 → IMF annual bridge,
+#     same pattern as GB/JP.
+#   - BIS credit aggregates are RICH for China (private/household/corporate
+#     % GDP, quarterly, live) — the second country after the US with full
+#     sector-level debt data for the stage classifier's two-vote model.
+#   - WB external debt (DT.DOD.DECT.CD) actually fills for China ($2.4T,
+#     2024) — first country in the system where it does (wishlist item).
+#   - COFER separately identifies the renminbi since 2016 — CN gets an
+#     order.reserve_currency_share signal like the US.
+# Note: raw_scale: 100 is applied to already-YoY% series (values like 2.089)
+#       to convert them to decimal form (0.02089) before storage and Z-scoring.
+# Equilibrium values in transformed units:
+#   yoy_pct → decimal  (0.045 = 4.5%)
+#   level rate/yield → % level (2.5 = 2.5%)
+#   level pct_gdp → % (e.g. -4.0 = 4% deficit)
+
+country: CN
+
+bindings:
+
+  # ─── Master Synthesis ──────────────────────────────────────────────────────
+  # No live quarterly GDP: the OECD MEI quarterly nominal series (CHNGDPNQDSMEI)
+  # died 2023-Q3. IMF WEO annual real growth is the live harmonized read
+  # (current-year estimates and forecasts are excluded by the loader).
+
+  - id: master.gdp_real
+    series_id: NGDP_RPCH
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.045
+    linkage: "China real GDP growth (IMF WEO annual, %). Structural slowdown from 10%+ (2000s) toward ~4–5%; the pace of that descent is the defining global growth question."
+    sanity_min: -0.15
+    sanity_max: 0.20
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 19000.0
+    linkage: "China nominal GDP in current USD billions (IMF). World's second-largest economy; used for cross-country size comparison in the Global Overview table."
+    sanity_min: 1000.0
+    sanity_max: 50000.0
+
+  # ─── Inflation ─────────────────────────────────────────────────────────────
+  # OECD COICOP monthly CPI YoY (already % form) — live history 1987→2025-04,
+  # then ages out (feed dead, same as GB/JP monthly CPI). The IMF annual
+  # bridge below carries the current read. No free core-CPI series for China.
+
+  - id: inflation.cpi_headline
+    series_id: CPALTT01CNM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.020
+    linkage: "China CPI all items YoY (OECD COICOP, already % form on FRED). History spans the 1989/1994 double-digit inflations through the 2023–25 deflation scare. Feed ends 2025-04 — bridged by the IMF annual signal."
+    sanity_min: -0.05
+    sanity_max: 0.30
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.020
+    linkage: "China CPI % change (IMF WEO annual). Bridge signal now that the monthly OECD feed is dead; 2025 reading of 0.0% captures the deflation risk that dominates the current Chinese cycle."
+    sanity_min: -0.05
+    sanity_max: 0.30
+
+  # ─── Growth (Demand & Output) ───────────────────────────────────────────────
+  # The only LIVE monthly cyclical output reads are merchandise trade values.
+  # Exports = the external-demand engine; imports = the best free monthly proxy
+  # for domestic demand. YoY transform absorbs most Lunar-New-Year seasonality
+  # (holiday timing still distorts Jan/Feb readings — read them as a pair).
+
+  - id: growth.exports_yoy
+    series_id: XTEXVA01CNM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.05
+    linkage: "China merchandise exports YoY (USD, seasonally adjusted). The external-demand engine of the economy; the most-watched live monthly indicator now that OECD IP/retail feeds are dead."
+    sanity_min: -0.50
+    sanity_max: 0.80
+
+  - id: growth.imports_yoy
+    series_id: XTIMVA01CNM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.05
+    linkage: "China merchandise imports YoY (USD, seasonally adjusted). PROXY for domestic demand — import weakness flags the property/consumption drag faster than any annual series."
+    sanity_min: -0.50
+    sanity_max: 0.80
+
+  - id: growth.unemployment
+    series_id: SL.UEM.TOTL.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 4.5
+    linkage: "China unemployment rate (ILO modeled estimate, annual). PROXY — the NBS monthly surveyed rate is not freely automatable; the ILO harmonized annual read smooths over the youth-unemployment stress visible in national data."
+    sanity_min: 2.0
+    sanity_max: 12.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "R&D expenditure as % of GDP. China has converged to OECD-average intensity (2.6%) — the structural bet behind the tech-self-sufficiency drive."
+    sanity_min: 0.0
+    sanity_max: 8.0
+
+  - id: growth.tfp
+    series_id: RTFPNACNA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.010
+    linkage: "China Total Factor Productivity YoY% (Penn World Tables via FRED, annual through 2023). Whether TFP re-accelerates or stagnates decides if the middle-income transition succeeds."
+    sanity_min: -0.10
+    sanity_max: 0.10
+
+  # ─── Policy ────────────────────────────────────────────────────────────────
+  # No free government bond yield at ANY maturity for China (verified: no OECD
+  # IRLT series, FRED search empty). The 3-month interbank rate is the only
+  # live market rate — the PBoC policy-stance read.
+
+  - id: policy.rate_3m_interbank
+    series_id: IR3TIB01CNM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "China 3-month interbank rate (SHIBOR-linked, %). The only free live market rate; PBoC easing since 2021 has taken it from ~2.5% to ~1.6% — the monetary response to the property deleveraging."
+    sanity_min: 0.0
+    sanity_max: 15.0
+
+  # ─── Currency ──────────────────────────────────────────────────────────────
+
+  - id: currency.reer
+    series_id: RBCNBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "China real broad effective exchange rate (BIS, 2020=100). Sub-95 readings mark the competitive-depreciation channel Beijing leans on when domestic demand disappoints."
+    sanity_min: 50.0
+    sanity_max: 140.0
+
+  # ─── Capital ───────────────────────────────────────────────────────────────
+
+  - id: capital.fx_reserves_yoy
+    series_id: TRESEGCNM052N
+    provider: FRED
+    frequency: M
+    force: capital
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "China FX reserves ex-gold YoY (IMF IFS, ~$3.4T stock). Reserve drawdowns (2015-16 style) flag capital-flight pressure; accumulation flags intervention against appreciation."
+    sanity_min: -0.40
+    sanity_max: 0.80
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "FDI net inflows as % of GDP. Collapsed from ~4% (2000s) to ~0.2% (2024) — the de-risking/decoupling wave made visible."
+    sanity_min: -2.0
+    sanity_max: 8.0
+
+  # ─── Credit (BIS quarterly — the richest China dataset available free) ─────
+
+  - id: credit.private_debt_gdp
+    series_id: QCNPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 150.0
+    linkage: "Total credit to the private non-financial sector, % GDP (BIS, break-adjusted). At ~200% China carries one of the largest private debt stocks ever recorded — the core input to Ray's leveraging-vs-squeeze question."
+    sanity_min: 0.0
+    sanity_max: 350.0
+
+  - id: credit.household_debt_gdp
+    series_id: QCNHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 45.0
+    linkage: "Credit to households, % GDP (BIS). Tripled 2008→2021 on mortgages; the property deleveraging shows up here first."
+    sanity_min: 0.0
+    sanity_max: 120.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QCNNAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 120.0
+    linkage: "Credit to non-financial corporations, % GDP (BIS). At ~143% among the highest globally — SOE and LGFV leverage concentrated here."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 60.0
+    linkage: "China general government gross debt % GDP (IMF). Near 100% and rising fast as fiscal absorbs the property bust — understates the true burden (LGFV debt sits in the corporate series)."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  # ─── Fiscal (IMF CHN) ──────────────────────────────────────────────────────
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -4.0
+    linkage: "China general government structural balance % GDP (IMF). Persistently deep (−7%+) deficits fund the post-property-bust stimulus; used in the Global Overview Gov. Budget column."
+    sanity_min: -20.0
+    sanity_max: 5.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -3.0
+    linkage: "China IMF general government primary balance % GDP (excl. interest). Structural fiscal anchor; the −6% area readings show the fiscal engine running hot."
+    sanity_min: -20.0
+    sanity_max: 5.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 17.0
+    linkage: "General government revenue % GDP (central-government basis). Low (~15%) vs OECD peers and FALLING as land-sale revenue collapses — the quiet fiscal constraint behind the stimulus debate."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  # ─── External & Trade (WorldBank / CHN) ────────────────────────────────────
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "China current account balance % GDP. Re-widening surplus (3.8% in 2025) as manufacturing exports absorb weak domestic demand — the global-imbalance flashpoint."
+    sanity_min: -5.0
+    sanity_max: 12.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 20.0
+    linkage: "Exports of goods and services % GDP. Down from the 36% peak (2006) to ~21% — the economy is far less export-dependent than the headlines suggest, but the marginal growth still is."
+    sanity_min: 5.0
+    sanity_max: 45.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 17.0
+    linkage: "Imports of goods and services % GDP. Import-substitution policy plus weak domestic demand keep this falling — a drag on every trade partner."
+    sanity_min: 5.0
+    sanity_max: 40.0
+
+  # First country in the system where WB external debt actually fills —
+  # DT.DOD.DECT.CD is null for high-income countries (US/EZ/JP/GB/KR) but
+  # China reports through the debtor reporting system (wishlist item closed).
+  - id: external.external_debt_bn
+    series_id: DT.DOD.DECT.CD
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: billions_usd
+    raw_scale: 1.0e9
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2000.0
+    linkage: "Total external debt stock, USD billions (WB debtor reporting system). ~$2.4T but small vs GDP (~13%) and dwarfed by $3.4T reserves — external position is a strength, not a vulnerability."
+    sanity_min: 0.0
+    sanity_max: 10000.0
+
+  # ─── Demographics ──────────────────────────────────────────────────────────
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "China total population (World Bank). Peaked 2021 at 1.41bn and now declining — used in Global Overview; divide by 1,000,000 for display in millions."
+    sanity_min: 500000000.0
+    sanity_max: 2000000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Annual population growth rate %. Negative since 2022 — the demographic turn arrived a decade earlier than official projections assumed."
+    sanity_min: -2.0
+    sanity_max: 3.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 45.0
+    linkage: "Age dependency ratio (dependents per 100 working-age). The one-child demographic dividend is reversing into one of history's fastest aging transitions."
+    sanity_min: 20.0
+    sanity_max: 100.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 66.0
+    linkage: "ILO-modeled labor force participation (% population 15+). High but declining from the 79% (1990) command-economy legacy as the population ages."
+    sanity_min: 40.0
+    sanity_max: 90.0
+
+  # ─── Volatility Force ──────────────────────────────────────────────────────
+  # No free daily China equity index via FRED (no SSE Composite / CSI 300) —
+  # monthly OECD MEI share-price index only, so realized vol is the same
+  # monthly-return proxy used for KR/EZ. See data_source_wishlist.md.
+
+  - id: volatility.equity_index
+    series_id: SPASTT01CNM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "OECD MEI share price index for China (monthly, 2015=100) — raw level, used only as input to realized volatility."
+    sanity_min: 0.0
+    sanity_max: 1000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.20
+    linkage: "Annualized rolling standard deviation of monthly log returns on the China share-price index (12-month window) — monthly-resolution proxy; the 2015 bubble/crash and 2024 stimulus rallies dominate its history."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  # ─── Lens J — Big-cycle ORDER ──────────────────────────────────────────────
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 38.0
+    linkage: "Gini index of income inequality — the internal-order read. China's 36 (2022) is down from the 43+ peak (2010) but 'common prosperity' remains politically central."
+    sanity_min: 20.0
+    sanity_max: 60.0
+    notes: "World Bank Poverty & Inequality Platform, CHN. Verified 2026-07-07: annual through 2022 (36.0). Multi-year publication lag is inherent."
+
+  # CNY is separately identified in COFER since 2016-Q4 — unlike KRW/GBP-minor
+  # currencies, China gets the same external-order read as the US.
+  - id: order.reserve_currency_share
+    series_id: "IMF.STA,COFER/G001.AFXRA.CI_CNY.SHRO_PT.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: pct_level
+    country: CN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "RMB share of allocated global FX reserves (IMF COFER) — the external-order read for the challenger currency: ~2% and flat since 2022 despite de-dollarization headlines; internationalization is stalled by capital controls."
+    sanity_min: 0.0
+    sanity_max: 20.0
+    notes: "New IMF SDMX 2.1 API (api.imf.org), dataflow IMF.STA/COFER, key G001.AFXRA.CI_CNY.SHRO_PT.Q. Verified 2026-07-07: 38 quarterly obs 2016-Q4 → 2026-Q1 (1.99%)."

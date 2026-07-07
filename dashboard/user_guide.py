@@ -35,7 +35,7 @@ from dashboard.command_center import STAGE_COLORS, chip_direction_agreement
 from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area", "GB": "United Kingdom",
-                  "JP": "Japan", "KR": "South Korea"}
+                  "JP": "Japan", "KR": "South Korea", "CN": "China"}
 
 _G_COLOR, _I_COLOR, _AMBER = "#4C9BE8", "#E8734C", "#E8A317"
 

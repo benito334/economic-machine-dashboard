@@ -178,6 +178,28 @@ countries:
       yield_signal: policy.yield_10y
       growth_signal: master.gdp_real
       inflation_signal: inflation.cpi_headline
+  CN:
+    # Second country (after the US) with full sector-level debt data — BIS
+    # household + corporate credit are quarterly and live, so CN gets a real
+    # private/sovereign two-vote split. Caveats: no free bond yield at any
+    # maturity → the 3m interbank rate proxies "the yield" in both spreads
+    # (understates long rates when the curve is steep — documented proxy);
+    # no debt-service series; CPI = IMF annual bridge (monthly feed dead).
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.rate_3m_interbank  # PROXY: only free CN market rate
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.rate_3m_interbank    # PROXY: no free CN bond yield
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
 
 # ── Sovereign-aware sector model (Ray ruling 2026-07-06) ─────────────────────
 # Triggered by the "US reads reflation while Ray calls for deleveraging"
@@ -232,3 +254,10 @@ sovereign_inputs:
     gov_debt: credit.gov_debt_gdp
     private_debt: []
     marginal_yields: [policy.yield_10y]
+  CN:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov_interest / gov_revenue interest series free for CN → the
+    # refinancing-gap and gov-DSR flag conditions can't evaluate; the
+    # SOVEREIGN SQUEEZE flag degrades honestly to never firing.
+    marginal_yields: [policy.rate_3m_interbank]
