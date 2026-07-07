@@ -2001,6 +2001,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                             ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
                             ["2026-07-06", "Fixed the long-standing raw-vs-processed dtype bug (merge_asof datetime64[us] vs [ns]) — the suite's one known failure is gone; 421 tests, zero exclusions", "10"],
                             ["2026-07-06", "UI cleanup: retired the pre-Ray surfaces — standalone Regime Classifier page/engine, Streamlit :8501 proof, TradingView :8503/:8004 SPA (all archived), deprecated composites.yaml deleted; Regime History help panel + agreement labels rewritten to chip language; Weight Audit Monte Carlo now classifies trials by threshold-aware season zones instead of sign quadrants", "8, 12 (display + cleanup)"],
@@ -2045,6 +2046,7 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
+                        ["2026-07-06", "Workbench overlay gained an Independent-axis toggle (TV multiple-price-scales): each series on its own auto-scaled y-axis so a small-range series is not flattened by a large-range one; values read from the unified crosshair; persisted in saved views", "— (display only)"],
                         ["2026-07-06", "Workbench added (/workbench), replacing Chart Overlay + Data Explorer: TV-style omnibox search over all 321 plottable series (signals, composites, debt stress, raw cache), overlay + stacked modes with per-series transforms (raw/rebase/pct-from-start/YoY/Z), synced crosshair, per-series inspector drawer, saved views (JSON) + URL deep links + presets", "— (display only)"],
                         ["2026-07-06", "Fixed the long-standing raw-vs-processed dtype bug (merge_asof datetime64[us] vs [ns]) — the suite's one known failure is gone; 421 tests, zero exclusions", "10"],
                         ["2026-07-06", "UI cleanup: retired the pre-Ray surfaces — standalone Regime Classifier page/engine, Streamlit :8501 proof, TradingView :8503/:8004 SPA (all archived), deprecated composites.yaml deleted; Regime History help panel + agreement labels rewritten to chip language; Weight Audit Monte Carlo now classifies trials by threshold-aware season zones instead of sign quadrants", "8, 12 (display + cleanup)"],

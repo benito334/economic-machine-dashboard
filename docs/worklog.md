@@ -1312,3 +1312,11 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - **Bonus fix**: the long-standing `test_compare_raw_vs_processed_level_signal` dtype failure (merge_asof `datetime64[us]` vs `[ns]`) — fixed in explorer_data; **the suite now runs 421 passed with ZERO exclusions** (first time since 2026-06).
 
 **Verified live**: search → add US+JP 10Y, overlay + stacked with pane grouping, save "us vs jp 10y", deep-link reload restores the view.
+
+---
+
+## 2026-07-06 — Workbench: independent-axis overlay (TV multiple price scales)
+
+**Ask:** overlaying series with very different magnitudes (US interest payments vs productivity) flattened the small one against zero on the shared axis.
+
+**Done:** added an `axis: Shared | Independent` toggle to overlay mode (hidden in stacked). Independent puts each series on its own overlaying, auto-scaled y-axis (`yaxis`, `yaxis2`, …), hides tick labels (N scales can't share one label column), switches to `hovermode="x unified"` so the crosshair carries every value, and is a no-op with a single series. Persisted in `wb-config` and saved-view specs; the toggle hides itself in stacked mode via `wb_axis_sync`. 1 new test (`test_overlay_independent_axes`); suite 422 passed. Verified live: interest-payments vs productivity — productivity's COVID spike/collapse/recovery, invisible on the shared axis, is fully legible on independent.

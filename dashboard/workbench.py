@@ -112,6 +112,21 @@ def get_layout() -> html.Div:
                 inputStyle={"marginRight": "4px"},
                 labelStyle={"marginRight": "12px", "fontSize": "0.8rem"},
                 style={"marginLeft": "14px"}),
+            html.Div([
+                html.Span("axis:", style={"fontSize": "0.72rem",
+                                          "color": "var(--muted-color)",
+                                          "marginRight": "6px"}),
+                dbc.RadioItems(
+                    id="wb-axis", value="shared", inline=True,
+                    options=[{"label": "Shared", "value": "shared"},
+                             {"label": "Independent", "value": "independent"}],
+                    inputStyle={"marginRight": "4px"},
+                    labelStyle={"marginRight": "10px", "fontSize": "0.78rem"}),
+            ], id="wb-axis-wrap",
+                title="Overlay only — Independent gives every series its own "
+                      "auto-scaled y-axis (values read from the crosshair), so a "
+                      "small-range series isn't flattened by a large-range one.",
+                style={"display": "flex", "alignItems": "center"}),
             dbc.Button("Clear", id="wb-clear", size="sm", outline=True,
                        color="secondary", style={"marginLeft": "auto"}),
             dcc.Dropdown(id="wb-view-select", placeholder="Saved views…",
@@ -232,6 +247,7 @@ def wb_mutate(add_clicks, rm_clicks, transforms, panes, clear, view_name,
         if not spec:
             raise PreventUpdate
         return _spec_to_series(spec), {"mode": spec.get("mode", "overlay"),
+                                       "axis": spec.get("axis", "shared"),
                                        "timeframe": spec.get("timeframe", "10Y")}, "", name
 
     if trig == "wb-view-select":
@@ -241,6 +257,7 @@ def wb_mutate(add_clicks, rm_clicks, transforms, panes, clear, view_name,
         if not spec:
             raise PreventUpdate
         return _spec_to_series(spec), {"mode": spec.get("mode", "overlay"),
+                                       "axis": spec.get("axis", "shared"),
                                        "timeframe": spec.get("timeframe", "10Y")}, "", view_name
 
     if trig == "wb-clear":
@@ -299,15 +316,18 @@ def _spec_to_series(spec: dict) -> list[dict]:
 @callback(
     Output("wb-config", "data"),
     [Input("wb-mode", "value"),
+     Input("wb-axis", "value"),
      Input({"type": "wb-tf", "tf": ALL}, "n_clicks")],
     State("wb-config", "data"),
     prevent_initial_call=True,
 )
-def wb_config(mode, tf_clicks, config):
+def wb_config(mode, axis, tf_clicks, config):
     config = dict(config or {"mode": "overlay", "timeframe": "10Y"})
     trig = ctx.triggered_id
     if trig == "wb-mode":
         config["mode"] = mode or "overlay"
+    elif trig == "wb-axis":
+        config["axis"] = axis or "shared"
     elif isinstance(trig, dict) and trig.get("type") == "wb-tf":
         if not any(tf_clicks or []):
             raise PreventUpdate
@@ -318,6 +338,20 @@ def wb_config(mode, tf_clicks, config):
 @callback(Output("wb-mode", "value"), Input("wb-config", "data"))
 def wb_mode_sync(config):
     return (config or {}).get("mode", "overlay")
+
+
+@callback(
+    [Output("wb-axis", "value"),
+     Output("wb-axis-wrap", "style")],
+    Input("wb-config", "data"),
+)
+def wb_axis_sync(config):
+    config = config or {}
+    # The independent-axis toggle is meaningful only in overlay mode.
+    visible = {"display": "flex", "alignItems": "center"}
+    hidden = {"display": "none"}
+    style = visible if config.get("mode", "overlay") == "overlay" else hidden
+    return config.get("axis", "shared"), style
 
 
 # ── Legend pills ──────────────────────────────────────────────────────────────
@@ -401,22 +435,38 @@ def wb_chart(series, config, theme_name):
         loaded.append({**s, "ts": ts, "sfx": sfx, "color": _series_color(i)})
 
     if mode == "overlay":
+        plottable = [it for it in loaded if not it["ts"].empty]
+        # Independent axes (TV multiple-price-scales): each series on its own
+        # auto-scaled y-axis so a small-range series isn't flattened by a
+        # large-range one. Only meaningful with 2+ series.
+        independent = config.get("axis") == "independent" and len(plottable) > 1
         fig = go.Figure()
-        for item in loaded:
-            if item["ts"].empty:
-                continue
+        layout = figure_layout(theme_name, "")
+        for n, item in enumerate(plottable, start=1):
+            yaxis_id = "y" if (not independent or n == 1) else f"y{n}"
             fig.add_trace(go.Scatter(
                 x=item["ts"].index, y=item["ts"].values, mode="lines",
-                name=item["label"] + item["sfx"],
+                name=item["label"] + item["sfx"], yaxis=yaxis_id,
                 line={"color": item["color"], "width": 1.6},
                 hovertemplate="%{x|%Y-%m-%d} · %{y:.3f}<extra>"
-                              + item["label"] + "</extra>"))
-        layout = figure_layout(theme_name, "")
-        layout.update(hovermode="x", dragmode="pan",
+                              + item["label"] + item["sfx"] + "</extra>"))
+            if independent and n > 1:
+                # overlay this axis on the base; hidden ticks (N scales can't
+                # share one label column — the crosshair carries each value)
+                layout[f"yaxis{n}"] = dict(overlaying="y", side="right",
+                                           showgrid=False, zeroline=False,
+                                           showticklabels=False)
+        layout.update(hovermode="x unified" if independent else "x",
+                      dragmode="pan",
                       legend=dict(orientation="h", y=1.06, font=dict(size=10)),
                       margin=dict(l=10, r=55, t=30, b=20))
         fig.update_layout(**layout)
-        fig.update_yaxes(side="right")
+        if independent:
+            # hide the base axis ticks too, and drop grid (overlapping scales)
+            fig.update_layout(yaxis=dict(showticklabels=False, showgrid=False,
+                                         zeroline=False))
+        else:
+            fig.update_yaxes(side="right")
         fig.update_xaxes(showspikes=True, spikemode="across", spikesnap="cursor",
                          spikedash="dot", spikethickness=1,
                          spikecolor="rgba(180,180,180,0.6)",
@@ -475,6 +525,7 @@ def wb_views(save_n, del_n, name, selected, series, config):
                 msg = "nothing to save"
             else:
                 spec = {"mode": (config or {}).get("mode", "overlay"),
+                        "axis": (config or {}).get("axis", "shared"),
                         "timeframe": (config or {}).get("timeframe", "10Y"),
                         "series": [{k: s[k] for k in ("source", "key", "transform", "pane")
                                     if k in s} for s in series]}

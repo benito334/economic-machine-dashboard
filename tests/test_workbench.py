@@ -124,6 +124,31 @@ def test_chart_overlay_and_stacked_render():
     assert "Workbench" in (fig_e.layout.title.text or "")
 
 
+def test_overlay_independent_axes():
+    """Independent axis mode gives each series its own overlaying y-axis so a
+    small-range series isn't flattened by a large-range one."""
+    from dashboard.workbench import wb_chart
+    series = [
+        {"source": "signal", "key": "us.fiscal.interest_payments",
+         "label": "Interest (US)", "transform": "raw", "pane": 1},
+        {"source": "signal", "key": "us.growth.productivity",
+         "label": "Productivity (US)", "transform": "raw", "pane": 2},
+    ]
+    shared = wb_chart(series, {"mode": "overlay", "axis": "shared",
+                              "timeframe": "MAX"}, "carbon")
+    indep = wb_chart(series, {"mode": "overlay", "axis": "independent",
+                             "timeframe": "MAX"}, "carbon")
+    # shared: both traces on the one y-axis
+    assert {t.yaxis or "y" for t in shared.data} == {"y"}
+    # independent: distinct axes, the second overlaying the base
+    assert {t.yaxis or "y" for t in indep.data} == {"y", "y2"}
+    assert indep.layout.yaxis2.overlaying == "y"
+    # single series → independent is a no-op (no phantom second axis)
+    one = wb_chart(series[:1], {"mode": "overlay", "axis": "independent",
+                               "timeframe": "MAX"}, "carbon")
+    assert "yaxis2" not in one.layout
+
+
 def test_pills_render_with_pane_input_in_stacked():
     from dashboard.workbench import wb_pills
     series = [{"source": "signal", "key": "us.inflation.cpi_core",
