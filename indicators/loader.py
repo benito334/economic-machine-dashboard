@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 
 RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
 
+# Manual-load drop folder (roadmap D4). Sources with no free API — V-Dem/
+# Polity governance, the GPR index, EM-DAT disaster losses — are hand-
+# downloaded, converted to per-signal CSVs (see scripts/prepare_*.py and
+# manual_data/README.md), and dropped here. A binding with provider "Manual"
+# names its CSV in series_id; a missing file is a PENDING SLOT, not an error.
+MANUAL_DATA_DIR = Path(os.environ.get(
+    "MANUAL_DATA_DIR",
+    "/mnt/data/project_data/all_weather/indicators_machine/manual_data",
+))
+
 # Seconds before a cached file is considered stale and must be refreshed
 _CACHE_TTL: dict[str, int] = {
     "D": 3600 * 20,        # 20 h — daily series
@@ -717,4 +727,61 @@ def fetch_imf_sdmx_series(
         logger.debug("[cached] IMF SDMX %s/%s → %s (%d obs)", dataset, key, cache.name, len(series))
     except PermissionError as exc:
         logger.warning("[cache write failed] IMF SDMX %s/%s: %s — proceeding uncached", dataset, key, exc)
+    return series
+
+
+def fetch_manual_series(
+    filename: str,
+    frequency: str = "A",
+) -> Optional[pd.Series]:
+    """
+    Load one manually-dropped series from MANUAL_DATA_DIR (roadmap D4).
+
+    filename: CSV file named in the binding's series_id, with exactly two
+        columns: `date` (ISO date or year) and `value` (numeric). Produced
+        by the scripts/prepare_*.py converters from the raw V-Dem / GPR /
+        EM-DAT downloads — see manual_data/README.md for sources.
+
+    A missing file is a PENDING SLOT, not an error: returns None with a
+    single [SLOT] log line so the pipeline can report it as "pending" and
+    move on. A file that exists but cannot be parsed IS an error (raises) —
+    a malformed drop should fail loudly, not silently skip.
+
+    No caching layer: the drop folder IS the cache; reads are local.
+    """
+    path = MANUAL_DATA_DIR / filename
+    if not path.exists():
+        logger.info(
+            "[SLOT] manual series %s not loaded — drop the file in %s "
+            "(see manual_data/README.md for the source + converter)",
+            filename, MANUAL_DATA_DIR,
+        )
+        return None
+
+    df = pd.read_csv(path)
+    cols = {c.lower().strip(): c for c in df.columns}
+    if "date" not in cols or "value" not in cols:
+        raise ValueError(
+            f"Manual series {path} must have 'date' and 'value' columns, "
+            f"got {list(df.columns)}"
+        )
+    dates_raw = df[cols["date"]]
+    # Bare years (e.g. V-Dem annual) → year-end timestamps, matching the
+    # convention used for WB/IMF annual series elsewhere in this loader.
+    if pd.api.types.is_integer_dtype(dates_raw) or (
+        dates_raw.astype(str).str.fullmatch(r"\d{4}").all()
+    ):
+        idx = pd.to_datetime(dates_raw.astype(int).astype(str)) + pd.offsets.YearEnd(0)
+    else:
+        idx = pd.to_datetime(dates_raw)
+    series = pd.Series(
+        pd.to_numeric(df[cols["value"]], errors="coerce").values,
+        index=idx, name="value",
+    ).dropna().sort_index()
+    if series.empty:
+        raise ValueError(f"Manual series {path} parsed to zero usable rows")
+    logger.info(
+        "[manual] %s → %d obs %s → %s",
+        filename, len(series), series.index[0].date(), series.index[-1].date(),
+    )
     return series

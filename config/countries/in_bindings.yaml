@@ -628,3 +628,47 @@ bindings:
     sanity_min: 15.0
     sanity_max: 60.0
     notes: "Only 5 observations (consumption survey years); last 2022 (25.5). India's income-based Gini from other sources is far higher — treat this as a within-India trend read only."
+
+  # ─── D4 manual-load slots (no free API — see manual_data/README.md) ───────
+  # Drop-folder pattern: run scripts/prepare_vdem.py on the V-Dem Country-Year
+  # core CSV (v-dem.net, free download) to produce this file. A missing file
+  # shows as a pending [SLOT] in the pipeline, never an error.
+  - id: order.governance
+    series_id: vdem_in.csv
+    provider: Manual
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_0_1
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.45
+    linkage: "V-Dem Liberal Democracy Index (0–1, annual) — Ray's internal-order read: institutional erosion precedes internal conflict. Manual load: V-Dem publishes a free bulk CSV, no API."
+    sanity_min: 0.0
+    sanity_max: 1.0
+    notes: "Produce with: python scripts/prepare_vdem.py <V-Dem-CY-Core.csv>. Measure: v2x_libdem."
+
+  # GPR country index — run scripts/prepare_gpr.py on data_gpr_export.xls
+  # (matteoiacoviello.com, free download) to produce this file.
+  - id: order.geopolitical_risk
+    series_id: gpr_in.csv
+    provider: Manual
+    frequency: M
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: IN
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Caldara–Iacoviello country Geopolitical Risk index (share of newspaper articles, monthly since 1985) — Ray's external-conflict read. Manual load: published as an xls, no API."
+    sanity_min: 0.0
+    sanity_max: 100.0
+    notes: "Produce with: python scripts/prepare_gpr.py <data_gpr_export.xls>. Column: GPRC_IND."

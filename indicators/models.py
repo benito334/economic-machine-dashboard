@@ -11,7 +11,9 @@ class CountryBinding(BaseModel):
 
     id: str  # concept identifier, e.g. "growth.payrolls"
     series_id: Optional[str] = None  # provider series ID; None for derived
-    provider: str  # FRED | WorldBank | IMF | OECD | derived | manual
+    provider: str  # FRED | WorldBank | IMF | IMF_SDMX | Eurostat | ECB | Manual | derived
+    #   Manual: no free API — series_id names a CSV in MANUAL_DATA_DIR
+    #   (drop-folder pattern, roadmap D4; see manual_data/README.md)
     frequency: str  # D | W | M | Q | A
     force: str  # growth | inflation | policy | credit | premium | external | capital | currency | governance | demographics | climate | master
     lead_lag: str  # leading | coincident | lagging | structural

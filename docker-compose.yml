@@ -9,6 +9,7 @@ x-common: &common
     DB_PATH: /db/signals.duckdb
     RAW_CACHE_DIR: /data/raw_cache
     SNAPSHOTS_DIR: /data/snapshots
+    MANUAL_DATA_DIR: /data/manual_data
 
 # Retired 2026-07-06 UI cleanup (see archive/README.md):
 #   dashboard (:8501 Streamlit proof) and lc_api/lc_frontend (:8004/:8503
@@ -29,6 +30,7 @@ services:
       DB_PATH: /db/signals.duckdb
       RAW_CACHE_DIR: /data/raw_cache
       SNAPSHOTS_DIR: /data/snapshots
+      MANUAL_DATA_DIR: /data/manual_data
       CHARTING_PORT: "8502"
       DASH_DEBUG: "0"
     command: python -m dashboard.charting

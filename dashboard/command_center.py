@@ -395,23 +395,32 @@ def render_command_center(country_data, page_trigger, thresholds,
     if prod_mom is not None:
         trend_sub += f" · {prod_mom:.0%} mom"
 
-    # Big-cycle ORDER reads (Phase D — partial: governance/GPR feeds deferred)
+    # Big-cycle ORDER reads (Phase D + D4 manual-load slots)
     rcs = _sig(latest_sig, "order.reserve_currency_share")
     gini = _sig(latest_sig, "order.gini")
+    gov = _sig(latest_sig, "order.governance")
+    gpr = _sig(latest_sig, "order.geopolitical_risk")
     order_bits = []
     if rcs.get("value") is not None:
-        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY", "GB": "GBP"}.get(country, "FX")
+        cur = {"US": "USD", "EZ": "EUR", "JP": "JPY", "GB": "GBP", "CN": "CNY"}.get(country, "FX")
         d12 = rcs.get("change_12m")
         d12_txt = f" ({float(d12):+.1f}pp/yr)" if d12 is not None and not pd.isna(d12) else ""
         order_bits.append(f"{cur} reserve share {float(rcs['value']):.1f}%{d12_txt}")
     if gini.get("value") is not None:
         gini_yr = pd.Timestamp(gini["as_of"]).year if gini.get("as_of") is not None else "?"
         order_bits.append(f"Gini {float(gini['value']):.1f} ({gini_yr})")
+    if gov.get("value") is not None:
+        order_bits.append(f"V-Dem {float(gov['value']):.2f}")
+    if gpr.get("value") is not None:
+        order_bits.append(f"GPR {float(gpr['value']):.1f}")
+    # Pending manual-load slots (D4): only flagged while the drops are absent.
+    pending = [n for n, s in (("governance", gov), ("GPR", gpr)) if s.get("value") is None]
     if order_bits:
         order_big = (f"{float(rcs['value']):.1f}%" if rcs.get("value") is not None
                      else f"{float(gini['value']):.1f}")
+        pending_txt = f" — {'/'.join(pending)} pending manual load" if pending else ""
         order_card = _card("Big-cycle position", order_big,
-                           " · ".join(order_bits) + " — governance/GPR deferred",
+                           " · ".join(order_bits) + pending_txt,
                            "/data-dashboard")
     else:
         order_card = _card("Big-cycle position", "planned",

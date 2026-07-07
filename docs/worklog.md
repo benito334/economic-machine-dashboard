@@ -1381,3 +1381,23 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - Docker rebuilt, all 8 routes 200, CC renders all three countries with live stage chips.
 
 **Next:** Brazil is next in the original Phase 2 order (expect the IN pattern; check DT.DOD external debt early). Standing tails: D4 manual-loads, ONS/e-Stat CPI registrations, no free German core CPI (wishlist), 2007-squeeze threshold tweak.
+
+---
+
+## 2026-07-07 — D4: manual-load infrastructure (V-Dem governance + GPR)
+
+**Ask:** build D4 — the last unbuilt piece of the big-cycle ORDER layer. V-Dem/Polity governance and the Caldara–Iacoviello GPR index publish no free API (bulk CSV/xls downloads only).
+
+**Done:**
+- **Drop-folder pattern**: `MANUAL_DATA_DIR` (default `DATA_DIR/manual_data/`, env-overridable, added to both docker-compose service blocks). `fetch_manual_series()` in `loader.py` reads per-signal `date,value` CSVs (bare years → year-end timestamps, ISO dates passthrough; case-insensitive headers). **Missing file = pending [SLOT]** (one INFO line, never an error); **present-but-malformed = loud ValueError**.
+- **Pipeline Pass 3.8 (Manual-load series)**: new `provider: Manual` binding filter; `results["slot"]` counted separately — pending slots never fail a run; per-country and final summaries show "Pending slots: N" only when nonzero.
+- **15 Manual bindings**: `order.governance` (V-Dem `v2x_libdem`, 0–1, annual) for US/CN/IN/DE/GB/JP/KR/LU; `order.geopolitical_risk` (GPR `GPRC_{ISO3}` share-of-articles, monthly since 1985) for the same set minus LU — **Luxembourg is not in the GPR country set** (honest gap, no binding). No EZ aggregate exists for either source.
+- **Converter scripts**: `scripts/prepare_vdem.py` (V-Dem-CY-Core CSV → `vdem_{cc}.csv` × 8; 1900 start to keep expanding Z-scores sane) and `scripts/prepare_gpr.py` (`data_gpr_export.xls` → `gpr_{cc}.csv` × 7; needs `xlrd` for the legacy .xls — documented, not added to requirements since it's operator-side only).
+- **Docs**: `docs/manual_data.md` (sources, download links, format spec, freshness expectations) — mirrored into the drop folder as its `README.md`. `us_bindings.yaml` deferred-comment block updated; the pre-existing `climate.disaster_loss` slot noted as the next candidate for the same pattern once EM-DAT access is sorted.
+- **Command Center**: big-cycle card now shows V-Dem + GPR readouts when the files land, and names the *specific* pending slots ("governance/GPR pending manual load") until then — replaces the blanket "deferred" suffix. Also added CNY to the reserve-share currency label map.
+- **Tests**: new `tests/test_manual_load.py` (9 tests — slot vs loud-failure semantics, year/ISO parsing, header case, config integrity incl. the LU-has-no-GPR rule).
+- Roadmap D4 marked ✅; wishlist governance/GPR entries flipped to BUILT.
+
+**Design note:** the "order score" composite stays deliberately unbuilt — premature until the manual drops are loaded and have survived a couple of refresh cycles (per the roadmap's validate-before-extend rationale).
+
+**Next:** drop the two files (download V-Dem CY-Core + data_gpr_export.xls, run the converters, re-run the pipeline) — then the slots fill with no further code changes. Brazil remains next in the country order.

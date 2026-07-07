@@ -25,7 +25,7 @@ from indicators.composites import (
     compute_composite_history,
     load_composites_config,
 )
-from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series, fetch_manual_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.debt_cycle_stage import compute_stage_history, load_stage_config
 from indicators.models import CountryBinding, Signal
@@ -249,6 +249,7 @@ def run_country(
     wb_bindings       = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
     imf_bindings      = [b for b in bindings if b.provider == "IMF"        and b.verified]
     imf_sdmx_bindings = [b for b in bindings if b.provider == "IMF_SDMX"   and b.verified]
+    manual_bindings   = [b for b in bindings if b.provider == "Manual"     and b.verified]
     derived_bindings  = [b for b in bindings if b.provider == "derived"    and b.verified]
     skipped           = [b for b in bindings if not b.verified]
 
@@ -256,12 +257,15 @@ def run_country(
     print(f"  Country: {country_code}  ({yaml_path.name})")
     print(f"  FRED: {len(fred_bindings)}  |  Eurostat: {len(estat_bindings)}  |  ECB: {len(ecb_bindings)}  "
           f"|  WorldBank: {len(wb_bindings)}  "
-          f"|  IMF: {len(imf_bindings)}  |  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
+          f"|  IMF: {len(imf_bindings)}  |  Manual: {len(manual_bindings)}  "
+          f"|  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
     if skipped:
         print(f"    Skipped: {', '.join(b.id for b in skipped)}")
     print('=' * 70)
 
-    results = {"ok": 0, "empty": 0, "error": 0, "sanity_warn": 0}
+    # "slot" = a Manual binding whose file hasn't been dropped yet — a
+    # documented pending state, counted separately so it never fails a run.
+    results = {"ok": 0, "empty": 0, "error": 0, "sanity_warn": 0, "slot": 0}
     raw_store: dict[str, pd.Series] = {}
     transformed_store: dict[str, pd.Series] = {}
 
@@ -583,6 +587,56 @@ def run_country(
             if is_primary:
                 sys.exit(1)
 
+    # ── Pass 3.8: Manual-load series (roadmap D4 — V-Dem / GPR / EM-DAT) ───
+    # Sources with no free API. A binding names its CSV in series_id; the
+    # file is hand-produced via scripts/prepare_*.py and dropped in
+    # MANUAL_DATA_DIR. Missing file = PENDING SLOT (never fails the run);
+    # present-but-malformed file = loud error.
+    if manual_bindings:
+        print(f"\n─── Pass 3.8: Manual-load series [{country_code}] ──────────────────────")
+    for binding in manual_bindings:
+        try:
+            raw = fetch_manual_series(binding.series_id, frequency=binding.frequency)
+            if raw is None:
+                print(f"  [SLOT ] {binding.id:40s}  {binding.series_id:30s}  pending — "
+                      f"drop the file in manual_data/ (see its README)")
+                results["slot"] += 1
+                continue
+
+            if binding.raw_scale:
+                raw = raw / binding.raw_scale
+
+            transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+            transformed = transformed.dropna()
+
+            if transformed.empty:
+                print(f"  [EMPTY after transform] {binding.id}")
+                results["empty"] += 1
+                continue
+
+            transformed_store[binding.id] = transformed
+            signals = build_signals(transformed, binding, raw)
+            latest = signals[-1] if signals else None
+
+            if latest:
+                warns = sanity_check(latest, binding)
+                for w in warns:
+                    print(f"  [SANITY WARN] {w}")
+                    results["sanity_warn"] += 1
+
+            n = upsert_signals(conn, signals)
+            status = "PROXY" if binding.is_proxy else "OK"
+            latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+            latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
+            results["ok"] += 1
+
+        except Exception as exc:
+            logger.exception("[ERROR] %s: %s", binding.id, exc)
+            results["error"] += 1
+            if is_primary:
+                sys.exit(1)
+
     # ── Pass 4: Derived series ─────────────────────────────────────────────
     if derived_bindings:
         print(f"\n─── Pass 4: Derived series [{country_code}] ────────────────────────────")
@@ -616,8 +670,9 @@ def run_country(
                 if is_primary:
                     sys.exit(1)
 
+    slot_txt = f"  |  Pending slots: {results['slot']}" if results.get("slot") else ""
     print(f"\n  [{country_code}] OK: {results['ok']}  |  Empty: {results['empty']}  "
-          f"|  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}")
+          f"|  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}{slot_txt}")
     return results
 
 
@@ -842,9 +897,10 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     if post_ingestion_errors:
         print(f"  [US]  Post-ingestion errors: {post_ingestion_errors}")
     for code, results in country_summaries:
+        slot_txt = f"  |  Pending slots: {results['slot']}" if results.get("slot") else ""
         print(
             f"  [{code}] OK: {results['ok']}  |  Empty: {results['empty']}  "
-            f"|  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}"
+            f"|  Errors: {results['error']}  |  Sanity warnings: {results['sanity_warn']}{slot_txt}"
         )
     print(f"  Country files processed: {len(country_yamls)}")
 

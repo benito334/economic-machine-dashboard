@@ -1400,8 +1400,8 @@ bindings:
   # capital.portfolio_flows → IMF BOP / Treasury TIC — Phase 2
   # currency.ppp_gap        → OECD/WB PPP derived    — Phase 2
   # climate.*               → EM-DAT (manual)         — slot only
-  # order.governance        → V-Dem / Polity5 bulk CSV (no API) — manual-load slot
-  # order.geopolitical_risk → GPR index xls download (no API)   — manual-load slot
+  # order.governance        → BUILT 2026-07-07 as a Manual binding (D4) — see end of file
+  # order.geopolitical_risk → BUILT 2026-07-07 as a Manual binding (D4) — see end of file
   # order.external_debt     → WB DT.DOD.DECT.CD is NULL for high-income countries
   #                           (verified 2026-07-05) — only relevant for future EM rollouts
 
@@ -1422,3 +1422,47 @@ bindings:
     sanity_min: 0.0
     sanity_max: 100.0
     notes: "Deferred Lens I slot. EM-DAT requires manual registration and licensed data provisioning."
+
+  # ─── D4 manual-load slots (no free API — see manual_data/README.md) ───────
+  # Drop-folder pattern: run scripts/prepare_vdem.py on the V-Dem Country-Year
+  # core CSV (v-dem.net, free download) to produce this file. A missing file
+  # shows as a pending [SLOT] in the pipeline, never an error.
+  - id: order.governance
+    series_id: vdem_us.csv
+    provider: Manual
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_0_1
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.8
+    linkage: "V-Dem Liberal Democracy Index (0–1, annual) — Ray's internal-order read: institutional erosion precedes internal conflict. Manual load: V-Dem publishes a free bulk CSV, no API."
+    sanity_min: 0.0
+    sanity_max: 1.0
+    notes: "Produce with: python scripts/prepare_vdem.py <V-Dem-CY-Core.csv>. Measure: v2x_libdem."
+
+  # GPR country index — run scripts/prepare_gpr.py on data_gpr_export.xls
+  # (matteoiacoviello.com, free download) to produce this file.
+  - id: order.geopolitical_risk
+    series_id: gpr_us.csv
+    provider: Manual
+    frequency: M
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Caldara–Iacoviello country Geopolitical Risk index (share of newspaper articles, monthly since 1985) — Ray's external-conflict read. Manual load: published as an xls, no API."
+    sanity_min: 0.0
+    sanity_max: 100.0
+    notes: "Produce with: python scripts/prepare_gpr.py <data_gpr_export.xls>. Column: GPRC_USA."

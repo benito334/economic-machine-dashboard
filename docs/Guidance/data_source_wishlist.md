@@ -37,8 +37,8 @@ Format per entry: **Concept** — desired frequency — current status — candi
 **Checked and NOT viable / deferred:**
 - **External debt** — WB `DT.DOD.DECT.CD` returns NULL for US/EMU/KR/JP (verified 2026-07-05) — the debtor-reporting-system series only covers low/middle-income countries. **PARTIALLY RESOLVED 2026-07-07: fills for China** ($2.42T through 2024, 35 obs) — bound as `cn.external.external_debt_bn`. Expect it to fill for India/Brazil too.
 - **EZ aggregate Gini** — WB `EMU` aggregate is empty. A constructed GDP-weighted big-4 average (DE/FR/IT/ES) is feasible but deferred — flaky member-code fetches plus a constructed-proxy design decision.
-- **Governance / political polarization (post-WGI)** — V-Dem and Polity5 are annual academic bulk-CSV downloads, no REST API → **manual-load slot** (same pattern as EM-DAT). WB WGI `.EST` series remain deleted from the v2 API.
-- **Geopolitical risk (GPR, Caldara–Iacoviello)** — monthly xls from matteoiacoviello.com, no API → **manual-load slot**.
+- **Governance / political polarization (post-WGI)** — V-Dem and Polity5 are annual academic bulk-CSV downloads, no REST API. **BUILT 2026-07-07 (D4)**: `order.governance` Manual bindings (v2x_libdem, 8 countries) + `scripts/prepare_vdem.py` converter — drop the V-Dem CY-Core CSV per `docs/manual_data.md`. WB WGI `.EST` series remain deleted from the v2 API.
+- **Geopolitical risk (GPR, Caldara–Iacoviello)** — monthly xls from matteoiacoviello.com, no API. **BUILT 2026-07-07 (D4)**: `order.geopolitical_risk` Manual bindings (GPRC columns, 7 countries — Luxembourg is not in the GPR set) + `scripts/prepare_gpr.py` converter.
 
 ## Japan (rolled out 2026-07-05 — roadmap Phase F results)
 
