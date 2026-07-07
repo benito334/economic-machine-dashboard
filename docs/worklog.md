@@ -1401,3 +1401,22 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Design note:** the "order score" composite stays deliberately unbuilt — premature until the manual drops are loaded and have survived a couple of refresh cycles (per the roadmap's validate-before-extend rationale).
 
 **Next:** drop the two files (download V-Dem CY-Core + data_gpr_export.xls, run the converters, re-run the pipeline) — then the slots fill with no further code changes. Brazil remains next in the country order.
+
+---
+
+## 2026-07-07 — Digital Ray country-coverage consult + Brazil & commodity-hub rollouts (14 economies)
+
+**Ask:** "Do Brazil and Switzerland. Also give Digital Ray our country list and see what input he has — too many, missing key players, etc."
+
+**Ray consult** (digitalray.ai; full log in ray_dalio_review_log.md Session 2026-07-07): endorsed Brazil, flagged **Switzerland as marginal** for the order read, and flagged **Germany + Luxembourg as "borderline redundant"** with the EZ aggregate. His top missing economies, ranked: **1 Canada, 2 Australia, 3 Mexico, 4 Indonesia**, 5 Vietnam, 6 Turkey, 7 South Africa, 8 Saudi Arabia, 9 Russia, 10 Singapore — the signal being that the set was heavy on debt-cycle *pillars* and light on the *commodity-exporter / trade-hub* axis (he ranked the original spec's Saudi/Russia BELOW the commodity exporters). User chose "do the ones Ray suggested" → built Brazil + his top-4 commodity/trade hubs; dropped standalone Switzerland.
+
+**Done — 5 rollouts (BR + CA/AU/MX/ID), 154 signals → 14 economies, 462 total:**
+- 10 config files (5 bindings + 5 composites), every series endpoint-verified 2026-07-07; loader WB+IMF maps gained CA/AU/MX/ID. All clean (0 empty / 0 errors / 0 sanity warnings).
+- **All 5 carry BIS 3-sector credit → all run the private/sovereign two-vote stage split** (9 of 14 countries now: US/CN/IN/DE/LU/BR/CA/AU/MX/ID... actually 10). Stage reads: **BR squeeze (0.62 — Selic ~21% real rates), CA squeeze (0.53 — 100% household debt), MX squeeze, AU leveraging, ID reflation.** None has a gov-interest series → SOVEREIGN SQUEEZE flags honestly never fire.
+- Per-country data quirks (all in data_source_wishlist.md): BR uses the discount rate (Selic-linked) as the rate — no OECD bond yield exists; CA is the richest (live IP + 10y+3m + monthly unemployment); AU has **quarterly CPI** and no monthly IP (growth on unemployment+trade); MX has no IP and no live unemployment (trade-only growth); ID uses call-money rate (bond yield + discount rate both dead) and no IP. WB external debt fills for BR/MX/ID (EMs), null for CA/AU (high-income).
+- Dashboards: all 14 countries in the selector, CC/Relative/Workbench/User Guide/Data Dashboard maps. Methodology §11 table + §15 revision row. 3 new tests (config integrity for the 5 + live two-vote regression); suite **442 passed, zero exclusions**.
+- **Bug caught + fixed mid-build:** the YAML generator first emitted `transformation: yoy` (invalid) for master.gdp_real → all 5 GDP signals errored and starved the stage classifier ("insufficient features"). Fixed to `yoy_pct`, re-ran clean.
+
+**Design note:** Germany/Luxembourg redundancy acknowledged by Ray but NOT reverted — they were an explicit user request for core-vs-aggregate divergence, and DE already diverged (deleveraging vs the aggregate's reflation). Switzerland dropped in favor of Ray's higher-value commodity picks.
+
+**Next:** Ray's next tier (Vietnam, Turkey, South Africa, Saudi Arabia, Singapore; Russia hits the no-Rosstat constraint), or the standing tails (D4 manual drops, ONS/e-Stat CPI, no free German core CPI).

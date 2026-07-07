@@ -1,0 +1,573 @@
+# Canada (CA) — Ray-recommended commodity/trade rollout 2026-07-07 (his #1 missing).
+# Resource-rich (oil sands, minerals, lumber), tightly linked to US cycles but
+# BoC policy often diverges -> a North-American counter-balance. RICH data:
+# live IP (GYSAM), live 10y + 3m rates (first EM/commodity 2-signal rate basket),
+# live monthly unemployment, BIS 3-sector credit. External debt null (high-income).
+# Monthly CPI dead 2025-03 -> IMF annual bridge.
+# All vintage_available: false. Equilibria in transformed units (yoy_pct -> decimal).
+
+country: CA
+
+bindings:
+
+  - id: master.gdp_real
+    series_id: NGDPRSAXDCCAQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.017
+    linkage: "Canada real GDP YoY (quarterly). The headline growth clock."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2200.0
+    linkage: "Canada nominal GDP in current USD billions (IMF). Cross-country size comparison."
+    sanity_min: 50.0
+    sanity_max: 30000.0
+
+  - id: inflation.cpi_headline
+    series_id: CPALTT01CAM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.02
+    linkage: "Canada CPI all-items YoY (OECD, already % form). Central-bank inflation target read."
+    sanity_min: -0.05
+    sanity_max: 0.6
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.02
+    linkage: "Canada CPI % change (IMF WEO annual). Bridge signal when the monthly OECD feed is stale."
+    sanity_min: -0.05
+    sanity_max: 0.6
+
+  - id: growth.industrial_prod
+    series_id: CANPRINTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.01
+    linkage: "Canada industrial production YoY (GYSAM form, live). Strongest live monthly output read."
+    sanity_min: -0.4
+    sanity_max: 0.4
+
+  - id: growth.exports_yoy
+    series_id: XTEXVA01CAM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.06
+    linkage: "Canada merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
+    sanity_min: -0.5
+    sanity_max: 0.8
+
+  - id: growth.imports_yoy
+    series_id: XTIMVA01CAM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.06
+    linkage: "Canada merchandise imports YoY (USD, SA). PROXY for domestic demand."
+    sanity_min: -0.5
+    sanity_max: 0.8
+
+  - id: growth.unemployment
+    series_id: LRUNTTTTCAM156S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 6.0
+    linkage: "Canada harmonised unemployment rate (ILO monthly, live)."
+    sanity_min: 1.0
+    sanity_max: 20.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.7
+    linkage: "Canada R&D expenditure as % of GDP. Structural productivity input."
+    sanity_min: 0.0
+    sanity_max: 6.0
+
+  - id: growth.tfp
+    series_id: RTFPNACAA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Canada Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
+    sanity_min: -0.1
+    sanity_max: 0.1
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01CAM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "Canada 10-year government bond yield (live). BoC policy pass-through; the Canadian risk-free rate."
+    sanity_min: 0.0
+    sanity_max: 15.0
+
+  - id: policy.rate_3m_interbank
+    series_id: IR3TIB01CAM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.5
+    linkage: "Canada 3-month interbank rate (live). Short end of the curve; pairs with the 10y for a slope read."
+    sanity_min: 0.0
+    sanity_max: 15.0
+
+  - id: currency.reer
+    series_id: RBCABIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Canada real broad effective exchange rate (BIS, 2020=100)."
+    sanity_min: 50.0
+    sanity_max: 160.0
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "Canada FDI net inflows as % of GDP."
+    sanity_min: -8.0
+    sanity_max: 15.0
+
+  - id: credit.private_debt_gdp
+    series_id: QCAPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 200.0
+    linkage: "Canada total private non-financial credit, % GDP (BIS). Core leverage read."
+    sanity_min: 0.0
+    sanity_max: 350.0
+
+  - id: credit.household_debt_gdp
+    series_id: QCAHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Canada household credit, % GDP (BIS). Private-sector cash-flow burden input."
+    sanity_min: 0.0
+    sanity_max: 150.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QCANAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 115.0
+    linkage: "Canada non-financial corporate credit, % GDP (BIS)."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 105.0
+    linkage: "Canada general government gross debt, % GDP (IMF). Sovereign side of the stage vote."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.0
+    linkage: "Canada general government structural balance, % GDP (IMF). Global Overview budget column."
+    sanity_min: -20.0
+    sanity_max: 8.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Canada IMF general government primary balance, % GDP (excl. interest)."
+    sanity_min: -20.0
+    sanity_max: 8.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 20.0
+    linkage: "Canada general government revenue, % GDP (central basis)."
+    sanity_min: 3.0
+    sanity_max: 50.0
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.0
+    linkage: "Canada current account balance, % GDP."
+    sanity_min: -15.0
+    sanity_max: 15.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 33.0
+    linkage: "Canada exports of goods and services, % GDP."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 33.0
+    linkage: "Canada imports of goods and services, % GDP."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Canada total population (World Bank); /1e6 for millions."
+    sanity_min: 100000.0
+    sanity_max: 2000000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "Canada annual population growth rate %."
+    sanity_min: -2.0
+    sanity_max: 4.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Canada age dependency ratio (dependents per 100 working-age)."
+    sanity_min: 20.0
+    sanity_max: 110.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 62.0
+    linkage: "Canada ILO-modeled labor force participation (% 15+)."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  - id: volatility.equity_index
+    series_id: SPASTT01CAM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Canada OECD MEI share-price index (monthly) — raw level, input to realized vol only."
+    sanity_min: 0.0
+    sanity_max: 2000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.18
+    linkage: "Annualized rolling std of monthly log returns on the Canada share-price index (12m window) — monthly proxy."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: CA
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 32.0
+    linkage: "Canada Gini ~32 — moderate, stable; a low-inequality benchmark against the US and Brazil."
+    sanity_min: 15.0
+    sanity_max: 65.0
+    notes: "World Bank PIP. Verified 2026-07-07. Multi-year publication lag is inherent."

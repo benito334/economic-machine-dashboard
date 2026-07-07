@@ -36,7 +36,9 @@ from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _COUNTRY_NAMES = {"US": "United States", "EZ": "Euro Area", "GB": "United Kingdom",
                   "JP": "Japan", "KR": "South Korea", "CN": "China",
-                  "IN": "India", "DE": "Germany", "LU": "Luxembourg"}
+                  "IN": "India", "DE": "Germany", "LU": "Luxembourg",
+                  "BR": "Brazil", "CA": "Canada", "AU": "Australia",
+                  "MX": "Mexico", "ID": "Indonesia"}
 
 _G_COLOR, _I_COLOR, _AMBER = "#4C9BE8", "#E8734C", "#E8A317"
 

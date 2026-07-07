@@ -86,9 +86,19 @@ Both are ALSO inside the EZ aggregate — standalone codes for core-vs-aggregate
 2. **Luxembourg (26 signals) works but is structurally weird**: live HICP/unemployment/IP/10y yield; BIS private credit **420% of GDP** (358.8% corporate — intra-group financing vehicles, documented as a financial-center flow gauge, not domestic leverage); FDI swings past ±100% GDP (sanity range set to ±500/800); exports 190% GDP (entrepôt). The growth composite under-reads LU because the financial sector (the real economy) has no free monthly gauge.
 3. The WB v2 API is intermittently flaky on DEU (HTTP 400s) — tenacity retries recover it.
 
-## General — next country rollout (Brazil is next in the original Phase 2 order)
+## Commodity/trade hubs — Brazil + Canada/Australia/Mexico/Indonesia (rolled out 2026-07-07)
 
-Work through this file's entries country-by-country rather than assuming US-parity data exists — the JP/GB/CN/IN/DE/LU sections above show surprises in both directions. For Brazil expect the IN pattern: WB/IMF harmonized + FRED-mirrored BIS/OECD feeds; check `DT.DOD.DECT.CD` (external debt) early — it fills for debtor-reporting countries.
+Added on Digital-Ray's country-coverage advice (he flagged the set as heavy on debt-cycle pillars and light on the commodity-exporter/trade-hub axis; these were his top-4 missing economies + the committed Brazil). ~154 signals; all 5 have full BIS 3-sector credit → they run the private/sovereign two-vote stage split. Per-country data notes (all endpoint-verified 2026-07-07):
+- **Brazil (32)** — live IP (`BRAPRINTO01GYSAM`), live discount rate (`INTDSRBRM193N`, Selic-linked ~21%; no OECD bond yield exists → this proxies the rate), BIS credit, WB external debt fills ($605B), Gini 50.3 (highest tracked). Monthly CPI dead 2025-04 → IMF bridge.
+- **Canada (31)** — the richest of the five: live IP, live **10y + 3m** rates (2-signal rate basket), live monthly unemployment, BIS credit. External debt null (high-income). CPI dead 2025-03 → IMF bridge.
+- **Australia (30)** — live 10y+3m, live monthly unemployment, BIS credit. **QUIRKS:** CPI is **quarterly** natively (no monthly CPI exists for AU); **no monthly IP** on FRED → growth reads on unemployment + trade. External debt null.
+- **Mexico (31)** — live 10y+3m, BIS credit, external debt fills ($591B). **QUIRKS:** no monthly IP, no live monthly unemployment (`LRUNTTTTMXM156S` dead 2009) → growth = merchandise trade only (thin, CN-like). CPI dead 2024-07 → IMF bridge.
+- **Indonesia (30)** — BIS credit, external debt fills ($421B), FX reserves. **QUIRKS:** no monthly IP; **no bond yield and the discount rate died 2013** → rate = call-money/interbank (`IRSTCI01IDM156N`, live). WB gov-revenue stale (2009) → omitted. CPI dead 2025-04 → IMF bridge.
+- **Common:** none is a reserve currency (no COFER slot); no gov-interest series for any → their SOVEREIGN SQUEEZE flags can't fire (CN pattern); monthly IP survives only for BR/CA (the GYSAM YoY form).
+
+## General — next country rollout (Ray's next tier, or the original spec's Saudi/Russia)
+
+Work through this file's entries country-by-country rather than assuming US-parity data exists — every rollout above shows surprises in both directions. Ray's ranked missing list continues past the top-4: **Vietnam, Turkey, South Africa, Saudi Arabia, Russia, Singapore** (he ranked Saudi/Russia BELOW the commodity exporters). Expect the IN/BR pattern: WB/IMF harmonized + FRED-mirrored BIS/OECD feeds; check `DT.DOD.DECT.CD` (external debt) early — it fills for debtor-reporting (EM) countries and is null for high-income. Russia hits the no-Rosstat constraint → WB/IMF harmonized only, expect gaps.
 
 ---
 

@@ -737,6 +737,11 @@ def _left_nav() -> html.Div:
         {"label": "🇮🇳 India",                  "value": "IN"},
         {"label": "🇩🇪 Germany",                "value": "DE"},
         {"label": "🇱🇺 Luxembourg",             "value": "LU"},
+        {"label": "🇧🇷 Brazil",              "value": "BR"},
+        {"label": "🇨🇦 Canada",              "value": "CA"},
+        {"label": "🇦🇺 Australia",           "value": "AU"},
+        {"label": "🇲🇽 Mexico",              "value": "MX"},
+        {"label": "🇮🇩 Indonesia",           "value": "ID"},
     ]
 
     return html.Div([
@@ -1692,7 +1697,9 @@ _COUNTRY_FLAGS = {"US": ("🇺🇸", "United States"), "EZ": ("🇪🇺", "Euroz
                   "KR": ("🇰🇷", "South Korea"),    "JP": ("🇯🇵", "Japan"),
                   "GB": ("🇬🇧", "United Kingdom"), "CN": ("🇨🇳", "China"),
                   "IN": ("🇮🇳", "India"),           "DE": ("🇩🇪", "Germany"),
-                  "LU": ("🇱🇺", "Luxembourg")}
+                  "LU": ("🇱🇺", "Luxembourg"),      "BR": ("🇧🇷", "Brazil"),
+                  "CA": ("🇨🇦", "Canada"),          "AU": ("🇦🇺", "Australia"),
+                  "MX": ("🇲🇽", "Mexico"),          "ID": ("🇮🇩", "Indonesia")}
 
 
 @callback(

@@ -1,0 +1,573 @@
+# Mexico (MX) — Ray-recommended commodity/trade rollout 2026-07-07 (his #3 missing).
+# The nearshoring / US-trade story in one economy; major manufacturing hub and
+# oil exporter. Live 10y + 3m rates, BIS 3-sector credit, WB external debt fills
+# ($591B). QUIRKS: NO monthly IP and NO live monthly unemployment on FRED ->
+# growth reads on merchandise trade only (thin, CN-like). Monthly CPI dead
+# 2024-07 -> IMF annual bridge.
+# All vintage_available: false. Equilibria in transformed units (yoy_pct -> decimal).
+
+country: MX
+
+bindings:
+
+  - id: master.gdp_real
+    series_id: NGDPRNSAXDCMXQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.02
+    linkage: "Mexico real GDP YoY (quarterly). The headline growth clock."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1900.0
+    linkage: "Mexico nominal GDP in current USD billions (IMF). Cross-country size comparison."
+    sanity_min: 50.0
+    sanity_max: 30000.0
+
+  - id: inflation.cpi_headline
+    series_id: CPALTT01MXM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.035
+    linkage: "Mexico CPI all-items YoY (OECD, already % form). Central-bank inflation target read."
+    sanity_min: -0.05
+    sanity_max: 0.6
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.035
+    linkage: "Mexico CPI % change (IMF WEO annual). Bridge signal when the monthly OECD feed is stale."
+    sanity_min: -0.05
+    sanity_max: 0.6
+
+  - id: growth.exports_yoy
+    series_id: XTEXVA01MXM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.06
+    linkage: "Mexico merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
+    sanity_min: -0.5
+    sanity_max: 0.8
+
+  - id: growth.imports_yoy
+    series_id: XTIMVA01MXM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.06
+    linkage: "Mexico merchandise imports YoY (USD, SA). PROXY for domestic demand."
+    sanity_min: -0.5
+    sanity_max: 0.8
+
+  - id: growth.unemployment
+    series_id: SL.UEM.TOTL.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 5.0
+    linkage: "Mexico unemployment rate (ILO modeled, annual). PROXY — no free monthly series."
+    sanity_min: 1.0
+    sanity_max: 20.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.3
+    linkage: "Mexico R&D expenditure as % of GDP. Structural productivity input."
+    sanity_min: 0.0
+    sanity_max: 6.0
+
+  - id: growth.tfp
+    series_id: RTFPNAMXA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Mexico Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
+    sanity_min: -0.1
+    sanity_max: 0.1
+
+  - id: policy.yield_10y
+    series_id: IRLTLT01MXM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 9.0
+    linkage: "Mexico 10-year government bond yield (live). Banxico policy pass-through plus EM risk premium."
+    sanity_min: 0.0
+    sanity_max: 20.0
+
+  - id: policy.rate_3m_interbank
+    series_id: IR3TIB01MXM156N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 7.0
+    linkage: "Mexico 3-month interbank rate (TIIE-linked, live). Short end; pairs with the 10y for a slope read."
+    sanity_min: 0.0
+    sanity_max: 20.0
+
+  - id: currency.reer
+    series_id: RBMXBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Mexico real broad effective exchange rate (BIS, 2020=100)."
+    sanity_min: 50.0
+    sanity_max: 160.0
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "Mexico FDI net inflows as % of GDP."
+    sanity_min: -8.0
+    sanity_max: 15.0
+
+  - id: credit.private_debt_gdp
+    series_id: QMXPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 40.0
+    linkage: "Mexico total private non-financial credit, % GDP (BIS). Core leverage read."
+    sanity_min: 0.0
+    sanity_max: 350.0
+
+  - id: credit.household_debt_gdp
+    series_id: QMXHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 17.0
+    linkage: "Mexico household credit, % GDP (BIS). Private-sector cash-flow burden input."
+    sanity_min: 0.0
+    sanity_max: 150.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QMXNAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 21.0
+    linkage: "Mexico non-financial corporate credit, % GDP (BIS)."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 62.0
+    linkage: "Mexico general government gross debt, % GDP (IMF). Sovereign side of the stage vote."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -4.5
+    linkage: "Mexico general government structural balance, % GDP (IMF). Global Overview budget column."
+    sanity_min: -20.0
+    sanity_max: 8.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.0
+    linkage: "Mexico IMF general government primary balance, % GDP (excl. interest)."
+    sanity_min: -20.0
+    sanity_max: 8.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 19.0
+    linkage: "Mexico general government revenue, % GDP (central basis)."
+    sanity_min: 3.0
+    sanity_max: 50.0
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -0.5
+    linkage: "Mexico current account balance, % GDP."
+    sanity_min: -15.0
+    sanity_max: 15.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 40.0
+    linkage: "Mexico exports of goods and services, % GDP."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 40.0
+    linkage: "Mexico imports of goods and services, % GDP."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: external.external_debt_bn
+    series_id: DT.DOD.DECT.CD
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: billions_usd
+    raw_scale: 1.0e9
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 600.0
+    linkage: "Mexico total external debt stock, USD billions (WB debtor reporting system)."
+    sanity_min: 0.0
+    sanity_max: 3000.0
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Mexico total population (World Bank); /1e6 for millions."
+    sanity_min: 100000.0
+    sanity_max: 2000000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "Mexico annual population growth rate %."
+    sanity_min: -2.0
+    sanity_max: 4.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Mexico age dependency ratio (dependents per 100 working-age)."
+    sanity_min: 20.0
+    sanity_max: 110.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 62.0
+    linkage: "Mexico ILO-modeled labor force participation (% 15+)."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  - id: volatility.equity_index
+    series_id: SPASTT01MXM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Mexico OECD MEI share-price index (monthly) — raw level, input to realized vol only."
+    sanity_min: 0.0
+    sanity_max: 2000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.18
+    linkage: "Annualized rolling std of monthly log returns on the Mexico share-price index (12m window) — monthly proxy."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: MX
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 43.0
+    linkage: "Mexico Gini ~43 — high; the nearshoring boom sits atop deep regional inequality."
+    sanity_min: 15.0
+    sanity_max: 65.0
+    notes: "World Bank PIP. Verified 2026-07-07. Multi-year publication lag is inherent."

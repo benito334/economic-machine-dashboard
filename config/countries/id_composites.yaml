@@ -1,0 +1,78 @@
+# Indonesia composite indicator lists.
+# Methodology params live in config/composites_policy.yaml.
+# Tiers: PRIMARY (0.85-1.00) / STRONG (0.60-0.84) / CONTEXT (0.30-0.59) / VOLATILE (0.10-0.29).
+# No monthly IP -> growth on trade + annual unemployment proxy. Rate = call-money/interbank (single signal). CPI monthly dead 2025-04 -> IMF bridge.
+
+growth_score:
+  description: "ID growth-force composite"
+  indicators:
+    - id: growth.exports_yoy
+      base_share: 0.7
+      importance: 0.8
+      quality_factor: 0.8
+    - id: growth.imports_yoy
+      base_share: 0.6
+      importance: 0.44
+      quality_factor: 0.75
+    - id: growth.unemployment
+      base_share: 0.5
+      importance: 0.22
+      quality_factor: 0.7
+      invert: true
+
+inflation_score:
+  description: "ID inflation-force composite — CPI + IMF annual bridge"
+  indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.95
+      quality_factor: 0.90
+    - id: inflation.cpi_imf_annual
+      base_share: 0.5
+      importance: 0.30
+      quality_factor: 0.70
+
+rate_score:
+  description: "ID financial accommodation — call-money/interbank (single signal)"
+  indicators:
+    - id: policy.rate_policy
+      base_share: 1.0
+      importance: 0.9
+      quality_factor: 1.0
+      invert: true
+
+credit_score:
+  description: "ID credit health — BIS private credit + IMF gov debt"
+  indicators:
+    - id: credit.private_debt_gdp
+      base_share: 1.0
+      importance: 0.85
+      quality_factor: 0.95
+      invert: true
+    - id: credit.gov_debt_gdp
+      base_share: 0.7
+      importance: 0.55
+      quality_factor: 0.85
+      invert: true
+
+volatility_score:
+  description: "ID market volatility — monthly-return proxy (single signal; low coverage)"
+  indicators:
+    - id: volatility.realized_vol
+      base_share: 1.0
+      importance: 0.90
+      quality_factor: 0.70
+
+productivity_score:
+  description: "ID productivity trend — PWT TFP + R&D intensity (annual)"
+  indicators:
+    - id: growth.tfp
+      base_share: 1.0
+      importance: 0.85
+      quality_factor: 0.75
+      half_life_months: 12.0
+    - id: growth.rnd_intensity
+      base_share: 0.7
+      importance: 0.50
+      quality_factor: 0.70
+      half_life_months: 12.0

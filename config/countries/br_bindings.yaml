@@ -1,0 +1,592 @@
+# Brazil (BR) — Ray-recommended commodity/trade rollout 2026-07-07.
+# Largest Latin-American economy, major commodity exporter (iron ore, soy,
+# oil). Verified 2026-07-07: live IP (GYSAM), live discount rate (Selic-linked
+# ~21%), BIS 3-sector credit, WB external debt fills ($605B). No OECD bond
+# yield -> discount rate proxies the policy rate. Monthly CPI dead 2025-04 ->
+# IMF annual bridge. Gini 50.3 = among the highest tracked (LatAm inequality).
+# All vintage_available: false. Equilibria in transformed units (yoy_pct -> decimal).
+
+country: BR
+
+bindings:
+
+  - id: master.gdp_real
+    series_id: NGDPRNSAXDCBRQ
+    provider: FRED
+    frequency: Q
+    force: master
+    lead_lag: lagging
+    transformation: yoy_pct
+    units: yoy_pct
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.02
+    linkage: "Brazil real GDP YoY (quarterly). The headline growth clock."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
+  - id: master.gdp_level_bn
+    series_id: NGDPD
+    provider: IMF
+    frequency: A
+    force: master
+    lead_lag: lagging
+    transformation: level
+    units: billions_usd
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2100.0
+    linkage: "Brazil nominal GDP in current USD billions (IMF). Cross-country size comparison."
+    sanity_min: 50.0
+    sanity_max: 30000.0
+
+  - id: inflation.cpi_headline
+    series_id: CPALTT01BRM659N
+    provider: FRED
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.045
+    linkage: "Brazil CPI all-items YoY (OECD, already % form). Central-bank inflation target read."
+    sanity_min: -0.05
+    sanity_max: 0.6
+
+  - id: inflation.cpi_imf_annual
+    series_id: PCPIPCH
+    provider: IMF
+    frequency: A
+    force: inflation
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.045
+    linkage: "Brazil CPI % change (IMF WEO annual). Bridge signal when the monthly OECD feed is stale."
+    sanity_min: -0.05
+    sanity_max: 0.6
+
+  - id: growth.industrial_prod
+    series_id: BRAPRINTO01GYSAM
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: yoy_pct
+    raw_scale: 100
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.01
+    linkage: "Brazil industrial production YoY (GYSAM form, live). Strongest live monthly output read."
+    sanity_min: -0.4
+    sanity_max: 0.4
+
+  - id: growth.exports_yoy
+    series_id: XTEXVA01BRM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.06
+    linkage: "Brazil merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
+    sanity_min: -0.5
+    sanity_max: 0.8
+
+  - id: growth.imports_yoy
+    series_id: XTIMVA01BRM667S
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 0.06
+    linkage: "Brazil merchandise imports YoY (USD, SA). PROXY for domestic demand."
+    sanity_min: -0.5
+    sanity_max: 0.8
+
+  - id: growth.unemployment
+    series_id: SL.UEM.TOTL.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: lagging
+    transformation: level
+    units: pct_level
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: 5.0
+    linkage: "Brazil unemployment rate (ILO modeled, annual). PROXY — no free monthly series."
+    sanity_min: 1.0
+    sanity_max: 20.0
+
+  - id: growth.rnd_intensity
+    series_id: GB.XPD.RSDV.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.2
+    linkage: "Brazil R&D expenditure as % of GDP. Structural productivity input."
+    sanity_min: 0.0
+    sanity_max: 6.0
+
+  - id: growth.tfp
+    series_id: RTFPNABRA632NRUG
+    provider: FRED
+    frequency: A
+    force: growth
+    lead_lag: structural
+    transformation: yoy_pct
+    units: yoy_pct
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Brazil Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
+    sanity_min: -0.1
+    sanity_max: 0.1
+
+  - id: policy.rate_policy
+    series_id: INTDSRBRM193N
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 13.0
+    linkage: "Brazil discount rate (Selic-linked, %, live). One of the world's highest real rates; the COPOM policy lever. No free bond yield exists -> this is the rate read."
+    sanity_min: 0.0
+    sanity_max: 40.0
+
+  - id: currency.reer
+    series_id: RBBRBIS
+    provider: FRED
+    frequency: M
+    force: currency
+    lead_lag: coincident
+    transformation: level
+    units: index_2020eq100
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 100.0
+    linkage: "Brazil real broad effective exchange rate (BIS, 2020=100)."
+    sanity_min: 50.0
+    sanity_max: 160.0
+
+  - id: capital.fx_reserves_yoy
+    series_id: TRESEGBRM052N
+    provider: FRED
+    frequency: M
+    force: capital
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Brazil FX reserves ex-gold YoY (IMF IFS). Drawdowns flag capital-flight / currency-defense pressure."
+    sanity_min: -0.4
+    sanity_max: 0.8
+
+  - id: capital.fdi_net_inflows_gdp
+    series_id: BX.KLT.DINV.WD.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: capital
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 1.5
+    linkage: "Brazil FDI net inflows as % of GDP."
+    sanity_min: -8.0
+    sanity_max: 15.0
+
+  - id: credit.private_debt_gdp
+    series_id: QBRPAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 90.0
+    linkage: "Brazil total private non-financial credit, % GDP (BIS). Core leverage read."
+    sanity_min: 0.0
+    sanity_max: 350.0
+
+  - id: credit.household_debt_gdp
+    series_id: QBRHAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 35.0
+    linkage: "Brazil household credit, % GDP (BIS). Private-sector cash-flow burden input."
+    sanity_min: 0.0
+    sanity_max: 150.0
+
+  - id: credit.corporate_debt_gdp
+    series_id: QBRNAM770A
+    provider: FRED
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 55.0
+    linkage: "Brazil non-financial corporate credit, % GDP (BIS)."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: credit.gov_debt_gdp
+    series_id: GGXWDG_NGDP
+    provider: IMF
+    frequency: A
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 90.0
+    linkage: "Brazil general government gross debt, % GDP (IMF). Sovereign side of the stage vote."
+    sanity_min: 0.0
+    sanity_max: 250.0
+
+  - id: fiscal.budget_balance_gdp
+    series_id: GGCB_G01_PGDP_PT
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -7.0
+    linkage: "Brazil general government structural balance, % GDP (IMF). Global Overview budget column."
+    sanity_min: -20.0
+    sanity_max: 8.0
+
+  - id: fiscal.primary_balance_gdp
+    series_id: pb
+    provider: IMF
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -1.5
+    linkage: "Brazil IMF general government primary balance, % GDP (excl. interest)."
+    sanity_min: -20.0
+    sanity_max: 8.0
+
+  - id: fiscal.govt_revenue_gdp
+    series_id: GC.REV.XGRT.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 26.0
+    linkage: "Brazil general government revenue, % GDP (central basis)."
+    sanity_min: 3.0
+    sanity_max: 50.0
+
+  - id: external.current_account_gdp
+    series_id: BN.CAB.XOKA.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: -2.0
+    linkage: "Brazil current account balance, % GDP."
+    sanity_min: -15.0
+    sanity_max: 15.0
+
+  - id: external.exports_gdp
+    series_id: NE.EXP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 17.0
+    linkage: "Brazil exports of goods and services, % GDP."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: external.imports_gdp
+    series_id: NE.IMP.GNFS.ZS
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: coincident
+    transformation: level
+    units: pct_gdp
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 17.0
+    linkage: "Brazil imports of goods and services, % GDP."
+    sanity_min: 5.0
+    sanity_max: 80.0
+
+  - id: external.external_debt_bn
+    series_id: DT.DOD.DECT.CD
+    provider: WorldBank
+    frequency: A
+    force: external
+    lead_lag: leading
+    transformation: level
+    units: billions_usd
+    raw_scale: 1.0e9
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 600.0
+    linkage: "Brazil total external debt stock, USD billions (WB debtor reporting system)."
+    sanity_min: 0.0
+    sanity_max: 3000.0
+
+  - id: demo.population_total_mn
+    series_id: SP.POP.TOTL
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: persons
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Brazil total population (World Bank); /1e6 for millions."
+    sanity_min: 100000.0
+    sanity_max: 2000000000.0
+
+  - id: demo.population_growth
+    series_id: SP.POP.GROW
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_annual
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "Brazil annual population growth rate %."
+    sanity_min: -2.0
+    sanity_max: 4.0
+
+  - id: demo.age_dependency
+    series_id: SP.POP.DPND
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_working_age
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Brazil age dependency ratio (dependents per 100 working-age)."
+    sanity_min: 20.0
+    sanity_max: 110.0
+
+  - id: demo.labor_force_part_wb
+    series_id: SL.TLF.CACT.ZS
+    provider: WorldBank
+    frequency: A
+    force: demographics
+    lead_lag: structural
+    transformation: level
+    units: pct_pop_15plus
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 62.0
+    linkage: "Brazil ILO-modeled labor force participation (% 15+)."
+    sanity_min: 30.0
+    sanity_max: 90.0
+
+  - id: volatility.equity_index
+    series_id: SPASTT01BRM661N
+    provider: FRED
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: level
+    units: index_level
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Brazil OECD MEI share-price index (monthly) — raw level, input to realized vol only."
+    sanity_min: 0.0
+    sanity_max: 2000.0
+
+  - id: volatility.realized_vol
+    provider: derived
+    frequency: M
+    force: volatility
+    lead_lag: coincident
+    transformation: derived
+    units: annualized_pct
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    is_proxy: true
+    verified: true
+    equilibrium: 0.18
+    linkage: "Annualized rolling std of monthly log returns on the Brazil share-price index (12m window) — monthly proxy."
+    sanity_min: 0.0
+    sanity_max: 2.0
+
+  - id: order.gini
+    series_id: SI.POV.GINI
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: index_level
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 50.0
+    linkage: "Brazil Gini ~50 — persistently among the world's most unequal; the Bolsa-Familia / populist-policy backdrop and a core internal-order read."
+    sanity_min: 15.0
+    sanity_max: 65.0
+    notes: "World Bank PIP. Verified 2026-07-07. Multi-year publication lag is inherent."

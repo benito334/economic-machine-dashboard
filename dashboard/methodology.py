@@ -1533,16 +1533,22 @@ def get_layout() -> html.Div:
                             ["India",         "IN", "31", "✅ Live (live IP + 10y yield; CPI bridge)", "FRED (BIS credit, IP, trade, 10y), World Bank, IMF"],
                             ["Germany",       "DE", "29", "✅ Live (all-live monthly feeds)", "FRED, Eurostat (IP geo=DE), World Bank, IMF"],
                             ["Luxembourg",    "LU", "26", "✅ Live (financial-center caveats)", "FRED, World Bank, IMF"],
-                            ["Brazil",        "BR", "—",  "🔄 Next", "World Bank, IMF"],
+                            ["Brazil",        "BR", "32", "✅ Live (Ray commodity pick; Selic rate)", "FRED (BIS credit, IP, trade, Selic), World Bank, IMF"],
+                            ["Canada",        "CA", "31", "✅ Live (Ray #1 pick; live IP + 10y/3m)", "FRED (BIS credit, IP, rates, unemp), World Bank, IMF"],
+                            ["Australia",     "AU", "30", "✅ Live (China-demand proxy; quarterly CPI)", "FRED (BIS credit, rates, unemp, trade), World Bank, IMF"],
+                            ["Mexico",        "MX", "31", "✅ Live (nearshoring; trade-only growth)", "FRED (BIS credit, rates, trade), World Bank, IMF"],
+                            ["Indonesia",     "ID", "30", "✅ Live (SE-Asia commodity; call-money rate)", "FRED (BIS credit, trade, reserves), World Bank, IMF"],
                         ]
                     )],
                 )),
                 _p("Current coverage (Phase 2 in progress): United States (73 signals), "
                    "Eurozone (37), United Kingdom (27), Japan (25), South Korea (26), "
-                   "China (32), India (31), Germany (29), Luxembourg (26) — the last "
-                   "three added 2026-07-07. Germany and Luxembourg are standalone "
-                   "reads of economies also inside the EZ aggregate. "
-                   "Brazil is next in the original Phase 2 order; then Saudi Arabia, Russia."),
+                   "China (32), India (31), Germany (29), Luxembourg (26), and the "
+                   "Ray-recommended commodity/trade axis added 2026-07-07: Brazil (32), "
+                   "Canada (31), Australia (30), Mexico (31), Indonesia (30). "
+                   "14 economies, 462 signals. Ray flagged the set was heavy on debt-cycle "
+                   "pillars and light on commodity exporters — Canada/Australia/Mexico/"
+                   "Indonesia close that gap."),
                 _table(
                     ["Country", "Code", "Signals", "Status", "Key data sources"],
                     [
@@ -1572,6 +1578,13 @@ def get_layout() -> html.Div:
                          "10y yield — richer than China); World Bank (external debt fills); "
                          "IMF DataMapper; CPI = IMF annual bridge (OECD feed dead 2025-03); "
                          "INR not in COFER (Other currencies)"],
+                        ["Brazil/Canada/Australia/Mexico/Indonesia", "BR/CA/AU/MX/ID", "154",
+                         "✅ Live (Ray's commodity/trade picks, added 2026-07-07)",
+                         "FRED (BIS 3-sector credit all 5; live IP for BR/CA; live 10y+3m rates "
+                         "for CA/AU/MX; Selic for BR, call-money for ID; trade + reserves); "
+                         "World Bank (external debt fills for BR/MX/ID); IMF. All 5 run the "
+                         "private/sovereign two-vote stage split. Quirks: AU CPI is quarterly; "
+                         "MX/ID/AU have no monthly IP; CPI on IMF bridge except AU"],
                         ["Germany",       "DE", "29", "✅ Live (added 2026-07-07)",
                          "Richest non-US dataset: live monthly HICP (no bridge needed), "
                          "live IP via Eurostat geo=DE (OECD FRED feeds died 2023/24), live "
@@ -2073,6 +2086,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-07", "Country coverage expanded to 14 economies on Digital-Ray's advice: added Brazil + his top-4 missing commodity/trade hubs (Canada #1, Australia #2, Mexico #3, Indonesia #4) — the set was heavy on debt-cycle pillars and light on the commodity-exporter axis. ~154 new signals; all 5 run the private/sovereign two-vote stage split (BR/ID use a policy rate for the spreads as they have no free bond yield, CA/AU/MX use a live 10y). Ray also flagged Germany/Luxembourg as borderline-redundant with the EZ aggregate (kept, per user request)", "11"],
                             ["2026-07-07", "D4 manual-load infrastructure: drop-folder pattern (MANUAL_DATA_DIR) + pipeline Pass 3.8 for sources with no free API — order.governance (V-Dem liberal-democracy index, 8 countries) + order.geopolitical_risk (GPR country index, 7 countries; LU not in the GPR set) as provider:Manual bindings; missing file = pending SLOT (never a failure), malformed file fails loudly; converters scripts/prepare_vdem.py + prepare_gpr.py; see docs/manual_data.md", "— (new data lens)"],
                             ["2026-07-07", "India + Germany + Luxembourg rollouts: 86 new signals (IN 31 / DE 29 / LU 26) — 306 total across 9 economies; all three carry BIS household+corporate credit so all three run the private/sovereign two-vote stage split; DE = richest non-US dataset (live HICP, Eurostat IP, 2-signal rate basket); LU flagged as financial-center read (credit 420% GDP = intra-group vehicles); IN has live IP + 10y yield (richer than CN)", "11"],
                             ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
@@ -2122,7 +2136,8 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
-                        ["2026-07-07", "D4 manual-load infrastructure: drop-folder pattern (MANUAL_DATA_DIR) + pipeline Pass 3.8 for sources with no free API — order.governance (V-Dem liberal-democracy index, 8 countries) + order.geopolitical_risk (GPR country index, 7 countries; LU not in the GPR set) as provider:Manual bindings; missing file = pending SLOT (never a failure), malformed file fails loudly; converters scripts/prepare_vdem.py + prepare_gpr.py; see docs/manual_data.md", "— (new data lens)"],
+                        ["2026-07-07", "Country coverage expanded to 14 economies on Digital-Ray's advice: added Brazil + his top-4 missing commodity/trade hubs (Canada #1, Australia #2, Mexico #3, Indonesia #4) — the set was heavy on debt-cycle pillars and light on the commodity-exporter axis. ~154 new signals; all 5 run the private/sovereign two-vote stage split (BR/ID use a policy rate for the spreads as they have no free bond yield, CA/AU/MX use a live 10y). Ray also flagged Germany/Luxembourg as borderline-redundant with the EZ aggregate (kept, per user request)", "11"],
+                            ["2026-07-07", "D4 manual-load infrastructure: drop-folder pattern (MANUAL_DATA_DIR) + pipeline Pass 3.8 for sources with no free API — order.governance (V-Dem liberal-democracy index, 8 countries) + order.geopolitical_risk (GPR country index, 7 countries; LU not in the GPR set) as provider:Manual bindings; missing file = pending SLOT (never a failure), malformed file fails loudly; converters scripts/prepare_vdem.py + prepare_gpr.py; see docs/manual_data.md", "— (new data lens)"],
                             ["2026-07-07", "India + Germany + Luxembourg rollouts: 86 new signals (IN 31 / DE 29 / LU 26) — 306 total across 9 economies; all three carry BIS household+corporate credit so all three run the private/sovereign two-vote stage split; DE = richest non-US dataset (live HICP, Eurostat IP, 2-signal rate basket); LU flagged as financial-center read (credit 420% GDP = intra-group vehicles); IN has live IP + 10y yield (richer than CN)", "11"],
                             ["2026-07-07", "China rollout (Phase 2): 32 signals via WB/IMF harmonized + FRED-mirrored BIS/OECD feeds — BIS 3-sector credit (2nd country with a real private/sovereign stage-vote split), monthly trade as the live growth read, 3m interbank as the only free market rate, CPI on the IMF annual bridge, COFER RMB share; stage = leveraging on both votes", "11"],
                             ["2026-07-06", "Debt-cycle stage classifier made sovereign-aware (Ray ruling): two votes (private/sovereign), headline = worse of the two by severity, debt-stock capped size-weighted mean (90th pct), 70/30 household/gov debt-service blend, refinancing-gap early trigger, independent SOVEREIGN SQUEEZE flag surfaced on Command Center/Debt Stress/Relative Cycles", "9"],

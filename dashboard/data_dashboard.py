@@ -839,7 +839,9 @@ def register_callbacks(app) -> None:
 
         country_label = {"US": "United States", "EZ": "Euro Area", "KR": "South Korea",
                          "JP": "Japan", "GB": "United Kingdom", "CN": "China",
-                         "IN": "India", "DE": "Germany", "LU": "Luxembourg"}.get(
+                         "IN": "India", "DE": "Germany", "LU": "Luxembourg",
+                         "BR": "Brazil", "CA": "Canada", "AU": "Australia",
+                         "MX": "Mexico", "ID": "Indonesia"}.get(
             country, country
         )
         description = (

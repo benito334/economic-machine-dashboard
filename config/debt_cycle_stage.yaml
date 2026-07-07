@@ -258,6 +258,91 @@ countries:
       growth_signal: master.gdp_real
       inflation_signal: inflation.cpi_headline
 
+  BR:
+    # Brazil (discount/Selic rate proxies the yield; CPI = IMF annual bridge). BIS household+corporate credit -> full private/sovereign split.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.rate_policy
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.rate_policy
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
+  CA:
+    # Canada (live 10y yield + monthly CPI bridge). BIS household+corporate credit -> full private/sovereign split.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
+  AU:
+    # Australia (live 10y yield; quarterly CPI -> IMF annual bridge). BIS household+corporate credit -> full private/sovereign split.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
+  MX:
+    # Mexico (live 10y yield; CPI = IMF annual bridge). BIS household+corporate credit -> full private/sovereign split.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.yield_10y
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.yield_10y
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
+  ID:
+    # Indonesia (call-money rate proxies the yield; CPI = IMF annual bridge). BIS household+corporate credit -> full private/sovereign split.
+    debt_components:
+      - credit.gov_debt_gdp
+      - credit.household_debt_gdp
+      - credit.corporate_debt_gdp
+    dsr_signal: null                        # BIS DSR needs manual load (wishlist)
+    real_rate:
+      nominal_signal: policy.rate_policy
+      inflation_signal: inflation.cpi_imf_annual
+      is_proxy: true
+    real_growth_signal: master.gdp_real
+    ngdp_minus_yield:
+      derived: true
+      yield_signal: policy.rate_policy
+      growth_signal: master.gdp_real
+      inflation_signal: inflation.cpi_imf_annual
 # ── Sovereign-aware sector model (Ray ruling 2026-07-06) ─────────────────────
 # Triggered by the "US reads reflation while Ray calls for deleveraging"
 # challenge: the private sector's post-2008 deleveraging was masking the
@@ -333,3 +418,28 @@ sovereign_inputs:
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
     # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
     marginal_yields: [policy.yield_10y]
+  BR:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.rate_policy]
+  CA:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.yield_10y]
+  AU:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.yield_10y]
+  MX:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.yield_10y]
+  ID:
+    gov_debt: credit.gov_debt_gdp
+    private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
+    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    marginal_yields: [policy.rate_policy]

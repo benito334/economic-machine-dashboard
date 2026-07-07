@@ -32,7 +32,8 @@ def cfg():
 def test_config_loads_and_has_all_stages(cfg):
     for stage in STAGES:
         assert stage in cfg["weights"]
-    for country in ("US", "EZ", "KR", "CN", "IN", "DE", "LU"):
+    for country in ("US", "EZ", "KR", "CN", "IN", "DE", "LU",
+                    "BR", "CA", "AU", "MX", "ID"):
         assert country in cfg["countries"]
 
 
@@ -76,6 +77,24 @@ def test_config_in_de_lu_two_vote_countries(cfg):
         assert c["ngdp_minus_yield"]["yield_signal"] == "policy.yield_10y"
         sov = cfg["sovereign_inputs"][cc]
         assert sov["private_debt"] == [
+            "credit.household_debt_gdp", "credit.corporate_debt_gdp"
+        ]
+
+
+def test_config_commodity_hubs_two_vote_countries(cfg):
+    """BR/CA/AU/MX/ID (Ray's commodity/trade picks, added 2026-07-07) all carry
+    BIS household + corporate debt → full two-vote split. Rate signal for the
+    spreads varies: BR/ID use a policy rate (no free bond yield), CA/AU/MX use
+    a live 10y yield."""
+    expect_yield = {"BR": "policy.rate_policy", "CA": "policy.yield_10y",
+                    "AU": "policy.yield_10y", "MX": "policy.yield_10y",
+                    "ID": "policy.rate_policy"}
+    for cc in ("BR", "CA", "AU", "MX", "ID"):
+        c = cfg["countries"][cc]
+        assert len(c["debt_components"]) == 3
+        assert c["dsr_signal"] is None
+        assert c["ngdp_minus_yield"]["yield_signal"] == expect_yield[cc]
+        assert cfg["sovereign_inputs"][cc]["private_debt"] == [
             "credit.household_debt_gdp", "credit.corporate_debt_gdp"
         ]
 
@@ -338,6 +357,26 @@ def test_in_de_lu_two_vote_split_live():
     conn = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         for cc in ("IN", "DE", "LU"):
+            snaps = compute_stage_history(conn, cc, cfg)
+            labeled = [s for s in snaps if s.stage]
+            assert labeled, f"{cc}: no labeled stage snapshots"
+            latest = labeled[-1]
+            assert latest.stage_private is not None, f"{cc}: private vote missing"
+            assert latest.stage_sovereign is not None, f"{cc}: sovereign vote missing"
+            assert latest.sovereign_squeeze is False, f"{cc}: flag should be False"
+    finally:
+        conn.close()
+
+
+@pytest.mark.integration
+def test_commodity_hubs_two_vote_split_live():
+    """BR/CA/AU/MX/ID (Ray's commodity/trade picks, added 2026-07-07) all carry
+    BIS household + corporate credit → both votes populated. None has a
+    gov-interest series → SOVEREIGN SQUEEZE flag honestly False."""
+    cfg = load_stage_config()
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        for cc in ("BR", "CA", "AU", "MX", "ID"):
             snaps = compute_stage_history(conn, cc, cfg)
             labeled = [s for s in snaps if s.stage]
             assert labeled, f"{cc}: no labeled stage snapshots"

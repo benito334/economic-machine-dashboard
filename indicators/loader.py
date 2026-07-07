@@ -185,6 +185,10 @@ _WB_COUNTRY_MAP: dict[str, str] = {
     "DE": "DEU",   # standalone Germany (also inside the EZ aggregate)
     "LU": "LUX",   # standalone Luxembourg (also inside the EZ aggregate)
     "BR": "BRA",
+    "CA": "CAN",
+    "AU": "AUS",
+    "MX": "MEX",
+    "ID": "IDN",
     "SA": "SAU",
     "RU": "RUS",
 }
@@ -298,6 +302,10 @@ _IMF_COUNTRY_MAP: dict[str, str] = {
     "DE": "DEU",   # standalone Germany (also inside the EZ aggregate)
     "LU": "LUX",   # standalone Luxembourg (also inside the EZ aggregate)
     "BR": "BRA",
+    "CA": "CAN",
+    "AU": "AUS",
+    "MX": "MEX",
+    "ID": "IDN",
     "SA": "SAU",
     "RU": "RUS",
 }

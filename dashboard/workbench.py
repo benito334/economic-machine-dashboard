@@ -40,7 +40,8 @@ _PALETTE = ["#4C9BE8", "#E8734C", "#5CBA8A", "#F4C842", "#B07FD4",
 _TIMEFRAMES = ["1Y", "3Y", "5Y", "10Y", "MAX"]
 
 _FLAGS = {"US": "🇺🇸", "EZ": "🇪🇺", "GB": "🇬🇧", "JP": "🇯🇵", "KR": "🇰🇷", "CN": "🇨🇳",
-          "IN": "🇮🇳", "DE": "🇩🇪", "LU": "🇱🇺", "—": "🌐"}
+          "IN": "🇮🇳", "DE": "🇩🇪", "LU": "🇱🇺", "BR": "🇧🇷", "CA": "🇨🇦",
+          "AU": "🇦🇺", "MX": "🇲🇽", "ID": "🇮🇩", "—": "🌐"}
 
 
 def _tf_start(tf: str) -> Optional[pd.Timestamp]:
@@ -88,7 +89,7 @@ def get_layout() -> html.Div:
             ], style={"position": "relative", "flex": "1 1 420px"}),
             dcc.Dropdown(id="wb-facet-country", multi=True, placeholder="country",
                          options=[{"label": f"{_FLAGS[c]} {c}", "value": c}
-                                  for c in ["US", "EZ", "GB", "JP", "KR", "CN", "IN", "DE", "LU"]],
+                                  for c in ["US", "EZ", "GB", "JP", "KR", "CN", "IN", "DE", "LU", "BR", "CA", "AU", "MX", "ID"]],
                          style={"minWidth": "150px", "fontSize": "0.78rem"}),
             dcc.Dropdown(id="wb-facet-group", multi=True, placeholder="force / group",
                          options=[{"label": g, "value": g} for g in
