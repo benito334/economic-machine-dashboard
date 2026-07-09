@@ -1490,3 +1490,22 @@ SDK). Key findings + artifacts:
   off the baked-in compacted DB — full live data, DYNAMIC badge, SOVEREIGN
   SQUEEZE flag, and operator-only nav (Weight Audit/History) correctly hidden
   in public mode. Data bundle is not committed (binary — uploaded to the Space).
+
+---
+
+## 2026-07-09 (4) — UI cleanup: nav tooltips, Overview names + Rate coverage
+
+Three requested tweaks:
+- **Removed the hover popup labels on the left nav** (all `dbc.Tooltip`s on the
+  nav links + Settings). The icon rail no longer shows tooltips.
+- **Overview spells out every country** — added Luxembourg/Australia/Mexico/
+  Indonesia to `_COUNTRY_NAMES` (they were rendering as LU/AU/MX/ID codes) and
+  refreshed `_COUNTRY_ORDER` to the real 14-country rollout order.
+- **Overview Rate column now fills for all 14 countries.** It was hardcoded to
+  `policy.fed_funds_target` (US-only). Added a per-country fallback —
+  policy rate → 3-month interbank → 10-year gov-bond yield — so each country
+  shows its best-available rate, with the actual instrument named on hover
+  (`_RATE_CONCEPT_LABELS`). e.g. US/EZ policy rate, CN/DE/CA/AU/MX interbank,
+  GB/JP/KR/IN/LU 10y yield, BR Selic 21.3%.
+
+88 charting tests pass.

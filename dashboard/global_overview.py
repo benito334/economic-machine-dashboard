@@ -25,16 +25,22 @@ _COUNTRY_NAMES: dict[str, str] = {
     "kr": "South Korea",
     "cn": "China",
     "in": "India",
+    "de": "Germany",
+    "lu": "Luxembourg",
     "br": "Brazil",
+    "ca": "Canada",
+    "au": "Australia",
+    "mx": "Mexico",
+    "id": "Indonesia",
     "sa": "Saudi Arabia",
     "ru": "Russia",
-    "ca": "Canada",
-    "de": "Germany",
     "fr": "France",
     "it": "Italy",
 }
 
-_COUNTRY_ORDER = ["us", "ez", "jp", "gb", "kr", "cn", "in", "br", "sa", "ru"]
+# Rollout order; any country present in the data but not listed here is appended.
+_COUNTRY_ORDER = ["us", "ez", "gb", "jp", "kr", "cn", "in", "de", "lu",
+                  "br", "ca", "au", "mx", "id"]
 
 CYCLE_HEALTH_DEFAULT_CONFIG: dict[str, Any] = {
     "weights": {
@@ -111,7 +117,15 @@ _COLUMNS: list[dict] = [
     {
         "header": "Rate",
         "sub": "%",
+        # Not every country publishes a central-bank policy rate on a free feed.
+        # Fall back per country: policy rate → 3-month interbank → 10y gov yield.
         "concept": "policy.fed_funds_target",
+        "concepts": [
+            "policy.fed_funds_target",   # US (Fed) + EZ (ECB, mapped)
+            "policy.rate_policy",         # BR (Selic), ID
+            "policy.rate_3m_interbank",   # CN, DE, CA, AU, MX
+            "policy.yield_10y",           # GB, JP, KR, IN, LU (bond-yield proxy)
+        ],
         "multiplier": 1.0,
         "fmt": lambda v: f"{v:.2f}",
         "color": {"warn_ge": 8.0},
@@ -174,6 +188,15 @@ _CYCLE_COMPONENT_CONCEPTS = [
     "credit.household_debt_gdp",
     "credit.corporate_debt_gdp",
 ]
+
+# Human labels for the rate fallbacks, shown on hover so it is clear which
+# instrument each country's "Rate" cell reflects (policy rate vs bond yield).
+_RATE_CONCEPT_LABELS = {
+    "policy.fed_funds_target": "central-bank policy rate",
+    "policy.rate_policy": "central-bank policy rate",
+    "policy.rate_3m_interbank": "3-month interbank rate",
+    "policy.yield_10y": "10-year government bond yield",
+}
 
 _COLUMN_BY_CONCEPT = {c["concept"]: c for c in _COLUMNS}
 _CHI_METRICS = {
@@ -494,7 +517,11 @@ def _cycle_health(
 
 def _load_data() -> dict[str, dict[str, tuple[float, str]]]:
     """Return {country_code: {concept: (display_value, as_of_str)}}."""
-    concepts = sorted({c["concept"] for c in _COLUMNS} | set(_CYCLE_COMPONENT_CONCEPTS))
+    _wanted: set[str] = set(_CYCLE_COMPONENT_CONCEPTS)
+    for c in _COLUMNS:
+        _wanted.add(c["concept"])
+        _wanted.update(c.get("concepts", []))
+    concepts = sorted(_wanted)
     like_clauses = " OR ".join(f"id LIKE '%.{concept}'" for concept in concepts)
     try:
         con = duckdb.connect(_DB, read_only=True)
@@ -610,14 +637,22 @@ def _make_row(
     cells: list = [html.Td(name, className="ov-country-name")]
 
     for col in _COLUMNS:
-        concept = col["concept"]
-        if concept not in country_data:
+        # A column may list fallback concepts (e.g. Rate); use the first the
+        # country actually has, so every country fills the cell where possible.
+        candidates = col.get("concepts") or [col["concept"]]
+        concept = next((c for c in candidates if c in country_data), None)
+        if concept is None:
             cells.append(html.Td("—", className="ov-cell-missing"))
             continue
         raw_val, as_of = country_data[concept]
         val = raw_val * col["multiplier"]
         text = col["fmt"](val)
         cls = _color_class(val, col["color"])
+        # For fallback columns, name the actual instrument on hover.
+        if col.get("concepts") and concept in _RATE_CONCEPT_LABELS:
+            title = f"{_RATE_CONCEPT_LABELS[concept]} · click to view history"
+        else:
+            title = f"Click to view {col['header']} history"
         cells.append(html.Td(
             [
                 _clickable_value(
@@ -625,7 +660,7 @@ def _make_row(
                     cls or "ov-cell-default",
                     country_code,
                     concept,
-                    f"Click to view {col['header']} history",
+                    title,
                 ),
                 html.Br(),
                 html.Span(as_of, className="ov-cell-date"),

@@ -706,15 +706,9 @@ def _left_nav() -> html.Div:
             "padding": "14px 12px 4px 12px",
         })
 
-    _tooltips: list = [
-        # Tooltip for the manually-constructed Signals nav link (active="partial")
-        dbc.Tooltip("Signals", target="navlnk-signals", placement="right",
-                    delay={"show": 300, "hide": 50}),
-    ]
-
     def _nl(icon: str, text: str, href: str, disabled: bool = False,
             nav_id: str | None = None) -> dbc.NavLink:
-        link = dbc.NavLink(
+        return dbc.NavLink(
             [
                 html.Span(icon, className="nav-icon",
                           style={"minWidth": "22px", "display": "inline-block",
@@ -727,12 +721,6 @@ def _left_nav() -> html.Div:
             id=nav_id,
             className="py-1 px-3 small sidebar-nav-link",
         )
-        if nav_id:
-            _tooltips.append(dbc.Tooltip(
-                text, target=nav_id, placement="right",
-                delay={"show": 300, "hide": 50},
-            ))
-        return link
 
     def _sm(v: int, lbl: str) -> dict:
         return {"label": lbl, "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}}
@@ -933,10 +921,6 @@ def _left_nav() -> html.Div:
             style={"marginTop": "auto"},
         ),
 
-        # ── Hover tooltips (shown on collapsed icon hover) ────────────────────
-        dbc.Tooltip("Settings", target="settings-btn", placement="right",
-                    delay={"show": 300, "hide": 50}),
-        *_tooltips,
     ], id="sidebar-container", style={
         "width": "195px",
         "flexShrink": "0",
