@@ -644,3 +644,49 @@ hr {
     display: inline-block;
     animation: pipe-rotate 1.2s linear infinite;
 }
+
+/* ── Mobile / narrow screens ─────────────────────────────────────────────────
+   The dashboard is desktop-first (fixed 195px sidebar + wide multi-column
+   tables). On phones/tablets we (a) shrink the sidebar to its icon rail so
+   content gets the width, (b) tighten page padding, and (c) let over-wide
+   tables and charts scroll horizontally instead of bursting the layout. */
+@media (max-width: 768px) {
+    /* Force the sidebar down to the icon rail regardless of the toggle state */
+    #sidebar-container {
+        width: 46px !important;
+        min-width: 46px !important;
+    }
+    #sidebar-container .sidebar-text,
+    #sidebar-container .sidebar-section-label,
+    #sidebar-container .sidebar-sliders,
+    #sidebar-container .country-full,
+    #sidebar-container hr {
+        display: none !important;
+    }
+    #sidebar-container .country-collapsed {
+        display: block !important;
+    }
+    #sidebar-container .sidebar-nav-link,
+    #sidebar-container .sidebar-header {
+        justify-content: center !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    /* Tighter gutters + never let a page force horizontal scroll on the body */
+    #page-content {
+        padding: 0 8px !important;
+        overflow-x: auto;
+    }
+    /* Wide tables scroll inside their own box rather than shrinking to mush */
+    #page-content .table-responsive,
+    #page-content .mobile-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    /* Cards / flex rows wrap instead of overflowing */
+    #page-content .card,
+    #page-content [style*="display: flex"],
+    #page-content [style*="display:flex"] {
+        flex-wrap: wrap;
+    }
+}

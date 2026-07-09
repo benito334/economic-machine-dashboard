@@ -68,6 +68,10 @@ app = dash.Dash(
     title="Economic Machine Dashboard",
     update_title=None,          # prevent "Updating..." tab flicker from poll interval
     suppress_callback_exceptions=True,
+    # Render at real device width on phones (without this, mobile browsers fake a
+    # ~980px viewport and shrink everything). Enables the @media rules in theme.css.
+    meta_tags=[{"name": "viewport",
+                "content": "width=device-width, initial-scale=1"}],
 )
 server = app.server  # expose Flask for Gunicorn / production
 _data_dashboard.register_callbacks(app) # Data Feed Monitor sort + filter
@@ -1526,6 +1530,8 @@ app.layout = html.Div([
     dcc.Store(id="cc-learn-dismissed",   data=False, storage_type="local"),
     # Per-tab session id for traffic metrics (unique-visitor proxy)
     dcc.Store(id="session-id",           storage_type="session"),
+    # Browser timezone (coarse region for traffic metrics — no IP, no geolocation)
+    dcc.Store(id="tz-region",            storage_type="local"),
     # Signal drill-down: stores the signal_id most recently clicked
     dcc.Store(id="signal-drill-id",         data=None),
     dcc.Store(id="signal-drill-hover-init", data=None),
@@ -1996,12 +2002,13 @@ _PAGE_MAP = {
      Output("page-trigger", "data")],
     Input("url", "pathname"),
     [State("url", "search"),
-     State("session-id", "data")],
+     State("session-id", "data"),
+     State("tz-region", "data")],
     prevent_initial_call=False,
 )
-def route_page(pathname: str, search: str = "", session: str = None):
+def route_page(pathname: str, search: str = "", session: str = None, tz: str = None):
     pathname = pathname or "/"
-    _traffic.record_hit(pathname, session)      # self-skips assets + /traffic
+    _traffic.record_hit(pathname, session, tz)  # self-skips assets + /traffic
     if pathname == "/traffic":
         if _traffic.can_view(search or ""):
             return _traffic.get_layout(), {"page": pathname}
@@ -2024,6 +2031,18 @@ app.clientside_callback(
     Output("session-id", "data"),
     Input("url", "pathname"),
     State("session-id", "data"),
+)
+
+
+# Capture the browser's IANA timezone (e.g. "Europe/London") once — a coarse
+# region hint for traffic metrics. No IP, no geolocation, nothing leaves the box.
+app.clientside_callback(
+    "function(_p, tz){ if (tz) return tz; "
+    "try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } "
+    "catch(e){ return ''; } }",
+    Output("tz-region", "data"),
+    Input("url", "pathname"),
+    State("tz-region", "data"),
 )
 
 

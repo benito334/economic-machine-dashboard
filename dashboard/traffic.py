@@ -33,15 +33,20 @@ _SKIP_PREFIXES = ("/traffic", "/_dash", "/assets", "/favicon")
 _MAX_READ_BYTES = 8_000_000        # tail-read cap so the page stays fast
 
 
-def record_hit(path: str, session: Optional[str]) -> None:
-    """Append one page-view record. Never raises (must not break routing)."""
+def record_hit(path: str, session: Optional[str], tz: Optional[str] = None) -> None:
+    """Append one page-view record. Never raises (must not break routing).
+
+    ``tz`` is the visitor's IANA browser timezone (e.g. "Europe/London") — a
+    coarse region hint only; no IP or geolocation is ever recorded.
+    """
     path = (path or "/").split("?")[0]
     if any(path.startswith(p) for p in _SKIP_PREFIXES):
         return
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         line = json.dumps({"t": int(time.time()), "p": path,
-                           "s": (session or "")[:40]}, separators=(",", ":"))
+                           "s": (session or "")[:40], "z": (tz or "")[:48]},
+                          separators=(",", ":"))
         with open(TRAFFIC_LOG, "a") as fh:      # append is atomic for short lines
             fh.write(line + "\n")
     except Exception:
@@ -74,6 +79,7 @@ def read_metrics(days: int = 30) -> dict:
     since_7d = (now - timedelta(days=7)).timestamp()
     by_day: Counter = Counter()
     top_paths: Counter = Counter()
+    top_regions: Counter = Counter()
     sessions: set = set()
     total = views_today = views_7d = 0
     day_keys = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
@@ -83,6 +89,8 @@ def read_metrics(days: int = 30) -> dict:
             continue
         total += 1
         top_paths[r.get("p", "/")] += 1
+        if r.get("z"):
+            top_regions[r["z"]] += 1
         if r.get("s"):
             sessions.add(r["s"])
         d = datetime.fromtimestamp(t, timezone.utc).date()
@@ -98,6 +106,7 @@ def read_metrics(days: int = 30) -> dict:
         "views_7d": views_7d,
         "by_day": [(k, by_day.get(k, 0)) for k in day_keys],
         "top_paths": top_paths.most_common(12),
+        "top_regions": top_regions.most_common(12),
     }
 
 
@@ -154,12 +163,18 @@ def _day_bars(by_day: list[tuple]) -> html.Div:
                                  "marginTop": "8px", "overflow": "hidden"})
 
 
-def get_layout() -> html.Div:
-    m = read_metrics(30)
-    rows = [html.Tr([html.Td(p, style={"padding": "3px 10px"}),
+def _count_table(pairs: list[tuple], empty: str) -> html.Table:
+    rows = [html.Tr([html.Td(k, style={"padding": "3px 10px"}),
                      html.Td(f"{c:,}", style={"padding": "3px 10px", "textAlign": "right",
                                               "fontFamily": "monospace"})])
-            for p, c in m["top_paths"]]
+            for k, c in pairs]
+    return html.Table(html.Tbody(rows or [html.Tr([html.Td(empty)])]),
+                      style={"fontSize": "0.82rem", "borderCollapse": "collapse",
+                             "marginTop": "6px"})
+
+
+def get_layout() -> html.Div:
+    m = read_metrics(30)
     return html.Div([
         html.H3("Traffic", style={"marginBottom": "2px"}),
         html.Div("Page views recorded on this dashboard. A visitor is one browser "
@@ -174,8 +189,19 @@ def get_layout() -> html.Div:
         ], style={"display": "flex", "gap": "10px", "flexWrap": "wrap"}),
         html.Div("Views per day — last 30 days", style={**_LABEL, "marginTop": "18px"}),
         _day_bars(m["by_day"]),
-        html.Div("Most-viewed pages", style={**_LABEL, "marginTop": "22px"}),
-        html.Table(html.Tbody(rows or [html.Tr([html.Td("No traffic recorded yet.")])]),
-                   style={"fontSize": "0.82rem", "borderCollapse": "collapse",
-                          "marginTop": "6px"}),
+        html.Div([
+            html.Div([
+                html.Div("Most-viewed pages", style={**_LABEL, "marginTop": "22px"}),
+                _count_table(m["top_paths"], "No traffic recorded yet."),
+            ], style={"flex": "1 1 300px"}),
+            html.Div([
+                html.Div("Top regions · browser timezone",
+                         style={**_LABEL, "marginTop": "22px"}),
+                _count_table(m["top_regions"], "No region data yet."),
+            ], style={"flex": "1 1 300px"}),
+        ], style={"display": "flex", "gap": "24px", "flexWrap": "wrap"}),
+        html.Div("Region = the visitor's browser timezone (e.g. Europe/London). "
+                 "No IP address or precise location is collected.",
+                 style={"fontSize": "0.72rem", "color": "var(--muted-color)",
+                        "marginTop": "12px"}),
     ], className="p-3", style={"maxWidth": "1000px"})

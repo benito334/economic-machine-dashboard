@@ -28,6 +28,17 @@ def test_record_and_aggregate(tr):
     assert m["top_paths"][0] == ("/country", 2)
 
 
+def test_region_aggregation(tr):
+    tr.record_hit("/country", "a", "Europe/London")
+    tr.record_hit("/overview", "a", "Europe/London")
+    tr.record_hit("/country", "b", "America/New_York")
+    tr.record_hit("/relative", "c")                      # no tz → no region
+    m = tr.read_metrics()
+    regions = dict(m["top_regions"])
+    assert regions == {"Europe/London": 2, "America/New_York": 1}
+    assert m["top_regions"][0] == ("Europe/London", 2)
+
+
 def test_assets_and_self_are_skipped(tr):
     tr.record_hit("/traffic", "a")
     tr.record_hit("/assets/app.js", "a")
