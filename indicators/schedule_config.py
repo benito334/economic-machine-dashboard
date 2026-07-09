@@ -43,19 +43,30 @@ def _atomic_write(path: Path, payload: dict) -> None:
 # ── schedule.json (written by the dashboard, read by the scheduler) ───────────
 
 def load_schedule() -> dict:
-    """Return the current schedule, falling back to defaults on any problem."""
+    """Return the current schedule: defaults ← schedule.json ← env overrides.
+
+    Env overrides (AUTO_IMPORT_ENABLED / AUTO_IMPORT_TIME) let a headless or
+    public/cloud deploy configure the daily import without the Settings UI —
+    the operator sets them in the deployment environment and they win.
+    """
     out = dict(DEFAULT_SCHEDULE)
     try:
         data = json.loads(SCHEDULE_PATH.read_text())
+        if isinstance(data, dict):
+            if isinstance(data.get("enabled"), bool):
+                out["enabled"] = data["enabled"]
+            if valid_time(str(data.get("time", ""))):
+                out["time"] = str(data["time"]).strip()
+            if data.get("tz"):
+                out["tz"] = str(data["tz"])
     except Exception:
-        return out
-    if isinstance(data, dict):
-        if isinstance(data.get("enabled"), bool):
-            out["enabled"] = data["enabled"]
-        if valid_time(str(data.get("time", ""))):
-            out["time"] = str(data["time"]).strip()
-        if data.get("tz"):
-            out["tz"] = str(data["tz"])
+        pass
+    env_enabled = os.environ.get("AUTO_IMPORT_ENABLED")
+    if env_enabled is not None:
+        out["enabled"] = env_enabled.strip().lower() in ("1", "true", "yes", "on")
+    env_time = os.environ.get("AUTO_IMPORT_TIME", "").strip()
+    if valid_time(env_time):
+        out["time"] = env_time
     return out
 
 

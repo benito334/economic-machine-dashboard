@@ -60,6 +60,38 @@ def test_status_merges(cfg):
     assert st["next_run"] == "2026-07-10T03:00"
 
 
+def test_env_overrides_win(cfg, monkeypatch):
+    """AUTO_IMPORT_* env vars let a headless/public deploy configure the import
+    without the UI, overriding schedule.json."""
+    cfg.save_schedule(False, "03:00", "UTC")          # file says off
+    monkeypatch.setenv("AUTO_IMPORT_ENABLED", "1")
+    monkeypatch.setenv("AUTO_IMPORT_TIME", "02:30")
+    s = cfg.load_schedule()
+    assert s["enabled"] is True and s["time"] == "02:30"
+    monkeypatch.setenv("AUTO_IMPORT_ENABLED", "no")
+    assert cfg.load_schedule()["enabled"] is False
+
+
+def test_env_invalid_time_ignored(cfg, monkeypatch):
+    cfg.save_schedule(True, "04:15", "UTC")
+    monkeypatch.setenv("AUTO_IMPORT_TIME", "banana")
+    assert cfg.load_schedule()["time"] == "04:15"
+
+
+# ── public mode flag ──────────────────────────────────────────────────────────
+
+def test_public_mode_flag_parsing(monkeypatch):
+    import importlib
+    for val, expected in [("1", True), ("true", True), ("YES", True), ("on", True),
+                          ("", False), ("0", False), ("false", False)]:
+        monkeypatch.setenv("PUBLIC_MODE", val)
+        from dashboard import app_mode
+        importlib.reload(app_mode)
+        assert app_mode.PUBLIC_MODE is expected, val
+    assert "/weight-audit" in app_mode.OPERATOR_ONLY_ROUTES
+    assert "/weight-history" in app_mode.OPERATOR_ONLY_ROUTES
+
+
 # ── scheduler apply-logic (no docker / no real scheduler needed) ──────────────
 
 class _FakeScheduler:

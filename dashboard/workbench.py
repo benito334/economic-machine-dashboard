@@ -31,6 +31,7 @@ from dash.exceptions import PreventUpdate
 
 from dashboard import workbench_data as wd
 from dashboard.themes import DEFAULT_THEME, THEMES, figure_layout
+from dashboard.app_mode import PUBLIC_MODE
 
 logger = logging.getLogger(__name__)
 
@@ -134,18 +135,21 @@ def get_layout() -> html.Div:
             dcc.Dropdown(id="wb-view-select", placeholder="Saved views…",
                          options=view_opts, clearable=True,
                          style={"minWidth": "230px", "fontSize": "0.78rem"}),
-            dcc.Input(id="wb-view-name", type="text", placeholder="name…",
-                      autoComplete="off",
-                      style={"width": "130px", "background": "var(--card-bg)",
-                             "border": "1px solid var(--border-color)",
-                             "borderRadius": "6px", "color": "var(--font-color)",
-                             "padding": "4px 8px", "fontSize": "0.78rem"}),
-            dbc.Button("★ Save", id="wb-view-save", size="sm", color="warning",
-                       outline=True),
-            dbc.Button("🗑", id="wb-view-delete", size="sm", color="secondary",
-                       outline=True, title="Delete the selected saved view"),
-            html.Span(id="wb-view-status",
-                      style={"fontSize": "0.72rem", "color": "var(--muted-color)"}),
+            # Save/delete write the shared saved_views.json — operator only.
+            *([] if PUBLIC_MODE else [
+                dcc.Input(id="wb-view-name", type="text", placeholder="name…",
+                          autoComplete="off",
+                          style={"width": "130px", "background": "var(--card-bg)",
+                                 "border": "1px solid var(--border-color)",
+                                 "borderRadius": "6px", "color": "var(--font-color)",
+                                 "padding": "4px 8px", "fontSize": "0.78rem"}),
+                dbc.Button("★ Save", id="wb-view-save", size="sm", color="warning",
+                           outline=True),
+                dbc.Button("🗑", id="wb-view-delete", size="sm", color="secondary",
+                           outline=True, title="Delete the selected saved view"),
+                html.Span(id="wb-view-status",
+                          style={"fontSize": "0.72rem", "color": "var(--muted-color)"}),
+            ]),
         ], style={"display": "flex", "gap": "8px", "alignItems": "center",
                   "marginBottom": "6px", "flexWrap": "wrap"}),
 
@@ -517,6 +521,9 @@ def wb_chart(series, config, theme_name):
     prevent_initial_call=True,
 )
 def wb_views(save_n, del_n, name, selected, series, config):
+    # Save/delete write shared state — disabled entirely in public mode.
+    if PUBLIC_MODE:
+        raise PreventUpdate
     trig = ctx.triggered_id
     msg = ""
     try:

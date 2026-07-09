@@ -56,6 +56,7 @@ from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import user_guide as _user_guide
 from dashboard.shared_components import _signal_link
+from dashboard.app_mode import PUBLIC_MODE, OPERATOR_ONLY_ROUTES
 from indicators import schedule_config as sched_cfg
 
 # ── App setup ─────────────────────────────────────────────────────────────────
@@ -850,8 +851,12 @@ def _left_nav() -> html.Div:
         dbc.Nav([
             _nl("🎓", "User Guide",     "/guide",          nav_id="navlnk-user-guide"),
             _nl("📖", "Methodology",    "/methodology",    nav_id="navlnk-methodology"),
-            _nl("🔍", "Weight Audit",   "/weight-audit",   nav_id="navlnk-weight-audit"),
-            _nl("📝", "Weight History", "/weight-history", nav_id="navlnk-weight-history"),
+            # Operator-only calibration tools — hidden in public mode (they write
+            # shared model config + the DB).
+            *([] if PUBLIC_MODE else [
+                _nl("🔍", "Weight Audit",   "/weight-audit",   nav_id="navlnk-weight-audit"),
+                _nl("📝", "Weight History", "/weight-history", nav_id="navlnk-weight-history"),
+            ]),
         ], vertical=True, pills=True, className="mb-2"),
 
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
@@ -1295,10 +1300,14 @@ _LABEL_STYLE = {"fontWeight": "700", "fontSize": "0.88rem"}
 _HELP_STYLE = {"fontSize": "0.78rem", "color": "var(--muted-color)",
                "marginTop": "6px", "marginBottom": "12px"}
 
-_SETTINGS_MODAL = dbc.Modal([
-    dbc.ModalHeader(dbc.ModalTitle("Settings", style={"fontSize": "1rem"})),
-    dbc.ModalBody([
-        # ── Data updates (daily auto-import) ──────────────────────────────────
+# Data-updates controls (operator only) vs a read-only note (public viewers).
+if PUBLIC_MODE:
+    _data_updates_section = [
+        html.Label("Data updates", style=_LABEL_STYLE),
+        html.P("Data refreshes automatically on a daily schedule.", style=_HELP_STYLE),
+    ]
+else:
+    _data_updates_section = [
         html.Label("Data updates", style=_LABEL_STYLE),
         html.P(
             "Automatically re-import all data on a daily schedule. At the set time "
@@ -1332,6 +1341,13 @@ _SETTINGS_MODAL = dbc.Modal([
             "compose up). Timezone is set by the TZ variable in your .env.",
             style={"fontSize": "0.72rem", "color": "var(--muted-color)", "marginTop": "8px"},
         ),
+    ]
+
+_SETTINGS_MODAL = dbc.Modal([
+    dbc.ModalHeader(dbc.ModalTitle("Settings", style={"fontSize": "1rem"})),
+    dbc.ModalBody([
+        # ── Data updates (daily auto-import) ──────────────────────────────────
+        *_data_updates_section,
 
         html.Hr(style={"borderColor": "var(--border-color)"}),
 
@@ -1619,48 +1635,50 @@ def _sched_status_text() -> str:
     return "  ·  ".join(parts)
 
 
-@callback(
-    Output("sched-enabled", "value"),
-    Output("sched-time", "value"),
-    Output("sched-tz", "children"),
-    Output("sched-status", "children"),
-    Input("settings-modal", "is_open"),
-    prevent_initial_call=False,
-)
-def load_schedule_into_settings(is_open):
-    """Populate the schedule fields whenever the Settings modal opens."""
-    sc = sched_cfg.load_schedule()
-    return sc["enabled"], sc["time"], f"({sc['tz']})", _sched_status_text()
+# These write shared server-side state, so they exist only for the operator —
+# in PUBLIC_MODE the controls aren't rendered and the callbacks aren't registered.
+if not PUBLIC_MODE:
 
+    @callback(
+        Output("sched-enabled", "value"),
+        Output("sched-time", "value"),
+        Output("sched-tz", "children"),
+        Output("sched-status", "children"),
+        Input("settings-modal", "is_open"),
+        prevent_initial_call=False,
+    )
+    def load_schedule_into_settings(is_open):
+        """Populate the schedule fields whenever the Settings modal opens."""
+        sc = sched_cfg.load_schedule()
+        return sc["enabled"], sc["time"], f"({sc['tz']})", _sched_status_text()
 
-@callback(
-    Output("sched-status", "children", allow_duplicate=True),
-    Input("sched-save-btn", "n_clicks"),
-    State("sched-enabled", "value"),
-    State("sched-time", "value"),
-    prevent_initial_call=True,
-)
-def save_schedule_settings(n, enabled, time_str):
-    if not n:
-        raise PreventUpdate
-    if not sched_cfg.valid_time(time_str or ""):
-        return "⚠ Enter a valid time as HH:MM."
-    sched_cfg.save_schedule(bool(enabled), time_str)
-    state = "enabled" if enabled else "disabled"
-    return f"✔ Saved — auto-import {state}.  {_sched_status_text()}"
+    @callback(
+        Output("sched-status", "children", allow_duplicate=True),
+        Input("sched-save-btn", "n_clicks"),
+        State("sched-enabled", "value"),
+        State("sched-time", "value"),
+        prevent_initial_call=True,
+    )
+    def save_schedule_settings(n, enabled, time_str):
+        if not n:
+            raise PreventUpdate
+        if not sched_cfg.valid_time(time_str or ""):
+            return "⚠ Enter a valid time as HH:MM."
+        sched_cfg.save_schedule(bool(enabled), time_str)
+        state = "enabled" if enabled else "disabled"
+        return f"✔ Saved — auto-import {state}.  {_sched_status_text()}"
 
-
-@callback(
-    Output("sched-status", "children", allow_duplicate=True),
-    Input("sched-run-now-btn", "n_clicks"),
-    prevent_initial_call=True,
-)
-def trigger_run_now(n):
-    if not n:
-        raise PreventUpdate
-    sched_cfg.request_run_now()
-    return ("⏳ Import requested — the dashboard will briefly restart while it runs. "
-            "Refresh in a few minutes.")
+    @callback(
+        Output("sched-status", "children", allow_duplicate=True),
+        Input("sched-run-now-btn", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def trigger_run_now(n):
+        if not n:
+            raise PreventUpdate
+        sched_cfg.request_run_now()
+        return ("⏳ Import requested — the dashboard will briefly restart while it runs. "
+                "Refresh in a few minutes.")
 
 
 @callback(
@@ -1975,6 +1993,10 @@ _PAGE_MAP = {
 )
 def route_page(pathname: str):
     pathname = pathname or "/"
+    if PUBLIC_MODE and pathname in OPERATOR_ONLY_ROUTES:
+        return (html.Div("This is an operator tool and isn't available in the public view.",
+                         className="p-4", style={"color": "var(--muted-color)"}),
+                {"page": pathname})
     fn = _PAGE_MAP.get(pathname)
     layout = fn() if fn else html.Div(f"Page '{pathname}' not found", className="p-4 text-muted")
     return layout, {"page": pathname}

@@ -33,6 +33,10 @@ services:
       MANUAL_DATA_DIR: /data/manual_data
       CHARTING_PORT: "8502"
       DASH_DEBUG: "0"
+      # Set PUBLIC_MODE=1 for an untrusted public/cloud deploy — hides every
+      # control that writes shared state (the Data-updates scheduler, Weight
+      # Audit/History, Workbench save/delete). Per-browser settings stay live.
+      PUBLIC_MODE: "${PUBLIC_MODE:-}"
     command: python -m dashboard.charting
 
   # Daily auto-import (opt-in; configured from the dashboard Settings menu).
@@ -49,6 +53,10 @@ services:
       SNAPSHOTS_DIR: /data/snapshots
       MANUAL_DATA_DIR: /data/manual_data
       TZ: "${TZ:-America/Chicago}"
+      # In PUBLIC_MODE the Settings UI is hidden, so configure the daily import
+      # here instead (the scheduler reads these, and they win over schedule.json):
+      AUTO_IMPORT_ENABLED: "${AUTO_IMPORT_ENABLED:-}"
+      AUTO_IMPORT_TIME: "${AUTO_IMPORT_TIME:-}"
     volumes:
       - /mnt/data/project_data/all_weather/indicators_machine:/data
       - /mnt/data/db/all_weather/indicators_machine:/db

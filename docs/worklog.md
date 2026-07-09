@@ -1438,3 +1438,16 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Verified live:** built all images; scheduler service comes up, finds the running `indicators_machine-charting-1` container via the socket, detects a schedule.json change on its poll, schedules the daily job, and computed next run = 2026-07-10 03:00 America/Chicago; status file written; reset to disabled (opt-in). Settings modal renders the new controls; the duplicate sliders + stale note are gone. 9 new tests (`tests/test_scheduler.py`); suite **451 passed, zero exclusions**.
 
 **To use:** Settings → Data updates → toggle on, pick a time, Save. (Timezone via TZ in .env, default America/Chicago.)
+
+---
+
+## 2026-07-09 — Public/read-only mode for untrusted multi-viewer deploys + rebrand
+
+**Rebrand:** repo renamed on GitHub to `economic-machine-dashboard` (auto-redirect keeps old links working); app tab title → "Economic Machine Dashboard", sidebar brand → "Economic Machine". Package + locked `indicators_machine` paths unchanged. Repo is now PUBLIC.
+
+**Public mode (`PUBLIC_MODE=1`):** hardens the dashboard for an untrusted public/cloud audience. The concern: most settings are per-browser (localStorage — theme, country, windows, thresholds → each viewer independent, no collision), but three surfaces write SHARED server-side state and would let any visitor affect everyone: (1) the Data-updates scheduler (esp. "Update now" → restarts the app for all), (2) Weight Audit/History (importance editor writes YAML + the DB), (3) Workbench save/delete views (shared saved_views.json).
+- `dashboard/app_mode.py`: `PUBLIC_MODE` flag + `OPERATOR_ONLY_ROUTES`.
+- In public mode: Settings Data-updates section replaced by a read-only "refreshes automatically" note (scheduler callbacks not registered); Weight Audit/History nav links hidden + routes return an "operator tool" notice (blocks direct-URL access); Workbench save/delete/name controls hidden (load dropdown kept) + the save callback no-ops.
+- No defaults needed — hidden controls keep their existing config-driven values. For the scheduler specifically, added env-var config so a headless/cloud operator can set the daily import without the UI: `AUTO_IMPORT_ENABLED` / `AUTO_IMPORT_TIME` override schedule.json in `load_schedule()`.
+- docker-compose: `PUBLIC_MODE` on charting, `AUTO_IMPORT_*` on scheduler (all default off/empty → local single-operator experience unchanged).
+- 5 new tests (env overrides, invalid-time ignore, flag parsing); suite **454 passed, zero exclusions**. Verified both modes render correctly; normal mode still serves all routes with write controls present.
