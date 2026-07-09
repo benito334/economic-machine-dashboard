@@ -1,14 +1,16 @@
 # Google Cloud Run — public, read-only Economic Machine Dashboard.
 #
-# Build context is just this folder: it needs the Dockerfile + the data bundle
-# emd_data.tar.gz (compacted DuckDB + cache). The app CODE is cloned from the
-# public GitHub repo at build time, so a redeploy always picks up latest main;
-# only the data bundle is supplied locally.
+# Fully self-contained: both the app CODE and the DATA bundle are fetched from
+# the public GitHub repo at build time, so nothing needs to be supplied in the
+# build context. This is what lets Cloud Run's "Connect repository" click-flow
+# build it with no file uploads.
 #
-# Deploy (from this folder, with emd_data.tar.gz present):
-#   gcloud run deploy economic-machine --source . \
-#     --region us-central1 --allow-unauthenticated \
-#     --memory 2Gi --cpu 1
+#   - code : cloned from the repo (latest main)
+#   - data : downloaded from the "data-latest" GitHub Release asset
+#
+# Deploy either way:
+#   • Console: Cloud Run → Connect repository → this Dockerfile path
+#   • CLI:     gcloud run deploy economic-machine --source deploy/cloudrun ...
 # See DEPLOY-cloudrun.md for the full walkthrough.
 
 FROM python:3.11-slim
@@ -16,7 +18,7 @@ FROM python:3.11-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential git \
+    build-essential git curl \
     && rm -rf /var/lib/apt/lists/*
 
 ARG REPO=https://github.com/benito334/economic-machine-dashboard.git
@@ -24,9 +26,11 @@ RUN git clone --depth 1 "$REPO" /app
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Data bundle from the build context → /db (database) + /data (cache).
-COPY emd_data.tar.gz /tmp/emd_data.tar.gz
-RUN mkdir -p /db /data \
+# Data bundle from the public GitHub Release → /db (database) + /data (cache).
+# Refresh the deployed data by re-uploading this asset (see DEPLOY-cloudrun.md).
+ARG DATA_URL=https://github.com/benito334/economic-machine-dashboard/releases/download/data-latest/emd_data.tar.gz
+RUN curl -fsSL "$DATA_URL" -o /tmp/emd_data.tar.gz \
+    && mkdir -p /db /data \
     && tar -xzf /tmp/emd_data.tar.gz -C /data \
     && mv /data/signals.duckdb /db/signals.duckdb \
     && rm /tmp/emd_data.tar.gz

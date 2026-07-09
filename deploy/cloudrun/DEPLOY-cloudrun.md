@@ -10,64 +10,60 @@ The app runs read-only (`PUBLIC_MODE=1`) with the database baked into the
 image. No writes, no scheduler — a frozen snapshot with the "static demo"
 banner. To publish fresh data you rebuild the bundle and redeploy.
 
-You need two things in this folder at deploy time:
-- `Dockerfile` (here — clones the app code from GitHub at build)
-- `emd_data.tar.gz` (the data bundle — put it here; it is git-ignored)
+The Dockerfile is **fully self-contained** — it fetches both the app code and
+the data bundle from GitHub at build time, so you don't upload anything. That
+lets you deploy entirely from the console with no terminal (Option A).
 
 ---
 
-## One-time setup
-
-### 1. Google Cloud account + project + billing
+## First: create a project + billing (both options need this)
 - Go to https://console.cloud.google.com and sign in / sign up.
 - Create a **new project** (top bar → project dropdown → New Project). Note the
   **Project ID** (e.g. `economic-machine-471203`).
 - Enable **billing** on it: console → **Billing** → link a billing account
-  (card required; the free tier still applies).
+  (card required; the free tier still applies — and see the kill-switch below).
 
-### 2. Open Cloud Shell (no local installs needed)
-Click the **`>_` Cloud Shell** icon (top-right of the console). This is a
-browser terminal with `gcloud`, `git`, and Docker already installed. Everything
-below runs there.
+---
 
-Set your project:
+## Option A — Console click-flow (no terminal) ⭐ recommended
+
+1. Go to **Cloud Run** → click **Connect repository** (under "Deploy a web service").
+2. Click **Set up with Cloud Build** → **GitHub** → authorize, then pick the
+   repo **`benito334/economic-machine-dashboard`**, branch **`main`**.
+3. **Build configuration:**
+   - Build type: **Dockerfile**
+   - Source location / Dockerfile path: **`/deploy/cloudrun/Dockerfile`**
+4. **Service settings:**
+   - Region: **us-central1**
+   - Authentication: **Allow unauthenticated invocations** (so the public can view)
+   - Expand **Container(s) → Edit**:
+     - Memory: **2 GiB**, CPU: **1**
+     - Under Autoscaling: **Min instances 0**, **Max instances 3**
+5. Click **Create**. Cloud Build builds the image (~3–4 min) and deploys. When
+   it's done, the service page shows a **URL** (`https://…run.app`) — that's your
+   public link. Open it.
+
+> Max instances 3 + scale-to-zero bound your cost to near nothing; the kill
+> switch below makes $0 a hard guarantee.
+
+---
+
+## Option B — Cloud Shell (one command, if you prefer a terminal)
+
+Click the **`>_` Cloud Shell** icon (top-right of the console), then:
 ```bash
 gcloud config set project YOUR_PROJECT_ID
-```
-
-### 3. Enable the required APIs (once)
-```bash
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
-```
-
-### 4. Get the deploy files into Cloud Shell
-```bash
 git clone https://github.com/benito334/economic-machine-dashboard.git
-cd economic-machine-dashboard/deploy/cloudrun
-```
-Then upload the data bundle into this folder: in Cloud Shell click the
-**⋮ menu → Upload**, choose your `emd_data.tar.gz`, and if it lands in your home
-directory move it here:
-```bash
-mv ~/emd_data.tar.gz .
-ls -la           # you should see Dockerfile and emd_data.tar.gz
-```
-
-### 5. Deploy 🚀
-```bash
 gcloud run deploy economic-machine \
-  --source . \
+  --source economic-machine-dashboard/deploy/cloudrun \
   --region us-central1 \
   --allow-unauthenticated \
   --memory 2Gi --cpu 1 \
   --max-instances 3 --min-instances 0
 ```
-`--max-instances 3` bounds how many containers can ever run at once — even
-under a traffic flood you can never run up more than a few instances' worth of
-compute. `--min-instances 0` keeps it scaled to zero when idle (no idle cost).
-- First run asks to create an Artifact Registry repo — say **yes**.
-- It builds the image (Cloud Build, ~3–4 min) and deploys.
-- When it finishes it prints a **Service URL** — that's your public link. Open it.
+No file upload needed — the Dockerfile fetches its own data. Say **yes** if it
+offers to create an Artifact Registry repo. It prints a **Service URL** when done.
 
 ### 6. (Optional) Turn on the traffic page
 ```bash
@@ -82,13 +78,19 @@ not persistent storage.)
 
 ## Refreshing the data later
 
-On the machine with the live database:
+The deployed app reads the `emd_data.tar.gz` asset on the **`data-latest`**
+GitHub Release. To publish fresh numbers, on the machine with the live database:
 ```bash
-python scripts/build_public_bundle.py         # → emd_data.tar.gz
+python scripts/build_public_bundle.py                 # → emd_data.tar.gz
+gh release upload data-latest emd_data.tar.gz --clobber \
+  --repo benito334/economic-machine-dashboard         # replace the asset
 ```
-Copy that into `deploy/cloudrun/` (in Cloud Shell) and re-run the **step 5**
-deploy command. Cloud Run rolls out a new revision with the fresh data; the URL
-stays the same.
+Then trigger a rebuild so Cloud Run picks up the new data:
+- **Option A (console):** Cloud Run → your service → **Edit & deploy new
+  revision** → **Deploy** (rebuilds from the repo, re-fetching the asset), or
+- **Option B (CLI):** re-run the `gcloud run deploy … --source …` command.
+
+The URL stays the same; the "data through" date in the banner updates.
 
 ---
 
