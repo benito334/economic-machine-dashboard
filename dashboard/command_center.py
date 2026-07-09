@@ -252,6 +252,46 @@ def render_command_center(country_data, page_trigger, thresholds,
               "borderBottom": "1px solid var(--border-color)",
               "paddingBottom": "10px"})
 
+    # ── Learn-to-read highlight (points newcomers at the Guide + Methodology) ──
+    _learn_link = {
+        "display": "inline-flex", "alignItems": "center", "gap": "5px",
+        "textDecoration": "none", "fontSize": "0.8rem", "fontWeight": "700",
+        "padding": "5px 12px", "borderRadius": "6px", "whiteSpace": "nowrap",
+    }
+    learn = html.Div([
+        html.Span("🎓", style={"fontSize": "1.35rem", "lineHeight": "1"}),
+        html.Div([
+            html.Div("New to this? Learn to read the dashboard the Ray Dalio way.",
+                     style={"fontSize": "0.86rem", "fontWeight": "700",
+                            "color": "var(--font-color)"}),
+            html.Div([
+                html.Span("The ", ),
+                html.B("User Guide"),
+                html.Span(" is a hands-on walkthrough that teaches the framework on "),
+                html.B(f"{_COUNTRY_NAMES.get(country, country)}'s live data"),
+                html.Span(" — every lesson shows real current numbers. The "),
+                html.B("Methodology"),
+                html.Span(" page shows exactly how each number is built."),
+            ], style={"fontSize": "0.76rem", "color": "var(--muted-color)",
+                      "marginTop": "3px", "lineHeight": "1.5"}),
+        ], style={"flex": "1 1 320px", "minWidth": "260px"}),
+        html.Div([
+            dcc.Link(["🎓 Open the User Guide ", html.Span("→")], href="/guide",
+                     style={**_learn_link, "background": "var(--slider-accent, #E8A317)",
+                            "color": "#1a1a1a"}),
+            dcc.Link(["📖 Methodology ", html.Span("→")], href="/methodology",
+                     style={**_learn_link, "color": "var(--font-color)",
+                            "border": "1px solid var(--border-color)"}),
+        ], style={"display": "flex", "gap": "8px", "flexWrap": "wrap",
+                  "alignItems": "center"}),
+    ], style={
+        "display": "flex", "alignItems": "center", "gap": "12px", "flexWrap": "wrap",
+        "background": "var(--card-bg)",
+        "border": "1px solid var(--border-color)",
+        "borderLeft": "3px solid var(--slider-accent, #E8A317)",
+        "borderRadius": "8px", "padding": "11px 14px", "margin": "12px 0 4px",
+    })
+
     # ── Short-term cycle levers ───────────────────────────────────────────────
     stand = _sig(latest_sig, "credit.lending_standards")
     demand = _sig(latest_sig, "credit.loan_demand")
@@ -452,4 +492,4 @@ def render_command_center(country_data, page_trigger, thresholds,
                         "marginTop": "10px"}),
     ])
 
-    return html.Div([header, levers, longcycle, trend, watch])
+    return html.Div([header, learn, levers, longcycle, trend, watch])
