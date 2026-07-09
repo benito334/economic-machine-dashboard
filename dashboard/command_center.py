@@ -148,11 +148,13 @@ def chip_direction_agreement(latest_sig: pd.DataFrame, force: str,
      Input("page-trigger", "data"),
      Input("regime-threshold-store", "data"),
      Input("zscore-window-store", "data"),
-     Input("inflation-window-store", "data")],
+     Input("inflation-window-store", "data"),
+     Input("cc-learn-dismissed", "data")],
     prevent_initial_call=False,
 )
 def render_command_center(country_data, page_trigger, thresholds,
-                          zscore_window=48, inflation_window=90):
+                          zscore_window=48, inflation_window=90,
+                          learn_dismissed=False):
     page = (page_trigger or {}).get("page", "")
     if page and page not in ("/", "/country"):
         return no_update
@@ -284,13 +286,19 @@ def render_command_center(country_data, page_trigger, thresholds,
                             "border": "1px solid var(--border-color)"}),
         ], style={"display": "flex", "gap": "8px", "flexWrap": "wrap",
                   "alignItems": "center"}),
+        html.Button("✕", id="cc-learn-close", title="Dismiss (won't show again)",
+                    n_clicks=0, style={
+                        "background": "transparent", "border": "none",
+                        "color": "var(--muted-color)", "cursor": "pointer",
+                        "fontSize": "0.9rem", "lineHeight": "1", "padding": "2px 4px",
+                        "alignSelf": "flex-start"}),
     ], style={
         "display": "flex", "alignItems": "center", "gap": "12px", "flexWrap": "wrap",
         "background": "var(--card-bg)",
         "border": "1px solid var(--border-color)",
         "borderLeft": "3px solid var(--slider-accent, #E8A317)",
         "borderRadius": "8px", "padding": "11px 14px", "margin": "12px 0 4px",
-    })
+    }) if not learn_dismissed else None
 
     # ── Short-term cycle levers ───────────────────────────────────────────────
     stand = _sig(latest_sig, "credit.lending_standards")
@@ -493,3 +501,13 @@ def render_command_center(country_data, page_trigger, thresholds,
     ])
 
     return html.Div([header, learn, levers, longcycle, trend, watch])
+
+
+@callback(
+    Output("cc-learn-dismissed", "data"),
+    Input("cc-learn-close", "n_clicks"),
+    prevent_initial_call=True,
+)
+def dismiss_learn_banner(n_clicks):
+    """Persist the 'learn to read this' banner dismissal (localStorage store)."""
+    return True

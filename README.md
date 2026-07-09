@@ -98,9 +98,27 @@ This is where Dalio's *Big Debt Crises* work lives. The top table breaks down ho
 
 ## Want to learn how to read it?
 
-- **In‑app User Guide** (`/guide`) — a short, live‑data walkthrough of the tools, written for beginners.
-- **The Academy** *(in progress)* — a full beginner course that teaches the Dalio framework from zero and walks you through reading any country. See [`academy/CURRICULUM.md`](academy/CURRICULUM.md).
-- **Methodology** (`/methodology`) — the honest, detailed "how every number is built" reference for the curious.
+Two built‑in pages take you from "what am I looking at?" to genuine understanding — one for beginners, one for the curious.
+
+### 🎓 User Guide — a hands‑on course, taught on live data
+
+A beginner course that teaches the Dalio framework *using the dashboard's own live numbers*. It opens with "the economy is one machine" (the three cycles + the productivity trend, shown as a single picture), then walks lesson by lesson through the two dials, the levers, the debt cycle, and the big cycle. **Every lesson updates with the country you've selected** — so you're never learning on toy examples, you're reading real, current data as you go.
+
+![User Guide](docs/screenshots/user-guide.png)
+
+*Work the lessons in order the first time; afterwards it's a quick reference. No finance background assumed — every term is introduced in plain words before it's used.*
+
+### 📖 Methodology — exactly how every number is built
+
+For anyone who wants to trust the numbers: a transparent, section‑by‑section reference covering **how each figure is produced, from the raw data all the way to the regime read** — data sources, transformations, the scoring math, the regime and debt‑cycle rules, data‑quality flags, country coverage, and a full revision log. Nothing is a black box.
+
+![Methodology](docs/screenshots/methodology.png)
+
+*Each section expands to the relevant formulas with live parameter values and a one‑click copy button — so you can check any claim the dashboard makes.*
+
+### 🏫 The Academy *(in progress)*
+
+A fuller, standalone beginner course that expands the User Guide into a structured curriculum — from zero finance to confidently reading any country on all three clocks. See [`academy/CURRICULUM.md`](academy/CURRICULUM.md).
 
 ---
 

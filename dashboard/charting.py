@@ -1502,6 +1502,8 @@ app.layout = html.Div([
               storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
+    # Command Center "learn to read this" banner — dismissed flag (persisted)
+    dcc.Store(id="cc-learn-dismissed",   data=False, storage_type="local"),
     # Signal drill-down: stores the signal_id most recently clicked
     dcc.Store(id="signal-drill-id",         data=None),
     dcc.Store(id="signal-drill-hover-init", data=None),
