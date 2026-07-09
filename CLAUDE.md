@@ -6,6 +6,8 @@
 
 ## What This Project Is
 
+> **Name:** the product is branded **"Economic Machine Dashboard"** (GitHub repo `benito334/economic-machine-dashboard`, renamed 2026-07-09). The Python package, the internal identifiers, and the locked-in `…/indicators_machine/` data/db paths keep the original `indicators_machine` name — do not rename those.
+
 A **diagnostic, cross-country macro-regime dashboard** in the Ray Dalio "Economic Machine" tradition. It ingests macroeconomic data from free/open APIs, normalizes it into a standardized `Signal` contract, and reads each economy on three clocks: a **two-chip short-term regime** (Growth: Growth/Transition/Retraction × Inflation: Inflation/Transition/Disinflation — dual-condition Z + momentum thresholds, optionally dynamic per Ray's algorithm), a **long-term debt-cycle stage** (leveraging / squeeze / deleveraging / reflation), and a **big-cycle order read** (Gini, reserve-currency share). The classic four macro seasons (Expansion, Inflationary Boom, Disinflationary Slowdown, Stagflation) survive only as threshold-aware map geography on the Regime Map — display shorthand, not the decision rule.
 
 **This is a diagnostic tool, not an allocator.** No portfolio construction, risk-parity weights, or trade recommendations are produced here. Those belong to the separate Allocation Layer project.

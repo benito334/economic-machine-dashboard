@@ -63,7 +63,7 @@ from indicators import schedule_config as sched_cfg
 app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.DARKLY],
-    title="Indicators Machine — Charts",
+    title="Economic Machine Dashboard",
     update_title=None,          # prevent "Updating..." tab flicker from poll interval
     suppress_callback_exceptions=True,
 )
@@ -751,7 +751,7 @@ def _left_nav() -> html.Div:
     return html.Div([
         # ── Header: title + collapse toggle ──────────────────────────────────
         html.Div([
-            html.Span("Indicators Machine", className="sidebar-text", style={
+            html.Span("Economic Machine", className="sidebar-text", style={
                 "fontSize": "0.85rem", "fontWeight": "700",
                 "color": "var(--font-color)", "flexGrow": "1",
             }),
