@@ -95,6 +95,22 @@ def _conditional_chi_weights(
         w["policy_rate"] = _CHI_CONDITIONAL_WEIGHT
     return w
 
+# Rate fallback priority — not every country publishes a central-bank policy
+# rate on a free feed, so fall back to a short-term rate, then a 10y bond yield.
+# Used by both the Overview "Rate" column and the Cycle Health Index rate input.
+_RATE_CONCEPTS = [
+    "policy.fed_funds_target",   # US (Fed) + EZ (ECB, mapped)
+    "policy.rate_policy",         # BR (Selic), ID
+    "policy.rate_3m_interbank",   # CN, DE, CA, AU, MX
+    "policy.yield_10y",           # GB, JP, KR, IN, LU (bond-yield proxy)
+]
+
+# Inflation fallback — Japan has no free monthly CPI, only an annual IMF bridge.
+_INFLATION_CONCEPTS = [
+    "inflation.cpi_headline",     # everyone except JP (monthly)
+    "inflation.cpi_imf_annual",   # JP (annual IMF estimate)
+]
+
 # ── Column definitions ──────────────────────────────────────────────────────
 # color keys: warn_le, warn_ge → orange   |   high_ge → blue   |   pos_ge, pos_le → green
 _COLUMNS: list[dict] = [
@@ -120,12 +136,7 @@ _COLUMNS: list[dict] = [
         # Not every country publishes a central-bank policy rate on a free feed.
         # Fall back per country: policy rate → 3-month interbank → 10y gov yield.
         "concept": "policy.fed_funds_target",
-        "concepts": [
-            "policy.fed_funds_target",   # US (Fed) + EZ (ECB, mapped)
-            "policy.rate_policy",         # BR (Selic), ID
-            "policy.rate_3m_interbank",   # CN, DE, CA, AU, MX
-            "policy.yield_10y",           # GB, JP, KR, IN, LU (bond-yield proxy)
-        ],
+        "concepts": _RATE_CONCEPTS,
         "multiplier": 1.0,
         "fmt": lambda v: f"{v:.2f}",
         "color": {"warn_ge": 8.0},
@@ -134,6 +145,7 @@ _COLUMNS: list[dict] = [
         "header": "Inflation",
         "sub": "%",
         "concept": "inflation.cpi_headline",
+        "concepts": _INFLATION_CONCEPTS,   # JP falls back to the annual IMF bridge
         "multiplier": 100.0,           # decimal → %
         "fmt": lambda v: f"{v:.2f}",
         "color": {"warn_ge": 5.0},
@@ -182,20 +194,23 @@ _COLUMNS: list[dict] = [
 
 _CYCLE_COMPONENT_CONCEPTS = [
     "master.gdp_real",
-    "policy.fed_funds_target",
-    "inflation.cpi_headline",
+    *_RATE_CONCEPTS,
+    *_INFLATION_CONCEPTS,
     "credit.gov_debt_gdp",
     "credit.household_debt_gdp",
     "credit.corporate_debt_gdp",
 ]
 
-# Human labels for the rate fallbacks, shown on hover so it is clear which
-# instrument each country's "Rate" cell reflects (policy rate vs bond yield).
-_RATE_CONCEPT_LABELS = {
+# Human labels for fallback columns, shown on hover so it is clear which
+# instrument each cell reflects (e.g. policy rate vs bond yield; monthly CPI vs
+# the annual IMF estimate used for Japan).
+_FALLBACK_CONCEPT_LABELS = {
     "policy.fed_funds_target": "central-bank policy rate",
     "policy.rate_policy": "central-bank policy rate",
     "policy.rate_3m_interbank": "3-month interbank rate",
     "policy.yield_10y": "10-year government bond yield",
+    "inflation.cpi_headline": "headline CPI",
+    "inflation.cpi_imf_annual": "IMF annual CPI estimate",
 }
 
 _COLUMN_BY_CONCEPT = {c["concept"]: c for c in _COLUMNS}
@@ -458,8 +473,15 @@ def _cycle_health(
     """
     cfg = _normalise_cycle_config(config)
     real_growth, g_date = _get_component_pct(country_data, "master.gdp_real", 100.0)
-    inflation, i_date = _get_component_pct(country_data, "inflation.cpi_headline", 100.0)
-    policy_rate, r_date = _get_component_pct(country_data, "policy.fed_funds_target", 1.0)
+    # Rate and inflation inputs fall back per country (rate: policy → interbank
+    # → 10y yield; inflation: monthly CPI → annual IMF bridge for Japan), so CHI
+    # computes for every country, not just those with the US-shaped signals.
+    _rate_concept = next((c for c in _RATE_CONCEPTS if c in country_data), None)
+    policy_rate, r_date = (_get_component_pct(country_data, _rate_concept, 1.0)
+                           if _rate_concept else (None, None))
+    _infl_concept = next((c for c in _INFLATION_CONCEPTS if c in country_data), None)
+    inflation, i_date = (_get_component_pct(country_data, _infl_concept, 100.0)
+                         if _infl_concept else (None, None))
     public_debt, d_date = _get_component_pct(country_data, "credit.gov_debt_gdp", 1.0)
     private_debt, private_date, private_source = _private_debt_level(country_data)
 
@@ -649,8 +671,8 @@ def _make_row(
         text = col["fmt"](val)
         cls = _color_class(val, col["color"])
         # For fallback columns, name the actual instrument on hover.
-        if col.get("concepts") and concept in _RATE_CONCEPT_LABELS:
-            title = f"{_RATE_CONCEPT_LABELS[concept]} · click to view history"
+        if col.get("concepts") and concept in _FALLBACK_CONCEPT_LABELS:
+            title = f"{_FALLBACK_CONCEPT_LABELS[concept]} · click to view history"
         else:
             title = f"Click to view {col['header']} history"
         cells.append(html.Td(
@@ -729,12 +751,27 @@ def _component_monthly_frame(
     return aligned
 
 
+def _country_first_concept(country_code: str, concepts: list[str]) -> str:
+    """First concept in `concepts` this country actually has (by DB presence)."""
+    try:
+        con = duckdb.connect(_DB, read_only=True)
+        ids = {r[0] for r in con.execute(
+            "SELECT DISTINCT id FROM signals WHERE id LIKE ?",
+            [f"{country_code}.%"]).fetchall()}
+        con.close()
+    except Exception:
+        return concepts[0]
+    return next((c for c in concepts if f"{country_code}.{c}" in ids), concepts[0])
+
+
 def _cycle_health_history(country_code: str, config: dict | None = None) -> pd.DataFrame:
     cfg = _normalise_cycle_config(config)
+    rate_concept = _country_first_concept(country_code, _RATE_CONCEPTS)
+    infl_concept = _country_first_concept(country_code, _INFLATION_CONCEPTS)
     base_series = [
         _component_series(country_code, "master.gdp_real", 100.0),
-        _component_series(country_code, "inflation.cpi_headline", 100.0),
-        _component_series(country_code, "policy.fed_funds_target", 1.0),
+        _component_series(country_code, infl_concept, 100.0),
+        _component_series(country_code, rate_concept, 1.0),
     ]
     if any(s.empty for s in base_series):
         return pd.DataFrame(columns=["as_of", "chi_raw", "chi_adjusted"])
@@ -753,8 +790,8 @@ def _cycle_health_history(country_code: str, config: dict | None = None) -> pd.D
     idx = pd.date_range(min_dt, max_dt, freq="MS")
 
     real = _component_monthly_frame(country_code, "master.gdp_real", 100.0, idx, cfg)
-    inflation = _component_monthly_frame(country_code, "inflation.cpi_headline", 100.0, idx, cfg)
-    policy = _component_monthly_frame(country_code, "policy.fed_funds_target", 1.0, idx, cfg)
+    inflation = _component_monthly_frame(country_code, infl_concept, 100.0, idx, cfg)
+    policy = _component_monthly_frame(country_code, rate_concept, 1.0, idx, cfg)
     public_debt = _component_monthly_frame(country_code, "credit.gov_debt_gdp", 1.0, idx, cfg)
     household_debt = _component_monthly_frame(country_code, "credit.household_debt_gdp", 1.0, idx, cfg)
     corporate_debt = _component_monthly_frame(country_code, "credit.corporate_debt_gdp", 1.0, idx, cfg)

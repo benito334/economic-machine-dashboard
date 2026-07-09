@@ -1509,3 +1509,13 @@ Three requested tweaks:
   GB/JP/KR/IN/LU 10y yield, BR Selic 21.3%.
 
 88 charting tests pass.
+
+- **CHI now computes for all 14 countries** (follow-up to the Rate fix). The
+  Cycle Health Index read the policy rate ONLY from `policy.fed_funds_target`
+  and inflation ONLY from `inflation.cpi_headline`, so it returned None for
+  every country lacking the US-shaped signals — the Overview CHI/Stage columns
+  were blank for all but US/EZ. Applied the same per-country fallbacks
+  (`_RATE_CONCEPTS`, `_INFLATION_CONCEPTS`) to `_cycle_health` and
+  `_cycle_health_history`; Japan's inflation now bridges to the annual IMF
+  estimate. Result: CHI raw / debt-adjusted / Stage fill for all 14. Instrument
+  named on hover for both Rate and Inflation fallback cells.
