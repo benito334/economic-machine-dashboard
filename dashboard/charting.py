@@ -641,11 +641,14 @@ def _theme_picker() -> dbc.RadioItems:
 
 
 # Upcoming data release schedule — update when new releases are known.
+# When a listed date has passed, the sidebar shows an amber "Update now" flag
+# as a reminder to re-run the pipeline; remove entries once their data is
+# ingested so the flag clears. (Q1 2026 current account / NIIP + June jobs
+# ingested 2026-07-09.)
 _UPCOMING_RELEASES: list[tuple[datetime.date, str]] = [
-    (datetime.date(2026, 6, 26), "BEA Q1 2026 current account / NIIP"),
-    (datetime.date(2026, 7, 3),  "BLS June jobs report"),
     (datetime.date(2026, 7, 30), "BEA Q2 2026 GDP advance"),
-    (datetime.date(2026, 8, 5),  "BLS July jobs report"),
+    (datetime.date(2026, 8, 7),  "BLS July jobs report"),
+    (datetime.date(2026, 9, 24), "BEA Q2 2026 current account / NIIP"),
 ]
 
 
