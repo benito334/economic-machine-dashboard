@@ -1,0 +1,110 @@
+# The Economic Machine Dashboard
+
+**A tool for reading the world's economies the way Ray Dalio reads them — no finance degree required.**
+
+Ray Dalio's core idea is that an economy isn't a mystery; it's a **machine** that runs on a few simple, repeating cause‑and‑effect rules. Once you can see the machine, the headlines stop being noise and start being a story you can follow. This project takes that idea and turns it into a live dashboard: it pulls real economic data for **14 major economies**, from free public sources, and reads each one on the three "clocks" Dalio uses to understand any country.
+
+> **What it is:** a *diagnostic* — a way to **understand** where economies are in their cycles.
+> **What it is not:** financial advice, a stock picker, or a trade recommender. It tells you *where we are*, not *what to buy*.
+
+---
+
+## The three clocks (this is the Dalio part)
+
+Dalio teaches that to understand any economy you have to look at three cycles at once, running at different speeds. This dashboard is built entirely around them:
+
+| Clock | Dalio's idea | What it answers |
+| :--- | :--- | :--- |
+| ⏱️ **The short‑term cycle** (the two dials) | The 5–8 year boom/bust the central bank steers with interest rates | *Is growth speeding up or slowing? Is inflation rising or falling — right now?* |
+| 🌊 **The long‑term debt cycle** (the big wave) | The 50–75 year build‑up and unwind of debt — the subject of Dalio's *Big Debt Crises* | *Is this country still piling on debt, getting squeezed by it, painfully unwinding it, or gently growing out of it?* |
+| 🏛️ **The big cycle / changing world order** | The rise and decline of powers, wealth gaps, and reserve currencies — his *Changing World Order* | *Where does this country sit in the bigger arc of history — its inequality, its currency's global standing?* |
+
+A fourth, slow force — **productivity** — sits underneath all three, because it's the only thing that truly raises living standards over time.
+
+Every read in the dashboard maps back to one of these. The framework was also sanity‑checked, concept by concept, against an AI trained on Dalio's writing ("Digital Ray"). *(That's an AI approximation of his framework, not an endorsement from Ray Dalio himself.)*
+
+---
+
+## The pages worth knowing
+
+### 🌐 Global Overview — every economy on one screen
+
+The at‑a‑glance table: growth, inflation, interest rates, debt‑to‑GDP, the government's budget, and the long‑term cycle **stage** for all 14 economies at once. Colours flag what's notable (red = concerning, green = favourable), and the small date under each number tells you exactly how fresh it is.
+
+![Global Overview](docs/screenshots/overview.png)
+
+*How to read it: scan down a column to compare countries, or across a row to size up one country. The "STAGE" column on the right is the long‑term debt‑cycle read — e.g. "Late / Tight" means a country deep into its debt build‑up.*
+
+---
+
+### 🌍 Relative Cycles — where each economy sits, side by side
+
+The diversification page, and arguably the most Dalio‑ish view. Each country gets a card showing **all three clocks at once**: the two short‑term dials (Growth / Inflation chips), the long‑term debt‑cycle **Stage**, and the big‑cycle **Order** reads (reserve‑currency share, wealth gap). The point Dalio hammers on — *own things at different points in their cycles* — becomes obvious when you can see who's in "squeeze" while others are in "reflation."
+
+![Relative Cycles](docs/screenshots/relative-cycles.png)
+
+*How to read it: green/blue chips = growth or inflation heating up, red = cooling. The Stage chip (e.g. "squeeze," "reflation," "leveraging") is the long‑term clock. Countries with different‑coloured chips are at different points in the cycle — that's where diversification lives.*
+
+---
+
+### 📍 Regime Map — the four economic "seasons"
+
+Dalio's short‑term cycle produces four classic environments, and this plots them as **map geography**. Growth runs left‑to‑right, inflation runs bottom‑to‑top, so the four corners become the four seasons: **Expansion**, **Inflationary Boom**, **Stagflation**, and **Disinflationary Slowdown**. The moving dot is *today*; the trail behind it is where the economy has been.
+
+![Regime Map](docs/screenshots/regime-map.png)
+
+*How to read it: watch the **shape of the trail**, not just the dot. A trail marching east = growth recovering; a trail curling down from the top‑right = an inflationary boom cooling off. The middle cross is the "Transition" zone — no clear season yet.*
+
+---
+
+### 📈 Regime History — the two dials across 45 years
+
+The long view. This is the short‑term cycle — growth (blue) and inflation (orange) — traced all the way back to 1980, alongside how much the underlying signals agree and how far the economy sits from "normal." It's how you see the rhythm: the recessions, the inflation of the early '80s, 2008, COVID, the 2021–22 surge.
+
+![Regime History](docs/screenshots/regime-history.png)
+
+*How to read it: the two big line charts are the growth and inflation "dials" over time — above the dashed line is hot, below is cold. The strips up top show which "season" each month fell in. The panel headers give today's live readings.*
+
+---
+
+## What's under the hood (in plain terms)
+
+- **14 economies:** United States, Euro Area, Germany, United Kingdom, Japan, South Korea, China, India, Brazil, Canada, Australia, Mexico, Indonesia, Luxembourg.
+- **All data is free and public** — from the U.S. Federal Reserve (FRED), the World Bank, the IMF, and the Bank for International Settlements. No paid data, no black boxes.
+- **Every reading is dated** so you always know how current it is, and lower‑quality or "stand‑in" numbers are flagged honestly rather than hidden.
+- **Two more layers** sit alongside the four pages above: a **Debt Stress** gauge (how much pressure a country's debt is under, split into private‑sector vs. government) and a **Command Center** that puts all the clocks for one country on a single screen.
+
+---
+
+## Want to learn how to read it?
+
+- **In‑app User Guide** (`/guide`) — a short, live‑data walkthrough of the tools, written for beginners.
+- **The Academy** *(in progress)* — a full beginner course that teaches the Dalio framework from zero and walks you through reading any country. See [`academy/CURRICULUM.md`](academy/CURRICULUM.md).
+- **Methodology** (`/methodology`) — the honest, detailed "how every number is built" reference for the curious.
+
+---
+
+## Seeing it live / running it yourself
+
+The dashboard runs as a small web app. If you have Docker installed, from the project folder:
+
+```bash
+docker compose up -d          # starts the dashboard
+# then open http://localhost:8502 in your browser
+```
+
+*(The pages shown above are `/overview`, `/relative`, `/regime-map`, and `/regime-history`.)*
+
+If you don't run software like this yourself, that's fine — this README's screenshots show the parts of the dashboard most people care about, and your instructor can walk you through the live version.
+
+---
+
+## Honest caveats (Dalio would insist on these)
+
+- **This is a diagnostic, not advice.** It helps you *understand* the machine. It does not tell you what to invest in. For that, you'd need a separate allocation process — which is deliberately out of scope here.
+- **Free public data has limits.** Some countries have thinner data than others; where a signal is a stand‑in (a "proxy"), the dashboard says so. Numbers are the latest published figures, not always the freshest.
+- **The Dalio framing is our interpretation** of his publicly taught frameworks (the Economic Machine, the debt‑cycle work, the changing‑world‑order work). It is not affiliated with or endorsed by Ray Dalio or Bridgewater.
+
+---
+
+*Built in the spirit of "understand the machine, and the world makes more sense."*
