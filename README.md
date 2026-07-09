@@ -27,6 +27,16 @@ Every read in the dashboard maps back to one of these. The framework was also sa
 
 ## The pages worth knowing
 
+### 🎛️ Command Center — one country, all three clocks
+
+The front door. Pick a country and this single screen reads it top to bottom the Dalio way: the **short‑term levers** (growth, inflation, credit conditions, the central bank's stance), the **long‑term debt cycle** (how much stress the debt is under, and which stage — here the U.S. reads "reflation," with an amber **SOVEREIGN SQUEEZE** early‑warning flag noting the government's rising interest burden), the **trend & big‑cycle** reads, and a "what changed" feed of the biggest recent moves.
+
+![Command Center](docs/screenshots/command-center.png)
+
+*How to read it: each card is one part of the machine. The top row is the fast‑moving short‑term cycle; the middle row is the slow debt wave; the bottom is the productivity trend and big‑cycle position. Every card clicks through to its own detail page.*
+
+---
+
 ### 🌐 Global Overview — every economy on one screen
 
 The at‑a‑glance table: growth, inflation, interest rates, debt‑to‑GDP, the government's budget, and the long‑term cycle **stage** for all 14 economies at once. Colours flag what's notable (red = concerning, green = favourable), and the small date under each number tells you exactly how fresh it is.
@@ -67,12 +77,22 @@ The long view. This is the short‑term cycle — growth (blue) and inflation (o
 
 ---
 
+### ⚖️ Debt Stress — the long‑term debt cycle up close
+
+This is where Dalio's *Big Debt Crises* work lives. The top table breaks down how much pressure a country's debt is under, component by component (government + household debt, the debt‑service burden, the interest bill, the budget). Below it, the **stage timeline** colours all of history by where the country was in its long‑term debt cycle — **leveraging** (piling on debt), **squeeze** (getting crushed by it), **deleveraging** (the painful unwind), or **reflation** (Dalio's "beautiful deleveraging," gently growing out of it). Crucially, it splits the read into **private‑sector vs. government**, so a country can look calm on the surface while pressure builds underneath — exactly the case flagged here by the **SOVEREIGN SQUEEZE** warning.
+
+![Debt Stress](docs/screenshots/debt-stress.png)
+
+*How to read it: the coloured bar is 45 years of the debt clock — watch the long stretches of one colour and the turns between them. The number up top is today's overall debt‑stress reading; "near historical norm" means it's around its own long‑run average.*
+
+---
+
 ## What's under the hood (in plain terms)
 
 - **14 economies:** United States, Euro Area, Germany, United Kingdom, Japan, South Korea, China, India, Brazil, Canada, Australia, Mexico, Indonesia, Luxembourg.
 - **All data is free and public** — from the U.S. Federal Reserve (FRED), the World Bank, the IMF, and the Bank for International Settlements. No paid data, no black boxes.
 - **Every reading is dated** so you always know how current it is, and lower‑quality or "stand‑in" numbers are flagged honestly rather than hidden.
-- **Two more layers** sit alongside the four pages above: a **Debt Stress** gauge (how much pressure a country's debt is under, split into private‑sector vs. government) and a **Command Center** that puts all the clocks for one country on a single screen.
+- **More to explore:** a per‑signal **Signals** breakdown, a **Yield Curve** view, a free‑form charting **Workbench**, and a plain‑language **User Guide** — all reachable from the left‑hand menu.
 
 ---
 
