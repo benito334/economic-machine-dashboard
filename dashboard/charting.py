@@ -1498,6 +1498,54 @@ _SIGNAL_DRILL_MODAL = dbc.Modal(
 )
 
 
+_REPO_URL = "https://github.com/benito334/economic-machine-dashboard"
+
+
+def _static_data_through() -> str:
+    """Latest composite date in the DB — for the static-snapshot banner. Safe."""
+    try:
+        import duckdb as _ddb
+        from dashboard.charting_data import DB_PATH
+        con = _ddb.connect(str(DB_PATH), read_only=True)
+        try:
+            d = con.execute("SELECT max(as_of) FROM composites").fetchone()[0]
+        finally:
+            con.close()
+        if not d:
+            return ""
+        if hasattr(d, "strftime"):
+            return d.strftime("%b %Y")
+        # string fallback: "YYYY-MM-DD" → "Mon YYYY"
+        from datetime import datetime as _dt
+        return _dt.strptime(str(d)[:10], "%Y-%m-%d").strftime("%b %Y")
+    except Exception:
+        return ""
+
+
+def _static_banner():
+    """Thin 'this is a static snapshot' bar — only on the public cloud deploy."""
+    if not PUBLIC_MODE:
+        return None
+    through = _static_data_through()
+    dated = f" · data through {through}" if through else ""
+    return html.Div(
+        [
+            html.Span(f"📊 Static demo snapshot{dated} — read-only, not live. ",
+                      style={"opacity": "0.9"}),
+            html.A("View the source & run it yourself on GitHub →",
+                   href=_REPO_URL, target="_blank",
+                   style={"color": "inherit", "textDecoration": "underline",
+                          "fontWeight": "600"}),
+        ],
+        style={
+            "background": "var(--slider-accent, #E8A317)",
+            "color": "#1a1a1a", "fontSize": "0.8rem",
+            "padding": "6px 14px", "textAlign": "center",
+            "borderBottom": "1px solid rgba(0,0,0,0.15)",
+        },
+    )
+
+
 app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     # Top-level stores — persist across page navigations
@@ -1543,6 +1591,8 @@ app.layout = html.Div([
     _THRESHOLD_MODAL,
     _SIGNAL_DRILL_MODAL,
     _SIGNAL_INFO_MODAL,
+
+    _static_banner(),          # public cloud deploy only (None otherwise)
 
     html.Div([
         _left_nav(),
