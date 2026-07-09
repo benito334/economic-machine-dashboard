@@ -37,6 +37,10 @@ services:
       # control that writes shared state (the Data-updates scheduler, Weight
       # Audit/History, Workbench save/delete). Per-browser settings stay live.
       PUBLIC_MODE: "${PUBLIC_MODE:-}"
+      # Traffic metrics page (/traffic). On a public deploy set a key and view
+      # at /traffic?key=<TRAFFIC_KEY>; leave empty on a local instance for an
+      # open, sidebar-linked page.
+      TRAFFIC_KEY: "${TRAFFIC_KEY:-}"
     command: python -m dashboard.charting
 
   # Daily auto-import (opt-in; configured from the dashboard Settings menu).

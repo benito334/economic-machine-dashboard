@@ -133,7 +133,7 @@ docker compose up -d          # starts the dashboard
 
 *(The pages shown above are `/overview`, `/relative`, `/regime-map`, and `/regime-history`.)*
 
-For a **shared/public deployment**, set `PUBLIC_MODE=1` — this hides the operator‑only controls (the auto‑import scheduler, weight calibration, and saving chart views) so many people can browse at once without stepping on each other. Everyone still gets their own theme, country, and view settings (those are per‑browser).
+For a **shared/public deployment**, set `PUBLIC_MODE=1` — this hides the operator‑only controls (the auto‑import scheduler, weight calibration, and saving chart views) so many people can browse at once without stepping on each other. Everyone still gets their own theme, country, and view settings (those are per‑browser). You can also watch usage: set `TRAFFIC_KEY` and open `/traffic?key=…` for a simple page-views / visitors dashboard (no third-party tracker).
 
 If you don't run software like this yourself, that's fine — this README's screenshots show the parts of the dashboard most people care about, and your instructor can walk you through the live version.
 

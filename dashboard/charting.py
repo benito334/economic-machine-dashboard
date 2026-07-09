@@ -55,6 +55,7 @@ from dashboard import command_center as _command_center
 from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import user_guide as _user_guide
+from dashboard import traffic as _traffic
 from dashboard.shared_components import _signal_link
 from dashboard.app_mode import PUBLIC_MODE, OPERATOR_ONLY_ROUTES
 from indicators import schedule_config as sched_cfg
@@ -857,6 +858,9 @@ def _left_nav() -> html.Div:
                 _nl("🔍", "Weight Audit",   "/weight-audit",   nav_id="navlnk-weight-audit"),
                 _nl("📝", "Weight History", "/weight-history", nav_id="navlnk-weight-history"),
             ]),
+            # Traffic metrics — linked only where openly viewable (local/no key).
+            *([_nl("📊", "Traffic", "/traffic", nav_id="navlnk-traffic")]
+              if _traffic.nav_visible() else []),
         ], vertical=True, pills=True, className="mb-2"),
 
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
@@ -1514,12 +1518,14 @@ app.layout = html.Div([
     dcc.Store(id="country-store",        data="US", storage_type="local"),
     # Regime classification thresholds (persisted per browser)
     dcc.Store(id="regime-threshold-store",
-              data={"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0},
+              data={"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": True},
               storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
     # Command Center "learn to read this" banner — dismissed flag (persisted)
     dcc.Store(id="cc-learn-dismissed",   data=False, storage_type="local"),
+    # Per-tab session id for traffic metrics (unique-visitor proxy)
+    dcc.Store(id="session-id",           storage_type="session"),
     # Signal drill-down: stores the signal_id most recently clicked
     dcc.Store(id="signal-drill-id",         data=None),
     dcc.Store(id="signal-drill-hover-init", data=None),
@@ -1989,10 +1995,19 @@ _PAGE_MAP = {
     [Output("page-content", "children"),
      Output("page-trigger", "data")],
     Input("url", "pathname"),
+    [State("url", "search"),
+     State("session-id", "data")],
     prevent_initial_call=False,
 )
-def route_page(pathname: str):
+def route_page(pathname: str, search: str = "", session: str = None):
     pathname = pathname or "/"
+    _traffic.record_hit(pathname, session)      # self-skips assets + /traffic
+    if pathname == "/traffic":
+        if _traffic.can_view(search or ""):
+            return _traffic.get_layout(), {"page": pathname}
+        return (html.Div("This is an operator page. Append ?key=… to view.",
+                         className="p-4", style={"color": "var(--muted-color)"}),
+                {"page": pathname})
     if PUBLIC_MODE and pathname in OPERATOR_ONLY_ROUTES:
         return (html.Div("This is an operator tool and isn't available in the public view.",
                          className="p-4", style={"color": "var(--muted-color)"}),
@@ -2000,6 +2015,16 @@ def route_page(pathname: str):
     fn = _PAGE_MAP.get(pathname)
     layout = fn() if fn else html.Div(f"Page '{pathname}' not found", className="p-4 text-muted")
     return layout, {"page": pathname}
+
+
+# Generate a per-tab session id once (unique-visitor proxy for traffic metrics).
+app.clientside_callback(
+    "function(_p, sid){ return sid || (Math.random().toString(36).slice(2,10) "
+    "+ Date.now().toString(36)); }",
+    Output("session-id", "data"),
+    Input("url", "pathname"),
+    State("session-id", "data"),
+)
 
 
 # Clientside: update CSS custom properties on documentElement when theme changes.
@@ -2167,7 +2192,10 @@ def update_yield_curve(
 _GROWTH_COLOR    = "#4C9BE8"
 _INFLATION_COLOR = "#E8734C"
 
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": False}
+# Ray's dynamic thresholds are ON by default (his 7-step algorithm; backtest
+# G2 found dynamic ≥ fixed). Users can still turn them off in the Regime
+# Thresholds modal; an explicit choice (stored) is respected.
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": True}
 
 # Growth chip colors (positive = good)
 _GROWTH_CHIP  = {"Growth": "#4C9BE8", "Transition": "#888888", "Retraction": "#E8734C"}
@@ -3196,7 +3224,7 @@ def update_regime_info(
     # for this specific row when dynamic mode is enabled. Computed on the
     # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
     _t = thresholds or _DEFAULT_THRESHOLDS
-    if bool(_t.get("dynamic", False)):
+    if bool(_t.get("dynamic", True)):
         _eff_g = f"growth_score_{g_sfx}" if (g_sfx and rolling.get("window")) else "growth_score"
         _eff_i = f"inflation_score_{i_sfx}" if (i_sfx and rolling.get("inflation_window")) else "inflation_score"
         dyn_df = compute_dynamic_thresholds(
@@ -3297,7 +3325,7 @@ def update_regime_chart(
     # computed from each country's own rolling volatility + credit tightness,
     # rather than one flat value for the whole history. Computed on the
     # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
-    _dynamic = bool(_t.get("dynamic", False))
+    _dynamic = bool(_t.get("dynamic", True))
     _dyn_df = compute_dynamic_thresholds(
         _dyn_threshold_input(comp, g_col, i_col), base_gz=_gz, base_iz=_iz,
     ) if _dynamic else None
@@ -3699,7 +3727,7 @@ def _update_threshold_display(thresholds: "dict | None") -> list:
         html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
         _chip("I·Δ", im, 3),
     ]
-    if bool(t.get("dynamic", False)):
+    if bool(t.get("dynamic", True)):
         chips += [
             html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
             html.Span("DYNAMIC", style={"color": "#E8A317", "fontSize": "0.65rem",
@@ -3729,7 +3757,7 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
         float(t.get("iz", 0.5)),
         float(t.get("gm", 0.0)),
         float(t.get("im", 0.0)),
-        ["dynamic"] if bool(t.get("dynamic", False)) else [],
+        ["dynamic"] if bool(t.get("dynamic", True)) else [],
     )
 
 
@@ -3775,7 +3803,7 @@ def _apply_dynamic_toggle(dynamic_val: "list | None", current: "dict | None") ->
     from dash import no_update
     t = dict(current or _DEFAULT_THRESHOLDS)
     new_val = bool(dynamic_val)
-    if bool(t.get("dynamic", False)) == new_val:
+    if bool(t.get("dynamic", True)) == new_val:
         # No real change (e.g. this fired because the modal-open sync callback
         # set the checkbox to match the store) — don't rewrite the store.
         return no_update
@@ -3934,7 +3962,7 @@ def update_scatter_chart(
     # the regime info card's per-row values.
     _bg_th = dict(thresholds or _DEFAULT_THRESHOLDS)
     _dyn_bg = None
-    if bool(_bg_th.get("dynamic", False)):
+    if bool(_bg_th.get("dynamic", True)):
         _dyn_bg = compute_dynamic_thresholds(
             _dyn_threshold_input(comp_all, g_col, i_col),
             base_gz=float(_bg_th.get("gz", 0.5)), base_iz=float(_bg_th.get("iz", 0.5)),

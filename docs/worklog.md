@@ -1451,3 +1451,11 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 - No defaults needed — hidden controls keep their existing config-driven values. For the scheduler specifically, added env-var config so a headless/cloud operator can set the daily import without the UI: `AUTO_IMPORT_ENABLED` / `AUTO_IMPORT_TIME` override schedule.json in `load_schedule()`.
 - docker-compose: `PUBLIC_MODE` on charting, `AUTO_IMPORT_*` on scheduler (all default off/empty → local single-operator experience unchanged).
 - 5 new tests (env overrides, invalid-time ignore, flag parsing); suite **454 passed, zero exclusions**. Verified both modes render correctly; normal mode still serves all routes with write controls present.
+
+---
+
+## 2026-07-09 — Dynamic thresholds ON by default + self-contained traffic metrics
+
+**Dynamic thresholds default-on:** Ray's dynamic regime thresholds (his 7-step algorithm) now default ON — `_DEFAULT_THRESHOLDS["dynamic"]=True`, the `regime-threshold-store` initial data carries `dynamic:True`, and all 6 `.get("dynamic", …)` read-sites default True (so keyless/older stored dicts flip on too). An explicit user "off" (stored dynamic:False) is still respected; the Regime Thresholds modal checkbox syncs from the store. Backtest G2 found dynamic ≥ fixed, so this is defensible.
+
+**Traffic metrics (`dashboard/traffic.py`, `/traffic`):** no third-party tracker. Every real page view (the route_page callback) is appended one JSON line to `DATA_DIR/traffic.log` (append-only, concurrency-safe, never the DB); the /traffic page aggregates total views, unique visitors (per-tab sessionStorage id), views today/7d, a 30-day per-day bar chart (HTML bars, theme-adaptive), and top pages. Assets/framework/self requests are skipped. Access: if `TRAFFIC_KEY` is set, `/traffic` requires `?key=…` (works on a public deploy — operator bookmarks the keyed URL, no nav link); with no key on a non-public instance it's open + sidebar-linked. docker-compose exposes `TRAFFIC_KEY`. 7 new tests. Verified end-to-end with a real browser (recorded views, unique visitors, top paths). Suite **461 passed, zero exclusions**.
