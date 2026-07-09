@@ -1467,3 +1467,26 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Region breakdown (privacy-preserving):** `/traffic` now shows a **Top regions** table derived from the visitor's browser IANA timezone (e.g. `Europe/London`) — captured client-side into a `tz-region` localStorage store and passed to `record_hit(path, session, tz)` (new `z` field on each log line). **No IP address, no geolocation** — a coarse region hint only, with an in-page note saying so. We chose this over a third-party tracker (e.g. Google Analytics) deliberately: GA would give city-level location but sends visitor data to Google and needs a cookie-consent banner in the EU, which cuts against the "no black box" framing. `read_metrics()` gains `top_regions`; layout renders pages + regions side-by-side. 1 new test (`test_region_aggregation`).
 
 **Mobile-friendly:** the app was desktop-only — **no viewport meta tag** (so phones fake-rendered at ~980px and shrank everything) and **zero `@media` queries**. Added (1) the viewport meta tag to the Dash constructor, and (2) a `@media (max-width: 768px)` block in `theme.css` that forces the 195px sidebar down to its 46px icon rail, tightens page gutters, lets over-wide tables/flex-rows scroll/wrap instead of bursting the layout. Verified with a 390px headless render: Command Center cards stack full-width and readable, sidebar is a clean icon rail, /traffic cards + bar chart + tables all fit. A full off-canvas drawer nav is a possible future polish, but the rail is usable now. Suite **462 passed**.
+
+---
+
+## 2026-07-09 (3) — Public cloud deploy (Hugging Face Spaces, free)
+
+Prepared a free, no-credit-card public deploy on Hugging Face Spaces (Docker
+SDK). Key findings + artifacts:
+
+- **DB was 2.3 GB of DuckDB bloat** (only 285K rows across 5 tables). A fresh
+  copy-into-new-file compaction drops it to **67 MB** — makes baking data into
+  an image trivial. `scripts/build_public_bundle.py` reproduces this: compacts
+  the DB + tars it with raw_cache/snapshots into `emd_data.tar.gz` (~27 MB).
+- **`deploy/hf/`**: `Dockerfile` (clones the public GitHub repo at build,
+  installs deps, extracts the data bundle, runs gunicorn on 7860, `PUBLIC_MODE=1`),
+  `README.md` (HF Space metadata — `sdk: docker`, `app_port: 7860`), and
+  `DEPLOY.md` (5-min click-path: create Space → upload 3 files → optional
+  `TRAFFIC_KEY` secret → live). The Space holds only Dockerfile + README + data
+  bundle; code comes from GitHub so rebuilds auto-pick-up main.
+- **gunicorn** added to requirements. Verified end-to-end: built the exact
+  image, ran it on :7860 under gunicorn, headless-rendered the Command Center
+  off the baked-in compacted DB — full live data, DYNAMIC badge, SOVEREIGN
+  SQUEEZE flag, and operator-only nav (Weight Audit/History) correctly hidden
+  in public mode. Data bundle is not committed (binary — uploaded to the Space).
