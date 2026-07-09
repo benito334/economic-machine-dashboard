@@ -13,6 +13,7 @@ pytest-cov>=4.1.0
 streamlit>=1.28.0
 plotly>=5.21.0
 APScheduler>=3.10.4
+docker>=7.0.0        # scheduler service bounces the charting container around the daily import
 requests>=2.31.0
 dash>=2.17.0
 dash-bootstrap-components>=1.6.0

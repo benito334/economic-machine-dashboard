@@ -1420,3 +1420,21 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
 **Design note:** Germany/Luxembourg redundancy acknowledged by Ray but NOT reverted — they were an explicit user request for core-vs-aggregate divergence, and DE already diverged (deleveraging vs the aggregate's reflation). Switzerland dropped in favor of Ray's higher-value commodity picks.
 
 **Next:** Ray's next tier (Vietnam, Turkey, South Africa, Saudi Arabia, Singapore; Russia hits the no-Rosstat constraint), or the standing tails (D4 manual drops, ONS/e-Stat CPI, no free German core CPI).
+
+---
+
+## 2026-07-09 — Daily auto-import scheduler + Settings menu audit/cleanup
+
+**Ask:** run the data import daily at a time set in the dashboard Settings; also audit the (stale) Settings menu.
+
+**Settings audit finding:** the three window sliders (Growth Z / Inflation Z / Disequilibrium) were DUPLICATED — present in both the always-visible left sidebar AND the Settings modal, kept mirrored by six sync callbacks. Classic organic-growth cruft. Per user's call: keep them in the sidebar, remove the duplicates from Settings. Also dropped the stale "re-run the pipeline to refresh" footer note.
+
+**Scheduler (simple — automates the manual workflow):** the user rightly pushed back on my over-engineering (graceful-notice / staging-swap). The manual process already stops the dashboard during an import, so the auto-version just fires those same steps on a timer.
+- `indicators/schedule_config.py` — file-based coordination (schedule.json / schedule_status.json / run_now.trigger in DATA_DIR); the dashboard and scheduler talk through files, never the single-writer DB. Atomic writes, validation, graceful fallbacks.
+- `indicators/scheduler.py` — APScheduler daemon: reads schedule.json, fires a daily cron job at the set time (+ polls a run_now trigger), and the job = **stop the charting container → run the pipeline → start it** (the manual workflow). Uses the docker SDK via the mounted socket to bounce charting; degrades gracefully (skips the bounce, still imports) if docker is unavailable. Pipeline exit code isn't used for pass/fail (it exits 1 on the documented EZ current-account empty) — completion is "done".
+- `docker-compose.yml` — new `scheduler` service (same image, `/var/run/docker.sock` mounted, `restart: unless-stopped`, `TZ` from .env). Starts with `docker compose up`. `requirements.txt` += `docker`; `.env.example` += TZ.
+- **Settings → Data updates** section: enable toggle, time picker, timezone label, last-run/next-run status, "Save schedule", and "Update now" (writes the trigger). Opt-in (disabled by default) so the user sets their own time.
+
+**Verified live:** built all images; scheduler service comes up, finds the running `indicators_machine-charting-1` container via the socket, detects a schedule.json change on its poll, schedules the daily job, and computed next run = 2026-07-10 03:00 America/Chicago; status file written; reset to disabled (opt-in). Settings modal renders the new controls; the duplicate sliders + stale note are gone. 9 new tests (`tests/test_scheduler.py`); suite **451 passed, zero exclusions**.
+
+**To use:** Settings → Data updates → toggle on, pick a time, Save. (Timezone via TZ in .env, default America/Chicago.)

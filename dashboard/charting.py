@@ -56,6 +56,7 @@ from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import user_guide as _user_guide
 from dashboard.shared_components import _signal_link
+from indicators import schedule_config as sched_cfg
 
 # ── App setup ─────────────────────────────────────────────────────────────────
 
@@ -1290,94 +1291,58 @@ def _modal_mark(lbl: str) -> dict:
     return {"label": lbl, "style": {"color": "var(--font-color)", "fontSize": "0.78rem"}}
 
 
+_LABEL_STYLE = {"fontWeight": "700", "fontSize": "0.88rem"}
+_HELP_STYLE = {"fontSize": "0.78rem", "color": "var(--muted-color)",
+               "marginTop": "6px", "marginBottom": "12px"}
+
 _SETTINGS_MODAL = dbc.Modal([
     dbc.ModalHeader(dbc.ModalTitle("Settings", style={"fontSize": "1rem"})),
     dbc.ModalBody([
-        # ── Theme ─────────────────────────────────────────────────────────────
-        html.Label("Theme", style={"fontWeight": "700", "fontSize": "0.88rem"}),
+        # ── Data updates (daily auto-import) ──────────────────────────────────
+        html.Label("Data updates", style=_LABEL_STYLE),
+        html.P(
+            "Automatically re-import all data on a daily schedule. At the set time "
+            "the dashboard briefly goes offline while the import runs (~3 minutes), "
+            "then comes back with fresh numbers — the same steps you'd run by hand.",
+            style=_HELP_STYLE,
+        ),
+        dbc.Switch(id="sched-enabled", label="Enable daily automatic import",
+                   value=False, style={"fontSize": "0.85rem"}),
+        html.Div([
+            html.Span("Run every day at ", style={"fontSize": "0.85rem"}),
+            dcc.Input(id="sched-time", type="time", value="03:00", step=60,
+                      style={"width": "110px", "marginLeft": "4px",
+                             "background": "var(--card-bg)", "color": "var(--font-color)",
+                             "border": "1px solid var(--border-color)",
+                             "borderRadius": "4px", "padding": "2px 6px"}),
+            html.Span(id="sched-tz", className="ms-2",
+                      style={"fontSize": "0.78rem", "color": "var(--muted-color)"}),
+        ], style={"display": "flex", "alignItems": "center", "margin": "8px 0 10px"}),
+        html.Div([
+            dbc.Button("Save schedule", id="sched-save-btn", color="warning",
+                       size="sm", n_clicks=0),
+            dbc.Button("Update now", id="sched-run-now-btn", color="secondary",
+                       size="sm", n_clicks=0, className="ms-2",
+                       title="Run the import immediately (needs the scheduler service running)"),
+        ], style={"marginBottom": "8px"}),
+        html.Div(id="sched-status", style={"fontSize": "0.76rem",
+                 "color": "var(--muted-color)", "lineHeight": "1.5"}),
+        html.P(
+            "Requires the 'scheduler' service (starts automatically with docker "
+            "compose up). Timezone is set by the TZ variable in your .env.",
+            style={"fontSize": "0.72rem", "color": "var(--muted-color)", "marginTop": "8px"},
+        ),
+
+        html.Hr(style={"borderColor": "var(--border-color)"}),
+
+        # ── Appearance ────────────────────────────────────────────────────────
+        html.Label("Appearance", style=_LABEL_STYLE),
         html.Div(_theme_picker(), style={"marginTop": "6px", "marginBottom": "4px"}),
 
-        html.Hr(style={"borderColor": "var(--border-color)"}),
-
-        # ── Growth Z-Score window ─────────────────────────────────────────────
-        html.Label("Growth Z-Score Look-back Window",
-                   style={"fontWeight": "700", "fontSize": "0.88rem"}),
         html.P(
-            "Controls how much history is used to define 'normal' for Growth force signals. "
-            "Full History anchors to the entire available record (default). "
-            "Rolling windows make regime scores more responsive to structural shifts — "
-            "guidance recommends 36–60 months.",
-            style={"fontSize": "0.78rem", "color": "var(--muted-color)",
-                   "marginTop": "6px", "marginBottom": "16px"},
-        ),
-        html.Div(
-            dcc.Slider(
-                id="zscore-window-modal-slider",
-                min=0, max=60, step=None,
-                marks={0: _modal_mark("Full"), 36: _modal_mark("36m"),
-                       48: _modal_mark("48m ★ default"), 60: _modal_mark("60m")},
-                value=48,
-                tooltip={"always_visible": False, "style": {"display": "none"}},
-                className="sidebar-slider",
-            ),
-            style={"paddingBottom": "28px"},
-        ),
-
-        html.Hr(style={"borderColor": "var(--border-color)"}),
-
-        # ── Inflation Z-Score window ──────────────────────────────────────────
-        html.Label("Inflation Z-Score Look-back Window",
-                   style={"fontWeight": "700", "fontSize": "0.88rem"}),
-        html.P(
-            "Separate look-back for Inflation force signals. Longer windows (90–120m) "
-            "capture secular inflation cycles (e.g. the 1970s–1980s high-inflation era) "
-            "and prevent recent-data bias in the Z-score baseline.",
-            style={"fontSize": "0.78rem", "color": "var(--muted-color)",
-                   "marginTop": "6px", "marginBottom": "16px"},
-        ),
-        html.Div(
-            dcc.Slider(
-                id="inflation-window-modal-slider",
-                min=0, max=120, step=None,
-                marks={0: _modal_mark("Full"), 60: _modal_mark("60m"),
-                       90: _modal_mark("90m ★ default"), 120: _modal_mark("120m")},
-                value=90,
-                tooltip={"always_visible": False, "style": {"display": "none"}},
-                className="sidebar-slider",
-            ),
-            style={"paddingBottom": "28px"},
-        ),
-
-        html.Hr(style={"borderColor": "var(--border-color)"}),
-
-        # ── Disequilibrium window ─────────────────────────────────────────────
-        html.Label("Disequilibrium Look-back Window",
-                   style={"fontWeight": "700", "fontSize": "0.88rem", "marginTop": "4px"}),
-        html.P(
-            "Disequilibrium measures how far structural forces are from equilibrium. "
-            "A longer window smooths short-term noise; guidance recommends 12–24 months. "
-            "Confidence is short-window by design (3-month direction flags; no setting needed).",
-            style={"fontSize": "0.78rem", "color": "var(--muted-color)",
-                   "marginTop": "6px", "marginBottom": "16px"},
-        ),
-        html.Div(
-            dcc.Slider(
-                id="diseq-window-modal-slider",
-                min=0, max=24, step=None,
-                marks={0: _modal_mark("Full · default"), 12: _modal_mark("12m"),
-                       18: _modal_mark("18m ★"), 24: _modal_mark("24m")},
-                value=0,
-                tooltip={"always_visible": False, "style": {"display": "none"}},
-                className="sidebar-slider",
-            ),
-            style={"paddingBottom": "28px"},
-        ),
-
-        html.Hr(style={"borderColor": "var(--border-color)"}),
-        html.P(
-            "When a rolling window is active, regime panels read pre-computed DB columns — "
-            "no additional computation at render time.  Re-run the pipeline to refresh.",
-            style={"fontSize": "0.73rem", "color": "var(--muted-color)"},
+            "Analysis look-back windows (Growth / Inflation / Disequilibrium) live "
+            "in the left sidebar.",
+            style={"fontSize": "0.72rem", "color": "var(--muted-color)", "marginTop": "12px"},
         ),
     ]),
     dbc.ModalFooter(
@@ -1580,38 +1545,29 @@ def toggle_settings_modal(n_open: int, n_close: int, is_open: bool) -> bool:
 
 @callback(
     Output("zscore-window-store", "data"),
-    Input("zscore-window-slider",       "value"),
-    Input("zscore-window-modal-slider", "value"),
+    Input("zscore-window-slider", "value"),
     prevent_initial_call=True,
 )
-def update_zscore_window(sidebar_val: int, modal_val: int) -> int:
-    if ctx.triggered_id == "zscore-window-slider":
-        return int(sidebar_val) if sidebar_val is not None else 0
-    return int(modal_val) if modal_val is not None else 0
+def update_zscore_window(sidebar_val: int) -> int:
+    return int(sidebar_val) if sidebar_val is not None else 0
 
 
 @callback(
     Output("inflation-window-store", "data"),
-    Input("inflation-window-slider",       "value"),
-    Input("inflation-window-modal-slider", "value"),
+    Input("inflation-window-slider", "value"),
     prevent_initial_call=True,
 )
-def update_inflation_window(sidebar_val: int, modal_val: int) -> int:
-    if ctx.triggered_id == "inflation-window-slider":
-        return int(sidebar_val) if sidebar_val is not None else 0
-    return int(modal_val) if modal_val is not None else 0
+def update_inflation_window(sidebar_val: int) -> int:
+    return int(sidebar_val) if sidebar_val is not None else 0
 
 
 @callback(
     Output("diseq-window-store", "data"),
-    Input("diseq-window-slider",       "value"),
-    Input("diseq-window-modal-slider", "value"),
+    Input("diseq-window-slider", "value"),
     prevent_initial_call=True,
 )
-def update_diseq_window(sidebar_val: int, modal_val: int) -> int:
-    if ctx.triggered_id == "diseq-window-slider":
-        return int(sidebar_val) if sidebar_val is not None else 0
-    return int(modal_val) if modal_val is not None else 0
+def update_diseq_window(sidebar_val: int) -> int:
+    return int(sidebar_val) if sidebar_val is not None else 0
 
 
 @callback(
@@ -1641,31 +1597,68 @@ def sync_diseq_slider(stored: int) -> int:
     return int(stored) if stored is not None else 0
 
 
-@callback(
-    Output("zscore-window-modal-slider", "value"),
-    Input("zscore-window-store", "data"),
-    prevent_initial_call=False,
-)
-def sync_zscore_modal_slider(stored: int) -> int:
-    return int(stored) if stored is not None else 0
+# ── Settings · daily auto-import schedule ─────────────────────────────────────
+
+def _sched_status_text() -> str:
+    """One-line human status from schedule_status.json + schedule.json."""
+    st = sched_cfg.load_status()
+    sc = sched_cfg.load_schedule()
+    parts = []
+    if sc.get("enabled"):
+        nxt = st.get("next_run")
+        parts.append(f"Next run: {nxt.replace('T', ' ')}" if nxt else "Enabled")
+    else:
+        parts.append("Auto-import is off")
+    last = st.get("last_run")
+    if last:
+        outcome = st.get("last_status", "")
+        parts.append(f"Last run: {last.replace('T', ' ')}"
+                     + (f" ({outcome})" if outcome else ""))
+    return "  ·  ".join(parts)
 
 
 @callback(
-    Output("inflation-window-modal-slider", "value"),
-    Input("inflation-window-store", "data"),
+    Output("sched-enabled", "value"),
+    Output("sched-time", "value"),
+    Output("sched-tz", "children"),
+    Output("sched-status", "children"),
+    Input("settings-modal", "is_open"),
     prevent_initial_call=False,
 )
-def sync_inflation_modal_slider(stored: int) -> int:
-    return int(stored) if stored is not None else 0
+def load_schedule_into_settings(is_open):
+    """Populate the schedule fields whenever the Settings modal opens."""
+    sc = sched_cfg.load_schedule()
+    return sc["enabled"], sc["time"], f"({sc['tz']})", _sched_status_text()
 
 
 @callback(
-    Output("diseq-window-modal-slider", "value"),
-    Input("diseq-window-store", "data"),
-    prevent_initial_call=False,
+    Output("sched-status", "children", allow_duplicate=True),
+    Input("sched-save-btn", "n_clicks"),
+    State("sched-enabled", "value"),
+    State("sched-time", "value"),
+    prevent_initial_call=True,
 )
-def sync_diseq_modal_slider(stored: int) -> int:
-    return int(stored) if stored is not None else 0
+def save_schedule_settings(n, enabled, time_str):
+    if not n:
+        raise PreventUpdate
+    if not sched_cfg.valid_time(time_str or ""):
+        return "⚠ Enter a valid time as HH:MM."
+    sched_cfg.save_schedule(bool(enabled), time_str)
+    state = "enabled" if enabled else "disabled"
+    return f"✔ Saved — auto-import {state}.  {_sched_status_text()}"
+
+
+@callback(
+    Output("sched-status", "children", allow_duplicate=True),
+    Input("sched-run-now-btn", "n_clicks"),
+    prevent_initial_call=True,
+)
+def trigger_run_now(n):
+    if not n:
+        raise PreventUpdate
+    sched_cfg.request_run_now()
+    return ("⏳ Import requested — the dashboard will briefly restart while it runs. "
+            "Refresh in a few minutes.")
 
 
 @callback(

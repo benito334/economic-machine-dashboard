@@ -34,3 +34,24 @@ services:
       CHARTING_PORT: "8502"
       DASH_DEBUG: "0"
     command: python -m dashboard.charting
+
+  # Daily auto-import (opt-in; configured from the dashboard Settings menu).
+  # Automates the manual workflow: stop charting -> run pipeline -> start
+  # charting, at the time set in Settings. Needs the docker socket to bounce
+  # the charting container (the DB is single-writer). TZ sets the schedule's
+  # timezone — override in .env (e.g. TZ=America/Chicago) to match your clock.
+  scheduler:
+    <<: *common
+    environment:
+      DATA_DIR: /data
+      DB_PATH: /db/signals.duckdb
+      RAW_CACHE_DIR: /data/raw_cache
+      SNAPSHOTS_DIR: /data/snapshots
+      MANUAL_DATA_DIR: /data/manual_data
+      TZ: "${TZ:-America/Chicago}"
+    volumes:
+      - /mnt/data/project_data/all_weather/indicators_machine:/data
+      - /mnt/data/db/all_weather/indicators_machine:/db
+      - /var/run/docker.sock:/var/run/docker.sock   # to bounce the charting container
+    command: python -m indicators.scheduler
+    restart: unless-stopped
