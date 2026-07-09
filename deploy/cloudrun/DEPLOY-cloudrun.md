@@ -59,8 +59,12 @@ gcloud run deploy economic-machine \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --memory 2Gi --cpu 1
+  --memory 2Gi --cpu 1 \
+  --max-instances 3 --min-instances 0
 ```
+`--max-instances 3` bounds how many containers can ever run at once — even
+under a traffic flood you can never run up more than a few instances' worth of
+compute. `--min-instances 0` keeps it scaled to zero when idle (no idle cost).
 - First run asks to create an Artifact Registry repo — say **yes**.
 - It builds the image (Cloud Build, ~3–4 min) and deploys.
 - When it finishes it prints a **Service URL** — that's your public link. Open it.
@@ -87,6 +91,70 @@ deploy command. Cloud Run rolls out a new revision with the fresh data; the URL
 stays the same.
 
 ---
+
+## Guaranteeing you are NEVER billed
+
+Important truth about Google Cloud: **a budget by itself only sends email
+alerts — it does not stop spending.** There are three layers of protection;
+use as many as you want. For this dashboard, Layers 1 + 2 already make a real
+charge extremely unlikely, and Layer 3 makes it *impossible*.
+
+### Layer 1 — stay inside the free tier (automatic)
+Cloud Run's monthly free tier is 2M requests + 360,000 GiB-seconds +
+180,000 vCPU-seconds. A class-sized audience on a scale-to-zero service does
+not come close. Idle = zero instances = zero cost.
+
+### Layer 2 — bound the blast radius (one command)
+`--max-instances 3` (in the deploy command above) caps how much compute can
+ever run at once. Even a traffic spike can't scale you into a big bill.
+
+### Layer 3 — hard kill switch: auto-disable billing (never charged, period)
+This is the only thing that *guarantees* $0. A budget triggers a function that
+**switches billing off** on the project — which shuts the dashboard down rather
+than letting it cost you a cent. Exactly "stop hosting instead of charging me."
+
+1. **Create a budget** → console → **Billing → Budgets & alerts → Create budget**.
+   Scope it to your project, set the amount to e.g. **$1**, thresholds at 100%.
+2. On the budget's last page, **Manage notifications → Connect a Pub/Sub topic**,
+   create a topic named `billing-kill`.
+3. **Deploy the kill function** (in Cloud Shell):
+   ```bash
+   mkdir ~/killbilling && cd ~/killbilling
+   cat > main.py <<'PY'
+   import base64, json, os
+   from googleapiclient import discovery
+   BILLING = discovery.build('cloudbilling', 'v1').projects()
+   def stop_billing(event, context):
+       data = json.loads(base64.b64decode(event['data']).decode())
+       # only act once cost has met/exceeded the budget
+       if data.get('costAmount', 0) < data.get('budgetAmount', 0):
+           return
+       project = f"projects/{os.environ['GCP_PROJECT']}"
+       info = BILLING.getBillingInfo(name=project).execute()
+       if info.get('billingEnabled'):
+           BILLING.updateBillingInfo(
+               name=project, body={'billingAccountName': ''}).execute()
+           print('BILLING DISABLED for', project)
+   PY
+   cat > requirements.txt <<'PY'
+   google-api-python-client
+   PY
+   gcloud functions deploy stop_billing \
+     --runtime python311 --trigger-topic billing-kill \
+     --entry-point stop_billing --set-env-vars GCP_PROJECT=$(gcloud config get-value project)
+   ```
+4. **Give the function permission to disable billing.** Find its service
+   account (console → Cloud Functions → `stop_billing` → Details), then grant
+   that account the **Billing Account Administrator** role on your billing
+   account (console → Billing → Account management → Permissions → Add).
+
+Now if spend ever reaches $1, billing is switched off automatically: Cloud Run
+stops serving (the URL goes dark) and no charge can accrue. To bring it back
+you re-enable billing on the project.
+
+> Simpler alternative if the function feels like too much: set a **$1 budget
+> alert to your email** and rely on Layers 1 + 2. Realistically you will never
+> see a charge for a class demo — but only Layer 3 is a hard guarantee.
 
 ## Cost & behaviour notes
 
