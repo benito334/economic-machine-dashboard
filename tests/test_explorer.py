@@ -115,8 +115,8 @@ def test_load_signal_overview_returns_all_signals():
     from dashboard.explorer_data import load_signal_overview
     df = load_signal_overview()
     # 71 (see history) + order.gini + order.reserve_currency_share (Phase D)
-    # + 7 fed.* Fed Monitor series (2026-07-10 Digital Ray consult) = 80
-    assert len(df) == 80
+    # + 8 fed.* Fed Monitor series (2026-07-10 Digital Ray consult) = 81
+    assert len(df) == 81
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns

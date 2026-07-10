@@ -79,6 +79,26 @@ def _ratio(num: pd.DataFrame, den: pd.DataFrame) -> pd.DataFrame:
     return m[["as_of", "value"]].dropna()
 
 
+def _fed_net_issuance_share(window_q: int = 4) -> pd.DataFrame:
+    """Fed's share of NET NEW debt issuance over a trailing window, % (Ray: >30-40% = red).
+
+    ΔFed Treasury holdings ÷ Δmarketable debt, both quarter-end, over `window_q`
+    quarters. Ratio clipped to a sane band (issuance can be lumpy quarter-to-quarter).
+    """
+    th = _to_bn("fed.treasury_holdings", "m")     # weekly, $bn
+    md = _to_bn("fed.marketable_debt", "b")        # monthly, $bn
+    if th.empty or md.empty:
+        return pd.DataFrame(columns=["as_of", "value"])
+    thq = (th.set_index("as_of")["value"].resample("QE").last())
+    mdq = (md.set_index("as_of")["value"].resample("QE").last())
+    d_th = thq.diff(window_q)
+    d_md = mdq.diff(window_q)
+    df = pd.concat([d_th, d_md], axis=1, keys=["dth", "dmd"]).dropna()
+    df = df[df["dmd"].abs() > 1.0]                 # avoid divide-by-tiny
+    df["value"] = (100.0 * df["dth"] / df["dmd"]).clip(-50, 150)
+    return df.reset_index()[["as_of", "value"]]
+
+
 def _fed_interest_to_revenue() -> pd.DataFrame:
     """Federal interest outlays ÷ receipts, % (Ray's debt-trap gauge, ~15-20% = danger)."""
     interest = _hist("fiscal.interest_payments")      # annual, $ millions
@@ -288,6 +308,10 @@ def get_layout() -> html.Div:
                         (float(resv_gdp['value'].iloc[-1]) if not resv_gdp.empty else None),
                         "%", "Near ~7% = reserve scarcity → money-market stress.",
                         hline=7.0, hline_txt="~7% scarcity", color=_BLUE),
+            _chart_card("10y term premium (ACM)", _hist("fed.term_premium_10y"),
+                        cur("fed.term_premium_10y"), "%",
+                        "Extra yield to hold duration; a spike flags fiscal-dominance worry.",
+                        zero_line=True, color=_AMBER),
             _chart_card("High-yield spread", _hist("premium.high_yield_spread"),
                         cur("premium.high_yield_spread"), "%", "Compression amid rising rates masks risk.",
                         color=_RED),
@@ -319,6 +343,11 @@ def get_layout() -> html.Div:
                          if not _fed_interest_to_revenue().empty else None),
                         "%", "Ray's debt-trap gauge; >15–20% = danger zone.",
                         hline=15.0, hline_txt="15% danger", color=_RED),
+            _chart_card("Fed % of net new issuance", _fed_net_issuance_share(),
+                        (float(_fed_net_issuance_share()['value'].iloc[-1])
+                         if not _fed_net_issuance_share().empty else None),
+                        "%", "Fed absorbing net new debt (1yr); >30–40% = monetization.",
+                        hline=30.0, hline_txt="30% red", zero_line=True, color=_RED),
         ])
 
     note = html.Div(

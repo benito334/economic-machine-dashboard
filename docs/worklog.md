@@ -1691,3 +1691,11 @@ cycle, rates-vs-inflation, balance-sheet/liquidity, turning points, and — the
   federal interest÷revenue inline. Route `/fed`, nav "🏛 Fed Monitor".
 - Live reads confirm the thesis: ON RRP ~$0.5B, remittances −$235B, Fed share
   15.5%, foreign share 55%→32%, interest÷revenue 16.5% (danger zone). 3 tests.
+
+- **Fed Monitor follow-ups** (both of Ray's flagged additions): (1) **10y term
+  premium** — `fed.term_premium_10y` = FRED `THREEFYTP10` (the ACM/Kim-Wright
+  10y term premium, live; no NY-Fed xls fetcher needed), card added to §4
+  turning points (0.73%, risen from negative = fiscal-dominance worry). (2)
+  **Fed % of net new issuance** — inline `_fed_net_issuance_share()` (ΔFed Tsy
+  holdings ÷ Δmarketable debt, 1yr), card added to §5 monetization with a 30%
+  red line. US signal count 80→81.
