@@ -963,7 +963,14 @@ def _build_table(config: dict | None = None) -> html.Table:
             country_codes.append(c)
 
     header = html.Tr([
-        html.Th("Country", className="ov-th-country"),
+        html.Th(
+            html.Div([
+                html.Span("Country"),
+                html.Span("Data", title="Data confidence grade (A best → D)",
+                          style={"fontWeight": "600", "opacity": "0.85"}),
+            ], style={"display": "flex", "alignItems": "center",
+                      "justifyContent": "space-between", "gap": "12px"}),
+            className="ov-th-country"),
         *[
             html.Th(
                 [html.Div(col["header"]), html.Div(col["sub"], className="ov-th-sub")],
