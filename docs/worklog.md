@@ -1670,3 +1670,24 @@ because ALL its growth signals are `is_stale`-EXCLUDED (real data ends ~April,
 now July). That's the is_stale *hard exclusion* — a stronger form of the same
 recency-vs-schedule tension. Extending the grace concept to the exclusion is a
 candidate follow-up, but JP's ~3-month lag is genuine, so left as-is.
+
+---
+
+## 2026-07-10 (5) — Fed Monitor dashboard (/fed) — Digital Ray consult
+
+New US Federal Reserve monitoring page built from a two-part Digital Ray consult
+(logged in ray_dalio_review_log.md). Five sections in Ray's framing: short-term
+cycle, rates-vs-inflation, balance-sheet/liquidity, turning points, and — the
+*How Countries Go Broke* heart — late-cycle monetization (MP1→MP2→MP3).
+
+- **7 new `fed.*` FRED series** in us_bindings (TOTRESNS reserves, RRPONTSYD ON
+  RRP, T5YIFR 5y5y fwd, TREAST Fed Tsy holdings, MVMTD marketable debt,
+  RESPPLLOPNWW remittances, FDHBFIN foreign holdings) — isolated `force: fed`
+  so they feed the page only, NOT the composites or data-score. Verified 4 of
+  Ray's AI-supplied FRED IDs were WRONG and corrected them before binding.
+- **`dashboard/fed_monitor.py`** — 5 sections of mini time-series charts +
+  current value + Ray's thresholds; header strip (easy/tight, behind/ahead,
+  Fed-share-of-debt, MP-phase). Computes Fed share, foreign share, reserves/GDP,
+  federal interest÷revenue inline. Route `/fed`, nav "🏛 Fed Monitor".
+- Live reads confirm the thesis: ON RRP ~$0.5B, remittances −$235B, Fed share
+  15.5%, foreign share 55%→32%, interest÷revenue 16.5% (danger zone). 3 tests.

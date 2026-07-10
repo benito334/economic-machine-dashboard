@@ -54,6 +54,7 @@ from dashboard import force_detail as _force_detail
 from dashboard import command_center as _command_center
 from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
+from dashboard import fed_monitor as _fed_monitor
 from dashboard import user_guide as _user_guide
 from dashboard import traffic as _traffic
 from dashboard.shared_components import _signal_link
@@ -792,6 +793,7 @@ def _left_nav() -> html.Div:
             _nl("📍", "Regime Map",     "/regime-map",     nav_id="navlnk-regime-map"),
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
+            _nl("🏛", "Fed Monitor",    "/fed",            nav_id="navlnk-fed"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Signals + collapsible force sub-pages ─────────────────────────────
@@ -1247,6 +1249,10 @@ def _page_regime_history() -> html.Div:
         # ── Help panel (fixed, off-screen right by default) ────────────────────
         _build_rh_help_panel(),
     ], className="pe-2", style={"maxWidth": "1600px", "margin": "0 auto"})
+
+
+def _page_fed_monitor() -> html.Div:
+    return _fed_monitor.get_layout()
 
 
 def _page_debt_stress() -> html.Div:
@@ -2008,6 +2014,7 @@ _PAGE_MAP = {
     "/":              _page_command_center,   # command center is the front door (roadmap Phase CC)
     "/country":       _page_command_center,
     "/relative":      _page_relative_view,
+    "/fed":           _page_fed_monitor,
     "/guide":         _page_user_guide,
     "/workbench":     _page_workbench,
     "/charts":        _page_workbench,   # legacy route

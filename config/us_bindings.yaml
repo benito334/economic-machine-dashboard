@@ -1466,3 +1466,128 @@ bindings:
     sanity_min: 0.0
     sanity_max: 100.0
     notes: "Produce with: python scripts/prepare_gpr.py <data_gpr_export.xls>. Column: GPRC_USA."
+
+  # ─── Fed Monitor (Digital Ray consult 2026-07-10) ───────────────────────────
+  # Monetary/balance-sheet monitoring signals for the /fed dashboard. Isolated
+  # under force "fed" so they feed the Fed page only — NOT the growth/inflation
+  # composites or the data-confidence score. Stored as levels; the Fed page
+  # computes ratios (Fed share of debt, interest/revenue, reserves/GDP) inline.
+  - id: fed.bank_reserves
+    series_id: TOTRESNS
+    provider: FRED
+    frequency: M
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Total bank reserves — the liquidity backbone; sharp declines during QT can strain money markets (reserve scarcity)."
+    sanity_min: 0.0
+    sanity_max: 10000000.0
+  - id: fed.on_rrp
+    series_id: RRPONTSYD
+    provider: FRED
+    frequency: D
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_billions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Overnight reverse repo usage — a liquidity buffer; when it drains toward zero, spare cash is gone and QT starts biting reserves."
+    sanity_min: 0.0
+    sanity_max: 3000.0
+  - id: fed.fwd_inflation_5y5y
+    series_id: T5YIFR
+    provider: FRED
+    frequency: D
+    force: fed
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "5-year, 5-year forward inflation expectations — the market's long-run inflation anchor; rising faster than policy means the Fed is behind."
+    sanity_min: 0.0
+    sanity_max: 6.0
+  - id: fed.treasury_holdings
+    series_id: TREAST
+    provider: FRED
+    frequency: W
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Fed holdings of US Treasuries (SOMA) — the numerator of the debt-monetization ratio; rising during heavy issuance = the Fed as marginal buyer (MP2/MP3)."
+    sanity_min: 0.0
+    sanity_max: 10000000.0
+  - id: fed.marketable_debt
+    series_id: MVMTD027MNFRBDAL
+    provider: FRED
+    frequency: M
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Market value of marketable Treasury debt — denominator for the Fed's share of the debt (monetization gauge)."
+    sanity_min: 0.0
+    sanity_max: 60000000.0
+  - id: fed.remittances
+    series_id: RESPPLLOPNWW
+    provider: FRED
+    frequency: W
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Fed earnings remittances due to Treasury (a deferred-asset liability when the Fed runs losses) — negative/rising since 2022 means the Fed pays more on reserves than it earns on its portfolio: central-bank-solvency stress."
+    sanity_min: -500000.0
+    sanity_max: 500000.0
+  - id: fed.foreign_holdings
+    series_id: FDHBFIN
+    provider: FRED
+    frequency: Q
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Federal debt held by foreign & international investors — a falling foreign share while issuance rises forces domestic/Fed absorption (monetization risk)."
+    sanity_min: 0.0
+    sanity_max: 20000000.0
