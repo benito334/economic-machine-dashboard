@@ -661,9 +661,10 @@ def _data_badge(score_info: dict | None) -> html.Span:
         title=_ds.breakdown_text(score_info),
         style={
             "display": "inline-block", "minWidth": "15px", "padding": "0 5px",
-            "marginLeft": "8px", "borderRadius": "4px", "background": o["hex"],
+            "borderRadius": "4px", "background": o["hex"],
             "color": "#fff", "fontSize": "0.62rem", "fontWeight": "700",
             "textAlign": "center", "verticalAlign": "middle", "cursor": "help",
+            "flexShrink": "0",
         },
     )
 
@@ -676,7 +677,11 @@ def _make_row(
 ) -> html.Tr:
     name = _COUNTRY_NAMES.get(country_code, country_code.upper())
     badge = _data_badge((data_scores or {}).get(country_code))
-    cells: list = [html.Td([html.Span(name), badge], className="ov-country-name")]
+    cells: list = [html.Td(
+        html.Div([html.Span(name), badge], style={
+            "display": "flex", "alignItems": "center",
+            "justifyContent": "space-between", "gap": "12px"}),
+        className="ov-country-name")]
 
     for col in _COLUMNS:
         # A column may list fallback concepts (e.g. Rate); use the first the
