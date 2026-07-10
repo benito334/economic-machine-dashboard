@@ -1619,3 +1619,23 @@ now live/native across inflation, labour and the policy rate.
 **C-drive tally:** UK ✅B, Japan ✅B, Brazil ✅B(77, strengthened). Korea ⛔
 (Korean ID-verification wall). Next free-but-keyed: India (data.gov.in — easy
 email key, no ID check), Indonesia (BPS — key). China/Luxembourg structural.
+
+---
+
+## 2026-07-10 (3) — Indonesia CPI live via BPS WebAPI (4th C-country upgraded)
+
+Operator supplied a free BPS key (git-ignored `.env` as `BPS_KEY`; the BPS
+"login loop" was a false alarm — the app/key ARE created, the portal just
+redirects to the account page after Generate Key). New `fetch_bps_series()`
+(loader) — Indonesia BPS WebAPI. Non-trivial: the data endpoint needs internal
+th_ids (year-1900), the national row is vervar label "INDONESIA", and the
+datacontent key = vervar+var+turvar+th_id+turtahun. CPI is fragmented by
+COICOP group and rebased (2012→2018→2022); the live general index is var **2245**
+(CPI 150-regency, 2022=100). Pipeline **Pass 1.10** (provider `BPS`).
+
+`inflation.cpi_headline` → BPS 2245 (yoy_pct), live to 2026-06 = 3.3% (short
+history from 2024). **ID inflation C→B, overall C 68 → B 73.** 2 new tests.
+
+**Final C-drive scorecard:** UK ✅B, Japan ✅B, Brazil ✅B(77), Indonesia ✅B(73).
+Blocked by national-ID SSO (resident-only): Korea (본인인증), India (JanParichay).
+Structural (no free source): China (no bond yield), Luxembourg (financial-centre).

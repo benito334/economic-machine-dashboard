@@ -25,7 +25,7 @@ from indicators.composites import (
     compute_composite_history,
     load_composites_config,
 )
-from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series, fetch_manual_series, fetch_ons_series, fetch_estat_series, fetch_bcb_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series, fetch_manual_series, fetch_ons_series, fetch_estat_series, fetch_bcb_series, fetch_bps_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.debt_cycle_stage import compute_stage_history, load_stage_config
 from indicators.models import CountryBinding, Signal
@@ -249,6 +249,7 @@ def run_country(
     ons_bindings      = [b for b in bindings if b.provider == "ONS"        and b.verified]
     estat_jp_bindings = [b for b in bindings if b.provider == "eStat"      and b.verified]
     bcb_bindings      = [b for b in bindings if b.provider == "BCB"        and b.verified]
+    bps_bindings      = [b for b in bindings if b.provider == "BPS"        and b.verified]
     wb_bindings       = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
     imf_bindings      = [b for b in bindings if b.provider == "IMF"        and b.verified]
     imf_sdmx_bindings = [b for b in bindings if b.provider == "IMF_SDMX"   and b.verified]
@@ -535,6 +536,48 @@ def run_country(
                                        force_refresh=force_refresh)
                 if raw is None or raw.empty:
                     print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                    results["empty"] += 1
+                    continue
+
+                raw_store[binding.series_id] = raw
+                if binding.raw_scale:
+                    raw = raw / binding.raw_scale
+
+                transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+                transformed = transformed.dropna()
+                if transformed.empty:
+                    print(f"  [EMPTY after transform] {binding.id}")
+                    results["empty"] += 1
+                    continue
+
+                transformed_store[binding.id] = transformed
+                signals = build_signals(transformed, binding, raw)
+                latest = signals[-1] if signals else None
+                if latest:
+                    for w in sanity_check(latest, binding):
+                        print(f"  [SANITY WARN] {w}")
+                        results["sanity_warn"] += 1
+
+                n = upsert_signals(conn, signals)
+                latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+                latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+                print(f"  [OK   ] {binding.id:40s}  {binding.series_id}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
+                results["ok"] += 1
+            except Exception as exc:
+                logger.exception("[ERROR] %s: %s", binding.id, exc)
+                results["error"] += 1
+                if is_primary:
+                    sys.exit(1)
+
+    # ── Pass 1.10: Indonesia BPS series (needs BPS_KEY) ───────────────────
+    if bps_bindings:
+        print(f"\n─── Pass 1.10: BPS series [{country_code}] ───────────────────────────")
+        for binding in bps_bindings:
+            try:
+                raw = fetch_bps_series(binding.series_id, frequency=binding.frequency,
+                                       force_refresh=force_refresh)
+                if raw is None or raw.empty:
+                    print(f"  [SKIP ] {binding.id} ({binding.series_id}) — no key or empty")
                     results["empty"] += 1
                     continue
 

@@ -47,21 +47,20 @@ bindings:
     sanity_max: 30000.0
 
   - id: inflation.cpi_headline
-    series_id: CPALTT01IDM659N
-    provider: FRED
+    series_id: "2245"
+    provider: BPS
     frequency: M
     force: inflation
     lead_lag: coincident
-    transformation: level
+    transformation: yoy_pct
     units: yoy_pct
-    raw_scale: 100
     country: ID
     source_tier: free
     vintage_available: false
     is_proxy: false
     verified: true
     equilibrium: 0.03
-    linkage: "Indonesia CPI all-items YoY (OECD, already % form). Central-bank inflation target read."
+    linkage: "Indonesia CPI, 150 regency/municipality general index (BPS var 2245, 2022=100, national INDONESIA row), YoY. Live monthly via the BPS WebAPI — replaces the dead OECD-on-FRED mirror. Needs BPS_KEY; short history (2022-base started 2024). BI target 2.5%±1."
     sanity_min: -0.05
     sanity_max: 0.6
 

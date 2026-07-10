@@ -810,6 +810,95 @@ def fetch_bcb_series(
     return series
 
 
+# ─── Indonesia BPS WebAPI (needs a free key in BPS_KEY) ──────────────────────
+# Statistics Indonesia (Badan Pusat Statistik). series_id is the numeric var id
+# (e.g. "2245" = CPI 150-regency general, 2022=100). We pull the national row
+# (vervar label "INDONESIA") across all years and monthly periods and return the
+# raw index; the binding's yoy_pct transform computes the inflation rate.
+# Data key format = vervar_val + var_val + turvar_val + th_id + turtahun.
+
+_BPS_BASE = "https://webapi.bps.go.id/v1/api/list/model"
+
+
+def _bps_cache_path(var_id: str) -> Path:
+    return RAW_CACHE_DIR / f"bps_{var_id}.parquet"
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_bps_from_api(var_id: str, key: str) -> pd.Series:
+    hdr = {"User-Agent": "indicators-machine/1.0"}
+    th = requests.get(f"{_BPS_BASE}/th/lang/eng/domain/0000/var/{var_id}/key/{key}/",
+                      headers=hdr, timeout=45).json()
+    th_items = th.get("data", [None, []])[1]
+    if not th_items:
+        raise ValueError(f"BPS var {var_id}: no year list")
+    th_ids = ";".join(str(x["th_id"]) for x in th_items)
+    d = requests.get(f"{_BPS_BASE}/data/lang/eng/domain/0000/var/{var_id}/th/{th_ids}/key/{key}/",
+                     headers=hdr, timeout=60).json()
+    if d.get("status") != "OK":
+        raise ValueError(f"BPS var {var_id}: {d.get('message')}")
+    natl = [v for v in d.get("vervar", []) if (v.get("label") or "").upper() == "INDONESIA"]
+    if not natl:
+        raise ValueError(f"BPS var {var_id}: no national (INDONESIA) row")
+    ver = natl[0]["val"]
+    var_val = d["var"][0]["val"]
+    turvar = (d.get("turvar") or [{"val": 0}])[0]["val"]
+    dc = d.get("datacontent", {})
+    records = []
+    for x in th_items:
+        year = int(x["th"])
+        for month in range(1, 13):                 # turtahun 1-12 = Jan-Dec
+            k = f"{ver}{var_val}{turvar}{x['th_id']}{month}"
+            if k in dc:
+                try:
+                    records.append((pd.Timestamp(year, month, 1) + pd.offsets.MonthEnd(0),
+                                    float(dc[k])))
+                except (TypeError, ValueError):
+                    continue
+    if not records:
+        raise ValueError(f"BPS var {var_id}: no national monthly data")
+    dates, values = zip(*sorted(records))
+    return pd.Series(list(values), index=pd.DatetimeIndex(dates), name="value", dtype=float)
+
+
+def fetch_bps_series(
+    var_id: str,
+    frequency: str = "M",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """Fetch an Indonesia BPS national monthly series by var id.
+
+    Reads BPS_KEY; returns None (graceful skip → IMF bridge) if the key is unset.
+    """
+    key = os.environ.get("BPS_KEY", "").strip()
+    if not key:
+        logger.warning("[BPS] BPS_KEY not set — skipping %s", var_id)
+        return None
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _bps_cache_path(var_id)
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] BPS %s", var_id)
+        return pd.read_parquet(cache)["value"]
+    logger.info("[BPS fetch] %s", var_id)
+    try:
+        series = _fetch_bps_from_api(var_id, key)
+    except Exception as exc:
+        logger.error("[BPS] Failed to fetch %s: %s", var_id, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for BPS %s", var_id)
+            return pd.read_parquet(cache)["value"]
+        return None
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] BPS %s (%d obs)", var_id, len(series))
+    return series
+
+
 # ─── Japan e-Stat API (needs a free appId in ESTAT_APP_ID) ───────────────────
 # The Statistics Bureau's REST API. series_id encodes
 # "statsDataId/cdTab/cdCat01/cdArea" (e.g. "0003427113/1/0001/00000" =
