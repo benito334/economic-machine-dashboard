@@ -1568,3 +1568,31 @@ bond yield, Luxembourg (structural).
   fresh, IP/unemployment fresher. **GB growth C→B; GB overall C→B (73).** First
   C-country fully upgraded on free/unregistered data. `_fetch_ons_from_api` made
   topic-agnostic (walks ONS economic topic paths).
+
+---
+
+## 2026-07-10 — Japan CPI live via e-Stat (C-country push, key-gated win)
+
+Operator supplied a free e-Stat appId (stored in git-ignored `.env` as
+`ESTAT_APP_ID`). Wired Japan's live monthly CPI in — the worst-staleness gap in
+the dashboard (JP inflation had been an IMF *annual* bridge since 2021).
+
+- **New `fetch_estat_series()`** (loader) — Japan e-Stat getStatsData REST API.
+  series_id = `statsDataId/cdTab/cdCat01/cdArea`. Reads `ESTAT_APP_ID`; returns
+  None (graceful skip → IMF bridge) if the key is absent. Pipeline **Pass 1.8**
+  (provider `eStat`).
+- **JP `inflation.cpi_headline`** = e-Stat `0003427113/1/0001/00000` (CPI
+  2020-base index, all-items 総合, national 全国) → yoy_pct. **Live to 2026-05,
+  linked to 1970**, YoY 1.52%. Added as PRIMARY in `jp_composites.yaml`; the IMF
+  annual bridge demoted to keyless backup.
+- **Result: JP inflation C→B, JP overall C→B (71).** Second C-country upgraded.
+  4 new tests (ONS+e-Stat parse + guarded live). Note: the appId lives only in
+  `.env` (gitignored) and the baked DB snapshot — never committed.
+
+Discovered + documented the e-Stat login-loop fix: the appId is issued from
+**My Page → API function** (`/en/mypage/view/api`), NOT the `/api/` portal
+(separate auth realm that loops).
+
+**C-country scorecard:** UK ✅ B, Japan ✅ B. Remaining C: Korea (BoK key
+pending), China (no free bond yield), India/Indonesia (free national sources
+to verify), Luxembourg (structural).

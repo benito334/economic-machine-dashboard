@@ -69,6 +69,24 @@ bindings:
   # annual bridge is the PRIMARY inflation read for Japan, honestly flagged
   # is_proxy. See data_source_wishlist.md (e-Stat API requires registration).
 
+  - id: inflation.cpi_headline
+    series_id: 0003427113/1/0001/00000
+    provider: eStat
+    frequency: M
+    force: inflation
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.010
+    linkage: "Japan CPI, all items 総合, national 全国, monthly index (e-Stat 2020-base, statsDataId 0003427113; tab=index, cat01=0001, area=00000), YoY. Live monthly to 2026-05 — replaces the annual IMF bridge. Requires ESTAT_APP_ID; falls back to the bridge below if the key is absent. BoJ target 2%."
+    sanity_min: -0.05
+    sanity_max: 0.20
+
   - id: inflation.cpi_imf_annual
     series_id: PCPIPCH
     provider: IMF
@@ -84,7 +102,7 @@ bindings:
     is_proxy: true
     verified: true
     equilibrium: 0.010
-    linkage: "Japan CPI % change (IMF WEO annual). The ONLY free inflation feed — every monthly OECD FRED CPI series for Japan ended 2021-06. Annual resolution limits precision; BoJ target is 2%."
+    linkage: "Japan CPI % change (IMF WEO annual) — FALLBACK for the live e-Stat monthly series above; used only if ESTAT_APP_ID is unset. BoJ target is 2%."
     sanity_min: -0.05
     sanity_max: 0.20
 

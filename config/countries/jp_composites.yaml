@@ -37,11 +37,15 @@ growth_score:
       invert: true          # lower unemployment = better growth
 
 inflation_score:
-  description: "JP inflation-force composite — IMF annual bridge ONLY (no free monthly CPI)"
+  description: "JP inflation-force composite — live monthly CPI via e-Stat, IMF annual bridge as backup"
   indicators:
+    - id: inflation.cpi_headline
+      base_share: 1.0
+      importance: 0.95      # PRIMARY — live monthly national CPI (e-Stat, 2020-base)
+      quality_factor: 1.00
     - id: inflation.cpi_imf_annual
       base_share: 1.0
-      importance: 0.90      # PRIMARY by necessity — the only free inflation feed
+      importance: 0.20      # backup only — used if ESTAT_APP_ID is absent
       quality_factor: 0.70  # reduced: annual resolution, is_proxy
 
 # ── JP Financial Accommodation Score ─────────────────────────────────────────

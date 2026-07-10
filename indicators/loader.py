@@ -745,6 +745,99 @@ def fetch_ons_series(
     return series
 
 
+# ─── Japan e-Stat API (needs a free appId in ESTAT_APP_ID) ───────────────────
+# The Statistics Bureau's REST API. series_id encodes
+# "statsDataId/cdTab/cdCat01/cdArea" (e.g. "0003427113/1/0001/00000" =
+# CPI 2020-base, index, all-items 総合, national 全国). Returns the raw monthly
+# index; the binding's yoy_pct transformation computes the inflation rate.
+
+_ESTAT_BASE = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"
+
+
+def _estat_cache_path(sig: str) -> Path:
+    return RAW_CACHE_DIR / f"estat_{sig.replace('/', '_')}.parquet"
+
+
+def _parse_estat_month(code: str) -> Optional[pd.Timestamp]:
+    """e-Stat monthly time code 'YYYY00MMMM' (last 2 of the MM part) → month-end."""
+    if not code or len(code) != 10:
+        return None
+    try:
+        return pd.Timestamp(int(code[:4]), int(code[8:10]), 1) + pd.offsets.MonthEnd(0)
+    except (ValueError, TypeError):
+        return None
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_estat_from_api(stats_data_id: str, cd_tab: str, cd_cat01: str,
+                          cd_area: str, app_id: str) -> pd.Series:
+    params = {"appId": app_id, "statsDataId": stats_data_id,
+              "cdTab": cd_tab, "cdCat01": cd_cat01, "cdArea": cd_area}
+    resp = requests.get(_ESTAT_BASE, params=params, timeout=60)
+    resp.raise_for_status()
+    d = resp.json()
+    result = d.get("GET_STATS_DATA", {}).get("RESULT", {})
+    if result.get("STATUS") not in (0, "0"):
+        raise ValueError(f"e-Stat error {result.get('STATUS')}: {result.get('ERROR_MSG')}")
+    vals = d["GET_STATS_DATA"]["STATISTICAL_DATA"]["DATA_INF"]["VALUE"]
+    records = []
+    for v in vals:
+        dt = _parse_estat_month(v.get("@time", ""))
+        raw = v.get("$")
+        if dt is None or raw in (None, "", "-", "***", "…"):
+            continue
+        try:
+            records.append((dt, float(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not records:
+        raise ValueError(f"Empty e-Stat response for {stats_data_id}")
+    dates, values = zip(*sorted(records))
+    return pd.Series(list(values), index=pd.DatetimeIndex(dates), name="value", dtype=float)
+
+
+def fetch_estat_series(
+    series_id: str,
+    frequency: str = "M",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """Fetch a Japan e-Stat series. series_id = 'statsDataId/cdTab/cdCat01/cdArea'.
+
+    Reads the free appId from ESTAT_APP_ID; returns None (graceful skip) if the
+    key is absent, so the pipeline falls back to the IMF bridge.
+    """
+    app_id = os.environ.get("ESTAT_APP_ID", "").strip()
+    if not app_id:
+        logger.warning("[e-Stat] ESTAT_APP_ID not set — skipping %s", series_id)
+        return None
+    parts = series_id.split("/")
+    if len(parts) != 4:
+        raise ValueError(f"e-Stat series_id must be 'statsDataId/cdTab/cdCat01/cdArea': {series_id}")
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _estat_cache_path(series_id)
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] e-Stat %s", series_id)
+        return pd.read_parquet(cache)["value"]
+    logger.info("[e-Stat fetch] %s", series_id)
+    try:
+        series = _fetch_estat_from_api(*parts, app_id=app_id)
+    except Exception as exc:
+        logger.error("[e-Stat] Failed to fetch %s: %s", series_id, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for e-Stat %s", series_id)
+            return pd.read_parquet(cache)["value"]
+        return None
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] e-Stat %s (%d obs)", series_id, len(series))
+    return series
+
+
 # ─── IMF SDMX 2.1 API (api.imf.org — the post-2024 data portal) ──────────────
 # Distinct from the Datamapper API above (annual WEO-style aggregates). This
 # endpoint serves statistical datasets like COFER (currency composition of
