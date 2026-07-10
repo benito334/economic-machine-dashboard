@@ -68,8 +68,8 @@ bindings:
   # covers the gap. ONS API is the live-replacement candidate (wishlist).
 
   - id: inflation.cpi_headline
-    series_id: CPALTT01GBM659N
-    provider: FRED
+    series_id: d7g7/mm23
+    provider: ONS
     frequency: M
     force: inflation
     lead_lag: coincident
@@ -82,10 +82,10 @@ bindings:
     verified: true
     raw_scale: 100
     equilibrium: 0.020
-    linkage: "UK CPI all items YoY (OECD, already in % form on FRED). Bank of England target: 2%."
+    linkage: "UK CPI all items 12-month rate (ONS D7G7, dataset MM23, already in % form). Bank of England target: 2%."
     sanity_min: -0.05
     sanity_max: 0.25
-    notes: "Verified 2026-07-06: M, 1956-01→2025-03 — aging out; the IMF bridge below activates when stale."
+    notes: "Verified 2026-07-09: switched from the dead OECD-on-FRED mirror (ended 2025-03) to the ONS append-/data API (free, unregistered) — live monthly, e.g. 2026-05 = 2.8%. The IMF annual bridge below remains a fallback."
 
   - id: inflation.cpi_core
     series_id: CPGRLE01GBM659N

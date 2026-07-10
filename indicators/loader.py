@@ -644,6 +644,107 @@ def fetch_ecb_series(
     return series
 
 
+# ─── UK ONS "append /data" JSON API (free, unregistered) ─────────────────────
+# Any ONS timeseries page URL + "/data" returns clean JSON. series_id encodes
+# "CDID/DATASET" (e.g. "d7bt/mm23" = CPI all-items index). Gives live monthly
+# UK data (CPI, retail sales, IP, unemployment) where the OECD-on-FRED mirrors
+# have died. Values already numeric; the binding's transformation does the rest.
+
+_ONS_BASE = "https://www.ons.gov.uk"
+# ONS serves a series' JSON only under its own topic path, so try the economic
+# topics in turn until one resolves. Order = most-used first.
+_ONS_TOPICS = (
+    "economy/inflationandpriceindices",
+    "businessindustryandtrade/retailindustry",
+    "economy/economicoutputandproductivity/output",
+    "employmentandlabourmarket/peopleinwork/earningsandworkinghours",
+    "employmentandlabourmarket/peoplenotinwork/unemployment",
+    "economy/grossdomesticproductgdp",
+    "economy/nationalaccounts/balanceofpayments",
+)
+
+
+def _ons_cache_path(cdid: str, dataset: str) -> Path:
+    return RAW_CACHE_DIR / f"ons_{dataset.lower()}_{cdid.lower()}.parquet"
+
+
+def _parse_ons_month(date_str: str) -> Optional[pd.Timestamp]:
+    """'2026 MAY' → month-end. Returns None for quarter/year rows we skip."""
+    try:
+        dt = datetime.datetime.strptime(date_str.strip().title(), "%Y %b")
+    except ValueError:
+        return None
+    return pd.Period(dt, freq="M").to_timestamp("M")
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_ons_from_api(cdid: str, dataset: str) -> pd.Series:
+    # A series resolves only under its own topic path; walk the topics until one
+    # returns 200. An explicit "topic/CDID/DATASET" series_id short-circuits this.
+    if "/" in cdid:                       # caller passed a full topic path
+        topics = [cdid.rsplit("/", 1)[0]]
+        cdid = cdid.rsplit("/", 1)[1]
+    else:
+        topics = list(_ONS_TOPICS)
+    payload = None
+    last_status = None
+    for topic in topics:
+        url = f"{_ONS_BASE}/{topic}/timeseries/{cdid.lower()}/{dataset.lower()}/data"
+        resp = requests.get(url, headers={"User-Agent": "indicators-machine/1.0"}, timeout=45)
+        last_status = resp.status_code
+        if resp.status_code == 200:
+            payload = resp.json()
+            break
+    if payload is None:
+        raise ValueError(f"ONS {cdid}/{dataset} not found on any topic (last HTTP {last_status})")
+    records = []
+    for m in payload.get("months", []):
+        dt = _parse_ons_month(m.get("date", ""))
+        val = m.get("value")
+        if dt is None or val in (None, ""):
+            continue
+        try:
+            records.append((dt, float(val)))
+        except (TypeError, ValueError):
+            continue
+    if not records:
+        raise ValueError(f"Empty ONS response for {cdid}/{dataset}")
+    dates, values = zip(*sorted(records))
+    return pd.Series(list(values), index=pd.DatetimeIndex(dates), name="value", dtype=float)
+
+
+def fetch_ons_series(
+    cdid: str,
+    dataset: str,
+    frequency: str = "M",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """Fetch a UK ONS monthly timeseries via the append-/data JSON endpoint."""
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _ons_cache_path(cdid, dataset)
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] ONS %s/%s", cdid, dataset)
+        return pd.read_parquet(cache)["value"]
+    logger.info("[ONS fetch] %s/%s", cdid, dataset)
+    try:
+        series = _fetch_ons_from_api(cdid, dataset)
+    except Exception as exc:
+        logger.error("[ONS] Failed to fetch %s/%s: %s", cdid, dataset, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for ONS %s/%s", cdid, dataset)
+            return pd.read_parquet(cache)["value"]
+        return None
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] ONS %s/%s (%d obs)", cdid, dataset, len(series))
+    return series
+
+
 # ─── IMF SDMX 2.1 API (api.imf.org — the post-2024 data portal) ──────────────
 # Distinct from the Datamapper API above (annual WEO-style aggregates). This
 # endpoint serves statistical datasets like COFER (currency composition of

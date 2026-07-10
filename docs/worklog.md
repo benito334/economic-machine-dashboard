@@ -1539,3 +1539,26 @@ Surfaced:
   per-force caveat on the Growth/Inflation cards (e.g. Indonesia growth reads
   "C · data · 5 signals · 4 stale, 2 proxy", so the stale-growth story is
   visible right next to the number). 6 new tests; suite 468 passed.
+
+---
+
+## 2026-07-09 (6) — Data-quality drive: UK CPI live via ONS (C-country push)
+
+Started the concerted C-country data-improvement effort (UK/JP/KR/CN/IN/LU/ID)
+from the punch-list in `docs/Guidance/signal_sourcing_guide.md`. First win: UK.
+
+- **New `fetch_ons_series()`** in `loader.py` — the UK ONS "append-/data" JSON
+  API (free, unregistered). Topic-agnostic: series_id is `CDID/DATASET` and the
+  fetcher walks the ONS economic topic paths until one resolves (or takes an
+  explicit `topic/CDID/DATASET`). Pipeline **Pass 1.7** (provider `ONS`).
+- **UK CPI repointed** from the dead OECD-on-FRED mirror (`CPALTT01GBM659N`,
+  ended 2025-03) to ONS `d7g7/mm23` — **live to 2026-05 = 2.8%**, exact match to
+  the published rate. GB **inflation force C→B**; overall 66→70.
+- Verified end-to-end (rebuilt the pipeline image — it bakes code, so it needed
+  rebuilding too; ran the full pipeline). 2 new ONS tests.
+
+**Roadmap (rest of the C countries):** free/unregistered next → UK retail+IP+
+unemployment via the same ONS fetcher (de-stale GB growth → likely B); India
+MOSPI, Indonesia BPS/BI, Brazil BCB (verify). Registration-gated (operator key
+needed) → Japan e-Stat (worst CPI staleness), Korea BoK ECOS. Hard/none → China
+bond yield, Luxembourg (structural).
