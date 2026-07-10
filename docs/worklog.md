@@ -1639,3 +1639,34 @@ history from 2024). **ID inflation C→B, overall C 68 → B 73.** 2 new tests.
 **Final C-drive scorecard:** UK ✅B, Japan ✅B, Brazil ✅B(77), Indonesia ✅B(73).
 Blocked by national-ID SSO (resident-only): Korea (본인인증), India (JanParichay).
 Structural (no free source): China (no bond yield), Luxembourg (financial-centre).
+
+---
+
+## 2026-07-10 (4) — Schedule-aware composite decay (Digital Ray consult)
+
+Consulted Digital Ray on the age-decay methodology (logged in
+`ray_dalio_review_log.md`). Finding: the dashboard had THREE decay mechanisms
+with inconsistent philosophies — `is_stale` (release-aware, 200d/Q) and the
+debt-stress module (excess-lag-aware) both matched "release-schedule-aware",
+but the growth/inflation composite decayed on RAW fill-age (pure recency),
+silently down-weighting a quarterly reading (e.g. GDP) mid-quarter even though
+it was the freshest data available.
+
+Ray's ruling: "recency PLUS schedule awareness" — the schedule-aware hold
+belongs to LOW-frequency signals (a monthly series' natural cadence already
+does the job), and high-frequency "bridges" carry the gap while the coarse
+quarterly signal stays the reliable anchor. We already satisfy the bridge point
+(growth basket ≈9 signals; GDP is one input the monthlies outnumber).
+
+Implemented: `time_decay.release_grace_months` (TUNABLE D0/M1/Q4/A14) in
+`composites_policy.yaml`; `compute_composite_history` now decays on
+`max(0, fill_age − grace[freq])` (via the already-threaded `freq_map`). A
+quarterly signal keeps full weight through its release window and only decays
+once genuinely overdue — aligning the composite with the other two mechanisms.
+US/EZ regime reads unchanged/sane; recomputed all 8,264 composite snapshots.
+
+Related observation (NOT changed here): JP growth reads None in recent months
+because ALL its growth signals are `is_stale`-EXCLUDED (real data ends ~April,
+now July). That's the is_stale *hard exclusion* — a stronger form of the same
+recency-vs-schedule tension. Extending the grace concept to the exclusion is a
+candidate follow-up, but JP's ~3-month lag is genuine, so left as-is.

@@ -762,6 +762,19 @@ def compute_composite_history(
     hard_drop_months = time_decay_cfg.get("hard_drop_months")
     legacy_decay_factor = float(legacy_decay_cfg.get("decay_factor", 0.9))
 
+    # ── Schedule-aware release grace (Digital Ray consult 2026-07-10) ──────────
+    # Decay runs on the fill-age BEYOND each signal's expected release window, so
+    # a lower-frequency series (e.g. quarterly GDP) keeps full weight through the
+    # normal gap before its next print and only decays once genuinely overdue.
+    grace_cfg = time_decay_cfg.get("release_grace_months", {})
+    grace_default = float(grace_cfg.get("default", 0.0)) if grace_cfg else 0.0
+    grace_by_sid: dict[str, float] = {}
+    if grace_cfg and freq_map:
+        grace_by_sid = {
+            sid: float(grace_cfg.get(freq, grace_default))
+            for sid, freq in freq_map.items()
+        }
+
     # ── Per-frequency carry cap (L2) ──────────────────────────────────────────
     freq_limits_cfg = config.get("per_frequency_ffill_limit", {})
     default_limit   = int(freq_limits_cfg.get("default", 13))
@@ -872,7 +885,11 @@ def compute_composite_history(
                     if decay_enabled:
                         if time_decay_cfg:
                             sig_half_life = float(ind.get("half_life_months", half_life_months))
-                            decay_fraction = age_weight_fraction(age, sig_half_life)
+                            # Only the age BEYOND the signal's expected release
+                            # window decays; within it, full weight.
+                            grace = grace_by_sid.get(sid, grace_default)
+                            eff_age = max(0.0, age - grace)
+                            decay_fraction = age_weight_fraction(eff_age, sig_half_life)
                         else:
                             decay_fraction = legacy_decay_factor ** age
                     if hard_drop_months is not None and age > float(hard_drop_months):

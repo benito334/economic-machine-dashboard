@@ -32,6 +32,18 @@ time_decay:
   enabled: true
   half_life_months: 3.0       # TUNABLE
   hard_drop_months: 12        # TUNABLE global ceiling; frequency caps may drop sooner
+  # Schedule-aware grace (Digital Ray consult 2026-07-10): a signal keeps FULL
+  # weight through its own expected release window and only decays once the next
+  # release is genuinely overdue — so a quarterly series (e.g. GDP) is NOT
+  # penalised during the normal gap before its next print. Decay runs on
+  # max(0, fill_age − grace[freq]). Months of grace per native frequency.
+  # TUNABLE — recalibrate against forward-predictive fit.
+  release_grace_months:
+    D: 0
+    M: 1     # a monthly series is "due" ~1 month after its period
+    Q: 4     # quarterly: full weight through the quarter + ~1mo release lag
+    A: 14    # annual: ~12mo data lag + grace
+    default: 1
 
 # Regime quadrant confidence: fraction of contributing signals whose
 # direction vector agrees with the assigned quadrant label.
