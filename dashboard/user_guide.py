@@ -681,6 +681,82 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
         html.Div([_mlink("15", "Methodology §15 (revision log — how this machine evolves)")]),
     ]
 
+    # ══ L9 — Trusting the data ════════════════════════════════════════════════
+    l9 = [
+        _p("A diagnosis is only as good as the data under it, and the data is not evenly "
+           "good across 14 countries. The US and Eurozone run on rich, fresh, native "
+           "feeds; a few countries lean on a single annual proxy bridged in from the IMF. "
+           "The machine is honest about this: every country carries an A–D "
+           "\"Data Confidence\" grade so you know how hard to lean on each read."),
+        _p(*[html.B("Where you see it: "),
+            "a small letter chip after each country on the Global Overview, a header chip "
+            "on the Command Center, and a per-force caveat on each dial "
+            "(e.g. \"C · 5 signals · 4 stale, 2 proxy\"). It blends three things you can "
+            "already see on the signal table — ",
+            html.B("freshness"), " (is the data current or stale, and how stale?), ",
+            html.B("directness"), " (native data vs a proxy or a constructed stand-in), and ",
+            html.B("depth"), " (how many signals feed the read — one signal is never "
+            "high-confidence, so thin baskets are capped at C or B)."]),
+        _trap("Grade ≠ regime",
+              "A low grade does NOT mean the reading is wrong or the economy is weak — it "
+              "means trust it less and confirm before acting. It is purely diagnostic: it "
+              "never feeds a composite, the chips, the stage, or the Country Health Index. "
+              "A country can be a confident A with an ugly regime, or a shaky D with a "
+              "pretty one."),
+        _p(*[html.B("Why it changes: "),
+            "grades rise when a stale proxy is replaced by a live national feed — that is "
+            "exactly what the recent UK / Japan / Brazil / Indonesia data upgrades did. "
+            "If a country's grade looks low, the fix is better data, not a different "
+            "formula."]),
+        _live_box([f"Look at the Data chip for {cname} on the Global Overview, then open "
+                   "its Command Center and read the per-force caveats — that tells you "
+                   "which of its dials to trust and which to treat as provisional."]),
+        html.Div([_mlink("16", "Methodology §16 (Data Confidence Score — the exact formula)")]),
+    ]
+
+    # ══ L10 — The Fed Monitor ═════════════════════════════════════════════════
+    l10 = [
+        _p("The short-term chips tell you what season it is; the Fed Monitor (US-only, the "
+           "🏛 nav item) tells you what the central bank is doing about it — and, at the "
+           "far end, whether it is quietly financing the government. It came out of a "
+           "Digital Ray consult on what to watch across the whole rate-and-printing arc."),
+        _p("Five stacked sections, each chart annotated with Ray's named threshold:"),
+        html.Ul([
+            html.Li([html.B("Short-term cycle. "), "Fed funds, the real policy rate "
+                     "(above 0 = tight, below 0 = easy), and the 2y/10y slope whose "
+                     "inversion has led every modern recession."], style=_P),
+            html.Li([html.B("Rates vs inflation. "), "Is policy ahead of or behind "
+                     "inflation? The 5y5y forward expectation against the 2% line is the "
+                     "clean read."], style=_P),
+            html.Li([html.B("Balance sheet & liquidity. "), "Fed assets YoY (QE vs QT), "
+                     "bank reserves, and the ON RRP draining toward zero as QT bites."],
+                    style=_P),
+            html.Li([html.B("Turning points. "), "The curve un-inverting, the real rate "
+                     "crossing zero, reserves nearing the ~7%-of-GDP scarcity zone, the "
+                     "term premium."], style=_P),
+            html.Li([html.B("Late-cycle monetization. "), "The \"How Countries Go Broke\" "
+                     "panel — the Fed's share of the debt and of net new issuance, its "
+                     "remittances going negative (the Fed running losses), and federal "
+                     "interest as a share of revenue crossing into the danger zone."],
+                    style=_P),
+        ]),
+        _p(*[html.B("The big idea — MP1 → MP2 → MP3. "),
+            "Ray's progression: normal interest-rate policy (MP1), then QE/printing when "
+            "rates hit zero (MP2), then outright monetization of government deficits "
+            "(MP3). The dangerous tell is not QE itself but QE aimed at funding the "
+            "Treasury and capping yields. Section 5 is where you'd see that turn coming."]),
+        _trap("An approximation, verified by hand",
+              "The Fed Monitor's design came from digitalray.ai, an AI approximation of "
+              "Dalio's framework — not from Ray Dalio. Per our house rule we verified every "
+              "FRED series ID against the source before wiring it in, which caught four "
+              "wrong IDs in the AI's output. Treat the thresholds as informed heuristics, "
+              "not laws."),
+        _live_box(["Open the Fed Monitor and read the four header chips top-to-bottom: "
+                   "money tight/easy, Fed behind/ahead of inflation, the Fed's debt share, "
+                   "and the MP phase. That is the one-glance state of US monetary policy."]),
+        html.Div([_mlink("17", "Methodology §17 (Fed Monitor — signals and thresholds)")]),
+    ]
+
     lessons = [
         ("0 · The machine in one picture", l0),
         ("1 · The big wave — the long-term debt cycle in 60 seconds", l1),
@@ -691,6 +767,8 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
         ("6 · Productivity and Order — the slow gauges", l6),
         ("7 · Diversification — the Relative Cycles page", l7),
         ("8 · The reading routine — putting it into practice", l8),
+        ("9 · Trusting the data — the Data Confidence badge", l9),
+        ("10 · The Fed Monitor — watching the central bank", l10),
     ]
     return html.Div([
         html.Div([

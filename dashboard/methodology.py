@@ -2086,6 +2086,11 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-07-10", "Fed Monitor page added (/fed) — a US Federal Reserve dashboard from a two-part Digital Ray consult: five sections (short-term cycle, rates-vs-inflation, balance sheet/liquidity, turning points, and MP1→MP2→MP3 late-cycle monetization per 'How Countries Go Broke'). 8 new fed.* FRED series isolated under a 'fed' force (page only, not composites/data-score); 4 of Ray's AI-supplied FRED IDs corrected before binding. See §17.", "17 (new)"],
+                            ["2026-07-10", "Composite age-decay made schedule-aware (Digital Ray consult): decay runs on max(0, fill_age − release_grace[freq]) (grace D0/M1/Q4/A14) so a quarterly signal keeps full weight through its normal release window and only decays once overdue — was raw fill-age. Aligns the composite with the is_stale flag and the debt-stress module.", "7"],
+                            ["2026-07-10", "Data Confidence badge (§16): per-country + per-force A–D grade from freshness / directness / depth; shown on Global Overview + Command Center. Diagnostic only — does not feed any composite or the regime label.", "16 (new)"],
+                            ["2026-07-10", "Rate column + Cycle Health Index compute for all 14 countries via per-country fallbacks (rate: policy → 3m interbank → 10y; inflation: monthly CPI → annual IMF bridge) — were US/EZ-only.", "11, 13"],
+                            ["2026-07-10", "Live national data sources: UK ONS, Japan e-Stat, Brazil BCB, Indonesia BPS — UK/JP/BR/ID inflation moved off dead OECD mirrors / IMF bridges to live feeds; data-confidence C→B for UK/JP/ID.", "2, 11"],
                             ["2026-07-07", "Country coverage expanded to 14 economies on Digital-Ray's advice: added Brazil + his top-4 missing commodity/trade hubs (Canada #1, Australia #2, Mexico #3, Indonesia #4) — the set was heavy on debt-cycle pillars and light on the commodity-exporter axis. ~154 new signals; all 5 run the private/sovereign two-vote stage split (BR/ID use a policy rate for the spreads as they have no free bond yield, CA/AU/MX use a live 10y). Ray also flagged Germany/Luxembourg as borderline-redundant with the EZ aggregate (kept, per user request)", "11"],
                             ["2026-07-07", "D4 manual-load infrastructure: drop-folder pattern (MANUAL_DATA_DIR) + pipeline Pass 3.8 for sources with no free API — order.governance (V-Dem liberal-democracy index, 8 countries) + order.geopolitical_risk (GPR country index, 7 countries; LU not in the GPR set) as provider:Manual bindings; missing file = pending SLOT (never a failure), malformed file fails loudly; converters scripts/prepare_vdem.py + prepare_gpr.py; see docs/manual_data.md", "— (new data lens)"],
                             ["2026-07-07", "India + Germany + Luxembourg rollouts: 86 new signals (IN 31 / DE 29 / LU 26) — 306 total across 9 economies; all three carry BIS household+corporate credit so all three run the private/sovereign two-vote stage split; DE = richest non-US dataset (live HICP, Eurostat IP, 2-signal rate basket); LU flagged as financial-center read (credit 420% GDP = intra-group vehicles); IN has live IP + 10y yield (richer than CN)", "11"],
@@ -2136,6 +2141,11 @@ def get_layout() -> html.Div:
                 _table(
                     ["Date", "Change", "Sections affected"],
                     [
+                        ["2026-07-10", "Fed Monitor page added (/fed) — a US Federal Reserve dashboard from a two-part Digital Ray consult: five sections (short-term cycle, rates-vs-inflation, balance sheet/liquidity, turning points, and MP1→MP2→MP3 late-cycle monetization per 'How Countries Go Broke'). 8 new fed.* FRED series isolated under a 'fed' force so they feed the page only, NOT the composites or data-confidence score; 4 of Ray's AI-supplied FRED IDs were verified/corrected before binding. See §17.", "17 (new)"],
+                        ["2026-07-10", "Composite age-decay made schedule-aware (Digital Ray consult): decay now runs on max(0, fill_age − release_grace[freq]) with grace D0/M1/Q4/A14, so a lower-frequency signal (e.g. quarterly GDP) keeps FULL weight through its normal release window and only decays once genuinely overdue — was raw fill-age (pure recency). Aligns the growth/inflation composite with the is_stale flag and the debt-stress module.", "7"],
+                        ["2026-07-10", "Data Confidence badge added (§16): per-country + per-force A–D grade from freshness (is_stale + age), directness (proxy/constructed) and depth (basket size, thin baskets capped); shown on Global Overview (chip per country) and Command Center (header chip + per-force caveat on the Growth/Inflation dials). Diagnostic only — does NOT feed any composite or the regime label.", "16 (new)"],
+                        ["2026-07-10", "Rate column + Cycle Health Index now compute for all 14 countries via per-country fallbacks (rate: policy → 3m interbank → 10y yield; inflation: monthly CPI → annual IMF bridge for JP) — were US/EZ-only.", "11, 13"],
+                        ["2026-07-10", "Live national data sources added: UK ONS (CPI/retail/IP/unemployment; free, unregistered), Japan e-Stat (monthly CPI; free operator key), Brazil BCB SGS (IPCA/PNAD/Selic; no key), Indonesia BPS (CPI; free operator key). UK/JP/BR/ID inflation moved off dead OECD mirrors / annual IMF bridges to live feeds; data-confidence C→B for UK/JP/ID, stronger-B for BR.", "2, 11"],
                         ["2026-07-07", "Country coverage expanded to 14 economies on Digital-Ray's advice: added Brazil + his top-4 missing commodity/trade hubs (Canada #1, Australia #2, Mexico #3, Indonesia #4) — the set was heavy on debt-cycle pillars and light on the commodity-exporter axis. ~154 new signals; all 5 run the private/sovereign two-vote stage split (BR/ID use a policy rate for the spreads as they have no free bond yield, CA/AU/MX use a live 10y). Ray also flagged Germany/Luxembourg as borderline-redundant with the EZ aggregate (kept, per user request)", "11"],
                             ["2026-07-07", "D4 manual-load infrastructure: drop-folder pattern (MANUAL_DATA_DIR) + pipeline Pass 3.8 for sources with no free API — order.governance (V-Dem liberal-democracy index, 8 countries) + order.geopolitical_risk (GPR country index, 7 countries; LU not in the GPR set) as provider:Manual bindings; missing file = pending SLOT (never a failure), malformed file fails loudly; converters scripts/prepare_vdem.py + prepare_gpr.py; see docs/manual_data.md", "— (new data lens)"],
                             ["2026-07-07", "India + Germany + Luxembourg rollouts: 86 new signals (IN 31 / DE 29 / LU 26) — 306 total across 9 economies; all three carry BIS household+corporate credit so all three run the private/sovereign two-vote stage split; DE = richest non-US dataset (live HICP, Eurostat IP, 2-signal rate basket); LU flagged as financial-center read (credit 420% GDP = intra-group vehicles); IN has live IP + 10y yield (richer than CN)", "11"],
@@ -2178,6 +2188,131 @@ def get_layout() -> html.Div:
                       "detail behind the 2026-07-05 entries (a systematic review against a Ray "
                       "Dalio AI persona, with a 24-item punch list)."),
             ], title="15 · Revision Log"),
+
+            # 16 ── Data Confidence Score ───────────────────────────────────────
+            dbc.AccordionItem([
+                _copy_btn(_section_text(
+                    "16 · Data Confidence Score",
+                    [
+                        "A diagnostic is only as trustworthy as the data under it. Every country "
+                        "carries an A–D 'Data Confidence' grade — overall and per force — computed "
+                        "from three properties already tracked on each signal. It is DISPLAY ONLY: "
+                        "it does not feed any composite, the regime label, the stage classifier, or "
+                        "the CHI. It is shown as a chip after each country on the Global Overview "
+                        "and as a header chip plus a per-force caveat on the Command Center dials "
+                        "(e.g. 'C · 5 signals · 4 stale, 2 proxy').",
+                        "Per scored force (growth / inflation / rate / credit) the 0–100 score is a "
+                        "weighted blend of three factors; the country's overall grade is the "
+                        "weighted average across those forces (growth + inflation weighted most).",
+                    ],
+                    tables=[(
+                        ["Factor", "Weight", "How it's measured"],
+                        [
+                            ["Freshness", "0.45", "Fraction of active signals that are current. is_stale=false → 1.0; stale is graded by age (≤12mo 0.5, ≤24mo 0.25, older 0.1) so a normal lag isn't punished like an abandoned feed"],
+                            ["Directness", "0.30", "Fraction that are native data, not is_proxy / is_constructed (proxy = 0.5); low_history applies a small extra penalty"],
+                            ["Depth", "0.25", "min(n_signals / 5, 1) — a read on 2 signals is shakier than one on 8"],
+                        ]
+                    ), (
+                        ["Score", "Grade", "Reading"],
+                        [
+                            ["≥ 85", "A", "High confidence — rich, fresh, native"],
+                            ["70–84", "B", "Good"],
+                            ["55–69", "C", "Thin / stale / proxy-reliant"],
+                            ["< 55", "D", "Low confidence"],
+                        ]
+                    )],
+                    notes=[
+                        "Thin baskets are capped: a force with only 1 signal can score at most C; "
+                        "with 2, at most B — no matter how fresh, a one-signal read can't be "
+                        "high-confidence.",
+                        "Grades are relative and honest: today US/EZ = A (rich native data), most "
+                        "others B/C. Registering national-source API keys (e-Stat, BoK, BPS) or "
+                        "finding live feeds upgrades the affected countries by replacing stale/proxy "
+                        "stand-ins.",
+                    ],
+                )),
+                _p("Every country carries an A–D 'Data Confidence' grade — overall and per force — "
+                   "computed from freshness (is_stale + age), directness (proxy/constructed) and "
+                   "depth (basket size). DISPLAY ONLY: it does not feed any composite, the regime "
+                   "label, the stage classifier or the CHI. Shown as a chip on the Global Overview "
+                   "and a header chip + per-force caveat on the Command Center dials."),
+                _table(
+                    ["Factor", "Weight", "How it's measured"],
+                    [
+                        ["Freshness", "0.45", "Fraction current (is_stale=false → 1.0; stale graded by age: ≤12mo 0.5, ≤24mo 0.25, older 0.1)"],
+                        ["Directness", "0.30", "Fraction native, not proxy/constructed (proxy → 0.5); low_history a small extra penalty"],
+                        ["Depth", "0.25", "min(n / 5, 1); thin baskets capped (1 signal ≤ C, 2 ≤ B)"],
+                    ]
+                ),
+                _table(
+                    ["Score", "Grade"],
+                    [["≥ 85", "A"], ["70–84", "B"], ["55–69", "C"], ["< 55", "D"]]
+                ),
+                _note("Source: dashboard/data_score.py. Diagnostic only — it grades how much to "
+                      "trust each read, and never changes a read."),
+            ], title="16 · Data Confidence Score"),
+
+            # 17 ── Fed Monitor ─────────────────────────────────────────────────
+            dbc.AccordionItem([
+                _copy_btn(_section_text(
+                    "17 · Fed Monitor  (US, /fed)",
+                    [
+                        "A US Federal Reserve monitoring dashboard built from a two-part Digital Ray "
+                        "consult (logged in docs/Guidance/ray_dalio_review_log.md, 2026-07-10). It "
+                        "curates signals we already ingest plus 8 new fed.* series into five "
+                        "sections of time-series charts, each with the current value and Ray's "
+                        "named threshold. The fed.* series are isolated under a 'fed' force so they "
+                        "feed THIS PAGE ONLY — not the growth/inflation composites, the regime "
+                        "label, or the Data Confidence score.",
+                        "The fifth section is the heart of Ray's 'How Countries Go Broke' work: the "
+                        "MP1 → MP2 → MP3 progression (interest-rate policy → QE/printing → outright "
+                        "debt monetization). The tell for the dangerous turn isn't QE itself — it's "
+                        "QE done to fund the government and cap yields rather than to stimulate.",
+                    ],
+                    tables=[(
+                        ["Section", "Key signals & Ray's thresholds"],
+                        [
+                            ["1 Short-term cycle", "Fed funds; real policy rate (>0 tight, <0 easy); 2y−funds expectations; 2y/10y slope (inversion leads recession); SLOOS; corporate spread"],
+                            ["2 Rates vs inflation", "Real rate; 5y5y forward inflation vs 2% (behind/ahead); core PCE; breakevens"],
+                            ["3 Balance sheet / liquidity", "Fed assets YoY (QE/QT); Fed Treasury holdings; bank reserves; ON RRP (near-zero = QT bites reserves)"],
+                            ["4 Turning points", "2y/10y inversion; real rate crossing 0; reserves/GDP ≈ 7% scarcity; 10y ACM term premium; HY-spread compression"],
+                            ["5 Late-cycle monetization", "Fed share of marketable debt (>20-25% & rising); Fed % of net new issuance (>30-40%); remittances/deferred asset (<0 = Fed losses); foreign share (falling); federal interest ÷ revenue (>15-20% danger)"],
+                        ]
+                    )],
+                    notes=[
+                        "8 new fed.* FRED series: bank reserves (TOTRESNS), ON RRP (RRPONTSYD), 5y5y "
+                        "forward (T5YIFR), Fed Treasury holdings (TREAST), marketable debt "
+                        "(MVMTD027MNFRBDAL), remittances/deferred asset (RESPPLLOPNWW), foreign "
+                        "holdings (FDHBFIN), 10y term premium (THREEFYTP10 — the ACM/Kim-Wright "
+                        "estimate, FRED-mirrored). Fed share, foreign share, reserves/GDP, federal "
+                        "interest/revenue and net-issuance share are computed inline on the page.",
+                        "Per our 'never invent series IDs' rule, all IDs were verified against FRED "
+                        "before binding — which caught FOUR wrong IDs in Ray's AI output (Fed "
+                        "Treasuries is TREAST not WSHOMCB (MBS); the 10y real yield is DFII10 not "
+                        "T10YFF (a spread); etc.).",
+                        "digitalray.ai output is an AI approximation of Ray Dalio's framework, not "
+                        "vetted by Ray Dalio.",
+                    ],
+                )),
+                _p("A US Federal Reserve dashboard (/fed) from a Digital Ray consult: five sections "
+                   "of time-series charts — short-term cycle, rates-vs-inflation, balance "
+                   "sheet/liquidity, turning points, and MP1→MP2→MP3 late-cycle monetization (the "
+                   "'How Countries Go Broke' panel). Curates existing signals + 8 new fed.* series "
+                   "(isolated 'fed' force — page only, not the composites/regime/data-score)."),
+                _table(
+                    ["Section", "Key signals & Ray's thresholds"],
+                    [
+                        ["1 Short-term cycle", "Fed funds; real policy rate; 2y−funds; 2y/10y slope; SLOOS; corp spread"],
+                        ["2 Rates vs inflation", "Real rate; 5y5y forward vs 2%; core PCE; breakevens"],
+                        ["3 Balance sheet / liquidity", "Fed assets YoY; Fed Treasury holdings; reserves; ON RRP"],
+                        ["4 Turning points", "2y/10y inversion; real rate crossing 0; reserves/GDP ≈ 7%; 10y term premium; HY spread"],
+                        ["5 Late-cycle monetization", "Fed share of debt (>20-25%); Fed % of net new issuance (>30-40%); remittances/deferred asset (<0); foreign share; federal interest/revenue (>15-20%)"],
+                    ]
+                ),
+                _note("Source: dashboard/fed_monitor.py + 8 fed.* bindings. All FRED IDs verified "
+                      "(4 of Ray's AI-supplied IDs were wrong and corrected). digitalray.ai output "
+                      "is an AI approximation of Dalio's framework, not vetted by Ray Dalio."),
+            ], title="17 · Fed Monitor"),
 
         ], start_collapsed=True, always_open=True),
 
