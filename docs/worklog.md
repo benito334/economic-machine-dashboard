@@ -1596,3 +1596,26 @@ Discovered + documented the e-Stat login-loop fix: the appId is issued from
 **C-country scorecard:** UK ✅ B, Japan ✅ B. Remaining C: Korea (BoK key
 pending), China (no free bond yield), India/Indonesia (free national sources
 to verify), Luxembourg (structural).
+
+---
+
+## 2026-07-10 (2) — Brazil on the open BCB API (C-country drive continues)
+
+Fully autonomous win (no key). New `fetch_bcb_series()` (loader) — the Banco
+Central do Brasil SGS time-series API, open/unauthenticated. series_id = numeric
+SGS code. Pipeline **Pass 1.9** (provider `BCB`). Repointed 3 BR signals off
+dead/proxy feeds to live BCB:
+- `inflation.cpi_headline` → IPCA 12m (`13522`), live to 2026-06 = 4.64% —
+  replaces the dead OECD-on-FRED mirror. **BR inflation C→B.**
+- `growth.unemployment` → PNAD monthly (`24369`), live to 2026-05 — replaces
+  the WB annual ILO proxy (de-proxied).
+- `policy.rate_policy` → Selic annualized (`4189`) — the real COPOM lever,
+  replacing the FRED discount-rate proxy.
+
+**BR overall B 71 → B 77.** 2 new tests. Brazil still can't reach the top tier
+on policy (no free BR 10y yield → single rate signal) but the underlying data is
+now live/native across inflation, labour and the policy rate.
+
+**C-drive tally:** UK ✅B, Japan ✅B, Brazil ✅B(77, strengthened). Korea ⛔
+(Korean ID-verification wall). Next free-but-keyed: India (data.gov.in — easy
+email key, no ID check), Indonesia (BPS — key). China/Luxembourg structural.

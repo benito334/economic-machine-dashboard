@@ -47,8 +47,8 @@ bindings:
     sanity_max: 30000.0
 
   - id: inflation.cpi_headline
-    series_id: CPALTT01BRM659N
-    provider: FRED
+    series_id: "13522"
+    provider: BCB
     frequency: M
     force: inflation
     lead_lag: coincident
@@ -61,7 +61,7 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: 0.045
-    linkage: "Brazil CPI all-items YoY (OECD, already % form). Central-bank inflation target read."
+    linkage: "Brazil IPCA 12-month rate (BCB SGS series 13522, already % form). Live monthly — replaces the dead OECD-on-FRED mirror. Central-bank inflation target read."
     sanity_min: -0.05
     sanity_max: 0.6
 
@@ -140,9 +140,9 @@ bindings:
     sanity_max: 0.8
 
   - id: growth.unemployment
-    series_id: SL.UEM.TOTL.ZS
-    provider: WorldBank
-    frequency: A
+    series_id: "24369"
+    provider: BCB
+    frequency: M
     force: growth
     lead_lag: lagging
     transformation: level
@@ -150,10 +150,10 @@ bindings:
     country: BR
     source_tier: free
     vintage_available: false
-    is_proxy: true
+    is_proxy: false
     verified: true
     equilibrium: 5.0
-    linkage: "Brazil unemployment rate (ILO modeled, annual). PROXY — no free monthly series."
+    linkage: "Brazil unemployment rate (IBGE PNAD Contínua monthly, via BCB SGS series 24369). Live monthly — replaces the WB annual ILO-modeled proxy."
     sanity_min: 1.0
     sanity_max: 20.0
 
@@ -194,8 +194,8 @@ bindings:
     sanity_max: 0.1
 
   - id: policy.rate_policy
-    series_id: INTDSRBRM193N
-    provider: FRED
+    series_id: "4189"
+    provider: BCB
     frequency: M
     force: policy
     lead_lag: coincident
@@ -207,7 +207,7 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: 13.0
-    linkage: "Brazil discount rate (Selic-linked, %, live). One of the world's highest real rates; the COPOM policy lever. No free bond yield exists -> this is the rate read."
+    linkage: "Brazil Selic rate, annualized (BCB SGS series 4189, monthly). The actual COPOM policy lever — replaces the FRED discount-rate proxy. No free bond yield exists, so this is the rate read."
     sanity_min: 0.0
     sanity_max: 40.0
 

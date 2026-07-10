@@ -745,6 +745,71 @@ def fetch_ons_series(
     return series
 
 
+# ─── Brazil BCB SGS API (fully open — no key) ────────────────────────────────
+# The Banco Central do Brasil time-series service. series_id is the numeric SGS
+# code (e.g. "13522" = IPCA 12-month %). Dates are "dd/mm/yyyy" (day 01 for
+# monthly series); values are the published figure — the binding's transform
+# does the rest.
+
+_BCB_BASE = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{code}/dados"
+
+
+def _bcb_cache_path(code: str) -> Path:
+    return RAW_CACHE_DIR / f"bcb_{code}.parquet"
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_bcb_from_api(code: str) -> pd.Series:
+    resp = requests.get(_BCB_BASE.format(code=code), params={"formato": "json"},
+                        headers={"User-Agent": "indicators-machine/1.0"}, timeout=60)
+    resp.raise_for_status()
+    records = []
+    for row in resp.json():
+        d = row.get("data"); v = row.get("valor")
+        if not d or v in (None, ""):
+            continue
+        try:
+            dt = pd.to_datetime(d, format="%d/%m/%Y")
+            records.append((dt, float(v)))
+        except (TypeError, ValueError):
+            continue
+    if not records:
+        raise ValueError(f"Empty BCB response for {code}")
+    dates, values = zip(*sorted(records))
+    return pd.Series(list(values), index=pd.DatetimeIndex(dates), name="value", dtype=float)
+
+
+def fetch_bcb_series(
+    code: str,
+    frequency: str = "M",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """Fetch a Brazil BCB SGS series by numeric code (no key required)."""
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _bcb_cache_path(code)
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] BCB %s", code)
+        return pd.read_parquet(cache)["value"]
+    logger.info("[BCB fetch] %s", code)
+    try:
+        series = _fetch_bcb_from_api(code)
+    except Exception as exc:
+        logger.error("[BCB] Failed to fetch %s: %s", code, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for BCB %s", code)
+            return pd.read_parquet(cache)["value"]
+        return None
+    series.to_frame().to_parquet(cache)
+    logger.debug("[cached] BCB %s (%d obs)", code, len(series))
+    return series
+
+
 # ─── Japan e-Stat API (needs a free appId in ESTAT_APP_ID) ───────────────────
 # The Statistics Bureau's REST API. series_id encodes
 # "statsDataId/cdTab/cdCat01/cdArea" (e.g. "0003427113/1/0001/00000" =
