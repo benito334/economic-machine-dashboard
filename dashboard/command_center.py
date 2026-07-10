@@ -101,12 +101,22 @@ def _sig(latest: pd.DataFrame, concept: str) -> dict:
 
 
 def _card(label: str, big: str, sub: str, href: Optional[str] = None,
-          big_color: str = "var(--font-color)", planned: bool = False) -> html.Div:
+          big_color: str = "var(--font-color)", planned: bool = False,
+          data_note: Optional[dict] = None) -> html.Div:
     body = [
         html.Div(label, style=_LABEL),
         html.Div(big, style={**_BIG, "color": big_color}),
         html.Div(sub, style=_SUB),
     ]
+    if data_note:
+        body.append(html.Div([
+            html.Span(data_note["grade"], style={
+                "display": "inline-block", "minWidth": "14px", "padding": "0 4px",
+                "borderRadius": "3px", "background": data_note["hex"], "color": "#fff",
+                "fontSize": "0.58rem", "fontWeight": "700", "textAlign": "center"}),
+            html.Span(f" data · {data_note['caveat']}", style={
+                "fontSize": "0.64rem", "color": "var(--muted-color)"}),
+        ], style={"marginTop": "5px"}, title=data_note.get("title", "")))
     style = _CARD_PLANNED if planned else _CARD
     if href:
         return dcc.Link(html.Div(body, style=style), href=href,
@@ -173,6 +183,20 @@ def render_command_center(country_data, page_trigger, thresholds,
                         style={"color": "var(--muted-color)", "padding": "20px"})
 
     latest_sig = load_latest_signals(country)
+
+    # ── Data confidence (per-country + per-force) ─────────────────────────────
+    from dashboard import data_score as _ds
+    dscore = _ds.country_score(country)
+
+    def _force_note(force: str) -> Optional[dict]:
+        fi = (dscore or {}).get("forces", {}).get(force)
+        if not fi:
+            return None
+        return {"grade": fi["grade"], "hex": fi["hex"],
+                "caveat": _ds.force_caveat(fi),
+                "title": "Data confidence for this force — coverage, freshness "
+                         "and proxy reliance. A read on few/stale/proxy signals "
+                         "is lower-confidence."}
 
     # ── Window selection (Ray audit ruling 2026-07-06, Q1a: the front door
     # honors the user's sidebar windows; canonical defaults 48m/90m) ──────────
@@ -247,6 +271,16 @@ def render_command_center(country_data, page_trigger, thresholds,
                                  "padding": "2px 8px"})] if diverging else [] ),
             *( [html.Span("DYNAMIC", style={"color": "#E8A317", "fontSize": "0.70rem",
                                             "fontWeight": "800"})] if dynamic_on else [] ),
+            *( [html.Span([
+                    html.Span("Data ", style={"fontSize": "0.70rem",
+                                              "color": "var(--muted-color)"}),
+                    html.Span(dscore["overall"]["grade"], style={
+                        "display": "inline-block", "minWidth": "15px", "padding": "0 5px",
+                        "borderRadius": "4px", "background": dscore["overall"]["hex"],
+                        "color": "#fff", "fontSize": "0.66rem", "fontWeight": "700",
+                        "textAlign": "center"}),
+                ], title=_ds.breakdown_text(dscore), style={"cursor": "help"})]
+               if dscore else [] ),
         ], style={"display": "flex", "gap": "10px", "alignItems": "center",
                   "flexWrap": "wrap"}),
     ], style={"display": "flex", "justifyContent": "space-between",
@@ -335,9 +369,11 @@ def render_command_center(country_data, page_trigger, thresholds,
         html.Div("Short-term cycle — the levers", style=_H),
         html.Div([
             _card("Growth", _fmt(g), _dial_sub(g_d, g_mom), "/signals/growth",
-                  _GROWTH_CHIP.get(g_chip, "var(--font-color)")),
+                  _GROWTH_CHIP.get(g_chip, "var(--font-color)"),
+                  data_note=_force_note("growth")),
             _card("Inflation", _fmt(i), _dial_sub(i_d, i_mom), "/signals/inflation",
-                  _INFLAT_CHIP.get(i_chip, "var(--font-color)")),
+                  _INFLAT_CHIP.get(i_chip, "var(--font-color)"),
+                  data_note=_force_note("inflation")),
             _card("Credit conditions", _fmt(credit),
                   f"{supply_txt} · {demand_txt}", "/signals/credit"),
             _card("Policy stance", _fmt(rate), f"{stance} · {rexp_txt}", "/signals/rate"),

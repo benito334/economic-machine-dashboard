@@ -14,6 +14,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
 from dashboard.themes import DEFAULT_THEME, figure_layout
+from dashboard import data_score as _ds
 
 _DB = os.getenv("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
 
@@ -650,13 +651,32 @@ def _make_cycle_cells(
     ]
 
 
+def _data_badge(score_info: dict | None) -> html.Span:
+    """Small A–D data-confidence chip for a country (hover shows the breakdown)."""
+    if not score_info:
+        return html.Span()
+    o = score_info["overall"]
+    return html.Span(
+        o["grade"],
+        title=_ds.breakdown_text(score_info),
+        style={
+            "display": "inline-block", "minWidth": "15px", "padding": "0 5px",
+            "marginLeft": "8px", "borderRadius": "4px", "background": o["hex"],
+            "color": "#fff", "fontSize": "0.62rem", "fontWeight": "700",
+            "textAlign": "center", "verticalAlign": "middle", "cursor": "help",
+        },
+    )
+
+
 def _make_row(
     country_code: str,
     country_data: dict[str, tuple[float, str]],
     config: dict | None = None,
+    data_scores: dict | None = None,
 ) -> html.Tr:
     name = _COUNTRY_NAMES.get(country_code, country_code.upper())
-    cells: list = [html.Td(name, className="ov-country-name")]
+    badge = _data_badge((data_scores or {}).get(country_code))
+    cells: list = [html.Td([html.Span(name), badge], className="ov-country-name")]
 
     for col in _COLUMNS:
         # A column may list fallback concepts (e.g. Rate); use the first the
@@ -930,6 +950,7 @@ def _overview_drill_figure(
 
 def _build_table(config: dict | None = None) -> html.Table:
     data = _load_data()
+    data_scores = _ds.compute_scores()
     # Show countries in rollout order; append any extras
     country_codes = [c for c in _COUNTRY_ORDER if c in data]
     for c in sorted(data):
@@ -951,7 +972,7 @@ def _build_table(config: dict | None = None) -> html.Table:
     ])
 
     return html.Table(
-        [html.Thead(header), html.Tbody([_make_row(c, data[c], config) for c in country_codes])],
+        [html.Thead(header), html.Tbody([_make_row(c, data[c], config, data_scores) for c in country_codes])],
         className="ov-table",
     )
 
@@ -1078,6 +1099,14 @@ def get_layout() -> html.Div:
         html.Span("Notable / High  ", className="ov-legend-label"),
         html.Span("■ ", style={"color": "#5CB85C", "fontSize": "0.9rem"}),
         html.Span("Positive / Favourable", className="ov-legend-label"),
+        html.Span("   ·   ", className="ov-legend-label"),
+        html.Span("A", style={
+            "display": "inline-block", "padding": "0 5px", "borderRadius": "4px",
+            "background": "#2e9e5b", "color": "#fff", "fontSize": "0.62rem",
+            "fontWeight": "700"}),
+        html.Span(" Data confidence after each country (A best → D) — hover for the "
+                  "breakdown of coverage, freshness and proxy reliance.",
+                  className="ov-legend-label"),
     ], style={"marginTop": "14px", "paddingLeft": "2px"})
 
     return html.Div([

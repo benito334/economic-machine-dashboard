@@ -1519,3 +1519,23 @@ Three requested tweaks:
   `_cycle_health_history`; Japan's inflation now bridges to the annual IMF
   estimate. Result: CHI raw / debt-adjusted / Stage fill for all 14. Instrument
   named on hover for both Rate and Inflation fallback cells.
+
+---
+
+## 2026-07-09 (5) — Data Confidence score/badge (per-country + per-force)
+
+New `dashboard/data_score.py`: grades how trustworthy each country's reads are
+from three signal properties we already track — freshness (`is_stale` + age,
+graded so a normal lag ≠ an abandoned feed), directness (`is_proxy` /
+`is_constructed`), and depth (# signals in the basket, with thin baskets capped:
+1 signal ≤ C, 2 ≤ B). Per scored force (growth/inflation/rate/credit) → 0–100 →
+A/B/C/D; overall = weighted avg (growth+inflation heaviest). Live spread: US/EZ
+A, most others C, richer EMs B — honest.
+
+Surfaced:
+- **Overview**: colored A–D chip after each country name + legend note (hover =
+  per-force breakdown).
+- **Command Center**: a "Data <grade>" header chip, and — the key ask — a
+  per-force caveat on the Growth/Inflation cards (e.g. Indonesia growth reads
+  "C · data · 5 signals · 4 stale, 2 proxy", so the stale-growth story is
+  visible right next to the number). 6 new tests; suite 468 passed.
