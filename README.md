@@ -147,4 +147,40 @@ If you don't run software like this yourself, that's fine — this README's scre
 
 ---
 
+## Setup — data sources & API keys
+
+All the data is free and public. Most sources need **no key at all**; a couple of
+national statistics offices ask for a free registration to unlock their live
+feeds. Keys go in a local `.env` file (copy `.env.example` → `.env`); `.env` is
+git‑ignored and never committed.
+
+**No key needed** (used out of the box):
+
+| Source | What it provides | Link |
+| :--- | :--- | :--- |
+| World Bank | Cross‑country structural + demographic data | https://data.worldbank.org |
+| IMF | WEO aggregates + reserve‑currency shares (COFER) | https://www.imf.org/en/Data |
+| Eurostat | Euro‑area & member‑state activity/prices | https://ec.europa.eu/eurostat/web/main/data/database |
+| ECB Data Portal | Euro‑area yields & monetary stats | https://data.ecb.europa.eu |
+| UK ONS | Live UK CPI, retail, production, labour | https://www.ons.gov.uk |
+| BIS (via FRED mirrors) | Debt‑by‑sector, credit‑to‑GDP | https://www.bis.org/statistics |
+
+**Free registration for a key** (optional — only needed for those countries' live feeds):
+
+| Source | Needed for | Register | `.env` variable |
+| :--- | :--- | :--- | :--- |
+| **FRED** (US Federal Reserve) | **Required** — the core US + many mirrored series | https://fred.stlouisfed.org/docs/api/api_key.html | `FRED_API_KEY` |
+| Japan **e‑Stat** | Live Japanese monthly CPI (else an annual bridge) | https://www.e-stat.go.jp/api/en | `ESTAT_APP_ID` |
+| Korea **BoK ECOS** | Live Korean monthly CPI + extra rate series | https://ecos.bok.or.kr/api/ | `BOK_API_KEY` |
+| EIA | Optional energy series (crude is already on FRED) | https://www.eia.gov/opendata/ | `EIA_API_KEY` |
+
+Then run it (see "Seeing it live" above): `docker compose up -d` → open `http://localhost:8502`.
+
+> **Data confidence:** every country carries an **A–D data‑confidence badge** (on
+> the Global Overview and Command Center) reflecting how fresh, direct, and deep
+> its signals are. Registering the keys above upgrades the affected countries by
+> replacing stale/proxy stand‑ins with live national data.
+
+---
+
 *Built in the spirit of "understand the machine, and the world makes more sense."*
