@@ -129,8 +129,8 @@ bindings:
   # ─── Growth (Demand & Output) ───────────────────────────────────────────────
 
   - id: growth.unemployment
-    series_id: LRHUTTTTGBM156S
-    provider: FRED
+    series_id: mgsx/lms
+    provider: ONS
     frequency: M
     force: growth
     lead_lag: lagging
@@ -148,41 +148,39 @@ bindings:
     notes: "Verified 2026-07-06: M, 1983-01→2026-01. The LRUNTTTT monthly variant does not exist on FRED for GB."
 
   - id: growth.retail_sales
-    series_id: GBRSLRTTO01GYSAM
-    provider: FRED
+    series_id: j5ek/drsi
+    provider: ONS
     frequency: M
     force: growth
     lead_lag: coincident
-    transformation: level
+    transformation: yoy_pct
     units: yoy_pct
     country: GB
     source_tier: free
     vintage_available: false
     is_proxy: false
     verified: true
-    raw_scale: 100
     equilibrium: 0.020
-    linkage: "UK retail trade volume YoY (OECD, already in % form on FRED). Household demand tracker in a consumption-led economy."
+    linkage: "UK retail sales volume index (ONS RSI, all retailers incl fuel, SA; j5ek/drsi), YoY. Live monthly household-demand tracker in a consumption-led economy."
     sanity_min: -0.25
     sanity_max: 0.30
     notes: "Verified 2026-07-06: M, 1958-01→2026-04."
 
   - id: growth.industrial_prod
-    series_id: GBRPRINTO01GYSAM
-    provider: FRED
+    series_id: k222/diop
+    provider: ONS
     frequency: M
     force: growth
     lead_lag: coincident
-    transformation: level
+    transformation: yoy_pct
     units: yoy_pct
     country: GB
     source_tier: free
     vintage_available: false
     is_proxy: false
     verified: true
-    raw_scale: 100
     equilibrium: 0.000
-    linkage: "UK industrial production YoY (OECD, already in % form on FRED). Manufacturing is a shrinking share of a services-dominated economy — treat as a cyclical read, not the whole story."
+    linkage: "UK Index of Production, total B-E, chained-volume SA (ONS k222/diop), YoY. Live monthly. Manufacturing is a shrinking share of a services-dominated economy — a cyclical read, not the whole story."
     sanity_min: -0.30
     sanity_max: 0.30
     notes: "Verified 2026-07-06: M, 1949-01→2026-03. The index form GBRPROINDMISMEI ends 2024-03 (same pattern as JP)."

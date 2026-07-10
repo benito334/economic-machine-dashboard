@@ -1562,3 +1562,9 @@ unemployment via the same ONS fetcher (de-stale GB growth → likely B); India
 MOSPI, Indonesia BPS/BI, Brazil BCB (verify). Registration-gated (operator key
 needed) → Japan e-Stat (worst CPI staleness), Korea BoK ECOS. Hard/none → China
 bond yield, Luxembourg (structural).
+
+- **UK growth also moved to ONS** (retail `j5ek/drsi`, IP `k222/diop`,
+  unemployment `mgsx/lms`; index series → yoy_pct, rate → level). Retail flipped
+  fresh, IP/unemployment fresher. **GB growth C→B; GB overall C→B (73).** First
+  C-country fully upgraded on free/unregistered data. `_fetch_ons_from_api` made
+  topic-agnostic (walks ONS economic topic paths).
