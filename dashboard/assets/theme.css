@@ -109,6 +109,18 @@ hr {
 .sidebar-slider .dash-slider-tooltip {
     display: none !important;
 }
+/* Bootstrap hover tooltips (e.g. Fed Monitor chart ⓘ) — readable in any theme */
+.tooltip-inner {
+    color: #ffffff !important;
+    background-color: #1c2128 !important;
+    border: 1px solid #3a424d !important;
+    text-align: left !important;
+    max-width: 340px !important;
+    font-size: 0.72rem !important;
+    line-height: 1.45 !important;
+    padding: 8px 10px !important;
+}
+.tooltip.show { opacity: 1 !important; }
 /* Track background — subtle tint of accent color */
 .sidebar-slider .dash-slider-track {
     background-color: color-mix(in srgb, var(--slider-accent) 22%, transparent) !important;

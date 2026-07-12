@@ -141,9 +141,7 @@ def _info_icon(text: str) -> html.Span:
         html.Span("ⓘ", id=iid, style={
             "cursor": "help", "color": "var(--muted-color)", "fontSize": "0.72rem",
             "marginLeft": "5px", "opacity": "0.75", "fontWeight": "400"}),
-        dbc.Tooltip(text, target=iid, placement="top",
-                    style={"maxWidth": "340px", "textAlign": "left", "fontSize": "0.72rem",
-                           "lineHeight": "1.45", "padding": "8px 10px"}),
+        dbc.Tooltip(text, target=iid, placement="top"),
     ])
 
 
