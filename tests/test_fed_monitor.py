@@ -28,3 +28,25 @@ def test_layout_renders_on_db():
         return
     assert lay is not None
     assert type(lay).__name__ == "Div"
+
+
+def test_info_icon_builds_tooltip_and_empty_is_noop():
+    fm._ICON_SEQ["n"] = 0
+    node = fm._info_icon("Detailed explanation of the chart.")
+    # icon span + Tooltip, sharing one target id
+    icon, tip = node.children
+    assert icon.id == tip.target == "fed-info-1"
+    assert tip.children == "Detailed explanation of the chart."
+    # empty info → no icon, no id consumed
+    empty = fm._info_icon("")
+    assert not getattr(empty, "children", None)
+    assert fm._ICON_SEQ["n"] == 1
+
+
+def test_chart_card_with_info_renders_icon():
+    import pandas as pd
+    fm._ICON_SEQ["n"] = 0
+    df = pd.DataFrame({"as_of": pd.to_datetime(["2025-01-01"]), "value": [1.0]})
+    card = fm._chart_card("T", df, 1.0, "%", "one-liner", info="the long version")
+    assert fm._ICON_SEQ["n"] == 1        # icon was emitted
+    assert type(card).__name__ == "Div"
