@@ -260,3 +260,13 @@ Guide shipped same-day: `dashboard/user_guide.py`, 9 lessons (0–8), 3 plotly d
 **Overlap with current build:** we already ship `inflation.breakeven_avg` (5y/10y merged), `policy.real_fed_funds`, `fed.fwd_inflation_5y5y` (T5YIFR) and `fed.term_premium_10y` (THREEFYTP10). **Genuinely new:** the discount-rate *decomposition* view (i = r + E(π) + RP), market real yield (DFII5/10) as a standalone, 1y expected inflation (EXPINF1YR), the BEI-curve slope (T10YIE−T5YIE), the real-growth proxy, and the BEI×Real-Yield 2×2 diagnostic read.
 
 **Status:** consult complete; punch-list = proposed "Market Expectations" lens (new `market.*`/`expect.*` FRED series + a decomposition panel + the 2×2 read). Awaiting user approval + placement decision before building. FRED IDs to verify per house rule before binding: DGS5/DGS10/DFII5/DFII10/DFII2/DFII30/T5YIE/T10YIE/EXPINF1YR. Disclaimer: digitalray.ai output is an AI approximation of Dalio's framework, not vetted by Ray Dalio.
+
+---
+
+## Session 2026-07-15 (2) — Assets by environment (user's chat, four-quadrant map)
+
+**The question (user's own Digital Ray chat).** "Map out the buckets' performance in each environment, identifying the stronger of the two drivers first — include TIPS, commodities, gold, REITs, currency, crypto and the main diversifying buckets."
+
+**Ray's answer** — a Bucket × {Rising/Falling Growth, Rising/Falling Inflation} table, each cell Stronger / Weaker / Mixed with a reason: Equities (S growth, S falling-infl), Long nominal bonds (S falling-growth, S falling-infl), TIPS (S rising-infl), Commodities (S rising-infl), Gold (S rising-infl), REITs (S rising-growth, S falling-infl), Major currencies (S falling-infl), Crypto (all Mixed/Weaker, best in risk-on), Short bonds/cash (S falling-growth, S falling-infl). Plus "how to read" (Stronger = positive excess return for its risk) and the diversification rationale (cover all four quadrants).
+
+**Built.** New Reference page `/asset-environments` ("🧭 Assets by Environment", `dashboard/asset_environments.py`): a four-box All-Weather matrix (Regime-Map orientation, Growth × Inflation) with each asset placed in the box(es) it does well in and a **(G)/(I) badge** for its primary lever there (G=growth green, I=inflation amber) — e.g. Goldilocks box = Equities (G), REITs (G), Crypto (G); Stagflation = Gold (I), TIPS (I), Commodities (I). Below the visual: the full driver-by-driver detail table (colour-coded Stronger/Weaker/Mixed + reasons), per-asset badge rationale, and the diversification note. Static reference content (no live data, no allocation advice). Quadrant placements + badges are our reading of his table. 5 tests. Disclaimer: digitalray.ai output is an AI approximation of Dalio's framework, not vetted by Ray Dalio.

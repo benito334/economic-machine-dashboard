@@ -57,6 +57,7 @@ from dashboard import workbench as _workbench
 from dashboard import fed_monitor as _fed_monitor
 from dashboard import market_expectations as _market_exp
 from dashboard import user_guide as _user_guide
+from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
 from dashboard.shared_components import _signal_link
 from dashboard.app_mode import PUBLIC_MODE, OPERATOR_ONLY_ROUTES
@@ -881,6 +882,7 @@ def _left_nav() -> html.Div:
         # ── Reference — collapsible, rolled up by default ─────────────────────
         _group("Reference", [
             _nl("🎓", "User Guide",     "/guide",          nav_id="navlnk-user-guide"),
+            _nl("🧭", "Assets by Environment", "/asset-environments", nav_id="navlnk-asset-env"),
             _nl("📖", "Methodology",    "/methodology",    nav_id="navlnk-methodology"),
             # Operator-only calibration tools — hidden in public mode (they write
             # shared model config + the DB).
@@ -1293,6 +1295,10 @@ def _page_fed_monitor() -> html.Div:
 
 def _page_market_expectations() -> html.Div:
     return _market_exp.get_layout()
+
+
+def _page_asset_environments() -> html.Div:
+    return _asset_env.get_layout()
 
 
 def _page_valuations() -> html.Div:
@@ -2073,6 +2079,7 @@ _PAGE_MAP = {
     "/market-expectations": _page_market_expectations,
     "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
+    "/asset-environments": _page_asset_environments,
     "/workbench":     _page_workbench,
     "/charts":        _page_workbench,   # legacy route
     "/overview":      _page_overview,
