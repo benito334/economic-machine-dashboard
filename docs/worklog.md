@@ -4,6 +4,18 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-07-15 (2) — Fix: regime walk features leaked a stale month between pages
+
+**Done:**
+- **Bug:** the Regime Map and Regime History share one `regime-step-index` store. On SPA navigation, `page-trigger` co-fires with a *phantom* step-button re-mount (the prev/next buttons re-mount with reset `n_clicks`), and that phantom "prev" won via `triggered_id` — so walking back on one page (or just navigating between them) leaked/incremented a stale month, and the pages opened on **June instead of the current reading**. Reproduced: History (Jul) → prev → Map showed Jun; Map → History incremented to May.
+- **Fix** (`update_regime_step`): check the FULL `ctx.triggered` batch — if `page-trigger` is anywhere in it and the destination is `/regime-map` or `/regime-history`, snap to step 0 (most-current) and let that win over the phantom button. Uses `getattr(ctx, "triggered", …)` so the unit-test context mock (only `triggered_id`) still works. Walking within a page is unaffected (page-trigger doesn't fire on a button click). Verified in-browser: landing on either page now shows "Jul 2026 · current", and prev/next still walk correctly.
+- New parametrized regression test (`test_landing_on_regime_page_snaps_to_current`); charting suite 88→89.
+- Note (separate, not a bug): composites reached a mid-month 2026-07-10 snapshot while the quarterly stage/debt-stress tables sit at 2026-06-30 — so the Command Center stage card legitimately reads "Jun" (quarterly data lags). Getting everything fully current needs a **full** pipeline run (Pass 5/6/7); this session's quick `run_country` market.* ingest deliberately skipped those. The daily scheduler runs the full pipeline.
+
+**Next:** commit/push this fix; standing tails (Wilshire-closer numerator; full-pipeline refresh so composites/stage advance together).
+
+---
+
 ## 2026-07-15 — Market Expectations page (Ray consult: discount rate + inflation expectations)
 
 **Done:**

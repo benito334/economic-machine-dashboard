@@ -3137,14 +3137,22 @@ def update_regime_step(
     country: str,
     current_step: int,
 ) -> int:
-    triggered = dash.callback_context.triggered_id
+    ctx = dash.callback_context
+    triggered = ctx.triggered_id
     step = current_step or 0
     country = str(country or "US")
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
 
-    if triggered == "page-trigger":
-        if (page_trigger or {}).get("page") == "/regime-history":
+    # The step index is SHARED by the Regime Map + Regime History walk controls.
+    # On navigation, page-trigger CO-FIRES with a spurious step-button re-mount (its
+    # n_clicks resets), and that phantom "prev" would otherwise win via triggered_id —
+    # leaking a stale/incremented month between the two pages ("defaults to June" bug).
+    # So: if page-trigger is anywhere in the trigger batch, landing on a walkable regime
+    # page snaps back to the most-current reading (step 0) and takes priority.
+    _trig_props = [t.get("prop_id", "") for t in (getattr(ctx, "triggered", None) or [])]
+    if any(p.startswith("page-trigger") for p in _trig_props):
+        if (page_trigger or {}).get("page") in ("/regime-history", "/regime-map"):
             return 0
         return no_update
 

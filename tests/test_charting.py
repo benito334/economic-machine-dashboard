@@ -1026,6 +1026,37 @@ class TestRoutedRegimeStepButtons:
 
         assert result == 1
 
+    @pytest.mark.parametrize("page,expected_reset", [
+        ("/regime-map", True),
+        ("/regime-history", True),
+        ("/overview", False),
+    ])
+    def test_landing_on_regime_page_snaps_to_current(self, monkeypatch, page, expected_reset):
+        # Navigation co-fires page-trigger with a phantom step-button re-mount; the page
+        # reset must WIN so the walk features open on the most-current reading (step 0),
+        # not a stale/leaked month. Regression for the "defaults to June" bug.
+        import dashboard.charting as charting
+
+        class _Context:
+            triggered_id = {"type": "regime-step-button", "action": "prev"}  # phantom
+            triggered = [
+                {"prop_id": "page-trigger.data"},
+                {"prop_id": '{"action":"prev","type":"regime-step-button"}.n_clicks'},
+            ]
+
+        monkeypatch.setattr(charting.dash, "callback_context", _Context())
+        monkeypatch.setattr(
+            charting, "load_composite_history",
+            lambda **_k: pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=6, freq="ME")}),
+        )
+        result = charting.update_regime_step(
+            1, None, None, None, {}, {"page": page}, "US", 3,   # current_step=3 (walked back)
+        )
+        if expected_reset:
+            assert result == 0            # snapped to current
+        else:
+            assert result != 0            # non-regime page → don't force-reset the index
+
     def test_graph_click_selects_matching_snapshot(self, monkeypatch):
         import dashboard.charting as charting
 
