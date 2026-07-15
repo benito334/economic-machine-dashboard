@@ -1608,3 +1608,127 @@ bindings:
     linkage: "10-year Treasury term premium (ACM/Kim-Wright, FRED mirror) — the extra yield buyers demand to hold duration; an abrupt rise flags fiscal-dominance / inflation worry (Ray's late-cycle turning-point signal)."
     sanity_min: -2.0
     sanity_max: 5.0
+
+  # ── Market-implied expectations (Ray consult 2026-07-15) — the discount-rate
+  # decomposition i = r + E(π) + RP, and the breakeven-inflation curve. Isolated
+  # `market` force: feeds the /market-expectations page ONLY, not any composite,
+  # the regime label, the stage classifier, or the data-confidence score.
+  - id: market.nominal_5y
+    series_id: DGS5
+    provider: FRED
+    frequency: D
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "5-year nominal Treasury yield — the 5y discount rate; decomposes into the real yield + 5y breakeven inflation."
+    sanity_min: -1.0
+    sanity_max: 20.0
+  - id: market.nominal_10y
+    series_id: DGS10
+    provider: FRED
+    frequency: D
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 3.0
+    linkage: "10-year nominal Treasury yield — the benchmark discount rate; = real yield + 10y breakeven inflation."
+    sanity_min: -1.0
+    sanity_max: 20.0
+  - id: market.real_5y
+    series_id: DFII5
+    provider: FRED
+    frequency: D
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "5-year TIPS (real) yield — the market real rate; Ray's proxy for real growth expectations. Above ~1% = restrictive, negative = very weak growth / deflation worry."
+    sanity_min: -5.0
+    sanity_max: 8.0
+  - id: market.real_10y
+    series_id: DFII10
+    provider: FRED
+    frequency: D
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.5
+    linkage: "10-year TIPS (real) yield — the real component of the 10y discount rate; rising = firmer real-growth expectations or a tighter stance."
+    sanity_min: -5.0
+    sanity_max: 8.0
+  - id: market.breakeven_5y
+    series_id: T5YIE
+    provider: FRED
+    frequency: D
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "5-year breakeven inflation (nominal − TIPS) — market-implied average inflation over 5 years. Ray: 2–3% moderate, >3.5% concern, <1.5% deflation risk."
+    sanity_min: -2.0
+    sanity_max: 8.0
+  - id: market.breakeven_10y
+    series_id: T10YIE
+    provider: FRED
+    frequency: D
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "10-year breakeven inflation — long-run market-implied inflation; watch its spread to the 5y (T10YIE − T5YIE) for the expectations-curve slope."
+    sanity_min: -2.0
+    sanity_max: 8.0
+  - id: market.exp_infl_1y
+    series_id: EXPINF1YR
+    provider: FRED
+    frequency: M
+    force: market
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 2.0
+    linkage: "1-year expected inflation (Cleveland Fed model) — near-term inflation expectation; a wide gap over the 5y breakeven flags a transitory shock vs a structural shift."
+    sanity_min: -2.0
+    sanity_max: 10.0

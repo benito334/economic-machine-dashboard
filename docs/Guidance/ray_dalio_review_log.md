@@ -236,3 +236,27 @@ Guide shipped same-day: `dashboard/user_guide.py`, 9 lessons (0–8), 3 plotly d
 **FRED-ID verification (our "never invent IDs" rule).** Ray's AI got FOUR IDs wrong — corrected before binding: Fed Treasury holdings `TREAST` (his `WSHOMCB` is MBS); marketable debt `MVMTD027MNFRBDAL`/`GFDEBTN` (his `FDHBFIN` is *foreign* holdings); 10y real yield `DFII10` (his `T10YFF` is the 10y−funds spread); interest/GDP = `A091RC1Q027SBEA÷GDP` (his `FYFRGDA188S` is receipts/GDP). Verified-good: `RESPPLLOPNWW`, `TOTRESNS`, `RRPONTSYD`, `FYOINT`/`FGRECPT`, `GFDEGDQ188S`, `IORB`, `T5YIFR`.
 
 **Implemented same-day.** `/fed` page (`dashboard/fed_monitor.py`) — five sections of time-series charts with current value + Ray's thresholds; header reads (money easy/tight, Fed behind/ahead, Fed-share, MP-phase). Seven new `fed.*` FRED series (isolated force — not in composites/data-score). Live reads confirm the thesis: **ON RRP drained to ~$0.5B**, **remittances −$235B** (Fed losses since 2022), **Fed share 15.5%** (off its ~25% peak), **foreign share fell ~55%→32%**, **federal interest÷revenue 16.5%** (in the 15-20% danger zone). 3 new tests. Disclaimer: digitalray.ai output is an AI approximation of Dalio's framework, not vetted by Ray Dalio.
+
+---
+
+## Session 2026-07-15 — Market-implied expectations: discount rate, inflation expectations, breakevens
+
+**The question.** Ray talks about the market pricing in future growth and inflation expectations, and about the discount rate; he's described a market-implied ("actual") inflation formula. Asked for (1) the exact formulas he'd compute from free market data, (2) the full routine list of market-implied gauges he checks, (3) how to read them in a diagnostic dashboard (thresholds + interpretation).
+
+**Ray's answer.**
+
+*1. Core formulas (all FRED unless noted):*
+- **Nominal discount rate** `i ≈ r + E(π) + RP` — nominal Treasury yield (DGS) = real rate (TIPS/DFII) + inflation expectations + risk/term premium. Series: `DGS5 DGS10 DFII5 DFII10`.
+- **Breakeven inflation (BEI)** `= Nominal yield − TIPS yield` (same maturity) → `DGS5−DFII5`, `DGS10−DFII10` (or pre-computed `T5YIE`/`T10YIE`).
+- **Market-implied inflation expectations** `E(π) ≈ BEI − RP` (or just BEI if RP small) — the "actual rate" formula.
+- **Real rate** `r ≈ nominal − BEI − RP`, or use the TIPS yield (DFII) directly as a first-order proxy.
+- **Real growth expectations** `≈ nominal GDP growth − E(π)` (`GDP`, `GDPC1`).
+- **Risk/Term premium (RP)**: for a quick gauge treat TIPS as the risk-free real rate and ignore RP; for precision approximate with `DFII30−DFII2` or a published ACM (Adrian-Crump-Moench) term-premium series.
+
+*2. Routine list of gauges:* 5y BEI (`T5YIE`), 10y BEI (`T10YIE`), 1y expected inflation (Cleveland Fed `EXPINF1YR`), Real yield (`DFII5`/`DFII10`), Nominal yield (`DGS5`/`DGS10`), Term premium (≈`DFII30−DFII2`), Inflation swap rate (not on FRED — sanity check only), Short-vs-long BEI spread (`T10YIE−T5YIE`), Real growth proxy (`GDP growth − BEI`), Policy-rate gap (`FEDFUNDS − real rate`).
+
+*3. How to read (illustrative thresholds):* 5y BEI 2–3% moderate / >3.5% concern / <1.5% deflation risk; 10y similar, watch divergence with 5y; 1y vs 5y BEI gap >0.5% = transitory shock; Real yield 0–1% typical, negative = weak growth/deflation; short-vs-long BEI spread >+0.5% steepening (future inflation building), negative = near-term shock; real-growth proxy positive when real GDP growth > BEI; policy-rate gap 0.25–0.5% normal, >1% mis-alignment. **The 2×2 read (his interpretation matrix):** Rising BEI + Rising real yields = inflation *and* growth expectations climbing (tightening); Rising BEI + Falling real yields = inflation up but growth weakening (stagflation-lean); Falling BEI + Rising real yields = disinflation with firmer real activity; Falling BEI + Falling real yields = weak growth + low inflation (easing). "Thresholds are starting points — adjust to the economy and watch for regime changes."
+
+**Overlap with current build:** we already ship `inflation.breakeven_avg` (5y/10y merged), `policy.real_fed_funds`, `fed.fwd_inflation_5y5y` (T5YIFR) and `fed.term_premium_10y` (THREEFYTP10). **Genuinely new:** the discount-rate *decomposition* view (i = r + E(π) + RP), market real yield (DFII5/10) as a standalone, 1y expected inflation (EXPINF1YR), the BEI-curve slope (T10YIE−T5YIE), the real-growth proxy, and the BEI×Real-Yield 2×2 diagnostic read.
+
+**Status:** consult complete; punch-list = proposed "Market Expectations" lens (new `market.*`/`expect.*` FRED series + a decomposition panel + the 2×2 read). Awaiting user approval + placement decision before building. FRED IDs to verify per house rule before binding: DGS5/DGS10/DFII5/DFII10/DFII2/DFII30/T5YIE/T10YIE/EXPINF1YR. Disclaimer: digitalray.ai output is an AI approximation of Dalio's framework, not vetted by Ray Dalio.

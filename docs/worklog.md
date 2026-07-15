@@ -4,6 +4,42 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-07-15 — Market Expectations page (Ray consult: discount rate + inflation expectations)
+
+**Done:**
+- **Digital Ray consult** (logged in `ray_dalio_review_log.md`, Session 2026-07-15) on the market-implied formulas he uses routinely. Ray's core identity: **nominal yield = real (TIPS) yield + breakeven inflation** (i = r + E(π) + RP); breakeven = nominal − TIPS; E(π) ≈ breakeven − term premium; the real yield is his real-growth proxy. His routine gauges: 5y/10y breakevens, 1y expected inflation (Cleveland Fed), real yields, nominal yields, BEI-curve slope (10y−5y), real-growth proxy, policy-rate gap; plus a **Breakeven×Real-Yield 2×2** regime read. FRED-ID verification (house rule) caught that **DFII2 doesn't exist** (no 2y TIPS) — term-premium leg uses the ACM series we already ship.
+- **7 new `market.*` FRED bindings** (isolated `market` force — page only, not composites/regime/stage/data-score): `DGS5 DGS10 DFII5 DFII10 T5YIE T10YIE EXPINF1YR`. Ingested via `run_country` (US, passes 1–4) — full history (nominal→1976, TIPS/breakevens→2003). US signal count 81→88.
+- **New page** `dashboard/market_expectations.py` → `/market-expectations` ("📐 Market Expectations", Indicators nav, **not** operator-gated). Four sections: ① discount-rate decomposition (stacked real+breakeven bars = nominal, for 5y/10y) + 10y nominal history; ② inflation-expectations curve (1y/5y/10y) + 5y/10y breakeven histories with Ray's bands + BEI-curve slope; ③ real yields (DFII5/10) + 1y expected inflation, with restrictive/zero lines; ④ **Ray's 2×2** (3-month Δbreakeven vs Δreal-yield → regime label). Header chips (nominal/real/breakeven/slope + 2×2 read). Reuses fed_monitor card/section/chip/info-icon helpers. Live now: 10y 4.62% = 2.36 real + 2.25 breakeven; 2×2 = "disinflation with firmer real growth".
+- Methodology §18 added; 4 new tests (`tests/test_market_expectations.py`) + explorer count 81→88. Suite green. Charting image rebuilt; verified in-app.
+
+**Next:** could extend the real-growth proxy (GDP growth − BEI) and policy-rate gap as explicit cards; optional cross-country breakevens where TIPS-equivalents exist (mostly US-only on free data). Same standing tail: Wilshire-closer numerator research; commit of the recent standalone/valuations/UI/market work.
+
+---
+
+## 2026-07-14 (2) — Valuations palette match + collapsible sidebar groups
+
+**Done:**
+- **Valuations palette matches the site.** Reskinned the embedded Buffett app to the Economic Machine palette (Carbon charcoal `#1c1c1c` + amber accent `#E8A317`) — replaced its purple/navy `:root` and all hard-coded chart purples (`#7c6cff`, `rgba(124,108,255,…)`, `#a99bff`) with `var(--accent)`-driven JS colours (`ACC()`/`rgba()` helpers) + `color-mix` CSS tints. **Theme-following:** the app reads `?theme=carbon|slate|dawn` and applies matching CSS vars; `_page_valuations` iframe src is kept in sync with the site's `theme-store` via a clientside callback (`valuations-frame.src`). Verified: under `?theme=slate` the palette + chart line switch to gold `#F4C842`.
+- **Sidebar sharpened — click-toggle collapsible groups.** Signals, Data, and Reference are now native `<details>` groups (helper `_group()` in `_left_nav`): click header to roll/unroll (no more hover-expand on Signals), **rolled up by default**, animated ▸→▾ chevron. Overviews + Indicators stay always-open. Icon-rail (collapsed sidebar) CSS force-shows every group's links + hides headers so pages stay reachable. Signals sub-list gained an "↳ All signals" link to `/signals`. Removed the old `.signals-subnav`/`.signals-nav-group` hover CSS; added `.nav-group*` rules to `theme.css`.
+- Test assertion updated (iframe src now carries `?theme=`); suite still green (`test_charting` + `test_valuations` = 94). Charting image rebuilt; both changes verified in-app. Note: 14 pre-existing Dash `rh-threshold-open`/`regime-step-button` callback-timing warnings persist (unrelated).
+
+**Next:** same as below — Wilshire-closer numerator research (deferred); optional commit of standalone/ + these UI changes.
+
+---
+
+## 2026-07-14 — Buffett Indicator valuation page (operator-only) + standalone build
+
+**Done:**
+- **Standalone Buffett Indicator dashboard** (`standalone/buffett_valuations_dashboard.html`) — a faithful, self-contained clone of a friend's Gemini-Canvas app (which was hard-coded, no feed), rebuilt on a **live** feed. Chart.js + gauge + mean-reversion projector + searchable/paginated history table + Macro FAQ + on-chart event markers/tooltip. Reverse-engineered the friend's `.tsx` (numerator = Wilshire 5000).
+- **Two live numerators with a header toggle** (default VTI): **Wilshire proxy (VTI)** = VTI/CRSP US Total Market (Yahoo `query2` chart API, free) scaled to a $62.2T @ 2024-Q4 anchor → 231.5% today (matches the friend's Wilshire magnitude); **FRED Z.1** = `NCBEILQ027S` ÷ GDP → 218.1%. Producer: `standalone/fetch_buffett_data.py` writes `buffett_data.json` (both numerators). Stooq is now behind a JS PoW wall → used Yahoo for VTI. Anchor is a single documented, adjustable constant.
+- **Integrated into the machine as an operator-only page** `/valuations` ("🫧 Valuations", Indicators nav). Reuses the exact operator-gating pattern: nav hidden in `PUBLIC_MODE`; `/valuations` added to `OPERATOR_ONLY_ROUTES` (route → operator notice); the two serving Flask routes (`/valuations/app`, `/valuations/buffett_data.json`) **404 in PUBLIC_MODE** — so it never appears on the public/cloud deploy. Page = `html.Iframe` embedding the self-contained app (no Dash-callback rewrite of its interactivity).
+- **Data module** `indicators/valuations.py` (`compute_buffett_data`/`refresh_buffett_data`/`data_path`) + pipeline **Pass 8** (best-effort, never fails the run) refreshes `DATA_DIR/buffett_data.json`; dashboard falls back to the repo-bundled copy. Feeds no composite/regime/DB.
+- 6 new tests (`tests/test_valuations.py`: routes serve for operator, 404 in public mode, gating, iframe page, bundled-fallback, feed shape); suite **488 passed, zero exclusions**. Charting image rebuilt; `/valuations` verified rendering in-app at VTI 231.5%.
+
+**Next:** find a numerator closer to true Wilshire (VTI-scaling accuracy is anchor-dependent; options = total-market ETF anchored to a better print, or SIFMA/WFE dollar tables, or a paid FT-Wilshire/Nasdaq-Data-Link feed) — deferred by user until after current updates. Optional: commit standalone/ files to the repo (currently untracked → local Docker `COPY . .` picks them up, but they're absent from the git-based cloud build, which is fine since the page is gated off there).
+
+---
+
 ## 2026-06-26 — Rolling Z fix, chart polish, signals subnav, repo made private
 
 **Done:**

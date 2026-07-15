@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>U.S. Equity Valuations Dashboard — Buffett Indicator</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  :root{
+    /* Palette matches the Economic Machine Dashboard (Carbon default). Overridden
+       at runtime from the ?theme= query param (carbon / slate / dawn) so the page
+       follows the site's theme switcher — see the applyTheme() script. */
+    --bg:#1c1c1c; --panel:#262626; --panel2:#1e1e1e; --border:#3a3a3a;
+    --ink:#e8e8e8; --muted:#9a9a9a; --faint:#6f6f6f;
+    --accent:#E8A317; --accent2:#f0b84a;
+    --red:#d9534f; --amber:#E8A317; --green:#2e9e5b; --blue:#4C9BE8; --teal:#3bb0b8;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);
+       color:var(--ink);font-family:"Inter","Segoe UI",system-ui,sans-serif;font-size:14px;}
+  a{color:var(--accent);}
+  .wrap{max-width:1320px;margin:0 auto;padding:20px 22px 60px;}
+  .mono{font-family:"SFMono-Regular",Consolas,"Roboto Mono",monospace;}
+
+  /* header */
+  header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;
+         padding:14px 4px 20px;border-bottom:1px solid var(--border);}
+  .badge{display:inline-block;background:rgba(224,70,107,.15);border:1px solid var(--red);
+         color:#ff9db4;font-size:10px;font-weight:800;letter-spacing:.08em;padding:3px 9px;border-radius:5px;
+         text-transform:uppercase;vertical-align:middle;}
+  .updated{color:var(--muted);font-size:11px;margin-left:10px;}
+  h1{margin:8px 0 4px;font-size:23px;font-weight:800;letter-spacing:-.01em;}
+  .sub{color:var(--muted);font-size:12.5px;max-width:640px;}
+  .num-toggle{display:flex;align-items:center;gap:6px;margin-top:9px;flex-wrap:wrap;}
+  .num-toggle .num-lbl{color:var(--faint);font-size:9.5px;font-weight:800;letter-spacing:.07em;
+     text-transform:uppercase;margin-right:2px;}
+  .num-toggle .pill{border:1px solid var(--border);background:var(--panel2);color:var(--muted);
+     font-size:11px;font-weight:700;padding:4px 11px;border-radius:6px;cursor:pointer;font-family:inherit;}
+  .num-toggle .pill.on{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .stats{display:flex;gap:12px;}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:9px 14px;min-width:110px;}
+  .stat .k{color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+  .stat .v{font-size:17px;font-weight:800;margin-top:3px;}
+  .stat.hl .v{color:var(--accent);}
+
+  /* layout */
+  .grid{display:grid;grid-template-columns:1.55fr 1fr;gap:18px;margin-top:20px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .card h2{margin:0 0 2px;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;}
+  .card .desc{color:var(--muted);font-size:11.5px;margin-bottom:12px;}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+
+  /* pill toggles */
+  .pills{display:inline-flex;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:2px;}
+  .pill{border:0;background:transparent;color:var(--muted);font-size:11.5px;font-weight:700;
+        padding:5px 12px;border-radius:6px;cursor:pointer;font-family:inherit;}
+  .pill.on{background:var(--accent);color:#fff;}
+  .chk{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11.5px;cursor:pointer;user-select:none;}
+  .chk input{accent-color:var(--accent);}
+
+  /* gauge */
+  .gauge-wrap{display:flex;flex-direction:column;align-items:center;margin:4px 0 14px;}
+  .gauge-outer{position:relative;width:210px;height:210px;}
+  .gauge-ring{position:absolute;inset:0;border-radius:50%;
+     background:conic-gradient(var(--green) 0turn .34turn,var(--teal) .34turn .44turn,
+        var(--blue) .44turn .54turn,var(--amber) .54turn .63turn,var(--red) .63turn 1turn);
+     -webkit-mask:radial-gradient(circle,transparent 60px,#000 61px);
+     mask:radial-gradient(circle,transparent 60px,#000 61px);}
+  .gauge-mark{position:absolute;inset:0;}
+  .gauge-mark .dot{position:absolute;left:50%;top:8px;width:15px;height:15px;margin-left:-7.5px;
+     border-radius:50%;background:var(--red);box-shadow:0 0 0 4px rgba(224,70,107,.25);}
+  .gauge-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .gauge-center .big{font-size:30px;font-weight:800;letter-spacing:.02em;}
+  .gauge-center .lbl{font-size:9.5px;font-weight:800;letter-spacing:.14em;color:var(--red);margin-top:2px;}
+  .gauge-center .sm{font-size:10px;color:var(--muted);margin-top:2px;}
+  .verdict-box{background:rgba(224,70,107,.10);border:1px solid rgba(224,70,107,.4);border-radius:8px;
+      text-align:center;padding:9px;margin:2px 0 14px;}
+  .verdict-box .t{color:#ff8fa8;font-size:12.5px;font-weight:800;letter-spacing:.04em;}
+  .verdict-box .s{color:var(--muted);font-size:10.5px;margin-top:2px;}
+
+  /* band table */
+  table{width:100%;border-collapse:collapse;font-size:11.5px;}
+  th{color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+     text-align:left;padding:6px 0;border-bottom:1px solid var(--border);}
+  th:last-child,td:last-child{text-align:right;}
+  td{padding:7px 0;border-bottom:1px solid rgba(30,43,69,.5);}
+  .b-so{color:var(--red);} .b-mo{color:var(--amber);} .b-fv{color:var(--green);}
+  .b-mu{color:var(--blue);} .b-su{color:var(--faint);}
+
+  /* projection */
+  .proj-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:22px;align-items:start;}
+  .slider-lbl{display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 6px;font-size:12.5px;}
+  .slider-lbl .hint{color:var(--faint);font-size:10.5px;font-weight:600;}
+  .slider-lbl .val{background:var(--panel2);border:1px solid var(--border);color:var(--accent);
+      font-weight:800;font-size:12px;padding:2px 9px;border-radius:6px;}
+  input[type=range]{width:100%;accent-color:var(--accent);height:4px;}
+  .ticks{display:flex;justify-content:space-between;color:var(--faint);font-size:9.5px;margin-top:3px;}
+  .targets{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:12px 14px;}
+  .targets .th{color:var(--faint);font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;}
+  .tline{display:flex;justify-content:space-between;padding:6px 0;font-size:12.5px;border-bottom:1px solid rgba(30,43,69,.5);}
+  .tline:last-child{border-bottom:0;}
+  .tline .tv{font-weight:800;} .tline .neg{color:var(--red);}
+  .cagr-box{margin-top:10px;background:rgba(224,70,107,.08);border:1px solid rgba(224,70,107,.35);border-radius:8px;padding:10px 12px;}
+  .cagr-box .k{color:var(--faint);font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
+  .cagr-box .big{font-size:22px;font-weight:800;color:var(--red);}
+  .cagr-box .s{color:var(--muted);font-size:10.5px;margin-top:2px;}
+  .allocation{margin-top:16px;background:var(--panel2);border:1px solid var(--border);border-radius:9px;
+     padding:12px 14px;font-size:12px;color:var(--muted);line-height:1.55;}
+  .allocation b{color:var(--ink);}
+
+  /* events */
+  .events{max-height:290px;overflow:auto;padding-right:6px;margin-top:4px;}
+  .event{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:9px;
+      cursor:pointer;transition:border-color .15s,transform .05s;}
+  .event:hover{border-color:var(--accent);}
+  .event.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;}
+  .event .top{display:flex;justify-content:space-between;align-items:center;}
+  .event .when{color:var(--faint);font-size:9.5px;font-weight:800;letter-spacing:.08em;}
+  .event .tag{font-size:9.5px;font-weight:800;padding:2px 7px;border-radius:5px;}
+  .event .name{font-weight:800;font-size:13px;margin:4px 0 3px;}
+  .event .txt{color:var(--muted);font-size:11px;line-height:1.45;}
+  .briefing{margin-top:12px;background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 10%,transparent),transparent);
+      border:1px solid var(--border);border-radius:9px;padding:12px 14px;}
+  .briefing .h{color:var(--accent);font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+      display:flex;align-items:center;gap:6px;}
+  .briefing .n{font-weight:800;font-size:13px;margin:5px 0 3px;}
+  .briefing .b{color:var(--muted);font-size:11.5px;line-height:1.5;}
+  /* history table + faq */
+  .search{background:var(--panel2);border:1px solid var(--border);color:var(--ink);font-size:12px;
+     padding:6px 10px;border-radius:7px;outline:none;min-width:150px;font-family:inherit;}
+  .search:focus{border-color:var(--accent);}
+  table.htable{margin-top:10px;}
+  table.htable th{text-align:left;}
+  table.htable td{text-align:left;font-size:12px;padding:8px 6px;font-family:"SFMono-Regular",Consolas,monospace;}
+  table.htable td:first-child{font-weight:700;color:var(--ink);}
+  table.htable tr{cursor:pointer;}
+  table.htable tbody tr:hover{background:color-mix(in srgb,var(--accent) 7%,transparent);}
+  .cap-c{color:#c9a5ff;} .gdp-c{color:var(--green);} .ratio-c{color:var(--accent);font-weight:800;}
+  .pill-rate{padding:2px 7px;border-radius:5px;font-size:9.5px;font-weight:800;white-space:nowrap;}
+  .pager{display:flex;align-items:center;justify-content:space-between;margin-top:10px;
+     color:var(--muted);font-size:11px;}
+  .pbtn{background:var(--panel2);border:1px solid var(--border);color:var(--ink);font-size:11px;
+     font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;margin-left:6px;}
+  .pbtn:disabled{opacity:.4;cursor:not-allowed;}
+  .faq{display:flex;flex-direction:column;gap:10px;margin-top:6px;}
+  .qa{background:var(--panel2);border:1px solid var(--border);border-radius:9px;padding:11px 13px;}
+  .qa .q{color:var(--accent);font-weight:800;font-size:12.5px;margin-bottom:4px;}
+  .qa .a{color:var(--muted);font-size:11.5px;line-height:1.55;}
+  .foot{color:var(--faint);font-size:10.5px;margin-top:22px;text-align:center;line-height:1.6;}
+  @media(max-width:960px){.grid{grid-template-columns:1fr;}.proj-grid{grid-template-columns:1fr;}
+     header{flex-direction:column;}.stats{flex-wrap:wrap;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <span class="badge" id="rating-badge">LIVE RATING: EXTREME OVERVALUATION</span>
+      <span class="updated" id="updated">Updated: Q2 2026</span>
+      <h1>U.S. Equity Valuations Dashboard</h1>
+      <div class="sub">Analysing the 30-year historical <b>Buffett Indicator</b>: aggregate domestic equity
+        market capitalisation divided by GDP.</div>
+      <div class="num-toggle" id="num-toggle"></div>
+    </div>
+    <div class="stats">
+      <div class="stat hl"><div class="k">US Stock Cap / GDP</div><div class="v" id="s-ratio">235.8%</div></div>
+      <div class="stat"><div class="k">Total Market Cap</div><div class="v" id="s-cap">$74.5T</div></div>
+      <div class="stat"><div class="k">US Nominal GDP</div><div class="v" id="s-gdp">$31.6T</div></div>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: trajectory chart -->
+    <div class="card">
+      <div class="row">
+        <div>
+          <h2>📈 Historical Trajectory (1996 – 2026)</h2>
+          <div class="desc">Buffett Indicator over time. Red zone denotes extreme speculative premiums.</div>
+        </div>
+        <div class="pills" id="mode-toggle">
+          <button class="pill on" data-mode="ratio">Ratio %</button>
+          <button class="pill" data-mode="cap">Cap vs GDP ($)</button>
+        </div>
+      </div>
+      <div class="row" style="margin:2px 0 10px;">
+        <div class="pills" id="range-toggle">
+          <button class="pill on" data-range="30">30Y</button>
+          <button class="pill" data-range="15">15Y</button>
+          <button class="pill" data-range="5">5Y</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="bands-chk" checked> Show valuation bands</label>
+      </div>
+      <div style="height:340px;position:relative;"><canvas id="chart"></canvas></div>
+    </div>
+
+    <!-- RIGHT: heat spectrum -->
+    <div class="card">
+      <h2>Valuation Heat-Spectrum</h2>
+      <div class="desc">Current metric compared to historical valuation bands.</div>
+      <div class="gauge-wrap">
+        <div class="gauge-outer">
+          <div class="gauge-ring"></div>
+          <div class="gauge-mark" id="gauge-mark"><div class="dot"></div></div>
+          <div class="gauge-center">
+            <div class="big" id="g-val">235.8%</div>
+            <div class="lbl" id="g-lbl">EXTREME PEAK</div>
+            <div class="sm" id="g-sm">2026 H1</div>
+          </div>
+        </div>
+      </div>
+      <div class="verdict-box"><div class="t" id="v-rate">STRONGLY OVERVALUED</div><div class="s" id="v-sub">Top 5% historic high</div></div>
+      <table>
+        <thead><tr><th>Valuation Band</th><th>Ratio Range</th></tr></thead>
+        <tbody>
+          <tr><td class="b-so">Significant Overvaluation</td><td class="mono">&gt; 165%</td></tr>
+          <tr><td class="b-mo">Modest Overvaluation</td><td class="mono">140 – 165%</td></tr>
+          <tr><td class="b-fv">Fair Valuation</td><td class="mono">115 – 140%</td></tr>
+          <tr><td class="b-mu">Modest Undervaluation</td><td class="mono">89 – 115%</td></tr>
+          <tr><td class="b-su">Significant Undervaluation</td><td class="mono">&lt; 89%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- BOTTOM-LEFT: projection -->
+    <div class="card">
+      <h2>🧮 What-If Projection &amp; Return Estimator</h2>
+      <div class="desc">Simulate future stock-market gains based on GDP compound growth and mean-reversion expectations.</div>
+      <div class="proj-grid">
+        <div>
+          <div class="slider-lbl"><span>Annual Nominal GDP Growth <span class="hint">(Historic: ~4.5%)</span></span>
+            <span class="val" id="g-out">4.5%</span></div>
+          <input type="range" id="growth" min="1" max="10" step="0.1" value="4.5">
+          <div class="ticks"><span>1.0% (Severe Stagnation)</span><span>4.5% (Baseline)</span><span>10.0% (Hyper Growth)</span></div>
+
+          <div class="slider-lbl"><span>Target 5-Year Valuation Ratio <span class="hint" id="t-cur">(Current: 235.8%)</span></span>
+            <span class="val" id="t-out">125%</span></div>
+          <input type="range" id="target" min="75" max="240" step="1" value="125">
+          <div class="ticks"><span>75% (Under Bottom)</span><span>125% (Historic Mean)</span><span>240% (Bubble Extreme)</span></div>
+        </div>
+        <div class="targets">
+          <div class="th">5-Year Projected Targets</div>
+          <div class="tline"><span>Projected US GDP:</span><span class="tv" id="p-gdp">$39.4T</span></div>
+          <div class="tline"><span>Target Equities Cap:</span><span class="tv" id="p-cap">$49.2T</span></div>
+          <div class="tline"><span>Market Cap Multiple:</span><span class="tv neg" id="p-mult">0.66x</span></div>
+          <div class="cagr-box">
+            <div class="k">Implied Stock CAGR</div>
+            <div class="big" id="p-cagr">-7.95% <span style="font-size:12px;font-weight:600;">Annualised</span></div>
+            <div class="s" id="p-total">Implied Total Return: -6.45% (inc. 1.5% div yield)</div>
+          </div>
+        </div>
+      </div>
+      <div class="allocation" id="verdict-text"></div>
+    </div>
+
+    <!-- BOTTOM-RIGHT: landmark events -->
+    <div class="card">
+      <h2>Historical Landmark Events</h2>
+      <div class="desc">Investigating standard market-cycle inflections. Click to examine on chart.</div>
+      <div class="events" id="events"></div>
+      <div class="briefing">
+        <div class="h">ⓘ Historical Briefing</div>
+        <div class="n" id="brief-name">AI Paradigm Peak</div>
+        <div class="b" id="brief-text">AI software proliferation and mega-cap tech concentration elevate the index
+          to an unprecedented historic peak of 235.8% of GDP.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── History table + Macro FAQ ─────────────────────────────────────── -->
+  <div class="grid" style="grid-template-columns:1.4fr 1fr;">
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <h2>▦ U.S. Valuation History Records</h2>
+          <div class="desc">Quarterly records of market cap vs. GDP. Search by year; click a row to mark it on the chart.</div>
+        </div>
+        <input id="tbl-search" class="search" type="text" placeholder="Search year…" />
+      </div>
+      <table class="htable">
+        <thead><tr><th>Period</th><th>Equities ($T)</th><th>GDP ($T)</th><th>Ratio %</th><th>Rating</th></tr></thead>
+        <tbody id="tbl-body"></tbody>
+      </table>
+      <div class="pager">
+        <span id="tbl-page">page 1</span>
+        <span>
+          <button class="pbtn" id="tbl-prev">Prev</button>
+          <button class="pbtn" id="tbl-next">Next</button>
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🛡 Strategic Macro FAQ</h2>
+      <div class="faq">
+        <div class="qa"><div class="q">What is the Buffett Indicator?</div>
+          <div class="a">Popularised by Warren Buffett in 2001, it measures the combined market
+            capitalisation of publicly traded domestic corporations against nominal GDP — which he
+            called “probably the best single measure of where valuations stand at any given moment.”</div></div>
+        <div class="qa"><div class="q">Why is it currently elevated (<span id="faq-cur">218%</span>)?</div>
+          <div class="a">Highly concentrated capital flows into mega-cap and AI-linked equities have
+            pushed total market value far above domestic output. Use the <b>Numerator</b> toggle in the
+            header to switch between a Wilshire-style total-market proxy (VTI, the default) and the
+            Fed’s Z.1 corporate-equities series (<span class="mono">NCBEILQ027S</span>) — the proxy
+            covers financials too and reads a few points higher.</div></div>
+        <div class="qa"><div class="q">What are the main criticisms?</div>
+          <div class="a">It compares <b>globalised</b> market caps with <b>domestic</b> GDP. Large US
+            multinationals earn 40%+ of profits overseas — cash flow that lifts valuations but isn’t
+            counted in US GDP, structurally inflating the ratio over time. It also ignores interest
+            rates, which justify higher valuations when low.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Buffett Indicator = Total U.S. Equity Market Capitalisation ÷ Nominal GDP. Two live numerators
+    (Numerator toggle, top): <b>Wilshire proxy</b> = VTI / CRSP US Total Market (Yahoo) scaled to a
+    published market-cap anchor, from 2001; <b>FRED Z.1</b> = <span class="mono">NCBEILQ027S</span>,
+    from 1995. Denominator = FRED <span class="mono">GDP</span>. Refresh with
+    <span class="mono">python3 fetch_buffett_data.py</span>. Without that file, an embedded sample is used.
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   THEME — match the Economic Machine Dashboard. The embedding page passes
+   ?theme=carbon|slate|dawn (the site's active theme); we set the matching
+   CSS variables on :root so this page follows the site's theme switcher.
+   Semantic chart colours (red/green/blue) stay fixed across themes.
+   ===================================================================== */
+const THEMES = {
+  carbon:{'--bg':'#1c1c1c','--panel':'#262626','--panel2':'#1e1e1e','--border':'#3a3a3a',
+          '--ink':'#e8e8e8','--muted':'#9a9a9a','--faint':'#6f6f6f','--accent':'#E8A317','--accent2':'#f0b84a'},
+  slate: {'--bg':'#22272e','--panel':'#2d333b','--panel2':'#1c2128','--border':'#444c56',
+          '--ink':'#cdd9e5','--muted':'#8b98a6','--faint':'#6b7681','--accent':'#F4C842','--accent2':'#f7d972'},
+  dawn:  {'--bg':'#f0f2f5','--panel':'#ffffff','--panel2':'#e9ecef','--border':'#ced4da',
+          '--ink':'#212529','--muted':'#6c757d','--faint':'#9aa0a6','--accent':'#4C6EF5','--accent2':'#7089f7'},
+};
+(function applyTheme(){
+  const t=new URLSearchParams(location.search).get('theme')||'carbon';
+  const p=THEMES[t]||THEMES.carbon, r=document.documentElement;
+  Object.entries(p).forEach(([k,v])=>r.style.setProperty(k,v));
+  if(t==='dawn') document.documentElement.style.setProperty('color-scheme','light');
+})();
+function cvar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function ACC(){ return cvar('--accent')||'#E8A317'; }
+function rgba(hex,a){ hex=(hex||'').replace('#',''); if(hex.length===3) hex=hex.split('').map(c=>c+c).join('');
+  const n=parseInt(hex||'0',16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+
+/* =====================================================================
+   DATA — live from buffett_data.json (produced by fetch_buffett_data.py:
+   FRED NCBEILQ027S ÷ GDP). If that file can't be fetched (e.g. opened as a
+   bare file://), we fall back to the embedded approximate series so the
+   page still works offline.
+   ===================================================================== */
+const FALLBACK = {
+  labels: (()=>{const a=[];for(let y=1996;y<=2025;y++){a.push(y+'-H1');a.push(y+'-H2');}a.push('2026-H1');return a;})(),
+  ratio: [93,100,110,122,135,143,150,154,151,138,128,115,100,76,85,102,105,108,
+    106,110,109,113,110,105,95,66,57,79,88,92,102,92,100,104,113,125,
+    128,132,135,128,124,130,134,143,148,130,143,152,137,172,195,205,
+    168,155,165,168,185,198,208,222,235.8],
+  gdp: [7.8,8.0,8.3,8.5,8.8,9.0,9.3,9.6,10.0,10.3,10.5,10.6,10.8,11.0,11.2,11.5,12.0,12.4,
+    12.8,13.2,13.6,14.0,14.3,14.6,14.8,14.6,14.4,14.5,14.8,15.1,15.4,15.7,16.1,16.4,16.7,17.1,
+    17.4,17.8,18.1,18.3,18.5,18.9,19.3,19.7,20.2,20.7,21.1,21.5,20.5,21.2,22.7,24.0,
+    25.2,26.1,26.8,27.6,28.3,29.0,29.8,30.6,31.6],
+  mean:125, ppy:2, live:false
+};
+
+/* live state (filled by applyData) */
+let LABELS=[], RATIO=[], GDP=[], CAP=[], N=0, MEAN=125, PPY=2, LIVE=false;
+let CUR_RATIO=0, CUR_CAP=0, CUR_GDP=0;
+let mode='ratio', range=30, showBands=true, markIdx=0, chart=null;
+let EVENT_MARKS=[], IDX2MARK=new Map();
+let tblQuery='', tblPage=0; const PER_PAGE=8;
+let NUMERATORS=null, NUMKEY=null;
+
+const BANDS = {
+  so:{min:165,max:300,col:'rgba(224,70,107,.13)'},
+  mo:{min:140,max:165,col:'rgba(232,163,23,.10)'},
+  fv:{min:115,max:140,col:'rgba(47,191,135,.10)'},
+  mu:{min:89, max:115,col:'rgba(76,155,232,.08)'},
+  su:{min:0,  max:89, col:'rgba(93,107,138,.06)'}
+};
+const CLR={red:'#e0466b',amber:'#e8a317',green:'#2fbf87',blue:'#4c9be8',faint:'#5d6b8a'};
+
+function labelYear(l){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(l)){const p=l.split('-');return +p[0]+(+p[1]-1)/12;}
+  if(/H2$/.test(l))return +l.slice(0,4)+0.5;
+  return +l.slice(0,4);
+}
+function fmtWhen(l){
+  if(/^\d{4}-\d{2}-\d{2}$/.test(l)){const p=l.split('-');return p[0]+' Q'+(Math.floor((+p[1]-1)/3)+1);}
+  return l.replace('-',' ');
+}
+function band(r){
+  if(r>165) return {col:CLR.red,  peak:'EXTREME PEAK',   rate:'STRONGLY OVERVALUED',  badge:'EXTREME OVERVALUATION', name:'Strongly Overvalued'};
+  if(r>=140)return {col:CLR.amber,peak:'ELEVATED',       rate:'MODESTLY OVERVALUED',  badge:'OVERVALUATION',        name:'Modestly Overvalued'};
+  if(r>=115)return {col:CLR.green,peak:'FAIR VALUE',     rate:'FAIRLY VALUED',        badge:'FAIR VALUE',           name:'Fairly Valued'};
+  if(r>=89) return {col:CLR.blue, peak:'BELOW MEAN',     rate:'MODESTLY UNDERVALUED', badge:'UNDERVALUATION',       name:'Modestly Undervalued'};
+  return           {col:CLR.faint,peak:'DEEP VALUE',     rate:'STRONGLY UNDERVALUED', badge:'DEEP UNDERVALUATION',  name:'Strongly Undervalued'};
+}
+function topPct(r){ const above=RATIO.filter(x=>x>=r).length; return Math.max(1,Math.round(100*above/N)); }
+
+/* ---------- chart plumbing ---------- */
+const idxFromRange = r => Math.max(0, N - (r*PPY) - 1);
+
+function bandAnnotations(){
+  if(mode!=='ratio' || !showBands) return {meanBase:meanLineAnn(), mark:markAnn()};
+  const ann={};
+  for(const [k,b] of Object.entries(BANDS))
+    ann['band_'+k]={type:'box',yMin:b.min,yMax:b.max,backgroundColor:b.col,borderWidth:0};
+  ann.meanLine=meanLineAnn(); ann.mark=markAnn();
+  return ann;
+}
+function meanLineAnn(){
+  if(mode!=='ratio') return undefined;
+  return {type:'line',yMin:MEAN,yMax:MEAN,borderColor:rgba(ACC(),.6),borderWidth:1,borderDash:[5,4],
+    label:{display:true,content:'MEAN ('+MEAN.toFixed(0)+'%)',position:'start',color:ACC(),
+      font:{size:9,weight:'700'},backgroundColor:'transparent'}};
+}
+function markAnn(){
+  if(mode!=='ratio') return undefined;
+  return {type:'point',xValue:markIdx,yValue:RATIO[markIdx],radius:6,backgroundColor:'transparent',
+    borderColor:ACC(),borderWidth:2};
+}
+function datasets(){
+  if(mode==='ratio'){
+    return [
+      {label:'Buffett Ratio (%)',data:RATIO,borderColor:ACC(),borderWidth:2,pointRadius:0,tension:.35,fill:true,
+        backgroundColor:(c)=>{const g=c.chart.ctx.createLinearGradient(0,0,0,340);
+          g.addColorStop(0,rgba(ACC(),.35));g.addColorStop(1,rgba(ACC(),0));return g;}},
+      {label:'_events',data:RATIO.map((r,i)=>IDX2MARK.has(i)?r:null),showLine:false,
+        pointRadius:(c)=>IDX2MARK.has(c.dataIndex)?5:0, pointHoverRadius:7,
+        pointBackgroundColor:(c)=>{const m=IDX2MARK.get(c.dataIndex);return m?m.col:'transparent';},
+        pointBorderColor:cvar('--panel')||'#262626',pointBorderWidth:2}
+    ];
+  }
+  return [
+    {label:'Market Cap ($T)',data:CAP,borderColor:ACC(),borderWidth:2,pointRadius:0,tension:.35,fill:false},
+    {label:'GDP ($T)',data:GDP,borderColor:'#2fbf87',borderWidth:2,pointRadius:0,tension:.35,fill:false,borderDash:[6,3]}
+  ];
+}
+function buildChart(){
+  if(chart) chart.destroy();
+  chart=new Chart(document.getElementById('chart'),{
+    type:'line', data:{labels:LABELS,datasets:datasets()},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      onClick:(evt,els)=>{ if(!els.length)return; const m=IDX2MARK.get(els[0].index); if(m) selectMark(m); },
+      plugins:{legend:{display:true,position:'bottom',
+          labels:{color:'#8a97b4',boxWidth:22,font:{size:11},filter:(li)=>li.text!=='_events'}},
+        annotation:{annotations:bandAnnotations()},
+        tooltip:{filter:(it)=>it.dataset.label!=='_events',
+          callbacks:{title:(t)=>fmtWhen(LABELS[t[0].dataIndex]),
+            label:(c)=> c.dataset.label+': '+(mode==='ratio'? c.parsed.y.toFixed(1)+'%' : '$'+c.parsed.y.toFixed(1)+'T'),
+            afterBody:(items)=>{const i=items[0].dataIndex;
+              return ['','Cap  $'+CAP[i].toFixed(1)+'T   ·   GDP  $'+GDP[i].toFixed(1)+'T   ·   Ratio  '+RATIO[i].toFixed(1)+'%'];}}}},
+      scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#5d6b8a',maxRotation:0,autoSkip:true,
+            callback:function(v,i){const l=LABELS[i];if(!l)return'';const first=/-01-01$/.test(l)||/H1$/.test(l);
+              const y=Math.floor(labelYear(l));return (first&&y%3===0)?String(y):'';}}},
+        y:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#5d6b8a',
+            callback:(v)=> mode==='ratio'? v+'%' : '$'+v+'T'}}}}
+  });
+  applyRange();
+}
+function applyRange(){ chart.options.scales.x.min=idxFromRange(range); chart.update(); }
+function refresh(){
+  chart.data.datasets=datasets();
+  chart.options.plugins.annotation.annotations=bandAnnotations();
+  applyRange();
+}
+
+/* ---------- header / gauge ---------- */
+function updateHeader(){
+  const b=band(CUR_RATIO);
+  document.getElementById('s-ratio').textContent=CUR_RATIO.toFixed(1)+'%';
+  document.getElementById('s-cap').textContent='$'+CUR_CAP.toFixed(1)+'T';
+  document.getElementById('s-gdp').textContent='$'+CUR_GDP.toFixed(1)+'T';
+  document.getElementById('g-val').textContent=CUR_RATIO.toFixed(1)+'%';
+  document.getElementById('g-lbl').textContent=b.peak; document.getElementById('g-lbl').style.color=b.col;
+  document.getElementById('g-sm').textContent=fmtWhen(LABELS[N-1]);
+  document.getElementById('v-rate').textContent=b.rate; document.getElementById('v-rate').style.color=b.col;
+  document.getElementById('v-sub').textContent='Top '+topPct(CUR_RATIO)+'% historic high';
+  document.getElementById('rating-badge').textContent='LIVE RATING: '+b.badge;
+  document.getElementById('updated').textContent = LIVE
+    ? 'Updated: '+fmtWhen(LABELS[N-1])+' · '+(NUMERATORS[NUMKEY].label||'live')
+    : 'Sample data — run fetch_buffett_data.py for the live feed';
+  document.getElementById('t-cur').textContent='(Current: '+CUR_RATIO.toFixed(1)+'%)';
+  document.getElementById('faq-cur').textContent=CUR_RATIO.toFixed(0)+'%';
+  const frac=Math.min(CUR_RATIO/260,1);
+  document.getElementById('gauge-mark').style.transform='rotate('+(frac*360)+'deg)';
+}
+
+/* ---------- projection ---------- */
+const gEl=document.getElementById('growth'), tEl=document.getElementById('target');
+function fmtT(v){return '$'+v.toFixed(1)+'T';}
+function project(){
+  const g=+gEl.value, tr=+tEl.value;
+  document.getElementById('g-out').textContent=g.toFixed(1)+'%';
+  document.getElementById('t-out').textContent=tr+'%';
+  const projGdp=CUR_GDP*Math.pow(1+g/100,5), targetCap=projGdp*tr/100, mult=targetCap/CUR_CAP;
+  const cagr=(Math.pow(mult,1/5)-1)*100, total=cagr+1.5;
+  document.getElementById('p-gdp').textContent=fmtT(projGdp);
+  document.getElementById('p-cap').textContent=fmtT(targetCap);
+  const multEl=document.getElementById('p-mult');
+  multEl.textContent=mult.toFixed(2)+'x'; multEl.className='tv'+(mult<1?' neg':'');
+  const cagrEl=document.getElementById('p-cagr');
+  cagrEl.innerHTML=(cagr>=0?'+':'')+cagr.toFixed(2)+'% <span style="font-size:12px;font-weight:600;">Annualised</span>';
+  cagrEl.parentElement.style.borderColor = cagr<0?'rgba(224,70,107,.35)':'rgba(47,191,135,.35)';
+  cagrEl.style.color = cagr<0?'var(--red)':'var(--green)';
+  cagrEl.parentElement.style.background = cagr<0?'rgba(224,70,107,.08)':'rgba(47,191,135,.08)';
+  document.getElementById('p-total').textContent='Implied Total Return: '+(total>=0?'+':'')+total.toFixed(2)+'% (inc. 1.5% div yield)';
+  const v=document.getElementById('verdict-text');
+  if(cagr<0){
+    v.innerHTML='<b>Simulated Asset-Allocation Verdict:</b> Reverting from today’s ratio of '+CUR_RATIO.toFixed(1)
+      +'% to your target of '+tr+'% is a major valuation headwind. Even with a positive 5-year nominal output of '
+      +fmtT(projGdp)+', equities are projected to <b>lose</b> money at '+cagr.toFixed(2)
+      +'% annually — valuation contraction swallows the underlying economic growth.';
+  } else {
+    v.innerHTML='<b>Simulated Asset-Allocation Verdict:</b> Re-rating toward '+tr+'% of GDP is a valuation <b>tailwind</b>. '
+      +'On '+fmtT(projGdp)+' of projected nominal output, equities compound at roughly '+cagr.toFixed(2)
+      +'% annually before dividends — the market cap expands to '+fmtT(targetCap)+'.';
+  }
+}
+
+/* ---------- landmark events (date-anchored; tags read from live data) ---------- */
+const EVENTS=[
+  {t:2000.0,name:'Dot-Com Bubble Peak',
+    txt:'Tech-sector euphoria drives US equities to a historic high relative to GDP. Valuations decouple from earnings.',
+    brief:'Peak internet speculation — the pre-2020 record for the Buffett Indicator.'},
+  {t:2002.75,name:'Dot-Com Bubble Bottom',
+    txt:'The tech correction bottoms; valuations contract sharply, offering a deeply undervalued long-term entry point.',
+    brief:'Three years of de-rating end near the cheapest readings of the modern era.'},
+  {t:2007.25,name:'Pre-GFC Market Peak',
+    txt:'Valuations top out just before the subprime-credit unwind — elevated but well below the dot-com extreme.',
+    brief:'A credit-fuelled cyclical peak ahead of the financial crisis.'},
+  {t:2009.0,name:'GFC Market Bottom',
+    txt:'The financial-crisis low — the lowest reading in the modern series as forced deleveraging overshoots.',
+    brief:'Generational bottom as the crisis drags valuations far below trend.'},
+  {t:2021.75,name:'Post-COVID Liquidity Peak',
+    txt:'Zero rates and fiscal stimulus inflate valuations past 2× GDP, eclipsing the dot-com high.',
+    brief:'Unprecedented monetary + fiscal liquidity drives the ratio above 200% for the first time.'},
+  {latest:true,name:'AI Paradigm Peak',
+    txt:'AI proliferation and mega-cap concentration keep valuations near record highs relative to GDP.',
+    brief:'Mega-cap tech and AI enthusiasm hold the Buffett Indicator near its all-time extremes.'}
+];
+function nearestIdx(t){let best=0,bd=1e9;for(let i=0;i<N;i++){const d=Math.abs(labelYear(LABELS[i])-t);if(d<bd){bd=d;best=i;}}return best;}
+function computeEventMarks(){
+  const startY=labelYear(LABELS[0])-0.5;                 // drop events before this series begins
+  EVENT_MARKS=EVENTS.filter(e=>e.latest||e.t>=startY).map(e=>{const idx=e.latest?N-1:nearestIdx(e.t);
+    return {idx,name:e.name,txt:e.txt,brief:e.brief,ratio:RATIO[idx],col:band(RATIO[idx]).col};});
+  IDX2MARK=new Map(EVENT_MARKS.map(m=>[m.idx,m]));
+}
+function ensureRatioMode(){
+  if(mode!=='ratio'){mode='ratio';
+    [...document.getElementById('mode-toggle').children].forEach(c=>c.classList.toggle('on',c.dataset.mode==='ratio'));}
+}
+function setBriefing(m){document.getElementById('brief-name').textContent=m.name;document.getElementById('brief-text').textContent=m.brief;}
+function highlightEvent(idx){[...document.querySelectorAll('#events .event')].forEach(el=>el.classList.toggle('on',+el.dataset.idx===idx));}
+function selectMark(m){ markIdx=m.idx; ensureRatioMode(); refresh(); setBriefing(m); highlightEvent(m.idx); }
+function markSeriesIdx(i){ markIdx=i; ensureRatioMode(); refresh(); const m=IDX2MARK.get(i); if(m){setBriefing(m);highlightEvent(i);} }
+function renderEvents(){
+  const wrap=document.getElementById('events'); wrap.innerHTML='';
+  EVENT_MARKS.forEach((m,i)=>{
+    const d=document.createElement('div');
+    d.className='event'+(i===EVENT_MARKS.length-1?' on':''); d.dataset.idx=m.idx;
+    d.innerHTML='<div class="top"><span class="when">'+fmtWhen(LABELS[m.idx])+'</span>'
+      +'<span class="tag" style="background:color-mix(in srgb,'+m.col+' 18%,transparent);color:'+m.col+';">'+Math.round(m.ratio)+'% GDP</span></div>'
+      +'<div class="name">'+m.name+'</div><div class="txt">'+m.txt+'</div>';
+    d.addEventListener('click',()=>selectMark(m));
+    wrap.appendChild(d);
+  });
+  const le=EVENT_MARKS[EVENT_MARKS.length-1]; if(le) setBriefing(le);
+}
+
+/* ---------- history table (search + pagination) ---------- */
+function tableRows(){
+  const q=tblQuery.trim().toLowerCase();
+  const rows=[];
+  for(let i=N-1;i>=0;i--){                     // newest first
+    const when=fmtWhen(LABELS[i]);
+    if(q && !(when.toLowerCase().includes(q) || RATIO[i].toFixed(1).includes(q))) continue;
+    rows.push({i,when,cap:CAP[i],gdp:GDP[i],ratio:RATIO[i]});
+  }
+  return rows;
+}
+function renderTable(){
+  const rows=tableRows();
+  const pages=Math.max(1,Math.ceil(rows.length/PER_PAGE));
+  if(tblPage>=pages) tblPage=pages-1;
+  const slice=rows.slice(tblPage*PER_PAGE,tblPage*PER_PAGE+PER_PAGE);
+  const body=document.getElementById('tbl-body');
+  body.innerHTML = slice.length ? slice.map(r=>{
+    const b=band(r.ratio);
+    return '<tr data-i="'+r.i+'"><td>'+r.when+'</td>'
+      +'<td class="cap-c">$'+r.cap.toFixed(1)+'T</td>'
+      +'<td class="gdp-c">$'+r.gdp.toFixed(1)+'T</td>'
+      +'<td class="ratio-c">'+r.ratio.toFixed(1)+'%</td>'
+      +'<td><span class="pill-rate" style="background:color-mix(in srgb,'+b.col+' 16%,transparent);color:'+b.col+';">'+b.name+'</span></td></tr>';
+  }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--faint);padding:18px;">No matching records.</td></tr>';
+  [...body.querySelectorAll('tr[data-i]')].forEach(tr=>tr.addEventListener('click',()=>markSeriesIdx(+tr.dataset.i)));
+  document.getElementById('tbl-page').textContent='page '+(tblPage+1)+' of '+pages+'  ·  '+rows.length+' records';
+  document.getElementById('tbl-prev').disabled = tblPage<=0;
+  document.getElementById('tbl-next').disabled = tblPage>=pages-1;
+}
+
+/* ---------- assemble ---------- */
+function applyData(data){
+  if(data && data.numerators){
+    NUMERATORS=data.numerators;
+    const def=(data.default && NUMERATORS[data.default])?data.default:Object.keys(NUMERATORS)[0];
+    buildNumToggle(Object.keys(NUMERATORS), def);
+    useNumerator(def);
+  }else{
+    NUMERATORS={fallback:{label:'Sample (offline)',mean:FALLBACK.mean,
+      series:FALLBACK.labels.map((l,i)=>({date:l,ratio:FALLBACK.ratio[i],gdp:FALLBACK.gdp[i],
+        cap:FALLBACK.ratio[i]*FALLBACK.gdp[i]/100}))}};
+    document.getElementById('num-toggle').style.display='none';
+    useNumerator('fallback');
+  }
+}
+function buildNumToggle(keys, def){
+  const wrap=document.getElementById('num-toggle'); wrap.style.display='';
+  wrap.innerHTML='<span class="num-lbl">Numerator</span>'+keys.map(k=>
+    '<button class="pill'+(k===def?' on':'')+'" data-num="'+k+'" title="'
+      +((NUMERATORS[k].desc||'').replace(/"/g,'&quot;'))+'">'+NUMERATORS[k].label+'</button>').join('');
+  wrap.querySelectorAll('.pill').forEach(b=>b.addEventListener('click',()=>{
+    wrap.querySelectorAll('.pill').forEach(x=>x.classList.toggle('on',x===b));
+    useNumerator(b.dataset.num);
+  }));
+}
+function useNumerator(key){
+  NUMKEY=key; const s=NUMERATORS[key].series;
+  LABELS=s.map(p=>p.date); RATIO=s.map(p=>p.ratio); GDP=s.map(p=>p.gdp); CAP=s.map(p=>p.cap);
+  MEAN=NUMERATORS[key].mean!=null?NUMERATORS[key].mean:RATIO.reduce((a,b)=>a+b,0)/RATIO.length;
+  PPY=/^\d{4}-\d{2}-\d{2}$/.test(LABELS[0])?4:2; LIVE=(key!=='fallback');
+  N=RATIO.length; markIdx=N-1; tblPage=0;
+  CUR_RATIO=RATIO[N-1]; CUR_CAP=CAP[N-1]; CUR_GDP=GDP[N-1];
+  tEl.max=Math.max(240,Math.ceil(CUR_RATIO/10)*10);
+  tEl.value=Math.round(MEAN);
+  computeEventMarks(); updateHeader(); buildChart(); renderEvents(); renderTable(); project();
+}
+
+/* one-time listeners */
+document.getElementById('mode-toggle').addEventListener('click',e=>{
+  const b=e.target.closest('.pill'); if(!b)return;
+  mode=b.dataset.mode;
+  [...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));
+  document.getElementById('bands-chk').parentElement.style.opacity = mode==='ratio'?1:.4;
+  refresh();
+});
+document.getElementById('range-toggle').addEventListener('click',e=>{
+  const b=e.target.closest('.pill'); if(!b)return;
+  range=+b.dataset.range;
+  [...e.currentTarget.children].forEach(c=>c.classList.toggle('on',c===b));
+  applyRange();
+});
+document.getElementById('bands-chk').addEventListener('change',e=>{showBands=e.target.checked;refresh();});
+gEl.addEventListener('input',project); tEl.addEventListener('input',project);
+document.getElementById('tbl-search').addEventListener('input',e=>{tblQuery=e.target.value;tblPage=0;renderTable();});
+document.getElementById('tbl-prev').addEventListener('click',()=>{if(tblPage>0){tblPage--;renderTable();}});
+document.getElementById('tbl-next').addEventListener('click',()=>{tblPage++;renderTable();});
+
+/* boot: try the live feed, else fall back to embedded data */
+(async ()=>{
+  let data=null;
+  try{const r=await fetch('buffett_data.json',{cache:'no-store'}); if(r.ok) data=await r.json();}catch(e){}
+  applyData(data);
+})();
+</script>
+</body>
+</html>

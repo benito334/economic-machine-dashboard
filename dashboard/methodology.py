@@ -2314,6 +2314,73 @@ def get_layout() -> html.Div:
                       "is an AI approximation of Dalio's framework, not vetted by Ray Dalio."),
             ], title="17 · Fed Monitor"),
 
+            # 18 ── Market Expectations ─────────────────────────────────────────
+            dbc.AccordionItem([
+                _copy_btn(_section_text(
+                    "18 · Market Expectations  (US, /market-expectations)",
+                    [
+                        "A market-implied expectations lens from a Digital Ray consult "
+                        "(docs/Guidance/ray_dalio_review_log.md, 2026-07-15). Ray's point: the "
+                        "market continuously prices in future growth and inflation, and every asset "
+                        "is valued off the discount rate — so you can read those expectations "
+                        "straight off Treasury and TIPS yields.",
+                        "The core identity is the discount-rate decomposition: a nominal Treasury "
+                        "yield = the real (TIPS) yield + breakeven inflation. Breakeven = nominal − "
+                        "TIPS; market-implied inflation E(π) ≈ breakeven − inflation risk premium; "
+                        "and the real (TIPS) yield is Ray's proxy for real-growth expectations. Six "
+                        "isolated market.* FRED series feed THIS PAGE ONLY — not the composites, the "
+                        "regime label, the stage classifier, or the Data Confidence score.",
+                    ],
+                    tables=[(
+                        ["Gauge", "Formula", "FRED series"],
+                        [
+                            ["Nominal discount rate", "the Treasury yield itself", "DGS5, DGS10"],
+                            ["Real rate (growth signal)", "the TIPS yield (direct)", "DFII5, DFII10"],
+                            ["Breakeven inflation", "nominal − TIPS (same maturity)", "T5YIE, T10YIE (= DGS − DFII)"],
+                            ["Inflation expectations E(π)", "breakeven − risk premium (≈ breakeven)", "T5YIE, T10YIE"],
+                            ["1y expected inflation", "Cleveland-Fed model, direct", "EXPINF1YR"],
+                            ["Expectations-curve slope", "10y − 5y breakeven", "T10YIE − T5YIE"],
+                            ["The 2×2 read", "3-month Δ breakeven vs Δ real yield", "T10YIE, DFII10"],
+                        ]
+                    )],
+                    notes=[
+                        "Reading (Ray's illustrative thresholds): 5y breakeven 2–3% moderate, >3.5% "
+                        "concern, <1.5% deflation risk; real yield ~0–1% typical, >1% restrictive, "
+                        "<0 weak-growth/deflation; BEI slope positive = inflation building later, "
+                        "negative = near-term shock fading. The 2×2: Δbreakeven↑ & Δreal↑ = inflation "
+                        "and growth expectations both rising (tightening); ↑/↓ = stagflation-lean; "
+                        "↓/↑ = disinflation with firm growth; ↓/↓ = easing.",
+                        "Overlaps existing signals (inflation.breakeven_avg, policy.real_fed_funds, "
+                        "fed.fwd_inflation_5y5y, fed.term_premium_10y) but adds the decomposition "
+                        "view, standalone market real yields, the 1y expectation, the BEI-curve "
+                        "slope, and the 2×2 diagnostic. FRED IDs verified per the house rule — the "
+                        "check caught that DFII2 (2y TIPS) doesn't exist, so the term-premium leg "
+                        "uses the ACM series (fed.term_premium_10y) instead.",
+                        "digitalray.ai output is an AI approximation of Ray Dalio's framework, not "
+                        "vetted by Ray Dalio.",
+                    ],
+                )),
+                _p("A market-implied expectations page (/market-expectations) from a Digital Ray "
+                   "consult: the discount-rate decomposition (nominal = real + breakeven), the "
+                   "inflation-expectations curve (1y/5y/10y), market real yields, the BEI-curve "
+                   "slope, and Ray's Breakeven×Real-Yield 2×2 read. Six isolated market.* FRED "
+                   "series — page only, not the composites/regime/stage/data-score."),
+                _table(
+                    ["Gauge", "Formula", "FRED series"],
+                    [
+                        ["Nominal discount rate", "Treasury yield", "DGS5, DGS10"],
+                        ["Real rate (growth signal)", "TIPS yield", "DFII5, DFII10"],
+                        ["Breakeven inflation", "nominal − TIPS", "T5YIE, T10YIE"],
+                        ["1y expected inflation", "Cleveland-Fed model", "EXPINF1YR"],
+                        ["Expectations-curve slope", "10y − 5y breakeven", "T10YIE − T5YIE"],
+                        ["2×2 read", "3m Δ breakeven vs Δ real yield", "T10YIE, DFII10"],
+                    ]
+                ),
+                _note("Source: dashboard/market_expectations.py + 7 market.* bindings. All FRED IDs "
+                      "verified. digitalray.ai output is an AI approximation of Dalio's framework, "
+                      "not vetted by Ray Dalio."),
+            ], title="18 · Market Expectations"),
+
         ], start_collapsed=True, always_open=True),
 
     ], className="pe-2 pt-1", style={"maxWidth": "1100px", "margin": "0 auto"})

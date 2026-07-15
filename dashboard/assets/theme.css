@@ -162,7 +162,11 @@ hr {
     transition: width 0.18s ease;
     display: flex;
     flex-direction: column;
+    /* Scrollable, but hide the scrollbar chrome (still scrolls via wheel/trackpad). */
+    scrollbar-width: none;        /* Firefox */
+    -ms-overflow-style: none;     /* legacy Edge/IE */
 }
+#sidebar-container::-webkit-scrollbar { width: 0; height: 0; display: none; }  /* WebKit */
 #sidebar-container.sidebar-collapsed {
     width: 48px !important;
     min-width: 48px !important;
@@ -215,20 +219,41 @@ hr {
     opacity: 1.0;
 }
 
-/* ── Signals collapsible sub-nav ──────────────────────────────────────────── */
-.signals-subnav {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.22s ease;
+/* ── Collapsible nav groups (click to roll/unroll — native <details>) ─────── */
+.nav-group-header {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted-color);
+    font-weight: 700;
+    padding: 11px 12px 5px 12px;
+    user-select: none;
+    transition: color 0.15s ease;
 }
-/* Expand on hover of the whole group */
-.signals-nav-group:hover .signals-subnav {
-    max-height: 200px;
+.nav-group-header::-webkit-details-marker { display: none; }
+.nav-group-header::marker { content: ""; }
+.nav-group-header:hover { color: var(--font-color); }
+.nav-group-chev {
+    font-size: 0.6rem;
+    opacity: 0.5;
+    transition: transform 0.18s ease, opacity 0.15s ease;
 }
-/* Stay expanded when Signals or any sub-page is active */
-.signals-nav-group:has(.active) .signals-subnav {
-    max-height: 200px;
+.nav-group[open] > .nav-group-header .nav-group-chev {
+    transform: rotate(90deg);
+    opacity: 0.9;
 }
+.nav-group-body { display: none; }
+.nav-group[open] > .nav-group-body { display: block; }
+/* Icon-rail (collapsed sidebar): reveal every group's links, hide the headers
+   so all pages stay reachable regardless of the open/closed state. */
+#sidebar-container.sidebar-collapsed .nav-group-body { display: block !important; }
+#sidebar-container.sidebar-collapsed .nav-group-header { display: none !important; }
 
 /* ── Bootstrap modals — dark theme ──────────────────────────────────────── */
 .modal-content {

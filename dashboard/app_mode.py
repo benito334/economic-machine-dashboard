@@ -21,5 +21,7 @@ import os
 PUBLIC_MODE: bool = os.environ.get("PUBLIC_MODE", "").strip().lower() in (
     "1", "true", "yes", "on")
 
-# Routes that mutate shared state — blocked in public mode even by direct URL.
-OPERATOR_ONLY_ROUTES = frozenset({"/weight-audit", "/weight-history"})
+# Routes hidden from the public/cloud view — blocked even by direct URL.
+# (Shared-write operator tools, plus the Buffett valuation page, which the user
+#  keeps off the public deploy.)
+OPERATOR_ONLY_ROUTES = frozenset({"/weight-audit", "/weight-history", "/valuations"})

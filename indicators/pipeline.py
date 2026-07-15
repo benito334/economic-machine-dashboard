@@ -1063,6 +1063,17 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
         logger.exception("[ERROR] Stage classifier pass: %s", exc)
         post_ingestion_errors += 1
 
+    # ── Pass 8: Buffett valuation feed (operator-only /valuations page) ───
+    # Best-effort: refreshes DATA_DIR/buffett_data.json (FRED Z.1 + VTI proxy).
+    # Feeds no composite/regime/DB; never fails the run.
+    print("\n─── Pass 8: Buffett valuation feed ────────────────────────────────")
+    try:
+        from indicators.valuations import refresh_buffett_data
+        vp = refresh_buffett_data(DATA_DIR / "buffett_data.json")
+        print(f"  buffett_data.json refreshed" if vp else "  [WARN] skipped (see log)")
+    except Exception as exc:
+        logger.warning("[WARN] Buffett valuation feed: %s", exc)
+
     # ── Summary ────────────────────────────────────────────────────────────
     print()
     print("─── Summary ───────────────────────────────────────────────────────")

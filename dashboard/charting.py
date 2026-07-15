@@ -55,6 +55,7 @@ from dashboard import command_center as _command_center
 from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import fed_monitor as _fed_monitor
+from dashboard import market_expectations as _market_exp
 from dashboard import user_guide as _user_guide
 from dashboard import traffic as _traffic
 from dashboard.shared_components import _signal_link
@@ -75,6 +76,35 @@ app = dash.Dash(
                 "content": "width=device-width, initial-scale=1"}],
 )
 server = app.server  # expose Flask for Gunicorn / production
+
+# ── Valuations page (operator-only) — served as a self-contained static app via
+# gated Flask routes so it never appears on the public/cloud deploy. The HTML is
+# the same artifact as standalone/buffett_valuations_dashboard.html; its data
+# comes from DATA_DIR/buffett_data.json (pipeline Pass 8), falling back to the
+# repo-bundled copy. In PUBLIC_MODE both routes 404 (nav + /valuations also gated).
+_VAL_HTML = Path(__file__).resolve().parent.parent / "standalone" / "buffett_valuations_dashboard.html"
+
+
+@server.route("/valuations/app")
+def _valuations_app():
+    import flask
+    if PUBLIC_MODE or not _VAL_HTML.exists():
+        flask.abort(404)
+    return flask.send_file(str(_VAL_HTML))
+
+
+@server.route("/valuations/buffett_data.json")
+def _valuations_data():
+    import flask
+    from indicators.valuations import data_path
+    if PUBLIC_MODE:
+        flask.abort(404)
+    p = data_path()
+    if not p.exists():
+        flask.abort(404)
+    return flask.send_file(str(p), mimetype="application/json")
+
+
 _data_dashboard.register_callbacks(app) # Data Feed Monitor sort + filter
 _global_overview.register_callbacks(app) # Global Overview Cycle Health config
 for _fd_force in _force_detail._FORCES:  # Force detail sub-pages (/signals/{force})
@@ -723,6 +753,34 @@ def _left_nav() -> html.Div:
             className="py-1 px-3 small sidebar-nav-link",
         )
 
+    def _group(header: str, links: list, *, icon: str = "",
+               open_default: bool = False) -> html.Details:
+        """A click-to-roll collapsible nav section (native <details>).
+
+        State persists across client-side navigation. In the icon-rail
+        (collapsed sidebar) CSS force-shows every group's links and hides the
+        headers, so pages stay reachable regardless of open/closed state.
+        """
+        head = []
+        if icon:
+            head.append(html.Span(icon, className="nav-icon",
+                                  style={"minWidth": "22px", "display": "inline-block",
+                                         "textAlign": "center"}))
+        head.append(html.Span(header, className="sidebar-text"))
+        return html.Details([
+            html.Summary([
+                html.Span(head, style={"display": "flex", "alignItems": "center"}),
+                html.Span("▸", className="nav-group-chev"),
+            ], className="nav-group-header"),
+            html.Div(dbc.Nav(links, vertical=True, pills=True),
+                     className="nav-group-body"),
+        ], open=open_default, className="nav-group mb-1")
+
+    def _sub(text: str, href: str) -> dbc.NavLink:
+        return dbc.NavLink(html.Span(f"↳ {text}", className="sidebar-text"),
+                           href=href, active="exact",
+                           className="py-0 px-4 small sidebar-nav-link sidebar-subnav")
+
     def _sm(v: int, lbl: str) -> dict:
         return {"label": lbl, "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}}
 
@@ -794,56 +852,34 @@ def _left_nav() -> html.Div:
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
             _nl("🏛", "Fed Monitor",    "/fed",            nav_id="navlnk-fed"),
+            _nl("📐", "Market Expectations", "/market-expectations", nav_id="navlnk-market-exp"),
+            # Buffett valuation page — operator-only, hidden on the public deploy.
+            *([] if PUBLIC_MODE else [
+                _nl("🫧", "Valuations",     "/valuations",     nav_id="navlnk-valuations"),
+            ]),
         ], vertical=True, pills=True, className="mb-1"),
 
-        # ── Signals + collapsible force sub-pages ─────────────────────────────
-        html.Div([
-            dbc.Nav([
-                dbc.NavLink(
-                    [
-                        html.Span("📡", className="nav-icon",
-                                  style={"minWidth": "22px", "display": "inline-block",
-                                         "textAlign": "center"}),
-                        html.Span(" Signals", className="sidebar-text"),
-                    ],
-                    href="/signals",
-                    active="partial",
-                    id="navlnk-signals",
-                    className="py-1 px-3 small sidebar-nav-link",
-                ),
-            ], vertical=True, pills=True),
-            html.Div([
-                dbc.NavLink(html.Span("↳ Growth",       className="sidebar-text"),
-                            href="/signals/growth",     active="exact",
-                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-                dbc.NavLink(html.Span("↳ Inflation",    className="sidebar-text"),
-                            href="/signals/inflation",  active="exact",
-                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-                dbc.NavLink(html.Span("↳ Interest Rate",className="sidebar-text"),
-                            href="/signals/rate",       active="exact",
-                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-                dbc.NavLink(html.Span("↳ Credit",       className="sidebar-text"),
-                            href="/signals/credit",     active="exact",
-                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-                dbc.NavLink(html.Span("↳ Volatility",   className="sidebar-text"),
-                            href="/signals/volatility", active="exact",
-                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-                dbc.NavLink(html.Span("↳ Productivity",  className="sidebar-text"),
-                            href="/signals/productivity", active="exact",
-                            className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-            ], className="signals-subnav"),
-        ], className="signals-nav-group mb-1"),
+        # ── Signals — click to roll/unroll the force sub-pages ────────────────
+        _group("Signals", [
+            dbc.NavLink(html.Span("↳ All signals", className="sidebar-text"),
+                        href="/signals", active="exact", id="navlnk-signals",
+                        className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
+            _sub("Growth",        "/signals/growth"),
+            _sub("Inflation",     "/signals/inflation"),
+            _sub("Interest Rate", "/signals/rate"),
+            _sub("Credit",        "/signals/credit"),
+            _sub("Volatility",    "/signals/volatility"),
+            _sub("Productivity",  "/signals/productivity"),
+        ], icon="📡"),
 
-        # ── Data ──────────────────────────────────────────────────────────────
-        _label("Data"),
-        dbc.Nav([
+        # ── Data — collapsible, rolled up by default ──────────────────────────
+        _group("Data", [
             _nl("📋", "Data Dashboard", "/data-dashboard", nav_id="navlnk-data-dashboard"),
             _nl("📈", "Workbench",      "/workbench",      nav_id="navlnk-workbench"),
-        ], vertical=True, pills=True, className="mb-1"),
+        ], icon="🗄"),
 
-        # ── Reference ─────────────────────────────────────────────────────────
-        _label("Reference"),
-        dbc.Nav([
+        # ── Reference — collapsible, rolled up by default ─────────────────────
+        _group("Reference", [
             _nl("🎓", "User Guide",     "/guide",          nav_id="navlnk-user-guide"),
             _nl("📖", "Methodology",    "/methodology",    nav_id="navlnk-methodology"),
             # Operator-only calibration tools — hidden in public mode (they write
@@ -855,7 +891,7 @@ def _left_nav() -> html.Div:
             # Traffic metrics — linked only where openly viewable (local/no key).
             *([_nl("📊", "Traffic", "/traffic", nav_id="navlnk-traffic")]
               if _traffic.nav_visible() else []),
-        ], vertical=True, pills=True, className="mb-2"),
+        ], icon="📚"),
 
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
 
@@ -1253,6 +1289,25 @@ def _page_regime_history() -> html.Div:
 
 def _page_fed_monitor() -> html.Div:
     return _fed_monitor.get_layout()
+
+
+def _page_market_expectations() -> html.Div:
+    return _market_exp.get_layout()
+
+
+def _page_valuations() -> html.Div:
+    # Operator-only. Embeds the self-contained Buffett Indicator app (gated Flask
+    # route). PUBLIC_MODE is intercepted earlier in route_page, so this only runs
+    # for the operator.
+    return html.Div(
+        html.Iframe(
+            id="valuations-frame",
+            src="/valuations/app?theme=carbon",   # theme synced by clientside callback below
+            style={"width": "100%", "height": "calc(100vh - 12px)", "border": "0",
+                   "display": "block"},
+        ),
+        style={"padding": "0", "margin": "0"},
+    )
 
 
 def _page_debt_stress() -> html.Div:
@@ -2015,6 +2070,8 @@ _PAGE_MAP = {
     "/country":       _page_command_center,
     "/relative":      _page_relative_view,
     "/fed":           _page_fed_monitor,
+    "/market-expectations": _page_market_expectations,
+    "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
     "/workbench":     _page_workbench,
     "/charts":        _page_workbench,   # legacy route
@@ -2103,6 +2160,24 @@ app.clientside_callback(
     """,
     Output("theme-dummy", "children"),
     Input("theme-store", "data"),
+)
+
+# Clientside: keep the operator-only Valuations iframe on the site's active theme
+# by re-pointing its src at /valuations/app?theme=…  (the embedded app reads the
+# param and applies matching CSS vars). No-ops when the frame isn't on the page.
+app.clientside_callback(
+    """
+    function(theme, _trig) {
+        var f = document.getElementById('valuations-frame');
+        if (!f) return window.dash_clientside.no_update;
+        var want = '/valuations/app?theme=' + (theme || 'carbon');
+        if (f.getAttribute('src') !== want) return want;
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("valuations-frame", "src"),
+    Input("theme-store", "data"),
+    Input("page-trigger", "data"),
 )
 
 # ── Callbacks — aggregate selected series ─────────────────────────────────────
