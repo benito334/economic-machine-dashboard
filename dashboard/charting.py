@@ -725,6 +725,18 @@ def _sync_banner() -> html.Div | None:
     return None
 
 
+def _data_freshness_str() -> str:
+    """When the signals DB was last written — a proxy for the last data refresh."""
+    import datetime
+    import os
+    try:
+        from dashboard.charting_data import DB_PATH
+        dt = datetime.datetime.fromtimestamp(os.path.getmtime(DB_PATH))
+        return dt.strftime("%b %-d, %Y · %-I:%M %p")
+    except Exception:
+        return "—"
+
+
 # ── Per-page layout functions ─────────────────────────────────────────────────
 
 def _left_nav() -> html.Div:
@@ -836,6 +848,17 @@ def _left_nav() -> html.Div:
 
         html.Div(style={"borderBottom": "1px solid var(--border-color)",
                         "marginBottom": "2px"}),
+
+        # ── Data-freshness stamp (last DB write ≈ last data refresh) ──────────
+        html.Div([
+            html.Div("🕐 Data updated", style={
+                "fontSize": "0.56rem", "fontWeight": "800", "letterSpacing": "0.07em",
+                "textTransform": "uppercase", "color": "var(--muted-color)"}),
+            html.Div(id="data-freshness", children=_data_freshness_str(), style={
+                "fontSize": "0.7rem", "fontWeight": "600", "color": "var(--font-color)",
+                "marginTop": "1px"}),
+        ], id="data-freshness-block", className="sidebar-text",
+           style={"padding": "7px 12px 8px 12px"}),
 
         # ── Overviews (placeholder — Phase 2+) ───────────────────────────────
         _label("Overviews"),
@@ -2186,6 +2209,17 @@ app.clientside_callback(
     Input("theme-store", "data"),
     Input("page-trigger", "data"),
 )
+
+
+@callback(
+    Output("data-freshness", "children"),
+    Input("page-trigger", "data"),
+    prevent_initial_call=False,
+)
+def _refresh_data_stamp(_trigger: Any) -> str:
+    # Re-reads the DB write time on each navigation so the sidebar stamp stays
+    # current after a data refresh (the pipeline bounces this container anyway).
+    return _data_freshness_str()
 
 # ── Callbacks — aggregate selected series ─────────────────────────────────────
 
