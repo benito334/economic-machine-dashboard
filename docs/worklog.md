@@ -21,6 +21,8 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 US signal count 88→**90**. Suite **503 passed, zero exclusions**.
 
+**Bonus bug caught by the audit's full-pipeline run:** `indicators/loader.py` defined `_estat_cache_path`, `_fetch_estat_from_api`, AND `_ESTAT_BASE` **twice** — the JP e-Stat fetcher (Phase F) reused the Eurostat helper names, and Python's last-definition-wins silently pointed every Eurostat fetch at the Japanese API ("takes 1 positional argument" crashes / 404s to api.e-stat.go.jp). EZ/DE Eurostat signals had been living off stale parquet cache fallback since then. Renamed the JP trio to `_estat_jp_cache_path` / `_fetch_estat_jp_from_api` / `_ESTAT_JP_BASE`; swept loader.py for duplicate module-level names (none remain). EZ PPI immediately refreshed 2026-04→**2026-05**. Full pipeline now runs with ZERO fetch errors (exit 1 = the documented EZ current-account empty only).
+
 **Next:** run the FULL pipeline (Passes 5-7) so composites/stage/debt-stress pick up the new debt-ratio inputs + longer histories; drop the D4 V-Dem/GPR files (operator); standing tails unchanged.
 
 ---

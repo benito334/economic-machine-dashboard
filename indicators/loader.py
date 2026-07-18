@@ -905,10 +905,13 @@ def fetch_bps_series(
 # CPI 2020-base, index, all-items 総合, national 全国). Returns the raw monthly
 # index; the binding's yoy_pct transformation computes the inflation rate.
 
-_ESTAT_BASE = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"
+_ESTAT_JP_BASE = "https://api.e-stat.go.jp/rest/3.0/app/json/getStatsData"  # NOTE: was _ESTAT_BASE, shadowing the Eurostat URL above (2026-07-17 audit fix)
 
 
-def _estat_cache_path(sig: str) -> Path:
+def _estat_jp_cache_path(sig: str) -> Path:
+    # NOTE: was named _estat_cache_path, which silently SHADOWED the Eurostat
+    # helper of the same name above — crashing every Eurostat fetch
+    # ("takes 1 positional argument but 2 were given"). 2026-07-17 audit fix.
     return RAW_CACHE_DIR / f"estat_{sig.replace('/', '_')}.parquet"
 
 
@@ -929,11 +932,11 @@ def _parse_estat_month(code: str) -> Optional[pd.Timestamp]:
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
-def _fetch_estat_from_api(stats_data_id: str, cd_tab: str, cd_cat01: str,
+def _fetch_estat_jp_from_api(stats_data_id: str, cd_tab: str, cd_cat01: str,
                           cd_area: str, app_id: str) -> pd.Series:
     params = {"appId": app_id, "statsDataId": stats_data_id,
               "cdTab": cd_tab, "cdCat01": cd_cat01, "cdArea": cd_area}
-    resp = requests.get(_ESTAT_BASE, params=params, timeout=60)
+    resp = requests.get(_ESTAT_JP_BASE, params=params, timeout=60)
     resp.raise_for_status()
     d = resp.json()
     result = d.get("GET_STATS_DATA", {}).get("RESULT", {})
@@ -974,13 +977,13 @@ def fetch_estat_series(
     if len(parts) != 4:
         raise ValueError(f"e-Stat series_id must be 'statsDataId/cdTab/cdCat01/cdArea': {series_id}")
     RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    cache = _estat_cache_path(series_id)
+    cache = _estat_jp_cache_path(series_id)
     if not force_refresh and _is_fresh(cache, frequency):
         logger.debug("[cache hit] e-Stat %s", series_id)
         return pd.read_parquet(cache)["value"]
     logger.info("[e-Stat fetch] %s", series_id)
     try:
-        series = _fetch_estat_from_api(*parts, app_id=app_id)
+        series = _fetch_estat_jp_from_api(*parts, app_id=app_id)
     except Exception as exc:
         logger.error("[e-Stat] Failed to fetch %s: %s", series_id, exc)
         if cache.exists():
