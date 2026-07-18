@@ -117,6 +117,21 @@ def compute_derived(
         result = dff_raw - cpi_daily
         return result.dropna()
 
+    if bid in ("credit.household_debt_gdp", "credit.corporate_debt_gdp"):
+        # Z.1 debt stock ($M) ÷ GDP ($B × 1000) × 100 → % of GDP, quarterly.
+        # Replaces the BIS repackagings (HDTGPDUSQ163N / QUSNAM770A), which carry
+        # an extra 2-4 quarter lag over the identical underlying Z.1 data
+        # (cross-checked: 67.90 vs 67.95 at 2025-Q1). 2026-07-17 audit.
+        debt_sid = "CMDEBT" if bid == "credit.household_debt_gdp" else "BCNSDODNS"
+        debt_raw = raw_store.get(debt_sid)                       # Q level in M$
+        gdp_raw = raw_store.get("GDP")                           # Q level in B$
+        if debt_raw is None or gdp_raw is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        gdp_aligned = gdp_raw.reindex(debt_raw.index, method="ffill")
+        result = debt_raw / (gdp_aligned * 1000.0) * 100.0
+        return result.dropna()
+
     if bid == "policy.monetary_base_gdp":
         # WALCL (millions $) ÷ GDP (billions $ × 1000 = millions $)
         walcl_raw = raw_store.get("WALCL")                      # W level in M$

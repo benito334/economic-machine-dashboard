@@ -103,3 +103,11 @@ Work through this file's entries country-by-country rather than assuming US-pari
 ---
 
 *Maintained alongside [ray_dalio_review_log.md](ray_dalio_review_log.md) — update this file whenever a data-feed check surfaces a gap or resolves one, so the search doesn't have to be redone from scratch next time.*
+
+## 2026-07-17 US data audit — source-lag findings
+
+- **BIS-via-FRED debt ratios are just laggy Z.1 repackagings** for the US: `HDTGPDUSQ163N` (+~4Q lag) and `QUSNAM770A` (+~2Q). Replaced with derived `CMDEBT÷GDP` / `BCNSDODNS÷GDP` (same-quarter cross-check 67.90 vs 67.95). Note the corporate concept shift: Z.1 securities+loans ≈45% GDP vs BIS total credit ≈75% (cross-border + intercompany). Other countries still need BIS (no Z.1 equivalent).
+- **PWT TFP (`RTFPNAUSA632NRUG`) updates every ~3 years** — swapped to BLS `MFPNFBS` (annual, prior-year current). PWT remains the only harmonized cross-country TFP if we ever want TFP outside the US.
+- **`FDHBFIN` (foreign holdings) lags ~2 quarters by nature** (Treasury Bulletin). Live weekly complement added: `WMTSECL1` Fed custody holdings (official accounts only — subset, but real-time). A fuller monthly option is TIC MFH (treasury.gov tables, no clean API — would need a scraper; wishlist).
+- **WB annuals**: 2024 values are current as of mid-2026 (2025 lands late 2026); R&D intensity lags ~2 years everywhere (OECD MSTI same). Gini 2024 for the US is unusually fresh.
+- **Weekly FRED series** (H.8/H.4.1) legitimately show obs up to ~16-17 days old between releases — staleness window set to 18d.

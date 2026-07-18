@@ -1145,7 +1145,10 @@ bindings:
   # ─── Lens A supplement — TFP (structural growth) ─────────────────────────
 
   - id: growth.tfp
-    series_id: RTFPNAUSA632NRUG
+    # 2026-07-17 audit: swapped from Penn World Table (RTFPNAUSA632NRUG, updates
+    # every ~3 years, was stuck at 2023) to the official BLS TFP index — annual,
+    # current through the prior year (2025 now).
+    series_id: MFPNFBS
     provider: FRED
     frequency: A
     force: growth
@@ -1157,7 +1160,7 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: 0.015
-    linkage: "Total Factor Productivity YoY% (Penn World Tables via FRED). Secular TFP decline compresses potential growth; acceleration supports non-inflationary expansion."
+    linkage: "Total Factor Productivity YoY% (BLS private nonfarm business, via FRED). Secular TFP decline compresses potential growth; acceleration supports non-inflationary expansion."
     sanity_min: -0.05
     sanity_max: 0.08
 
@@ -1182,20 +1185,41 @@ bindings:
 
   # ─── Lens D supplement — Debt cycle detail ────────────────────────────────
 
-  - id: credit.household_debt_gdp
-    series_id: HDTGPDUSQ163N
+  - id: credit.household_debt
+    # Base series for the derived household ratio below (2026-07-17 audit).
+    series_id: CMDEBT
     provider: FRED
     frequency: Q
     force: credit
     lead_lag: coincident
-    transformation: level
-    units: pct_gdp
+    transformation: yoy_pct
+    units: yoy_pct
     source_tier: free
     vintage_available: false
     is_proxy: false
     verified: true
+    equilibrium: 0.050
+    linkage: "Household + nonprofit debt YoY% (Z.1 CMDEBT). Rapid accumulation amplifies the consumer-leverage cycle; contraction signals household deleveraging."
+    sanity_min: -0.30
+    sanity_max: 0.30
+  - id: credit.household_debt_gdp
+    # 2026-07-17 audit: was BIS HDTGPDUSQ163N (repackaged Z.1 with ~4-quarter
+    # extra lag — cross-checked identical: 67.90 vs 67.95 at 2025-Q1). Now
+    # derived: CMDEBT ÷ GDP — current to the latest Z.1 quarter, history to 1947.
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: credit
+    lead_lag: coincident
+    transformation: derived
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
     equilibrium: 65.0
-    linkage: "Household debt as % of GDP (BIS measure, quarterly). Above equilibrium signals leveraged consumer balance sheets; declining from peak precedes spending compression."
+    linkage: "Household debt (Z.1 CMDEBT) as % of GDP, quarterly. Above equilibrium signals leveraged consumer balance sheets; declining from peak precedes spending compression."
     sanity_min: 20.0
     sanity_max: 150.0
 
@@ -1217,21 +1241,27 @@ bindings:
     sanity_max: 0.30
 
   - id: credit.corporate_debt_gdp
-    series_id: QUSNAM770A
-    provider: FRED
+    # 2026-07-17 audit: was BIS QUSNAM770A (repackaged Z.1 with ~2-quarter extra
+    # lag). Now derived directly: BCNSDODNS ÷ GDP — same concept, current to the
+    # latest Z.1 quarter, history back to 1947.
+    series_id: null
+    provider: derived
     frequency: Q
     force: credit
     lead_lag: coincident
-    transformation: level
+    transformation: derived
     units: pct_gdp
     source_tier: free
     vintage_available: false
     is_proxy: false
+    is_constructed: true
     verified: true
-    equilibrium: 70.0
-    linkage: "Total credit to non-financial corporations as % of GDP (BIS/FRED, quarterly). Stock measure of corporate leverage; above equilibrium signals elevated refinancing risk and credit-cycle vulnerability."
-    sanity_min: 30.0
-    sanity_max: 130.0
+    # Equilibrium reset for the Z.1 concept (long-run mean 43%; the old 70 was the
+    # broader BIS total-credit concept, which includes cross-border/intercompany).
+    equilibrium: 43.0
+    linkage: "Nonfinancial corporate debt (Z.1 BCNSDODNS) as % of GDP, quarterly. Stock measure of corporate leverage; above equilibrium signals elevated refinancing risk and credit-cycle vulnerability. NOTE: narrower concept than BIS total credit (~75%) — securities + loans only."
+    sanity_min: 15.0
+    sanity_max: 90.0
 
   # ─── Lens I — Fiscal ──────────────────────────────────────────────────────
 
@@ -1588,9 +1618,30 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: null
-    linkage: "Federal debt held by foreign & international investors — a falling foreign share while issuance rises forces domestic/Fed absorption (monetization risk)."
+    linkage: "Federal debt held by foreign & international investors — a falling foreign share while issuance rises forces domestic/Fed absorption (monetization risk). NOTE: Treasury Bulletin source lags ~2 quarters by nature; fed.custody_holdings is the live weekly pulse."
     sanity_min: 0.0
     sanity_max: 20000000.0
+  - id: fed.custody_holdings
+    # 2026-07-17 audit: live weekly complement to the laggy FDHBFIN — Fed custody
+    # holdings of marketable Treasuries for foreign official accounts (H.4.1).
+    # Covers official accounts only (a subset of total foreign holdings) but
+    # updates weekly, so it is the real-time "buyers stepping away" gauge.
+    series_id: WMTSECL1
+    provider: FRED
+    frequency: W
+    force: fed
+    lead_lag: leading
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: null
+    linkage: "Fed custody holdings of US Treasuries for foreign official accounts (weekly, H.4.1) — the live proxy for foreign official demand; a sustained decline flags buyers stepping away long before the quarterly Treasury Bulletin confirms it."
+    sanity_min: 0.0
+    sanity_max: 10000000.0
   - id: fed.term_premium_10y
     series_id: THREEFYTP10
     provider: FRED

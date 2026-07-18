@@ -462,7 +462,16 @@ def get_layout() -> html.Div:
                              "and overseas funds (foreign holdings ÷ total marketable debt). A falling "
                              "share means foreigners are stepping back and domestic buyers — ultimately "
                              "including the Fed — must absorb more issuance. A slow-moving gauge of who "
-                             "is financing the deficit."),
+                             "is financing the deficit (Treasury Bulletin lags ~2 quarters — the custody "
+                             "card is the live pulse)."),
+            _chart_card("Foreign official custody (weekly)", _to_bn("fed.custody_holdings", "m"),
+                        (cur("fed.custody_holdings") or 0) / 1000.0, "$B",
+                        "Live weekly pulse of foreign official demand.", color=_AMBER,
+                        info="Marketable Treasuries the Fed holds in custody for foreign central banks "
+                             "and official institutions (H.4.1, weekly). It covers only official "
+                             "accounts — a subset of total foreign holdings — but it updates weekly, "
+                             "so a sustained decline flags buyers stepping away many months before the "
+                             "quarterly Treasury Bulletin confirms it."),
             _chart_card("Federal interest ÷ revenue", _fed_interest_to_revenue(),
                         (float(_fed_interest_to_revenue()['value'].iloc[-1])
                          if not _fed_interest_to_revenue().empty else None),

@@ -117,7 +117,8 @@ def test_load_signal_overview_returns_all_signals():
     # 71 (see history) + order.gini + order.reserve_currency_share (Phase D)
     # + 8 fed.* Fed Monitor series (2026-07-10 Digital Ray consult) = 81
     # + 7 market.* Market-Expectations series (2026-07-15 consult) = 88
-    assert len(df) == 88
+    # + credit.household_debt + fed.custody_holdings (2026-07-17 data audit) = 90
+    assert len(df) == 90
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns

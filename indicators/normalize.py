@@ -14,7 +14,10 @@ _LOW_HISTORY_THRESHOLD = 15  # fewer obs → set low_history=True
 
 _STALE_THRESHOLDS: dict[str, timedelta] = {
     "D": timedelta(days=5),
-    "W": timedelta(days=12),
+    # Weekly: obs_date is the period (Wednesday) date; H.8/H.4.1 releases land
+    # ~9 days later, so a fresh series can legitimately show a 16-day-old obs.
+    # 12 days false-flagged TOTBKCR (2026-07-17 audit) — allow 18.
+    "W": timedelta(days=18),
     # Monthly: data is released ~60 days after period start; allow one full
     # extra release cycle (90 days) before flagging as stale.
     "M": timedelta(days=90),

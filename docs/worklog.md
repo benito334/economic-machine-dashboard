@@ -4,6 +4,27 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-07-17 — US data-set audit: empty / very-old / overdue signals tracked down
+
+**Audit of all 96 US bindings** (age vs frequency-aware release windows; every suspect verified at the provider via API).
+
+**Fixed (5):**
+- **`credit.household_debt_gdp`** — was BIS `HDTGPDUSQ163N`, stuck at 2025-Q1 (472d). BIS just repackages Z.1 with ~4-quarter extra lag (cross-checked identical: 67.90 vs 67.95 at 2025-Q1). Now **derived `CMDEBT ÷ GDP`** → current to 2026-Q1 (66.2%), history 1980→ (Z.1 goes to 1947 if GDP fetch extends). New base signal `credit.household_debt` (CMDEBT YoY) added alongside.
+- **`credit.corporate_debt_gdp`** — was BIS `QUSNAM770A` (2025-Q4, 289d). Now **derived `BCNSDODNS ÷ GDP`** → 2026-Q1 (45.4%). ⚠ **Concept shift**: Z.1 securities+loans (~45% GDP) is narrower than BIS total credit (~75%, incl. cross-border/intercompany) — equilibrium reset 70→43 (new long-run mean), sanity 15–90, linkage documents the difference. Stage-classifier percentiles are self-relative so they adapt; next full pipeline run refreshes stage snapshots on the new inputs.
+- **`growth.tfp`** — was Penn World Table `RTFPNAUSA632NRUG`, stuck at **2023** (PWT updates every ~3 years). Now **BLS `MFPNFBS`** (official TFP, private nonfarm) → current through **2025**. Old PWT rows cleared before re-ingest (no mixed-source history).
+- **`fed.foreign_holdings`** — NOT broken: Treasury Bulletin source genuinely lags ~2 quarters (FDHBFIN end 2025-Q4, updated 2026-06). Kept, and added **`fed.custody_holdings` (`WMTSECL1`, weekly, live to Jul 15)** — Fed custody of Treasuries for foreign official accounts, the real-time "buyers stepping away" pulse; new card in Fed Monitor §5 next to Foreign share.
+- **Weekly staleness threshold 12→18d** (`normalize.py`) — H.8 releases lag ~9 days, so fresh weekly series (TOTBKCR) false-flagged stale at 12d.
+
+**Verified-correct, no action possible (documented):** WB annual batch at 2024 = WB's latest (563d, inside the 600d annual window; 2025 lands late 2026) — gini/demographics/trade/fiscal ratios + REER; `rnd_intensity` 2023 = WB's latest (R&D lags ~2yrs everywhere); IMF `primary_balance_gdp` 2024 = latest actual (forecast-exclusion working as designed); `FYFSD`/`FYOINT` FY2025 = latest fiscal year (next Oct 2026).
+
+**Empty (8) — all known:** 5 WGI governance slots (WB killed the `.EST` API — deferred since 1A-ii), 1 climate manual slot (by design), **2 D4 manual slots (V-Dem + GPR): infra built, files never dropped** — operator runbook at docs/manual_data.md remains the standing to-do.
+
+US signal count 88→**90**. Suite **503 passed, zero exclusions**.
+
+**Next:** run the FULL pipeline (Passes 5-7) so composites/stage/debt-stress pick up the new debt-ratio inputs + longer histories; drop the D4 V-Dem/GPR files (operator); standing tails unchanged.
+
+---
+
 ## 2026-07-15 (2) — Fix: regime walk features leaked a stale month between pages
 
 **Done:**
