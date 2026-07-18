@@ -4,6 +4,18 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-07-18 — Fix: annual signals (TFP, R&D) showed BLANK despite current data
+
+**The report.** After the audit swapped TFP to BLS (current through 2025), the productivity page still showed Tfp + Rnd Intensity as BLANK / eff-wt 0%. Data + z-scores were fine in the DB — three stacked display/engine caps were silently killing every annual signal for the back half of its natural cycle:
+
+1. **Carry cap** `per_frequency_ffill_limit A: 15` — but annual obs are stamped at PERIOD START and the successor print only lands ~26mo later (12mo period + ~14mo release lag; WB-lagged series like R&D up to ~34mo). → **A: 36** (TUNABLE). The cap now only kills true zombies; grace + half-life decay do the honest down-weighting in between.
+2. **Global zombie ceiling** `time_decay.hard_drop_months: 12` zeroed the decay fraction at >12mo — re-blanking what the carry cap allowed (TFP at 18mo → time 0%). → **36** (must sit above the largest per-frequency cap; D/M/Q still bind sooner).
+3. **`exclude_unreliable` + is_stale**: the composite NaNs all months after a stale-flagged obs, and the generic A staleness window (600d ≈ 20mo) is shorter than these sources' real cadence → they were permanently stale-excluded. → new per-binding **`stale_after_days`** override on `CountryBinding` (normalize.py threads it): TFP **850d** (BLS successor ~26mo), R&D **1100d** (WB ~34mo).
+
+**Result** (verified in-app + audit JSON): productivity force **3/3 ACTIVE** (was 1/3) — Productivity 76.9% eff wt, TFP 19.1% (time 79% — grace 14m + half-life 12m working as designed), R&D 2.1% (time 37%, Z +2.06). is_stale now False for both. Methodology §15 row added. Suite 503 passed (composites limit assertion updated).
+
+---
+
 ## 2026-07-17 — US data-set audit: empty / very-old / overdue signals tracked down
 
 **Audit of all 96 US bindings** (age vs frequency-aware release windows; every suspect verified at the provider via API).

@@ -33,6 +33,7 @@ class CountryBinding(BaseModel):
     pre_smooth_window: Optional[int] = None  # H2: rolling-mean window applied to raw series before transformation
     raw_scale: Optional[float] = None  # divide raw fetched values by this factor before transformation (e.g. 100 to convert % → decimal, 1e9 to convert USD → billions)
     eurostat_params: Optional[dict] = None  # dimension filter dict for Eurostat JSON stats API (provider=Eurostat only)
+    stale_after_days: Optional[int] = None  # per-series staleness override for sources whose publication cycle exceeds the generic frequency threshold (e.g. WB R&D ~34mo, BLS TFP successor ~26mo after period-start stamp)
 
 
 class Signal(BaseModel):

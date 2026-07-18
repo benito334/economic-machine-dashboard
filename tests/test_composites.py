@@ -661,7 +661,10 @@ def test_composites_yaml_has_per_frequency_limits():
     limits = cfg.get("per_frequency_ffill_limit", {})
     assert limits.get("M") == 3
     assert limits.get("Q") == 9
-    assert limits.get("A") == 15
+    # A raised 15 → 36 (2026-07-18): annual obs are stamped at period start and
+    # the successor print lands ~26mo later (WB-lagged series up to ~34mo) — the
+    # old cap blanked every annual signal for the back half of its cycle.
+    assert limits.get("A") == 36
 
 
 # ── L3: Stale signal tracking in CompositeSnapshot ───────────────────────────

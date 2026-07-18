@@ -809,6 +809,9 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: 2.0
+    # WB R&D publishes with ~2yr lag: the successor to a Dec-Y stamped obs can
+    # arrive up to ~34mo later — generic A threshold (600d) false-flags it.
+    stale_after_days: 1100
     linkage: "R&D expenditure as % of GDP — structural driver of productivity and long-run potential growth."
     sanity_min: 0.0
     sanity_max: 8.0
@@ -1160,6 +1163,9 @@ bindings:
     is_proxy: false
     verified: true
     equilibrium: 0.015
+    # BLS TFP: obs stamped at period START; the successor print lands ~26mo later
+    # (year + ~14mo release lag) — generic A threshold (600d) false-flags it.
+    stale_after_days: 850
     linkage: "Total Factor Productivity YoY% (BLS private nonfarm business, via FRED). Secular TFP decline compresses potential growth; acceleration supports non-inflationary expansion."
     sanity_min: -0.05
     sanity_max: 0.08

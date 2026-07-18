@@ -91,10 +91,15 @@ def _direction(change_3m: Optional[float], series_std: Optional[float] = None) -
     return "flat"
 
 
-def _is_stale(obs_date: date, frequency: str, is_latest: bool) -> bool:
+def _is_stale(obs_date: date, frequency: str, is_latest: bool,
+              override_days: "int | None" = None) -> bool:
     if not is_latest:
         return False
-    threshold = _STALE_THRESHOLDS.get(frequency, timedelta(days=50))
+    # Per-binding override for sources whose publication cycle exceeds the
+    # generic frequency window (binding.stale_after_days) — 2026-07-18 fix for
+    # slow annuals (WB R&D, BLS TFP) that false-flagged stale between prints.
+    threshold = (timedelta(days=override_days) if override_days
+                 else _STALE_THRESHOLDS.get(frequency, timedelta(days=50)))
     return (date.today() - obs_date) > threshold
 
 
@@ -193,7 +198,8 @@ def build_signals(
                 zscore_120m=_f(rolling_zs["zscore_120m"].iloc[i]),
                 is_proxy=binding.is_proxy,
                 is_constructed=binding.is_constructed,
-                is_stale=_is_stale(obs, binding.frequency, is_latest),
+                is_stale=_is_stale(obs, binding.frequency, is_latest,
+                                   override_days=binding.stale_after_days),
                 provider=binding.provider,
                 source_tier=binding.source_tier,
                 vintage_available=binding.vintage_available,

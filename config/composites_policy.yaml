@@ -15,13 +15,18 @@ dynamic_weighting:
   force_zero_epsilon: 0.05    # TUNABLE: |Z| below this is treated as neutral
 
 # L2: Per-frequency forward-fill caps.  Monthly signals are released every month so 3
-# months of fill is already generous; quarterly at 9 months (3 release cycles); annual
-# at 15 months (≈12 months data lag + 3 months grace).  Daily defaults to 1 month.
+# months of fill is already generous; quarterly at 9 months (3 release cycles).
+# Annual: obs are stamped at PERIOD START and the successor print only lands
+# ~26 months later (12mo period + ~14mo release lag; WB-lagged series like R&D
+# up to ~34mo). The old cap of 15 blanked every annual signal for the back half
+# of its natural cycle even with fully-current data (TFP/R&D showed BLANK —
+# 2026-07-18 fix). The cap exists only to drop true zombies; release_grace +
+# half-life decay below do the honest down-weighting in between.
 per_frequency_ffill_limit:
   D: 1
   M: 3
   Q: 9
-  A: 15
+  A: 36         # TUNABLE
   default: 13   # fallback for unknown frequencies
 
 # Exponential age decay from the guidance document.
@@ -31,7 +36,10 @@ per_frequency_ffill_limit:
 time_decay:
   enabled: true
   half_life_months: 3.0       # TUNABLE
-  hard_drop_months: 12        # TUNABLE global ceiling; frequency caps may drop sooner
+  # Global zombie ceiling — must sit ABOVE the largest per-frequency carry cap
+  # (A: 36) or it silently re-blanks what the carry cap allows (zeroed TFP at
+  # 18mo — 2026-07-18 fix). Per-frequency caps still bind sooner for D/M/Q.
+  hard_drop_months: 36        # TUNABLE
   # Schedule-aware grace (Digital Ray consult 2026-07-10): a signal keeps FULL
   # weight through its own expected release window and only decays once the next
   # release is genuinely overdue — so a quarterly series (e.g. GDP) is NOT
