@@ -1089,6 +1089,19 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     except Exception as exc:
         logger.warning("[WARN] Buffett valuation feed: %s", exc)
 
+    # ── Pass 9: Vintage capture (history.duckdb) ──────────────────────────
+    # Point-in-time archive of every raw fetched series for the
+    # hypothesis_machine (rules-R&D project). Append-only: new/changed values
+    # get today's vintage date; an unchanged run appends nothing. Best-effort.
+    print("\n─── Pass 9: Vintage capture (history.duckdb) ──────────────────────")
+    try:
+        from indicators.vintage_store import capture_raw_cache
+        vs = capture_raw_cache()
+        print(f"  {vs['files']} raw series scanned — {vs['new_rows']} vintage rows "
+              f"written today ({vs['new_series']} new series)")
+    except Exception as exc:
+        logger.warning("[WARN] Vintage capture: %s", exc)
+
     # ── Summary ────────────────────────────────────────────────────────────
     print()
     print("─── Summary ───────────────────────────────────────────────────────")

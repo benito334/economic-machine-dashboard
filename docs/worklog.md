@@ -4,6 +4,17 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-07-20 — Vintage store (Pass 9) + hypothesis_machine chartered
+
+**Done:**
+- **Three-project structure agreed with the user**: indicators_machine (perception) → **hypothesis_machine** (rules R&D — NEW sibling repo at `/mnt/data/projects/all_weather/hypothesis_machine/`, chartered H0) → CreovaOne (execution). Strategy hypothesis testing is explicitly OUT of this repo's scope (charter intact); this repo's role is data ownership.
+- **Pass 9: vintage capture** (`indicators/vintage_store.py`) → `history.duckdb` (locked DB dir, beside signals.duckdb). Append-only point-in-time store of every RAW fetched series (all providers — scans raw_cache parquets, skips alfred_*): `raw_observations(series_key, obs_date, value, vintage_date)` + `latest_values` mirror for O(changes) dedupe. New/changed values stamped with the run's vintage date; unchanged runs append nothing; publication calendar = MIN(vintage_date) per obs. **Seeded: 494 series / 302,831 obs / 23 MB.** Downstream consumers open it READ-ONLY (single-writer preserved). 4 tests.
+- ALFRED coverage verified for the future deep-US backfill (INDPRO vintages→1927, PAYEMS→1955, CPIAUCSL→1972, TCU→1996, CMDEBT→1999, BCNSDODNS→2010, MFPNFBS→2016).
+
+**Next:** ALFRED full-vintage backfill script (this repo, feeds hypothesis_machine H5); hypothesis_machine H1 replay engine (its repo). Standing tails unchanged.
+
+---
+
 ## 2026-07-18 — Fix: annual signals (TFP, R&D) showed BLANK despite current data
 
 **The report.** After the audit swapped TFP to BLS (current through 2025), the productivity page still showed Tfp + Rnd Intensity as BLANK / eff-wt 0%. Data + z-scores were fine in the DB — three stacked display/engine caps were silently killing every annual signal for the back half of its natural cycle:
