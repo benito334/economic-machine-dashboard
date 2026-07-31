@@ -88,3 +88,46 @@ def test_render_skips_other_pages():
 def test_route_registered():
     import dashboard.charting as charting
     assert charting._PAGE_MAP["/relative"] is charting._page_relative_view
+
+
+# ── Clock-change notes (2026-07-30) ──────────────────────────────────────────
+
+def test_label_run_start_detects_flip():
+    import pandas as pd
+    from dashboard.relative_view import _label_run_start
+    ts = pd.Timestamp
+    labels = [(ts("2026-04-30"), "Growth"), (ts("2026-05-31"), "Growth"),
+              (ts("2026-06-30"), "Transition"), (ts("2026-07-18"), "Transition")]
+    cur, prev, started = _label_run_start(labels)
+    assert cur == "Transition" and prev == "Growth"
+    assert started == ts("2026-06-30")   # first snapshot with the current label
+
+
+def test_label_run_start_no_change_in_window():
+    import pandas as pd
+    from dashboard.relative_view import _label_run_start
+    labels = [(pd.Timestamp("2026-05-31"), "Growth"), (pd.Timestamp("2026-06-30"), "Growth")]
+    cur, prev, started = _label_run_start(labels)
+    assert cur == "Growth" and prev is None
+
+
+def test_recent_change_notes_windows():
+    import pandas as pd
+    from dashboard.relative_view import _recent_change_notes
+    now = pd.Timestamp("2026-07-30")
+    ts = pd.Timestamp
+    fresh_flip = [(ts("2026-06-01"), "Growth"), (ts("2026-07-15"), "Retraction")]
+    old_flip = [(ts("2026-03-01"), "Inflation"), (ts("2026-04-01"), "Disinflation"),
+                (ts("2026-05-01"), "Disinflation")]
+    stage_flip = [(ts("2026-03-31"), "reflation"), (ts("2026-06-30"), "squeeze")]
+    notes = _recent_change_notes(fresh_flip, old_flip, stage_flip, now=now)
+    # Growth flipped 15 days ago → shown; Inflation flipped ~3 months ago → hidden;
+    # stage flipped 30 days ago → within the 45-day quarterly window → shown.
+    assert len(notes) == 2
+    assert any("Growth clock → Retraction (was Growth)" in n for n in notes)
+    assert any("Stage clock → squeeze (was reflation)" in n for n in notes)
+
+
+def test_recent_change_notes_empty_inputs():
+    from dashboard.relative_view import _recent_change_notes
+    assert _recent_change_notes([], [], []) == []

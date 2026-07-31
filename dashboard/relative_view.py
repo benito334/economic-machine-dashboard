@@ -111,6 +111,81 @@ def _fmt(v: Optional[float], spec: str = "+.2f") -> str:
     return format(float(v), spec)
 
 
+# ── Recent clock-change notes ─────────────────────────────────────────────────
+# When a country's clock flips (Growth/Inflation chip or debt-cycle stage), the
+# card shows a small "changed" note for ~a month so the flip is visible without
+# having to remember last month's reads. Derived from history at render time —
+# the change date is the as_of of the FIRST snapshot carrying the current label.
+_CHANGE_NOTE_DAYS_CHIP = 30    # TUNABLE — monthly clocks
+_CHANGE_NOTE_DAYS_STAGE = 45   # TUNABLE — quarterly stage surfaces with a lag
+_CHANGE_LOOKBACK_ROWS = 8      # how many recent snapshots to scan per clock
+
+
+def _label_run_start(labels: list) -> tuple:
+    """For [(as_of, label), …] return (current, previous, started_at).
+
+    `previous` is None when the whole window carries the current label
+    (no change visible within the lookback).
+    """
+    if not labels:
+        return None, None, None
+    cur = labels[-1][1]
+    started = labels[-1][0]
+    prev = None
+    for ts, v in reversed(labels[:-1]):
+        if v != cur:
+            prev = v
+            break
+        started = ts
+    return cur, prev, started
+
+
+def _chip_label_history(hist, g_col: str, i_col: str, t: dict, dyn) -> tuple:
+    """Classify the last few composite rows → ([(as_of, g_chip)…], [(as_of, i_chip)…]).
+
+    Uses per-row dynamic thresholds when available so past rows are judged the
+    way the dashboard judged them, not by today's thresholds.
+    """
+    from dashboard.charting import _classify_regime
+    total = len(hist)
+    dg = hist[g_col].diff()
+    di = hist[i_col].diff()
+    g_out, i_out = [], []
+    for pos in range(max(1, total - _CHANGE_LOOKBACK_ROWS), total):
+        g, i = hist[g_col].iloc[pos], hist[i_col].iloc[pos]
+        if pd.isna(g) or pd.isna(i):
+            continue
+        tt = dict(t)
+        if dyn is not None and len(dyn) == total:
+            tt["gz"] = float(dyn["dyn_gz"].iloc[pos])
+            tt["iz"] = float(dyn["dyn_iz"].iloc[pos])
+        gd, idd = dg.iloc[pos], di.iloc[pos]
+        gc, ic = _classify_regime(
+            float(g), float(i),
+            None if pd.isna(gd) else float(gd),
+            None if pd.isna(idd) else float(idd), tt)
+        ts = pd.Timestamp(hist["as_of"].iloc[pos])
+        g_out.append((ts, gc))
+        i_out.append((ts, ic))
+    return g_out, i_out
+
+
+def _recent_change_notes(g_labels, i_labels, stage_labels,
+                         now: Optional[pd.Timestamp] = None) -> list:
+    """Build 'clock changed' note strings for flips within the display window."""
+    now = now or pd.Timestamp.today()
+    notes = []
+    for labels, name, window in ((g_labels, "Growth", _CHANGE_NOTE_DAYS_CHIP),
+                                 (i_labels, "Inflation", _CHANGE_NOTE_DAYS_CHIP),
+                                 (stage_labels, "Stage", _CHANGE_NOTE_DAYS_STAGE)):
+        cur, prev, started = _label_run_start(labels)
+        if prev is None or started is None:
+            continue
+        if (now - pd.Timestamp(started)).days <= window:
+            notes.append(f"{name} clock → {cur} (was {prev}) · {pd.Timestamp(started):%b %d}")
+    return notes
+
+
 def _country_card(country: str, thresholds: dict) -> html.Div:
     from dashboard.charting import (
         _DEFAULT_THRESHOLDS, _GROWTH_CHIP, _INFLAT_CHIP,
@@ -129,13 +204,16 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     i = _latest(hist, i_col); i_d = _delta(hist, i_col)
 
     t = dict(thresholds or _DEFAULT_THRESHOLDS)
+    dyn = None
     if t.get("dynamic"):
         dyn_input = hist[["as_of", g_col, i_col]
                          + (["credit_score"] if "credit_score" in hist.columns else [])]
         dyn_input = dyn_input.rename(columns={g_col: "growth_score", i_col: "inflation_score"})
         dyn = compute_dynamic_thresholds(dyn_input, base_gz=float(t.get("gz", 0.5)),
                                          base_iz=float(t.get("iz", 0.5)))
-        if not dyn.empty:
+        if dyn.empty:
+            dyn = None
+        else:
             t["gz"] = float(dyn["dyn_gz"].iloc[-1])
             t["iz"] = float(dyn["dyn_iz"].iloc[-1])
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t)
@@ -182,6 +260,25 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         label = f"Stage · {stage}" + (" ⚠" if squeeze_flag else "")
         chips.append(_chip(label, STAGE_COLORS.get(stage, "#888")))
 
+    # Recent clock-change notes (~30d chips / ~45d stage)
+    try:
+        g_labels, i_labels = _chip_label_history(hist, g_col, i_col, t, dyn)
+        stage_labels = ([
+            (pd.Timestamp(r["as_of"]), str(r["stage"]))
+            for _, r in labeled.tail(_CHANGE_LOOKBACK_ROWS).iterrows()
+        ] if stage else [])
+        change_notes = _recent_change_notes(g_labels, i_labels, stage_labels)
+    except Exception:
+        change_notes = []
+    notes_block = ([html.Div(
+        [html.Div(f"🔄 {n}", style={"fontSize": "0.68rem", "color": "#F4C842",
+                                    "lineHeight": "1.5"}) for n in change_notes],
+        style={"borderLeft": "2px solid #E8A317", "paddingLeft": "7px",
+               "margin": "0 0 8px 0",
+               "background": "rgba(232,163,23,0.06)", "borderRadius": "0 4px 4px 0",
+               "padding": "3px 7px"},
+    )] if change_notes else [])
+
     order_bits = []
     if rcs is not None:
         cur = {"US": "USD", "EZ": "EUR", "JP": "JPY", "GB": "GBP"}.get(country, "FX")
@@ -199,6 +296,7 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
                                                  "color": "var(--muted-color)"}),
         ], style={"marginBottom": "8px"}),
         html.Div(chips, style={"marginBottom": "8px"}),
+        *notes_block,
         _kv("Growth Z", _fmt(g) + (f" (Δ {_fmt(g_d)})" if g_d is not None else "")),
         _kv("Inflation Z", _fmt(i) + (f" (Δ {_fmt(i_d)})" if i_d is not None else "")),
         _kv("Debt stress", _fmt(ds) if ds is not None else "— (US-only model)"),

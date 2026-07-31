@@ -4,6 +4,12 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-07-31 — Relative Cycles: clock-change notes
+
+**Done:** per user request, each country card on /relative now shows a small amber "clock changed" note when one of its three clocks flips — Growth chip, Inflation chip (30-day window), or debt-cycle Stage (45-day window — quarterly stages surface with a lag). Derived from history at render time (no stored state): classify the last 8 snapshots (per-row dynamic thresholds when enabled, so past rows are judged as the dashboard judged them), find the first snapshot carrying the current label, show "X clock → new (was old) · date" while that start is inside the window. Windows + lookback are TUNABLE constants in `relative_view.py`. Live on ship day: US (both short-term clocks → Transition, Jul 31), GB (stage → squeeze, Jun 30), BR (both → Transition). 4 new tests; suite **511 passed**.
+
+---
+
 ## 2026-07-20 — Vintage store (Pass 9) + hypothesis_machine chartered
 
 **Done:**
