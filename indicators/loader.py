@@ -33,13 +33,19 @@ MANUAL_DATA_DIR = Path(os.environ.get(
     "/mnt/data/project_data/all_weather/indicators_machine/manual_data",
 ))
 
-# Seconds before a cached file is considered stale and must be refreshed
+# Seconds before a cached file is considered stale and must be refreshed.
+# 2026-07-31 fix: the old TTLs (M 25d / Q 80d / A 300d) could pin a cache
+# stamped just BEFORE a release for weeks past it — seven US monthlies served
+# May data from cache until the obs crossed the 90d staleness line and mass-
+# blanked. With a daily scheduler, short TTLs are cheap (a few hundred series
+# per provider per day is far under any rate limit); each release is now picked
+# up within days of publication.
 _CACHE_TTL: dict[str, int] = {
-    "D": 3600 * 20,        # 20 h — daily series
-    "W": 3600 * 24 * 6,   # 6 days
-    "M": 3600 * 24 * 25,  # 25 days
-    "Q": 3600 * 24 * 80,  # 80 days
-    "A": 3600 * 24 * 300, # 300 days
+    "D": 3600 * 20,       # 20 h — daily series
+    "W": 3600 * 24 * 2,   # 2 days
+    "M": 3600 * 24 * 3,   # 3 days
+    "Q": 3600 * 24 * 7,   # 7 days
+    "A": 3600 * 24 * 30,  # 30 days
 }
 
 _FRED_START = "1980-01-01"  # default history start

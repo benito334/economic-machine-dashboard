@@ -4,6 +4,20 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-08-01 — Fix: mass-blanked US growth/inflation signals (stale scheduler image + cache-TTL pinning)
+
+**The report.** Seven US monthly signals (IP, retail, real PCE, capacity util, JOLTS, core PCE, PPI) plus productivity/TFP/R&D showed BLANK on the force pages; the US composite had swung to G −0.78 and flipped the chips (the Jul-31 "clock change" notes were partly this artifact).
+
+**Two root causes:**
+1. **The nightly `scheduler` container was running a 2-week-old image** — its baked pipeline code/config predated every fix since ~Jul 11, so each nightly run silently re-applied OLD staleness logic (re-breaking the Jul-18 tfp/rnd fix) and missed the estat/carry-cap/vintage passes entirely. → Rebuilt; standing rule added to memory: any `indicators/`/`config/`/`store/` change ⇒ rebuild **charting AND scheduler**.
+2. **Cache TTLs pinned pre-release data**: M TTL was 25d; the many Jul-17/18 session runs stamped every cache just before the June releases (Jul 16–31), so nightly runs served May data from cache until the obs crossed the 90d staleness line on Jul 30 → mass stale → `exclude_unreliable` blanked them at once. → `_CACHE_TTL` now **D 20h / W 2d / M 3d / Q 7d / A 30d** (daily volumes are trivial vs provider rate limits; releases picked up within days).
+
+**Also fixed (same period-start + release-lag class as the Jul-18 annual fix):** `growth.productivity` `stale_after_days: 240` (BLS publishes ~218d after the quarter-start stamp; generic Q=200d false-flagged it every early August) and `growth.job_openings` `stale_after_days: 100` (JOLTS publishes ~95d after the month-start stamp; generic M=90d false-flags it a few days every cycle).
+
+**Recovery + verification:** force-refresh pulled all June prints (killed the WB-timeout-crawling force run after the US FRED pass — the WB annuals it was grinding through are unchanged; normal run completed the composite passes). Growth force now **11/12 active** (Retail +1.22, IP +0.87, PMI +2.85; composite G **+0.41** / I **+0.23** vs the −0.78 artifact); JOLTS legitimately awaits its ~Aug 4 June print and un-blanks tonight via the override. Both images rebuilt + containers restarted. Suite **511 passed**.
+
+---
+
 ## 2026-07-31 — Relative Cycles: clock-change notes
 
 **Done:** per user request, each country card on /relative now shows a small amber "clock changed" note when one of its three clocks flips — Growth chip, Inflation chip (30-day window), or debt-cycle Stage (45-day window — quarterly stages surface with a lag). Derived from history at render time (no stored state): classify the last 8 snapshots (per-row dynamic thresholds when enabled, so past rows are judged as the dashboard judged them), find the first snapshot carrying the current label, show "X clock → new (was old) · date" while that start is inside the window. Windows + lookback are TUNABLE constants in `relative_view.py`. Live on ship day: US (both short-term clocks → Transition, Jul 31), GB (stage → squeeze, Jun 30), BR (both → Transition). 4 new tests; suite **511 passed**.

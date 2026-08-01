@@ -163,6 +163,10 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # JOLTS publishes ~5-6 weeks after the month — a month-start-stamped obs is
+    # superseded ~95 days later, so the generic M window (90d) false-flags it
+    # for a few days every cycle. 2026-07-31 audit fix.
+    stale_after_days: 100
     equilibrium: 6500.0
     linkage: "Job openings lead hiring; a high openings-to-unemployment ratio signals labour tightness and wage inflation risk."
     sanity_min: 1000.0
@@ -248,6 +252,10 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # BLS productivity for quarter Q publishes ~5 weeks after Q ends — a
+    # Q1-start-stamped obs is only superseded ~218 days later. The generic Q
+    # window (200d) false-flags it every early-August. 2026-07-31 audit fix.
+    stale_after_days: 240
     equilibrium: 0.015
     linkage: "Nonfarm business labour productivity — secular rise supports real wages without inflation; decline compresses margins."
     sanity_min: -0.08
