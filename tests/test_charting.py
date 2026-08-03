@@ -405,7 +405,7 @@ def test_dawn_theme_is_light():
 
 # ── Integration tests — require real DuckDB ───────────────────────────────────
 
-DB = os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
+DB = os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
 
 
 @pytest.mark.integration

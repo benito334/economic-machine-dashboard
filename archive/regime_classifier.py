@@ -80,7 +80,7 @@ _QUADRANT_MAP: dict[tuple[int, int], str] = {
 _RAW_CACHE_DIR = Path(
     os.environ.get(
         "RAW_CACHE_DIR",
-        "/mnt/data/project_data/all_weather/indicators_machine/raw_cache",
+        "/mnt/data/project_data/finance/indicators_machine/raw_cache",
     )
 )
 

@@ -35,7 +35,7 @@ ingests them on the next run; the Command Center card fills in automatically.
 Drop folder (bind-mounted into the containers like the rest of `DATA_DIR`):
 
 ```
-/mnt/data/project_data/all_weather/indicators_machine/manual_data/
+/mnt/data/project_data/finance/indicators_machine/manual_data/
 ```
 
 Override with the `MANUAL_DATA_DIR` env var. A copy of this file lives in that

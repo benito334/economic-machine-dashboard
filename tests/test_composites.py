@@ -746,7 +746,7 @@ def test_real_db_composite_history():
     from pathlib import Path
     from store.store import get_connection, query_composite_history
 
-    db_path = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
+    db_path = Path(os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"))
     if not db_path.exists():
         pytest.skip("Live DB not available")
 

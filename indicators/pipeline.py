@@ -47,7 +47,7 @@ logger = logging.getLogger("pipeline")
 
 _PROJECT_ROOT = Path(__file__).parents[1]
 _CONFIG_DIR = _PROJECT_ROOT / "config"
-DATA_DIR = Path(os.environ.get("DATA_DIR", "/mnt/data/project_data/all_weather/indicators_machine"))
+DATA_DIR = Path(os.environ.get("DATA_DIR", "/mnt/data/project_data/finance/indicators_machine"))
 
 
 # ─── Config loading ─────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ from typing import Any
 import duckdb
 
 _DB = Path(os.environ.get(
-    "DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
+    "DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"))
 
 # Forces that feed the regime reads, with their weight in the overall roll-up.
 # The DB stores interest-rate signals under force "policy".

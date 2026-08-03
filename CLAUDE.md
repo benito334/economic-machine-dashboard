@@ -21,11 +21,11 @@ Full specification: [docs/project_plan.md](docs/project_plan.md)
 | Purpose | Path |
 | :--- | :--- |
 | Project root | `/mnt/data/projects/all_weather/indicators_machine/` |
-| Data / cache | `/mnt/data/project_data/all_weather/indicators_machine/` |
-| Database | `/mnt/data/db/all_weather/indicators_machine/` |
-| Main DB file | `/mnt/data/db/all_weather/indicators_machine/signals.duckdb` |
-| Raw API cache | `/mnt/data/project_data/all_weather/indicators_machine/raw_cache/` |
-| Parquet snapshots | `/mnt/data/project_data/all_weather/indicators_machine/snapshots/` |
+| Data / cache | `/mnt/data/project_data/finance/indicators_machine/` |
+| Database | `/mnt/data/db/finance/indicators_machine/` |
+| Main DB file | `/mnt/data/db/finance/indicators_machine/signals.duckdb` |
+| Raw API cache | `/mnt/data/project_data/finance/indicators_machine/raw_cache/` |
+| Parquet snapshots | `/mnt/data/project_data/finance/indicators_machine/snapshots/` |
 
 **Never change these paths.** All code must read them from config/env vars, not hardcode strings.
 

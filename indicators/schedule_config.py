@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 
 DATA_DIR = Path(os.environ.get(
-    "DATA_DIR", "/mnt/data/project_data/all_weather/indicators_machine"))
+    "DATA_DIR", "/mnt/data/project_data/finance/indicators_machine"))
 
 SCHEDULE_PATH = DATA_DIR / "schedule.json"
 STATUS_PATH   = DATA_DIR / "schedule_status.json"

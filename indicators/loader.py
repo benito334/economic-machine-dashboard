@@ -21,7 +21,7 @@ from tenacity import (
 
 logger = logging.getLogger(__name__)
 
-RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
+RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/finance/indicators_machine/raw_cache"))
 
 # Manual-load drop folder (roadmap D4). Sources with no free API — V-Dem/
 # Polity governance, the GPR index, EM-DAT disaster losses — are hand-
@@ -30,7 +30,7 @@ RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all
 # names its CSV in series_id; a missing file is a PENDING SLOT, not an error.
 MANUAL_DATA_DIR = Path(os.environ.get(
     "MANUAL_DATA_DIR",
-    "/mnt/data/project_data/all_weather/indicators_machine/manual_data",
+    "/mnt/data/project_data/finance/indicators_machine/manual_data",
 ))
 
 # Seconds before a cached file is considered stale and must be refreshed.

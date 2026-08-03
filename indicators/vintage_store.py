@@ -35,9 +35,9 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 HISTORY_DB = Path(os.environ.get(
-    "HISTORY_DB_PATH", "/mnt/data/db/all_weather/indicators_machine/history.duckdb"))
+    "HISTORY_DB_PATH", "/mnt/data/db/finance/indicators_machine/history.duckdb"))
 RAW_CACHE_DIR = Path(os.environ.get(
-    "RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
+    "RAW_CACHE_DIR", "/mnt/data/project_data/finance/indicators_machine/raw_cache"))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS raw_observations (

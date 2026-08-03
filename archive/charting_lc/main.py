@@ -24,7 +24,7 @@ from dashboard.charting_data import (
     load_yield_curve_term_structure,
 )
 
-DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
+DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"))
 
 app = FastAPI(title="Indicators Machine — Charting API", version="1.0.0")
 

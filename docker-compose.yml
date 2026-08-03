@@ -2,8 +2,8 @@ x-common: &common
   build: .
   env_file: .env
   volumes:
-    - /mnt/data/project_data/all_weather/indicators_machine:/data
-    - /mnt/data/db/all_weather/indicators_machine:/db
+    - /mnt/data/project_data/finance/indicators_machine:/data
+    - /mnt/data/db/finance/indicators_machine:/db
   environment:
     DATA_DIR: /data
     DB_PATH: /db/signals.duckdb
@@ -62,8 +62,8 @@ services:
       AUTO_IMPORT_ENABLED: "${AUTO_IMPORT_ENABLED:-}"
       AUTO_IMPORT_TIME: "${AUTO_IMPORT_TIME:-}"
     volumes:
-      - /mnt/data/project_data/all_weather/indicators_machine:/data
-      - /mnt/data/db/all_weather/indicators_machine:/db
+      - /mnt/data/project_data/finance/indicators_machine:/data
+      - /mnt/data/db/finance/indicators_machine:/db
       - /var/run/docker.sock:/var/run/docker.sock   # to bounce the charting container
     command: python -m indicators.scheduler
     restart: unless-stopped

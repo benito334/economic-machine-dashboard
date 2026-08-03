@@ -16,7 +16,7 @@ import dash_bootstrap_components as dbc
 from dashboard.themes import DEFAULT_THEME, figure_layout
 from dashboard import data_score as _ds
 
-_DB = os.getenv("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
+_DB = os.getenv("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
 
 _COUNTRY_NAMES: dict[str, str] = {
     "us": "United States",

@@ -11,8 +11,8 @@ import yaml
 
 from indicators.composites import normalized_nominal_weights, load_composites_config
 
-DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
-RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache"))
+DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"))
+RAW_CACHE_DIR = Path(os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/finance/indicators_machine/raw_cache"))
 _CHART_SERIES_YAML = Path(__file__).parent.parent / "config" / "chart_series.yaml"
 
 

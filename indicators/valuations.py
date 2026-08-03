@@ -37,7 +37,7 @@ YAHOO = "https://query2.finance.yahoo.com/v8/finance/chart/VTI?range=30y&interva
 ANCHOR = {"year": 2024, "month": 12, "cap_tn": 62.2}
 
 DATA_DIR = Path(os.environ.get(
-    "DATA_DIR", "/mnt/data/project_data/all_weather/indicators_machine"))
+    "DATA_DIR", "/mnt/data/project_data/finance/indicators_machine"))
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED_JSON = _REPO_ROOT / "standalone" / "buffett_data.json"
 

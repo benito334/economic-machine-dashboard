@@ -34,6 +34,6 @@ Use **DuckDB** (embedded, file-based analytical database).
 
 ## Consequences
 
-- DB file lives at `/mnt/data/db/all_weather/indicators_machine/signals.duckdb`.
+- DB file lives at `/mnt/data/db/finance/indicators_machine/signals.duckdb`.
 - Only one writer at a time (DuckDB WAL limitation) — pipeline and dashboard must not write concurrently. Dashboard is read-only; pipeline has the write lock.
 - Schema migrations must be scripted (no Alembic equivalent; manage with versioned `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE` scripts in `store/store.py`).

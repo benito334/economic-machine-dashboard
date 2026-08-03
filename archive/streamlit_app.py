@@ -42,7 +42,7 @@ except ImportError:
 DB_PATH = Path(
     os.environ.get(
         "DB_PATH",
-        "/mnt/data/db/all_weather/indicators_machine/signals.duckdb",
+        "/mnt/data/db/finance/indicators_machine/signals.duckdb",
     )
 )
 

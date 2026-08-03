@@ -28,7 +28,7 @@ from dashboard.charting_data import DB_PATH, RAW_CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
-_DATA_DIR = Path(os.environ.get("DATA_DIR", "/mnt/data/project_data/all_weather/indicators_machine"))
+_DATA_DIR = Path(os.environ.get("DATA_DIR", "/mnt/data/project_data/finance/indicators_machine"))
 SAVED_VIEWS_PATH = _DATA_DIR / "saved_views.json"
 
 _COUNTRY_FLAGS = {"US": "🇺🇸", "EZ": "🇪🇺", "GB": "🇬🇧", "JP": "🇯🇵", "KR": "🇰🇷", "CN": "🇨🇳",

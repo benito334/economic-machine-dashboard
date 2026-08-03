@@ -1052,8 +1052,8 @@ Next: pipeline re-run to regenerate signals/composites with new weights + decay;
   - `docs/decisions/ADR-005-composite-weights.md`
 
 **Locked in (confirmed by user):**
-- Data path: `/mnt/data/project_data/all_weather/indicators_machine/`
-- DB path: `/mnt/data/db/all_weather/indicators_machine/`
+- Data path: `/mnt/data/project_data/finance/indicators_machine/`
+- DB path: `/mnt/data/db/finance/indicators_machine/`
 - Rule: Dockerize everything
 - Rule: Use existing tools/packages before building from scratch
 

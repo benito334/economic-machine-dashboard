@@ -23,8 +23,8 @@ from pathlib import Path
 
 import duckdb
 
-_DEF_DB = "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"
-_DEF_DATA = "/mnt/data/project_data/all_weather/indicators_machine"
+_DEF_DB = "/mnt/data/db/finance/indicators_machine/signals.duckdb"
+_DEF_DATA = "/mnt/data/project_data/finance/indicators_machine"
 
 
 def _compact_db(src: Path, dst: Path) -> None:

@@ -10,7 +10,7 @@ import pandas as pd
 
 from indicators.models import Signal
 
-DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"))
+DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"))
 
 _CREATE_SIGNALS = """
 CREATE TABLE IF NOT EXISTS signals (

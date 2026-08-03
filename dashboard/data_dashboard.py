@@ -19,7 +19,7 @@ import dash_bootstrap_components as dbc
 from dash import Input, Output, State, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
-_DB = os.getenv("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
+_DB = os.getenv("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 _PROJECT_ROOT = Path(__file__).parent.parent
 

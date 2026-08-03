@@ -10,8 +10,8 @@ import os
 import pytest
 import pandas as pd
 
-DB = os.environ.get("DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb")
-CACHE = os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/all_weather/indicators_machine/raw_cache")
+DB = os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
+CACHE = os.environ.get("RAW_CACHE_DIR", "/mnt/data/project_data/finance/indicators_machine/raw_cache")
 
 
 # ── Unit tests — no DB required ───────────────────────────────────────────────

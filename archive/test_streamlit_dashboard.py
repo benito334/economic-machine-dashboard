@@ -239,7 +239,7 @@ def test_debt_stress_latest_respects_as_of_date():
 # ── Integration: DB query correctness ───────────────────────────────────────
 
 REAL_DB = os.environ.get(
-    "DB_PATH", "/mnt/data/db/all_weather/indicators_machine/signals.duckdb"
+    "DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"
 )
 
 

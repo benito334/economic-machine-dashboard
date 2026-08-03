@@ -24,7 +24,7 @@ from dash import dcc, html
 from dashboard.app_mode import PUBLIC_MODE
 
 DATA_DIR = Path(os.environ.get(
-    "DATA_DIR", "/mnt/data/project_data/all_weather/indicators_machine"))
+    "DATA_DIR", "/mnt/data/project_data/finance/indicators_machine"))
 TRAFFIC_LOG = DATA_DIR / "traffic.log"
 TRAFFIC_KEY = os.environ.get("TRAFFIC_KEY", "").strip()
 
