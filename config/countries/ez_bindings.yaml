@@ -32,6 +32,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: null
     linkage: "Euro area nominal GDP in billions USD (World Bank, current prices). Used in Global Overview size column."
     sanity_min: 5000.0
@@ -50,6 +53,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.015
     linkage: "Euro area real GDP growth (chain-linked volumes). Structural growth headwind vs US from demographics and productivity gap."
     sanity_min: -0.15
@@ -268,6 +274,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 300
     equilibrium: 81.0
     linkage: "Euro area manufacturing capacity utilisation % (Eurostat/DG-ECFIN Business Survey, EA20, SA). Leading indicator of growth inflection; above 83% historically signals overheating."
     sanity_min: 60.0
@@ -292,6 +301,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.020
     linkage: "Euro area industrial production YoY (Eurostat, B-D excl. energy, calendar-adjusted). Manufacturing-heavy EA makes this a key cyclical barometer."
     sanity_min: -0.25
@@ -317,6 +329,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.020
     linkage: "Euro area retail trade volume YoY (Eurostat G47, calendar-adjusted). Measures household spending momentum."
     sanity_min: -0.20
@@ -341,6 +356,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 7.5
     linkage: "Euro area harmonised unemployment rate % (Eurostat, EA21, seasonally adjusted). Higher structural unemployment than US due to labour market rigidities."
     sanity_min: 3.0
@@ -359,6 +377,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 2.0
     linkage: "R&D expenditure as % of GDP for the Euro area. Structural indicator of innovation capacity and long-run productivity."
     sanity_min: 0.0
@@ -385,8 +406,11 @@ bindings:
     sanity_max: 15.0
 
   - id: policy.yield_10y
-    series_id: IRLTLT01EZM156N
-    provider: FRED
+    # 2026-08-02 audit: the OECD FRED mirror (IRLTLT01EZM156N) died at 2026-01
+    # (the ongoing OECD-mirror die-off). Rebound to the ECB Maastricht euro-area
+    # aggregate long-term rate — monthly, live (verified 2026-06-30 = 3.36%).
+    series_id: IRS/M.I9.L.L40.CI.0000.EUR.N.Z
+    provider: ECB
     frequency: M
     force: policy
     lead_lag: coincident
@@ -685,6 +709,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 45.0
     linkage: "General government revenue as % of GDP. EA governments have substantially higher revenue ratios than the US, reflecting larger welfare states."
     sanity_min: 20.0

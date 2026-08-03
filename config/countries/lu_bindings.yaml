@@ -33,6 +33,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.020
     linkage: "Luxembourg real GDP YoY (Eurostat chained 2010 EUR via FRED, quarterly from 1995). Volatile for an advanced economy — financial-sector value-added swings with markets."
     sanity_min: -0.20
@@ -51,6 +54,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 100.0
     linkage: "Luxembourg nominal GDP in current USD billions (IMF, ~$101B). Tiny in level, outsized in per-capita and financial-flow terms."
     sanity_min: 10.0
@@ -94,6 +100,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.010
     linkage: "Luxembourg industrial production YoY (OECD GYSAM form, live → 2026-03). Small manufacturing base (steel legacy) — noisy; the financial sector is the real economy."
     sanity_min: -0.40
@@ -112,6 +121,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 5.5
     linkage: "Luxembourg harmonised monthly unemployment rate (ILO form, live → 2026-04). Resident-based — excludes the ~200k cross-border commuters who are half the workforce."
     sanity_min: 1.0
@@ -130,6 +142,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 1.2
     linkage: "R&D expenditure as % of GDP (~1.1%). Low vs neighbors — the economy monetizes financial intermediation, not invention."
     sanity_min: 0.0
@@ -148,6 +163,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.0
     linkage: "Luxembourg Total Factor Productivity YoY% (Penn World Tables, annual through 2023). Declining for a decade — financial-sector productivity measurement is notoriously hard."
     sanity_min: -0.10
@@ -233,6 +251,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 350.0
     linkage: "Total credit to the private non-financial sector, % GDP (BIS). At 420% the highest in the system — mostly intra-group corporate vehicles; read as a global credit-conditions gauge."
     sanity_min: 0.0
@@ -251,6 +272,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 55.0
     linkage: "Credit to households, % GDP (BIS, 61.2%). The genuinely domestic number — mortgage debt against some of Europe's highest house prices."
     sanity_min: 0.0
@@ -269,6 +293,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 300.0
     linkage: "Credit to non-financial corporations, % GDP (BIS, 358.8%). Dominated by multinational financing vehicles domiciled in Luxembourg — not domestic corporate leverage."
     sanity_min: 0.0
@@ -343,6 +370,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 44.0
     linkage: "General government revenue % GDP (~44.6%). High-capacity, high-take state on a financial-sector tax base — concentration risk if fund domiciliation ever migrates."
     sanity_min: 25.0
@@ -536,6 +566,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 32.0
     linkage: "Gini index of income inequality (33.6, 2023). Drifting up — housing costs are the Luxembourgish inequality engine."
     sanity_min: 20.0

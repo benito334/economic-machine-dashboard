@@ -29,6 +29,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.025
     linkage: "Korea real GDP (chained 2015 KRW, SAAR). Trend growth has slowed from 5%+ pre-GFC to ~2–3%; export-driven cyclicality."
     sanity_min: -0.15
@@ -47,6 +50,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 1600.0
     linkage: "Korea nominal GDP in current USD billions (IMF). Used for cross-country size comparison in the Global Overview table."
     sanity_min: 100.0
@@ -131,6 +137,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 3.0
     linkage: "Korea harmonised unemployment rate (%). Structurally low; rises above 4% historically signal meaningful demand contraction."
     sanity_min: 1.0
@@ -150,6 +159,9 @@ bindings:
     is_proxy: false
     verified: true
     raw_scale: 100
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.040
     linkage: "Korea retail sales volume YoY (OECD, already in % form on FRED). Private consumption tracker in an export-led economy."
     sanity_min: -0.20
@@ -168,6 +180,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.030
     linkage: "Korea industrial production index YoY. Highly export-linked; semiconductor and electronics cycles dominate."
     sanity_min: -0.25
@@ -186,6 +201,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 4.0
     linkage: "R&D expenditure as % of GDP. Korea is among the world's top R&D investors; structural driver of technological competitiveness."
     sanity_min: 0.0
@@ -300,6 +318,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 30.0
     linkage: "General government revenue as % of GDP. Korea's revenue ratio is lower than most OECD peers, constraining social spending capacity."
     sanity_min: 10.0
@@ -514,6 +535,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 33.0
     linkage: "Gini index of income inequality — the internal-order read: widening wealth gaps precede internal political stress and populist policy shifts."
     sanity_min: 20.0

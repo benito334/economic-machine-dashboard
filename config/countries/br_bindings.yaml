@@ -23,6 +23,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.02
     linkage: "Brazil real GDP YoY (quarterly). The headline growth clock."
     sanity_min: -0.25
@@ -41,6 +44,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 2100.0
     linkage: "Brazil nominal GDP in current USD billions (IMF). Cross-country size comparison."
     sanity_min: 50.0
@@ -98,6 +104,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.01
     linkage: "Brazil industrial production YoY (GYSAM form, live). Strongest live monthly output read."
     sanity_min: -0.4
@@ -116,6 +125,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Brazil merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
     sanity_min: -0.5
@@ -134,6 +146,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Brazil merchandise imports YoY (USD, SA). PROXY for domestic demand."
     sanity_min: -0.5
@@ -152,6 +167,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 5.0
     linkage: "Brazil unemployment rate (IBGE PNAD Contínua monthly, via BCB SGS series 24369). Live monthly — replaces the WB annual ILO-modeled proxy."
     sanity_min: 1.0
@@ -170,6 +188,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 1.2
     linkage: "Brazil R&D expenditure as % of GDP. Structural productivity input."
     sanity_min: 0.0
@@ -188,6 +209,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.0
     linkage: "Brazil Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
     sanity_min: -0.1
@@ -242,6 +266,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 0.0
     linkage: "Brazil FX reserves ex-gold YoY (IMF IFS). Drawdowns flag capital-flight / currency-defense pressure."
     sanity_min: -0.4
@@ -278,6 +305,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 90.0
     linkage: "Brazil total private non-financial credit, % GDP (BIS). Core leverage read."
     sanity_min: 0.0
@@ -296,6 +326,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 35.0
     linkage: "Brazil household credit, % GDP (BIS). Private-sector cash-flow burden input."
     sanity_min: 0.0
@@ -314,6 +347,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 55.0
     linkage: "Brazil non-financial corporate credit, % GDP (BIS)."
     sanity_min: 0.0
@@ -386,6 +422,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 26.0
     linkage: "Brazil general government revenue, % GDP (central basis)."
     sanity_min: 3.0
@@ -585,6 +624,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 50.0
     linkage: "Brazil Gini ~50 — persistently among the world's most unequal; the Bolsa-Familia / populist-policy backdrop and a core internal-order read."
     sanity_min: 15.0

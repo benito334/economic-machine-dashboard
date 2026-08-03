@@ -23,6 +23,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.017
     linkage: "Canada real GDP YoY (quarterly). The headline growth clock."
     sanity_min: -0.25
@@ -41,6 +44,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 2200.0
     linkage: "Canada nominal GDP in current USD billions (IMF). Cross-country size comparison."
     sanity_min: 50.0
@@ -98,6 +104,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.01
     linkage: "Canada industrial production YoY (GYSAM form, live). Strongest live monthly output read."
     sanity_min: -0.4
@@ -116,6 +125,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Canada merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
     sanity_min: -0.5
@@ -134,6 +146,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Canada merchandise imports YoY (USD, SA). PROXY for domestic demand."
     sanity_min: -0.5
@@ -152,6 +167,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 6.0
     linkage: "Canada harmonised unemployment rate (ILO monthly, live)."
     sanity_min: 1.0
@@ -170,6 +188,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 1.7
     linkage: "Canada R&D expenditure as % of GDP. Structural productivity input."
     sanity_min: 0.0
@@ -188,6 +209,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.0
     linkage: "Canada Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
     sanity_min: -0.1
@@ -224,6 +248,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 2.5
     linkage: "Canada 3-month interbank rate (live). Short end of the curve; pairs with the 10y for a slope read."
     sanity_min: 0.0
@@ -278,6 +305,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 200.0
     linkage: "Canada total private non-financial credit, % GDP (BIS). Core leverage read."
     sanity_min: 0.0
@@ -296,6 +326,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 100.0
     linkage: "Canada household credit, % GDP (BIS). Private-sector cash-flow burden input."
     sanity_min: 0.0
@@ -314,6 +347,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 115.0
     linkage: "Canada non-financial corporate credit, % GDP (BIS)."
     sanity_min: 0.0
@@ -386,6 +422,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 20.0
     linkage: "Canada general government revenue, % GDP (central basis)."
     sanity_min: 3.0
@@ -566,6 +605,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 32.0
     linkage: "Canada Gini ~32 — moderate, stable; a low-inequality benchmark against the US and Brazil."
     sanity_min: 15.0

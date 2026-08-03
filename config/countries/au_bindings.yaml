@@ -22,6 +22,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.024
     linkage: "Australia real GDP YoY (quarterly). The headline growth clock."
     sanity_min: -0.25
@@ -40,6 +43,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 1700.0
     linkage: "Australia nominal GDP in current USD billions (IMF). Cross-country size comparison."
     sanity_min: 50.0
@@ -96,6 +102,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Australia merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
     sanity_min: -0.5
@@ -114,6 +123,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Australia merchandise imports YoY (USD, SA). PROXY for domestic demand."
     sanity_min: -0.5
@@ -132,6 +144,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 4.5
     linkage: "Australia harmonised unemployment rate (ILO monthly, live)."
     sanity_min: 1.0
@@ -150,6 +165,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 1.8
     linkage: "Australia R&D expenditure as % of GDP. Structural productivity input."
     sanity_min: 0.0
@@ -168,6 +186,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.0
     linkage: "Australia Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
     sanity_min: -0.1
@@ -204,6 +225,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 3.0
     linkage: "Australia 3-month interbank rate (live). Short end; pairs with the 10y for a slope read."
     sanity_min: 0.0
@@ -258,6 +282,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 175.0
     linkage: "Australia total private non-financial credit, % GDP (BIS). Core leverage read."
     sanity_min: 0.0
@@ -276,6 +303,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 115.0
     linkage: "Australia household credit, % GDP (BIS). Private-sector cash-flow burden input."
     sanity_min: 0.0
@@ -294,6 +324,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 62.0
     linkage: "Australia non-financial corporate credit, % GDP (BIS)."
     sanity_min: 0.0
@@ -366,6 +399,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 26.0
     linkage: "Australia general government revenue, % GDP (central basis)."
     sanity_min: 3.0
@@ -546,6 +582,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 34.0
     linkage: "Australia Gini ~34 — moderate; a resource-rich developed benchmark."
     sanity_min: 15.0

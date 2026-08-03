@@ -111,3 +111,20 @@ Work through this file's entries country-by-country rather than assuming US-pari
 - **`FDHBFIN` (foreign holdings) lags ~2 quarters by nature** (Treasury Bulletin). Live weekly complement added: `WMTSECL1` Fed custody holdings (official accounts only — subset, but real-time). A fuller monthly option is TIC MFH (treasury.gov tables, no clean API — would need a scraper; wishlist).
 - **WB annuals**: 2024 values are current as of mid-2026 (2025 lands late 2026); R&D intensity lags ~2 years everywhere (OECD MSTI same). Gini 2024 for the US is unusually fresh.
 - **Weekly FRED series** (H.8/H.4.1) legitimately show obs up to ~16-17 days old between releases — staleness window set to 18d.
+
+## 2026-08-02 non-US staleness pass — dead OECD mirrors (replacement candidates)
+
+The cadence-grounded `stale_after_days` sweep (152 overrides across 13 countries) deliberately does NOT cover these — they are **dead feeds** (verified at FRED: the OECD-mirror die-off continues) and keep their honest stale badge until replaced:
+
+| Signal | Mirror died | Bridge / status |
+| :-- | :-- | :-- |
+| `kr.growth.industrial_prod` (`KORPRINTO01IXOBM`) | 2024-03 | none — KR growth basket runs without IP; **KOSIS/ECOS is the replacement candidate** (registration) |
+| `au.inflation.cpi_headline` (quarterly mirror) | 2025-Q1 | IMF annual bridge carries the read; ABS API is the live candidate |
+| `ca.inflation.cpi_headline` | 2025-03 | IMF bridge; StatCan API is the live candidate |
+| `mx.inflation.cpi_headline` | 2024-07 | IMF bridge; INEGI API is the live candidate |
+| `cn/kr/in` CPI mirrors | 2025-03/04 | already documented — IMF annual bridges in place |
+| `gb.inflation.cpi_core` | 2025-03 | headline moved to live ONS 2026-07-10; core still on the dead mirror — extend the ONS fetcher |
+| `ez.volatility.equity_index` (`SPASTT01EZM661N`) + derived `realized_vol` | 2026-01 | no free FRED replacement found; EURO STOXX needs a non-FRED source (wishlist) |
+| `jp.fiscal.govt_revenue_gdp` | WB data ends 1993 | effectively no data — candidate for removal/unverify |
+
+**Fixed same-day:** `ez.policy.yield_10y` rebound from the dead OECD mirror to the live ECB Maastricht euro-area aggregate (`IRS/M.I9.L.L40.CI.0000.EUR.N.Z`, monthly) — which also revives derived `ez.policy.real_yield_10y` + `ez.policy.yield_spread`.

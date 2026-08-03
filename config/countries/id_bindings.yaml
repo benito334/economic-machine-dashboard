@@ -23,6 +23,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.05
     linkage: "Indonesia real GDP YoY (quarterly). The headline growth clock."
     sanity_min: -0.25
@@ -41,6 +44,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 1400.0
     linkage: "Indonesia nominal GDP in current USD billions (IMF). Cross-country size comparison."
     sanity_min: 50.0
@@ -96,6 +102,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Indonesia merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
     sanity_min: -0.5
@@ -114,6 +123,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Indonesia merchandise imports YoY (USD, SA). PROXY for domestic demand."
     sanity_min: -0.5
@@ -132,6 +144,11 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    # ANNUAL WB/ILO proxy (documented country quirk) — the blanket monthly
+    # rule mis-sized this; WB labor annuals lag ~1.5-2 years.
+    stale_after_days: 750
     equilibrium: 5.0
     linkage: "Indonesia unemployment rate (ILO modeled, annual). PROXY — no free monthly series."
     sanity_min: 1.0
@@ -150,6 +167,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 0.3
     linkage: "Indonesia R&D expenditure as % of GDP. Structural productivity input."
     sanity_min: 0.0
@@ -168,6 +188,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.0
     linkage: "Indonesia Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
     sanity_min: -0.1
@@ -222,6 +245,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 0.0
     linkage: "Indonesia FX reserves ex-gold YoY (IMF IFS). Drawdowns flag capital-flight / currency-defense pressure."
     sanity_min: -0.4
@@ -258,6 +284,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 40.0
     linkage: "Indonesia total private non-financial credit, % GDP (BIS). Core leverage read."
     sanity_min: 0.0
@@ -276,6 +305,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 15.0
     linkage: "Indonesia household credit, % GDP (BIS). Private-sector cash-flow burden input."
     sanity_min: 0.0
@@ -294,6 +326,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 25.0
     linkage: "Indonesia non-financial corporate credit, % GDP (BIS)."
     sanity_min: 0.0
@@ -547,6 +582,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 37.0
     linkage: "Indonesia Gini ~34-37 — moderate but rising with the commodity/urbanisation boom."
     sanity_min: 15.0

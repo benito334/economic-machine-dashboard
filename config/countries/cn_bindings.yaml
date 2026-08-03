@@ -49,6 +49,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.045
     linkage: "China real GDP growth (IMF WEO annual, %). Structural slowdown from 10%+ (2000s) toward ~4–5%; the pace of that descent is the defining global growth question."
     sanity_min: -0.15
@@ -67,6 +70,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 19000.0
     linkage: "China nominal GDP in current USD billions (IMF). World's second-largest economy; used for cross-country size comparison in the Global Overview table."
     sanity_min: 1000.0
@@ -134,6 +140,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.05
     linkage: "China merchandise exports YoY (USD, seasonally adjusted). The external-demand engine of the economy; the most-watched live monthly indicator now that OECD IP/retail feeds are dead."
     sanity_min: -0.50
@@ -152,6 +161,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.05
     linkage: "China merchandise imports YoY (USD, seasonally adjusted). PROXY for domestic demand — import weakness flags the property/consumption drag faster than any annual series."
     sanity_min: -0.50
@@ -170,6 +182,11 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    # ANNUAL WB/ILO proxy (documented country quirk) — the blanket monthly
+    # rule mis-sized this; WB labor annuals lag ~1.5-2 years.
+    stale_after_days: 750
     equilibrium: 4.5
     linkage: "China unemployment rate (ILO modeled estimate, annual). PROXY — the NBS monthly surveyed rate is not freely automatable; the ILO harmonized annual read smooths over the youth-unemployment stress visible in national data."
     sanity_min: 2.0
@@ -188,6 +205,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 2.5
     linkage: "R&D expenditure as % of GDP. China has converged to OECD-average intensity (2.6%) — the structural bet behind the tech-self-sufficiency drive."
     sanity_min: 0.0
@@ -206,6 +226,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.010
     linkage: "China Total Factor Productivity YoY% (Penn World Tables via FRED, annual through 2023). Whether TFP re-accelerates or stagnates decides if the middle-income transition succeeds."
     sanity_min: -0.10
@@ -229,6 +252,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 2.5
     linkage: "China 3-month interbank rate (SHIBOR-linked, %). The only free live market rate; PBoC easing since 2021 has taken it from ~2.5% to ~1.6% — the monetary response to the property deleveraging."
     sanity_min: 0.0
@@ -269,6 +295,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 0.0
     linkage: "China FX reserves ex-gold YoY (IMF IFS, ~$3.4T stock). Reserve drawdowns (2015-16 style) flag capital-flight pressure; accumulation flags intervention against appreciation."
     sanity_min: -0.40
@@ -307,6 +336,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 150.0
     linkage: "Total credit to the private non-financial sector, % GDP (BIS, break-adjusted). At ~200% China carries one of the largest private debt stocks ever recorded — the core input to Ray's leveraging-vs-squeeze question."
     sanity_min: 0.0
@@ -325,6 +357,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 45.0
     linkage: "Credit to households, % GDP (BIS). Tripled 2008→2021 on mortgages; the property deleveraging shows up here first."
     sanity_min: 0.0
@@ -343,6 +378,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 120.0
     linkage: "Credit to non-financial corporations, % GDP (BIS). At ~143% among the highest globally — SOE and LGFV leverage concentrated here."
     sanity_min: 0.0
@@ -417,6 +455,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 17.0
     linkage: "General government revenue % GDP (central-government basis). Low (~15%) vs OECD peers and FALLING as land-sale revenue collapses — the quiet fiscal constraint behind the stimulus debate."
     sanity_min: 5.0
@@ -630,6 +671,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 38.0
     linkage: "Gini index of income inequality — the internal-order read. China's 36 (2022) is down from the 43+ peak (2010) but 'common prosperity' remains politically central."
     sanity_min: 20.0

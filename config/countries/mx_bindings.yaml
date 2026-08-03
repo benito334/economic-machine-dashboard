@@ -23,6 +23,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.02
     linkage: "Mexico real GDP YoY (quarterly). The headline growth clock."
     sanity_min: -0.25
@@ -41,6 +44,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 1900.0
     linkage: "Mexico nominal GDP in current USD billions (IMF). Cross-country size comparison."
     sanity_min: 50.0
@@ -97,6 +103,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Mexico merchandise exports YoY (USD, SA). The commodity/trade-demand engine."
     sanity_min: -0.5
@@ -115,6 +124,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.06
     linkage: "Mexico merchandise imports YoY (USD, SA). PROXY for domestic demand."
     sanity_min: -0.5
@@ -133,6 +145,11 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    # ANNUAL WB/ILO proxy (documented country quirk) — the blanket monthly
+    # rule mis-sized this; WB labor annuals lag ~1.5-2 years.
+    stale_after_days: 750
     equilibrium: 5.0
     linkage: "Mexico unemployment rate (ILO modeled, annual). PROXY — no free monthly series."
     sanity_min: 1.0
@@ -151,6 +168,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 0.3
     linkage: "Mexico R&D expenditure as % of GDP. Structural productivity input."
     sanity_min: 0.0
@@ -169,6 +189,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.0
     linkage: "Mexico Total Factor Productivity YoY% (Penn World Tables, annual to 2023)."
     sanity_min: -0.1
@@ -187,6 +210,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 9.0
     linkage: "Mexico 10-year government bond yield (live). Banxico policy pass-through plus EM risk premium."
     sanity_min: 0.0
@@ -205,6 +231,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 7.0
     linkage: "Mexico 3-month interbank rate (TIIE-linked, live). Short end; pairs with the 10y for a slope read."
     sanity_min: 0.0
@@ -259,6 +288,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 40.0
     linkage: "Mexico total private non-financial credit, % GDP (BIS). Core leverage read."
     sanity_min: 0.0
@@ -277,6 +309,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 17.0
     linkage: "Mexico household credit, % GDP (BIS). Private-sector cash-flow burden input."
     sanity_min: 0.0
@@ -295,6 +330,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 21.0
     linkage: "Mexico non-financial corporate credit, % GDP (BIS)."
     sanity_min: 0.0
@@ -367,6 +405,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 19.0
     linkage: "Mexico general government revenue, % GDP (central basis)."
     sanity_min: 3.0
@@ -566,6 +607,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 43.0
     linkage: "Mexico Gini ~43 — high; the nearshoring boom sits atop deep regional inequality."
     sanity_min: 15.0

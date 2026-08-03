@@ -4,6 +4,22 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-08-02 (3) — Non-US staleness pass: 152 cadence-grounded overrides + EZ yield revival
+
+**The pass** (follow-up to the relocation audit): applied the US-style `stale_after_days` treatment to all 13 other countries, grounded in each source's observed publication cadence (inter-obs gaps measured from the DB, not guessed).
+
+**Overrides (152 across the country YAMLs):** BIS 3-sector credit 360d (FRED mirrors lag 2-3 quarters past the quarter-start stamp); OECD quarterly GDP mirrors 280d; monthly mirrors with 2-4mo lag (trade YoY 150d, IP 180d, retail 150d, unemployment 150d, FX reserves / CN interbank / IN+MX monthly yields 120d); slow structural annuals ≈1.5× their observed print gap (PWT TFP 1500d, WB R&D 1100d — AU/ID/IN 2200d for biennial/sparse reporters, gini 2200d, AU/IN govt revenue 1400d); EZ capacity survey 300d. Mid-pass correction: CN/ID/IN/MX unemployment are ANNUAL WB/ILO proxies (documented quirks) — blanket monthly rule mis-sized them, reset to 750d.
+
+**Real breaks found (not papered over):**
+- **`ez.policy.yield_10y` REBOUND** — the OECD FRED mirror (IRLTLT01EZM156N) died 2026-01 (die-off continues). Now the live **ECB Maastricht euro-area aggregate** (`IRS/M.I9.L.L40.CI.0000.EUR.N.Z`, monthly, 3.36% @ Jun-30) — also revives derived `real_yield_10y` + `yield_spread`.
+- **Root-owned raw_cache collision**: 18 parquets written by container-root blocked host-side refresh (PermissionError killed the whole binding for BCB/ONS/eStat/BPS fetchers — BR unemployment + GB IP/unemployment stuck stale). Deleted the root-owned files (refetched clean) and added the FRED-style PermissionError guard to ALL 8 unguarded cache-write sites in loader.py.
+
+**Dead mirrors documented in the wishlist (keep their honest stale badge until replaced):** AU/CA/CN/IN/KR/MX CPI mirrors (IMF bridges carry the read), GB+KR CPI core, `kr.growth.industrial_prod` (KOSIS/ECOS candidate), `ez.volatility.equity_index`+`realized_vol` (no free FRED replacement; EURO STOXX needs a non-FRED source), `jp.fiscal.govt_revenue_gdp` (WB ends 1993 — removal candidate).
+
+**End state: 13/480 stale** (was ~120) — the remaining 13 = exactly the documented-dead set + `us.fed.foreign_holdings` (genuine Treasury Bulletin lag). All countries 0-3 stale. Both images rebuilt; scheduler nightly confirmed enabled (next 2026-08-03 03:00). Suite **512 passed**.
+
+---
+
 ## 2026-08-02 (2) — Relocation audit: restored the feeds lost in the projects reorg
 
 **The report.** After the all_weather → finance folder move (commit b1c0e98), "a number of data feeds" appeared lost. Full system audit:

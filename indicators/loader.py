@@ -287,7 +287,12 @@ def fetch_wb_series(
             return df["value"]
         return None
 
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] WB %s/%s → %s (%d obs)", wb_code, series_id, cache.name, len(series))
     return series
 
@@ -410,7 +415,12 @@ def fetch_imf_series(
             return _completed_imf_years(df["value"])
         return None
 
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] IMF %s/%s → %s (%d obs)", country_iso2, indicator, cache.name, len(series))
     return series
 
@@ -544,7 +554,12 @@ def fetch_eurostat_series(
             return df["value"]
         return None
 
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] Eurostat %s → %s (%d obs)", dataset, cache.name, len(series))
     return series
 
@@ -645,7 +660,12 @@ def fetch_ecb_series(
             return df["value"]
         return None
 
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] ECB %s/%s → %s (%d obs)", flow, key, cache.name, len(series))
     return series
 
@@ -746,7 +766,12 @@ def fetch_ons_series(
             logger.warning("[cache fallback] Using stale cache for ONS %s/%s", cdid, dataset)
             return pd.read_parquet(cache)["value"]
         return None
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] ONS %s/%s (%d obs)", cdid, dataset, len(series))
     return series
 
@@ -811,7 +836,12 @@ def fetch_bcb_series(
             logger.warning("[cache fallback] Using stale cache for BCB %s", code)
             return pd.read_parquet(cache)["value"]
         return None
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] BCB %s (%d obs)", code, len(series))
     return series
 
@@ -900,7 +930,12 @@ def fetch_bps_series(
             logger.warning("[cache fallback] Using stale cache for BPS %s", var_id)
             return pd.read_parquet(cache)["value"]
         return None
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] BPS %s (%d obs)", var_id, len(series))
     return series
 
@@ -996,7 +1031,12 @@ def fetch_estat_series(
             logger.warning("[cache fallback] Using stale cache for e-Stat %s", series_id)
             return pd.read_parquet(cache)["value"]
         return None
-    series.to_frame().to_parquet(cache)
+    try:
+        series.to_frame().to_parquet(cache)
+    except PermissionError:
+        # Cache owned by another user (container-root vs host) — proceed
+        # with fetched data rather than failing the binding. 2026-08-02.
+        logger.warning("[cache write skipped] permission denied on %s", cache)
     logger.debug("[cached] e-Stat %s (%d obs)", series_id, len(series))
     return series
 

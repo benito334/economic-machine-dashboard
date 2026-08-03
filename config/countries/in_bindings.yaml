@@ -35,6 +35,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.065
     linkage: "India real GDP YoY (quarterly, NSA — YoY transform handles seasonality). The fastest-growing major economy; trend ~6.5–7%."
     sanity_min: -0.25
@@ -53,6 +56,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 4000.0
     linkage: "India nominal GDP in current USD billions (IMF). Now the world's ~4th-largest economy; used in the Global Overview size comparison."
     sanity_min: 200.0
@@ -114,6 +120,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.050
     linkage: "India industrial production YoY (GYSAM form, live → 2026-04). The strongest live monthly output read — the index form died 2024-03, the YoY form survives (the recurring OECD-feed pattern)."
     sanity_min: -0.40
@@ -132,6 +141,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.08
     linkage: "India merchandise exports YoY (USD, seasonally adjusted). Services exports (IT) are the bigger story but have no free monthly feed; goods exports still track global demand."
     sanity_min: -0.50
@@ -150,6 +162,9 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.08
     linkage: "India merchandise imports YoY (USD). PROXY for domestic demand — oil-import cost swings dominate short-run moves; read alongside exports."
     sanity_min: -0.50
@@ -168,6 +183,11 @@ bindings:
     vintage_available: false
     is_proxy: true
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    # ANNUAL WB/ILO proxy (documented country quirk) — the blanket monthly
+    # rule mis-sized this; WB labor annuals lag ~1.5-2 years.
+    stale_after_days: 750
     equilibrium: 5.0
     linkage: "India unemployment rate (ILO modeled, annual). PROXY — vast informal employment makes any Indian unemployment rate a rough read; CMIE's monthly survey has no free API."
     sanity_min: 2.0
@@ -186,6 +206,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 0.7
     linkage: "R&D expenditure as % of GDP. At 0.65% far below China (2.6%) or Korea (5%) — the structural gap in the India-as-next-China thesis. WB series lags badly (last 2020)."
     sanity_min: 0.0
@@ -204,6 +227,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1500
     equilibrium: 0.015
     linkage: "India Total Factor Productivity YoY% (Penn World Tables, annual through 2023). Sustained TFP growth is what separates the India boom from a pure demographics story."
     sanity_min: -0.10
@@ -224,6 +250,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 7.0
     linkage: "India 10-year government bond yield (live → 2026-05, from 2011). RBI policy pass-through plus fiscal-supply premium; India has a free yield where China has none."
     sanity_min: 3.0
@@ -264,6 +293,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 120
     equilibrium: 0.05
     linkage: "India FX reserves ex-gold YoY (IMF IFS, ~$570B stock). Drawdowns flag RBI defense of the rupee (2013 taper tantrum, 2022); the buffer is the external-stability anchor."
     sanity_min: -0.40
@@ -302,6 +334,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 90.0
     linkage: "Total credit to the private non-financial sector, % GDP (BIS). At ~102% modest by East-Asian standards — India's cycle is early-leveraging, credit-deepening is the growth channel."
     sanity_min: 0.0
@@ -320,6 +355,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 35.0
     linkage: "Credit to households, % GDP (BIS, from 2007). Rising fast off a low base — retail-credit boom is the newest leg of the Indian cycle."
     sanity_min: 0.0
@@ -338,6 +376,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 360
     equilibrium: 50.0
     linkage: "Credit to non-financial corporations, % GDP (BIS). Deleveraged after the 2010s twin-balance-sheet crisis; corporate balance sheets are the cleanest in a decade."
     sanity_min: 0.0
@@ -412,6 +453,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 10.0
     linkage: "General government revenue % GDP (central basis, ~9.4%). One of the lowest tax takes of any major economy — the structural constraint on Indian state capacity."
     sanity_min: 3.0
@@ -623,6 +667,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 30.0
     linkage: "Gini index (WB PIP, consumption-based for India — NOT directly comparable to income-based Ginis elsewhere; the 25.5 reading understates wealth concentration)."
     sanity_min: 15.0

@@ -39,6 +39,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.015
     linkage: "UK real GDP (SA, quarterly, 1955→). Post-2008 trend growth ~1.5%; Brexit-era supply constraints define the current baseline."
     sanity_min: -0.15
@@ -58,6 +61,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 3500.0
     linkage: "UK nominal GDP in current USD billions (IMF). Used for cross-country size comparison in the Global Overview table."
     sanity_min: 1000.0
@@ -141,6 +147,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 4.3
     linkage: "UK ILO monthly unemployment rate (%). Moves above 5% historically mark meaningful labor-market deterioration."
     sanity_min: 2.0
@@ -160,6 +169,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.020
     linkage: "UK retail sales volume index (ONS RSI, all retailers incl fuel, SA; j5ek/drsi), YoY. Live monthly household-demand tracker in a consumption-led economy."
     sanity_min: -0.25
@@ -179,6 +191,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.000
     linkage: "UK Index of Production, total B-E, chained-volume SA (ONS k222/diop), YoY. Live monthly. Manufacturing is a shrinking share of a services-dominated economy — a cyclical read, not the whole story."
     sanity_min: -0.30
@@ -198,6 +213,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 2.7
     linkage: "R&D expenditure as % of GDP. Mid-pack among advanced economies; the productivity-trend anchor for the UK."
     sanity_min: 0.0
@@ -313,6 +331,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 35.0
     linkage: "General government revenue as % of GDP. UK tax take is at a post-war high — limited headroom for revenue-led consolidation."
     sanity_min: 15.0
@@ -526,6 +547,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 33.0
     linkage: "Gini index of income inequality — the internal-order read: widening wealth gaps precede internal political stress and populist policy shifts."
     sanity_min: 20.0

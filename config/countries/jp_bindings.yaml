@@ -40,6 +40,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 0.008
     linkage: "Japan real GDP (SA, quarterly, 1994→). Trend growth ~0.5–1%: three decades of near-zero growth define the deleveraging-era baseline."
     sanity_min: -0.15
@@ -59,6 +62,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 280
     equilibrium: 4200.0
     linkage: "Japan nominal GDP in current USD billions (IMF). Used for cross-country size comparison in the Global Overview table."
     sanity_min: 1000.0
@@ -121,6 +127,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 2.7
     linkage: "Japan harmonised unemployment rate (%). Structurally very low (lifetime-employment legacy); moves above 3.5% signal genuine labor-market stress."
     sanity_min: 1.0
@@ -141,6 +150,9 @@ bindings:
     is_proxy: false
     verified: true
     raw_scale: 100
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 150
     equilibrium: 0.005
     linkage: "Japan retail trade volume YoY (OECD, already in % form on FRED). Household demand tracker in a consumption-cautious economy."
     sanity_min: -0.20
@@ -161,6 +173,9 @@ bindings:
     is_proxy: false
     verified: true
     raw_scale: 100
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 180
     equilibrium: 0.005
     linkage: "Japan industrial production YoY (OECD, already in % form on FRED). Export-machinery and autos dominate the cycle."
     sanity_min: -0.35
@@ -180,6 +195,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1100
     equilibrium: 3.3
     linkage: "R&D expenditure as % of GDP. Japan remains a top-tier R&D investor; the structural offset to shrinking labor input."
     sanity_min: 0.0
@@ -295,6 +313,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 1400
     equilibrium: 20.0
     linkage: "General government revenue as % of GDP. Consumption-tax increases are the recurring (and politically costly) revenue lever."
     sanity_min: 5.0
@@ -506,6 +527,9 @@ bindings:
     vintage_available: false
     is_proxy: false
     verified: true
+    # Source publishes slower than the generic frequency window — cadence-
+    # grounded staleness override (2026-08-02 non-US audit pass).
+    stale_after_days: 2200
     equilibrium: 33.0
     linkage: "Gini index of income inequality — the internal-order read: widening wealth gaps precede internal political stress and populist policy shifts."
     sanity_min: 20.0
