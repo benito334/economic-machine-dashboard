@@ -20,7 +20,7 @@ Full specification: [docs/project_plan.md](docs/project_plan.md)
 
 | Purpose | Path |
 | :--- | :--- |
-| Project root | `/mnt/data/projects/all_weather/indicators_machine/` |
+| Project root | `/mnt/data/projects/finance/indicators_machine/` |
 | Data / cache | `/mnt/data/project_data/finance/indicators_machine/` |
 | Database | `/mnt/data/db/finance/indicators_machine/` |
 | Main DB file | `/mnt/data/db/finance/indicators_machine/signals.duckdb` |

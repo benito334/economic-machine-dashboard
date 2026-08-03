@@ -61,8 +61,13 @@ def load_schedule() -> dict:
                 out["tz"] = str(data["tz"])
     except Exception:
         pass
+    # An EMPTY env value is "not configured", not "disabled" — docker-compose
+    # passes AUTO_IMPORT_ENABLED: "${AUTO_IMPORT_ENABLED:-}" through as "", which
+    # used to override schedule.json's enabled:true and silently kill the nightly
+    # import (found in the 2026-08-02 relocation audit). Only a non-empty value
+    # is an operator override.
     env_enabled = os.environ.get("AUTO_IMPORT_ENABLED")
-    if env_enabled is not None:
+    if env_enabled is not None and env_enabled.strip():
         out["enabled"] = env_enabled.strip().lower() in ("1", "true", "yes", "on")
     env_time = os.environ.get("AUTO_IMPORT_TIME", "").strip()
     if valid_time(env_time):

@@ -134,3 +134,22 @@ def test_charting_container_none_without_docker(cfg, monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "docker", None)  # force import fail
     assert scheduler._charting_container() is None
     assert scheduler._stop_charting() is False
+
+
+def test_empty_env_override_does_not_disable(monkeypatch, tmp_path):
+    """docker-compose passes AUTO_IMPORT_ENABLED:"" through — an EMPTY value must
+    NOT override schedule.json (it silently disabled the nightly import; found
+    in the 2026-08-02 relocation audit)."""
+    import json
+    from indicators import schedule_config as sc
+    monkeypatch.setattr(sc, "SCHEDULE_PATH", tmp_path / "schedule.json")
+    (tmp_path / "schedule.json").write_text(json.dumps(
+        {"enabled": True, "time": "03:00", "tz": "America/Chicago"}))
+    monkeypatch.setenv("AUTO_IMPORT_ENABLED", "")
+    monkeypatch.setenv("AUTO_IMPORT_TIME", "")
+    assert sc.load_schedule()["enabled"] is True
+    # explicit values still override in both directions
+    monkeypatch.setenv("AUTO_IMPORT_ENABLED", "0")
+    assert sc.load_schedule()["enabled"] is False
+    monkeypatch.setenv("AUTO_IMPORT_ENABLED", "1")
+    assert sc.load_schedule()["enabled"] is True

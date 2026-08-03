@@ -4,6 +4,23 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-08-02 (2) — Relocation audit: restored the feeds lost in the projects reorg
+
+**The report.** After the all_weather → finance folder move (commit b1c0e98), "a number of data feeds" appeared lost. Full system audit:
+
+**Found + fixed:**
+1. **`.env` still pointed at the deleted all_weather paths** (DATA_DIR/DB_PATH/RAW_CACHE_DIR/SNAPSHOTS_DIR) — the relocate commit updated code defaults + compose, but `.env` is uncommitted. Containers were unaffected (compose `environment:` overrides win in-container) but every HOST-side pipeline run resolved to nonexistent dirs. → repointed to finance.
+2. **Nightly auto-import silently disabled**: compose passes `AUTO_IMPORT_ENABLED: "${AUTO_IMPORT_ENABLED:-}"` → the container env var exists as `""` → `load_schedule` treated any set value as an operator override → parsed `""` as False → overrode schedule.json's `enabled: true`. → `schedule_config.py` now treats an EMPTY env value as not-configured (explicit 0/1 still override); regression test added. Scheduler now logs "auto-import enabled — daily at 03:00 (next 2026-08-03)".
+3. **The Aug-2 18:44 ingest ran with pre-relocation OLD code** — stale flags contradicted the existing overrides (productivity/JOLTS/R&D flagged inside their windows). Fresh run with current code corrected all flags.
+4. **11 more release-lag staleness overrides** (same period-start + publication-lag class as the Jul-18/31 fixes): 9 Z.1/BEA quarterlies (`gov_debt_gdp`, `corporate_debt(+_gdp)`, `household_debt(+_gdp)`, `debt_service_ratio`, `niip`, `current_account`, `govt_receipts_qtr`) at **260d** (Q1-start obs superseded ~254d later — generic 200d false-flagged them ~50 days/quarter), plus `fed.term_premium_10y` **14d** (ACM ~weekly) and `inflation.crude_oil` **10d** (EIA lag). 15 bindings now carry `stale_after_days`.
+5. CLAUDE.md project-root line updated to finance.
+
+**Verified intact (no data lost):** raw_cache (509 parquets, all readable), signals.duckdb (4.8G) + history.duckdb at the new locked paths, hypothesis_machine charter already on finance paths, zero all_weather references left in code/config.
+
+**End state:** pipeline clean (US 90 OK / 0 errors; exit-1 = the documented EZ current-account only); **US stale 15 → 1** (`fed.foreign_holdings`, the genuinely ~2-quarter-lagged Treasury Bulletin series); vintage capture appending at the new path (69 rows today); both images rebuilt; scheduler nightly restored; suite **512 passed**. Non-US stale counts are the pre-existing per-country annual/quarterly-lag baseline (BIS/WB/IMF cadences) — a candidate for the same per-binding override sweep later, not a relocation casualty.
+
+---
+
 ## 2026-08-01 — Fix: mass-blanked US growth/inflation signals (stale scheduler image + cache-TTL pinning)
 
 **The report.** Seven US monthly signals (IP, retail, real PCE, capacity util, JOLTS, core PCE, PPI) plus productivity/TFP/R&D showed BLANK on the force pages; the US composite had swung to G −0.78 and flipped the chips (the Jul-31 "clock change" notes were partly this artifact).
