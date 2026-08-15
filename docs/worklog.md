@@ -4,6 +4,20 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-08-15 — Command Center vs Regime Map "disagreement" — explained + fixed
+
+**The report.** Command Center showed US Growth as "Transition"; the Regime Map dot sat clearly inside the Expansion quadrant, well past the threshold line — looked like the two pages disagreed.
+
+**Root cause — not a data bug.** Both pages use the identical `_classify_regime()` call on the identical composite data (verified by reproducing the calculation directly: growth_score_48m = **+0.600**, dynamic gz threshold = **+0.200** → Z-condition passes). But the chip rule is dual-condition **Z beyond threshold AND momentum agreeing** (Field Guide: "Miss either → Transition, honesty not indecision") — and the MoM delta was **-0.000** (flat), failing the momentum leg. So "Transition" was the correct, honest chip. The Regime Map's dot position only encodes the Z-score half of that rule; it has no visual for momentum, so a Z-confirmed-but-momentum-flat month LOOKS like it should say "Growth" when read from the map alone — a real legibility gap, not a classification bug.
+
+**Fix:** the Regime Map page now carries the same regime-info-box summary card Regime History uses (reused by component id, same `update_regime_info` callback — no duplicated logic) showing the chip, Force Z-Scores, and Δ MoM Momentum together, directly above the scatter. The map and the chip now tell the same story in the same glance: "Growth +0.600 (past threshold) · Momentum -0.000 (flat) → Transition." Caught a real bug while wiring this up: the reused card has two Outputs (`regime-info-box`, `regime-date-display`) and Dash refuses a multi-Output callback update if ANY target is missing from the current page — I'd only added one id to the Map page, so the card rendered silently empty. Fixed by adding the second id (kept the pre-existing `scatter-date-display` as a hidden-but-valid target so its own callback still resolves).
+
+Also folds in the earlier same-day fix: Regime History's date display now prefixes the country name (`United States · Aug 2026 · current`) — a selector/store desync earlier in the session had rendered the EZ basket under a stale "US" impression with nothing on screen to reveal it; both the country-name label and a dropdown self-heal (syncs FROM the persisted store on load) ship together as the general fix for that class of confusion.
+
+Verified in-browser (console clean bar the pre-existing unrelated `rh-threshold-open` warning); suite **512 passed**.
+
+---
+
 ## 2026-08-02 (3) — Non-US staleness pass: 152 cadence-grounded overrides + EZ yield revival
 
 **The pass** (follow-up to the relocation audit): applied the US-style `stale_after_days` treatment to all 13 other countries, grounded in each source's observed publication cadence (inter-obs gaps measured from the DB, not guessed).
@@ -1846,3 +1860,36 @@ cycle, rates-vs-inflation, balance-sheet/liquidity, turning points, and — the
   **Fed % of net new issuance** — inline `_fed_net_issuance_share()` (ΔFed Tsy
   holdings ÷ Δmarketable debt, 1yr), card added to §5 monetization with a 30%
   red line. US signal count 80→81.
+
+## 2026-08-11 — Weekly feed audit + automated weekly public-deploy refresh
+
+**Weekly feed audit** (`scripts/weekly_feed_audit.py`, scheduled task
+`weekly-feed-audit`, Sundays 02:07): read-only DuckDB + `schedule_status.json`
+check, appends a dated report to `docs/audits/weekly_feed_audit.md`. First
+live run (2026-08-11): 13/14 countries OK, KR WARN at 12% stale
+(`kr.growth.industrial_prod`, `kr.inflation.cpi_core`,
+`kr.inflation.cpi_headline` — the known OECD-feed-dead CPI gap, bridged via
+IMF annual elsewhere but the live monthly slot itself reads stale), scheduler
+OK. Noted a script bug worth a follow-up: no same-day dedup guard, so a second
+run on the same date appends a duplicate section instead of overwriting.
+
+**Automated weekly public-deploy refresh** (user request): the public demo
+lives on **Google Cloud Run**
+(`https://economic-machine-dashboard-987443237004.us-south1.run.app`), deployed
+via the Cloud Build "Connect repository" console flow (Option A in
+`deploy/cloudrun/DEPLOY-cloudrun.md`) — confirmed live-tested this session,
+NOT assumed: pushing a commit to `main` triggers an automatic rebuild+redeploy
+within ~3-4 min. New `scripts/refresh_public_deploy.py` chains the existing
+`build_public_bundle.py` compaction with `gh release upload data-latest
+--clobber` (replaces the public GitHub Release asset the Cloud Run Dockerfile
+fetches at build time) and a marker-file (`deploy/cloudrun/.last_refresh`)
+commit+push to `main` — since the Dockerfile also `git clone`s `main` fresh on
+every build, one push refreshes both the deployed data AND any merged code
+changes. Live-verified end-to-end: ran it once, live site's "data through"
+banner (`_static_banner()` in `charting.py`, visible via `/_dash-layout` JSON
+since Dash server-renders an empty shell) flipped Jul→Aug 2026 at the ~210s
+mark. Scheduled task `weekly-public-deploy-refresh` created (Sundays 04:01,
+after the 03:00 daily auto-import) to run this automatically; it deliberately
+pushes to the public repo's main branch every run — already authorized by the
+user, task prompt says not to re-ask. `gh` CLI is pre-authenticated in this
+environment with repo+release write access — no new secrets needed.

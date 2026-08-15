@@ -1071,9 +1071,29 @@ def _page_regime_map() -> html.Div:
                     dbc.Button("Next →", id={"type": "regime-step-button", "action": "next"},
                                color="secondary", size="sm", outline=True, title="Next data point"),
                 ], className="me-3"),
-                html.Span(id="scatter-date-display", className="text-muted small align-middle"),
+                # Hidden but present — still a valid Output target for
+                # update_scatter_date; the richer regime-date-display (below,
+                # shared with Regime History) carries the visible date+country.
+                html.Span(id="scatter-date-display",
+                         className="text-muted small align-middle d-none"),
+                html.Span(id="regime-date-display",
+                         className="text-muted small align-middle"),
             ], className="d-flex align-items-center pt-2 pb-1"),
         ]),
+        # Regime chips + Z-score/momentum breakdown — the SAME component (and
+        # the same update_regime_info callback) as Regime History, reused here
+        # by id. Without this the map showed only the dot's Z-score POSITION
+        # against the threshold lines, with no visual sign that the chip also
+        # requires momentum to agree — a Z clearly past the line with flat
+        # momentum reads as "obviously Growth" on the map while the chip
+        # (correctly) says Transition. Found 2026-08-15: reported as a US
+        # growth-chip disagreement between Command Center and this page.
+        dbc.Row([
+            dbc.Col(
+                dbc.Card(dbc.CardBody(html.Div(id="regime-info-box"), style={"padding": "14px 16px"})),
+                width=12,
+            ),
+        ], className="mb-2"),
         dcc.Graph(id="scatter-chart",
                   responsive=True,
                   config={"displayModeBar": True, "scrollZoom": True},
@@ -1872,6 +1892,26 @@ def update_country_flag(value: str):
 )
 def update_country(value: str) -> str:
     return str(value) if value else "US"
+
+
+# On load, sync the dropdown FROM the persisted store. Without this the store
+# rehydrates from localStorage (e.g. "GB") while the dropdown renders its
+# hardcoded "US" default — every page then shows GB data under a United States
+# label (found 2026-08-03: the cloud Regime History appeared to have "lost" US
+# feeds; it was showing the UK basket). One-directional: store is State here,
+# so no dependency cycle with update_country above.
+app.clientside_callback(
+    """
+    function(_trig, stored, current) {
+        if (stored && current !== stored) { return stored; }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("country-selector", "value"),
+    Input("page-trigger", "data"),
+    State("country-store", "data"),
+    State("country-selector", "value"),
+)
 
 
 # ── Keyboard navigation (arrow keys on Regime History page) ──────────────────
@@ -3322,9 +3362,17 @@ def update_regime_info(
     )
 
     date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
+    # Country is spelled out in the strip — this page had NO country label, so a
+    # selector/store desync (or a mis-click on the adjacent dropdown entry)
+    # rendered another country's basket with nothing on screen to reveal it
+    # (2026-08-03: "missing US feeds" was the GB, then EZ, basket).
+    _cname = {"US": "United States", "EZ": "Euro Area", "GB": "United Kingdom",
+              "JP": "Japan", "KR": "South Korea", "CN": "China", "IN": "India",
+              "DE": "Germany", "LU": "Luxembourg", "BR": "Brazil", "CA": "Canada",
+              "AU": "Australia", "MX": "Mexico", "ID": "Indonesia"}.get(country, country)
     date_display = (
-        f"{date_str} · current" if is_current
-        else f"{date_str} · {step} month{'s' if step != 1 else ''} ago"
+        f"{_cname} · {date_str} · current" if is_current
+        else f"{_cname} · {date_str} · {step} month{'s' if step != 1 else ''} ago"
     )
 
     # ── Stored MoM delta (always computed from stored composite scores) ────────
