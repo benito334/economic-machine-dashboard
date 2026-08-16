@@ -634,7 +634,9 @@ def test_yield_curve_chart_callback():
 # ── L4: Stale-lag badges in Regime History component table ───────────────────
 
 class TestRegimeInfoStaleBadge:
-    """L4: STALE badge should show fill-months count when stale_dict provides it."""
+    """L4: only two badges — ACTIVE and STALE. STALE fires strictly off is_stale
+    (past the expected update window); carry-forward age from stale_dict is
+    informational "(#m)" text next to the decay %, shown under either badge."""
 
     def _make_comp_df(self, signal_ids, is_stale=False):
         import pandas as pd
@@ -667,7 +669,8 @@ class TestRegimeInfoStaleBadge:
         stale_dict = {"us.growth.payrolls": 2}
         children = _regime_info_children(row, False, comp_df, stale_dict)
         all_texts = _collect_texts(children)
-        assert any("DECAYED · 2m" in t for t in all_texts), f"Expected decay badge in {all_texts}"
+        assert any("STALE" in t for t in all_texts), f"Expected STALE badge in {all_texts}"
+        assert any("(2m)" in t for t in all_texts), f"Expected carry-months detail in {all_texts}"
 
     def test_stale_badge_plain_when_not_in_dict(self):
         from dashboard.charting import _regime_info_children
@@ -679,9 +682,13 @@ class TestRegimeInfoStaleBadge:
         }
         children = _regime_info_children(row, False, comp_df, {})
         all_texts = _collect_texts(children)
-        assert any("DECAYED · 0m" in t for t in all_texts)
+        assert any("STALE" in t for t in all_texts)
 
-    def test_forward_filled_signal_uses_stale_dict_even_if_source_is_fresh(self):
+    def test_forward_filled_signal_within_window_reads_active_not_stale(self):
+        """A signal that is NOT past its expected update window (is_stale=False)
+        but is carried forward a few months (e.g. a quarterly release still
+        inside its grace period) must badge ACTIVE, not STALE — the carry
+        age is shown only as informational "(#m)" text, never as an alarm."""
         from dashboard.charting import _regime_info_children
         comp_df = self._make_comp_df(["us.growth.payrolls"], is_stale=False)
         row = {
@@ -692,8 +699,9 @@ class TestRegimeInfoStaleBadge:
         stale_dict = {"us.growth.payrolls": 3}
         children = _regime_info_children(row, False, comp_df, stale_dict)
         all_texts = _collect_texts(children)
-        assert any("DECAYED · 3m" in t for t in all_texts)
-        assert not any("ACTIVE" in t for t in all_texts)
+        assert any("ACTIVE" in t for t in all_texts)
+        assert any("(3m)" in t for t in all_texts), f"Expected carry-months detail in {all_texts}"
+        assert not any("STALE" in t for t in all_texts)
 
     @pytest.mark.integration
     def test_composite_history_includes_stale_signals_column(self):

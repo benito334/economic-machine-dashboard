@@ -3018,21 +3018,24 @@ def _regime_info_children(
                                              "fontSize": "0.72rem", "fontFamily": "monospace"}),
                         ])
 
-                # Status cell
+                # Status cell — only two badges: ACTIVE (fresh, or carried
+                # forward within its expected release window) and STALE
+                # (genuinely past that window, per is_stale / stale_after_days).
+                # Carry age/decay is informational and shown as "(#m)" next to
+                # the decay % regardless of badge — it used to only surface
+                # under the old "DECAYED" badge, hiding it on in-window carries.
                 fill_months = max(_stale_months.get(sig_id, 0), audit_age)
-                # Composite carry age is point-in-time metadata.  It must drive
-                # the badge even when the source observation's ingestion-time
-                # is_stale flag is false (the usual case for forward fills).
-                if not z_missing and (is_stale or fill_months > 0):
+                decay_detail = f" · time {decay_fraction:.0%} ({fill_months}m)" if fill_months > 0 else ""
+                if not z_missing and is_stale:
                     status = html.Span([
                         html.Span(
-                            f"DECAYED · {fill_months}m",
+                            "STALE",
                             style={"background": "#7a4a00", "color": "#ffcc80",
                                    "padding": "1px 5px", "borderRadius": "3px",
                                    "fontSize": "0.70rem"},
                         ),
                         html.Span(
-                            f" · time {decay_fraction:.0%} · momentum {momentum_mult:.1f}×",
+                            f"{decay_detail} · momentum {momentum_mult:.1f}×",
                             style={"color": "var(--muted-color)", "fontSize": "0.72rem"},
                         ),
                     ])
@@ -3064,14 +3067,14 @@ def _regime_info_children(
                                    "fontSize": "0.70rem"},
                         ),
                         html.Span(
-                            detail,
+                            decay_detail + detail,
                             style={"color": "var(--muted-color)", "fontSize": "0.72rem"},
                         ),
                     ])
 
                 row_bg = (
                     "rgba(60,20,20,0.12)"
-                    if z_missing or is_stale or fill_months > 0 or low_hist
+                    if z_missing or is_stale or low_hist
                     else "transparent"
                 )
                 rows.append(html.Tr(

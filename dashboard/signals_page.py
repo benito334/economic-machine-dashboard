@@ -191,13 +191,20 @@ def _status_cell(
     momentum_mult: float = 1.0,
     decay_fraction: float = 1.0,
 ) -> html.Td:
-    if not z_missing and (is_stale or fill_months > 0):
+    # Only two badges: ACTIVE (fresh, or carried forward within its expected
+    # release window) and STALE (genuinely past that window — the is_stale
+    # flag, which already honors per-signal stale_after_days overrides).
+    # Carry age/decay is informational, shown as "(#m)" next to the decay %
+    # in the detail text regardless of which badge applies — it used to only
+    # appear when the badge fired "DECAYED", hiding it on in-window carries.
+    decay_detail = f" · time {decay_fraction:.0%} ({fill_months}m)" if fill_months > 0 else ""
+    if not z_missing and is_stale:
         content = html.Span([
-            html.Span(f"DECAYED · {fill_months}m", style={
+            html.Span("STALE", style={
                 "background": "#7a4a00", "color": "#ffcc80",
                 "padding": "1px 5px", "borderRadius": "3px", "fontSize": "0.70rem",
             }),
-            html.Span(f" · time {decay_fraction:.0%} · momentum {momentum_mult:.1f}×",
+            html.Span(f"{decay_detail} · momentum {momentum_mult:.1f}×",
                       style={"color": "var(--muted-color)", "fontSize": "0.72rem"}),
         ])
     elif low_history:
@@ -222,7 +229,7 @@ def _status_cell(
                 "background": "#1a3a1a", "color": "#88cc88",
                 "padding": "1px 5px", "borderRadius": "3px", "fontSize": "0.70rem",
             }),
-            html.Span(detail, style={"color": "var(--muted-color)", "fontSize": "0.72rem"}),
+            html.Span(decay_detail + detail, style={"color": "var(--muted-color)", "fontSize": "0.72rem"}),
         ])
     return html.Td(content, style=_TD)
 
@@ -273,7 +280,7 @@ def _composite_rows(
         fill_months  = max(age_months, int(is_stale))
         row_bg       = (
             "rgba(60,20,20,0.12)"
-            if z_missing or is_stale or fill_months > 0 or low_hist
+            if z_missing or is_stale or low_hist
             else "transparent"
         )
         # invert flag: signal's "positive" direction is falling, not rising

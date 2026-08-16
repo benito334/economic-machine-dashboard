@@ -4,6 +4,20 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-08-16 — Force Component status badges: STALE vs in-window carry, no longer conflated
+
+**The report.** User asked why Growth Forces on Regime History showed everything "decayed," and whether that meant a signal was genuinely past its expected update window or just aging normally within one (e.g. a quarterly series a month or two after release). Asked for a way to make that distinction visible.
+
+**Root cause.** The badge (`_status_cell()` in `dashboard/signals_page.py`, duplicated in the Regime History/Map info-card builder in `dashboard/charting.py`) fired its orange "DECAYED" label off `is_stale OR fill_months > 0` — i.e. off *any* carry-forward age at all, including a signal sitting at 100% weight, perfectly on schedule, inside its configured `release_grace_months` (`config/composites_policy.yaml`: M=1mo, Q=4mo, A=14mo grace before the composite engine's `decay_fraction` even starts falling). Growth Forces is dominated by quarterly/annual series, so nearly everything showed *some* fill age and got the same alarming badge as a signal genuinely months overdue. The `· time NN%` sub-text was the only thing distinguishing them, and it wasn't tied to the badge at all. The Debt Stress page already got this right (`lag_q` = excess beyond the expected gap, only badges "STALE" when truly overdue) — used as the reference pattern.
+
+**Fix.** Collapsed to exactly two badges, both in `signals_page.py::_status_cell()` and its `charting.py` duplicate (LOW HISTORY / BLANK unchanged, they're unrelated states):
+- **ACTIVE** (green) — fresh, or carried forward but still inside its expected release window.
+- **STALE** (orange) — `is_stale` is true: genuinely past the per-signal cadence threshold (honors the `stale_after_days` overrides from the earlier US/non-US staleness passes).
+
+Carry age is no longer badge-gated — whenever `fill_months > 0`, both badges now show `· time NN% (Nm)` in the detail text (the `(Nm)` is new), so a viewer can see *how much* carry contributed to any weight reduction regardless of whether it crossed into STALE. Row background tinting also dropped `fill_months > 0` from its alarm condition (only `is_stale`/`z_missing`/`low_history` redden a row now). Verified live: US `Tfp` (19m carry, 75% weight) and `Rnd Intensity` (32m carry, 35% weight) — the two signals from the original blanking bug — now correctly read `ACTIVE · time 75% (19m)` / `ACTIVE · CONFLICT · time 35% (32m)` instead of the old alarming `DECAYED` badge.
+
+3 tests in `TestRegimeInfoStaleBadge` (`tests/test_charting.py`) rewritten for the new two-badge contract, incl. one that explicitly locks in "in-window carry ≠ STALE." Full suite **512 passed**. Rebuilt `charting` only (dashboard-only change, no `indicators/`/`config/`/`store/` touched — scheduler unaffected).
+
 ## 2026-08-15 — Command Center vs Regime Map "disagreement" — explained + fixed
 
 **The report.** Command Center showed US Growth as "Transition"; the Regime Map dot sat clearly inside the Expansion quadrant, well past the threshold line — looked like the two pages disagreed.
