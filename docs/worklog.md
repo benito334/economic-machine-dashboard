@@ -4,6 +4,20 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-08-16 (2) — Data Feed Monitor: two compounding bugs behind "89/90 OK but nothing shows OK"
+
+**The report.** User: the top summary says "89/90 OK" for US, but almost every row shows a "release overdue" badge and none show "✓ OK" — asked for an audit.
+
+**Bug A — the `+Nd overdue` badge used its own hardcoded, override-blind staleness math.** `dashboard/data_dashboard.py::_badges()` recomputed "overdue" from a flat `_NEXT_DAYS` table (D:2,W:10,M:45,Q:120,A:400 + 15d grace) instead of the real `is_stale` flag (which honors per-signal `stale_after_days` overrides from earlier audits this session). Empirically: **32/90 signals tripped "+Nd overdue"; only 1 was real** (31 false positives) — dominated by the Z.1/BEA quarterlies (`credit.household_debt`, `external.niip`, etc.) given a deliberate `stale_after_days: 260` override earlier this session because their true lag is ~250 days, while this table's generic 135-day quarterly buffer flagged them "+107d overdue" regardless.
+
+**Bug B — informational metadata blocked the OK badge.** `_badges()` treated `vintage_available=false` / `is_proxy` / `is_constructed` as badge-worthy, so the "✓ OK" fallback only fired if *zero* badges of any kind applied. **79/90 US signals (88%) carried `vintage_available: false`**, including **63 plain FRED series** — so **88/90 rows carried some badge**, crowding out OK almost entirely, even though only 1 signal had an actual freshness problem.
+
+**Fix — same principle as the Regime History badge fix earlier today: separate alarms from metadata.** `_badges()` now badges only `is_stale`/`low_history` as alarms (OK is the default otherwise); `PROXY`/`DERIVED`/`NO VINTAGE` render as non-blocking tags alongside OK. The `+Nd` detail is now computed from each signal's real threshold (`stale_after_days` override, else the same generic per-frequency default as `indicators/normalize.py::_STALE_THRESHOLDS`) and only ever shown as an annex inside the STALE badge — there is no longer a second, independent "overdue" trigger that can disagree with `is_stale`. New `tests/test_data_dashboard.py` (10 tests) locks in both the false-positive fix and the metadata/OK decoupling.
+
+**`vintage_available` gap — investigated, confirmed as a real bug, fixed.** CLAUDE.md rule 8 says vintage_available should be true for US-via-FRED series, but only 2/98 US bindings had it set. Rather than flip categorically, ran an empirical ALFRED-availability check (`fetch_alfred_vintages()`, already built for Phase G3) against all 63 FRED-provider non-constructed bindings: **43 have genuine, retrievable ALFRED vintage history** (confirmed by successful non-empty fetch — 15 were already cached from G3, 28 fetched fresh this session) and **20 do not** (`HTTP 400` — all daily unrevised market/policy-rate series: Treasury yields, Fed funds, VIX, SP500, breakevens, credit spreads — ALFRED has no meaningful revision history for data that's published once and never restated). Flipped the 43 confirmed bindings to `vintage_available: true` in `config/us_bindings.yaml` (targeted text edit, comments/formatting preserved) and backfilled the same 43 signal IDs' existing DB rows (38,637 rows) via a direct `UPDATE` — equivalent to what a full pipeline re-run would produce for this metadata-only field, without an unnecessary live-API re-pull. The 20 daily market series correctly keep `vintage_available: false` — not a gap, a real data-availability limit.
+
+Full suite **522 passed** (10 new). Rebuilt `charting` only.
+
 ## 2026-08-16 — Force Component status badges: STALE vs in-window carry, no longer conflated
 
 **The report.** User asked why Growth Forces on Regime History showed everything "decayed," and whether that meant a signal was genuinely past its expected update window or just aging normally within one (e.g. a quarterly series a month or two after release). Asked for a way to make that distinction visible.

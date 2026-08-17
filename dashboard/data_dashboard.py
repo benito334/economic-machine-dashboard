@@ -143,6 +143,17 @@ _NEXT_DAYS: dict[str, int] = {
     "D": 2, "W": 10, "M": 45, "Q": 120, "A": 400,
 }
 
+# Generic per-frequency staleness window — mirrors indicators/normalize.py's
+# _STALE_THRESHOLDS exactly (2026-08-16 fix: this table used to be its own,
+# much tighter, disconnected heuristic — flagging "release overdue" on ~1/3
+# of US signals that the pipeline's own is_stale flag correctly read as fine,
+# because it never knew about per-binding stale_after_days overrides). Used
+# only to annotate STALE badges with a day count, never to trigger them —
+# is_stale (the DB flag) is the single source of truth for "past its window."
+_STALE_DEFAULT_DAYS: dict[str, int] = {
+    "D": 5, "W": 18, "M": 90, "Q": 200, "A": 600,
+}
+
 
 # ── Pipeline refresh state ─────────────────────────────────────────────────────
 
@@ -350,6 +361,7 @@ def _load_binding_meta(country: str = "US") -> dict[str, dict]:
         f"{prefix}.{b['id']}": {
             "frequency": b.get("frequency", "?"),
             "source_tier": b.get("source_tier", "free"),
+            "stale_after_days": b.get("stale_after_days"),
         }
         for b in cfg.get("bindings", [])
     }
@@ -427,23 +439,38 @@ def _days_ago(as_of: str) -> str:
 
 # ── Badges ────────────────────────────────────────────────────────────────────
 
-def _badges(row: pd.Series, next_rel: str, freq: str) -> list[html.Span]:
-    today = pd.Timestamp.today()
+def _overdue_days(as_of: str, freq: str, stale_after_days) -> "int | None":
+    """Days past this signal's real staleness threshold (mirrors
+    indicators/normalize.py::_is_stale exactly: override_days if the binding
+    has one, else the generic per-frequency default). None if unknown."""
+    try:
+        threshold_days = int(stale_after_days) if stale_after_days else _STALE_DEFAULT_DAYS.get(freq)
+        if threshold_days is None:
+            return None
+        return (pd.Timestamp.today() - pd.Timestamp(as_of)).days - threshold_days
+    except Exception:
+        return None
+
+
+def _badges(row: pd.Series, as_of: str, freq: str, stale_after_days) -> list[html.Span]:
+    # Only two conditions are genuine data-quality alarms — is_stale (past
+    # the signal's real expected update window, honoring stale_after_days
+    # overrides) and low_history. Everything else (PROXY/DERIVED/NO VINTAGE)
+    # is informational metadata and must never suppress the OK badge — it
+    # used to (2026-08-16 fix), which meant "✓ OK" almost never appeared even
+    # when nothing was actually wrong (88/90 US signals carried some badge).
     badges: list[html.Span] = []
 
     if row["is_stale"]:
-        badges.append(html.Span("STALE", className="dd-badge dd-badge-stale"))
-    elif next_rel not in ("—", "") and freq not in ("D", "W"):
-        try:
-            rel_dt = pd.Timestamp(next_rel + "-01" if len(next_rel) == 7 else next_rel)
-            overdue = (today - rel_dt).days
-            if overdue > 15:
-                badges.append(html.Span(f"+{overdue}d", className="dd-badge dd-badge-due"))
-        except Exception:
-            pass
-
+        overdue = _overdue_days(as_of, freq, stale_after_days)
+        detail = f" +{overdue}d" if overdue is not None and overdue > 0 else ""
+        badges.append(html.Span(f"STALE{detail}", className="dd-badge dd-badge-stale"))
     if row["low_history"]:
         badges.append(html.Span("LOW HIST", className="dd-badge dd-badge-info"))
+
+    if not badges:
+        badges.append(html.Span("✓ OK", className="dd-badge dd-badge-ok"))
+
     if row["is_proxy"]:
         badges.append(html.Span("PROXY", className="dd-badge dd-badge-muted"))
     if row["is_constructed"]:
@@ -451,8 +478,6 @@ def _badges(row: pd.Series, next_rel: str, freq: str) -> list[html.Span]:
     if not row["vintage_available"] and not row["is_constructed"]:
         badges.append(html.Span("NO VINTAGE", className="dd-badge dd-badge-muted"))
 
-    if not badges:
-        badges.append(html.Span("✓ OK", className="dd-badge dd-badge-ok"))
     return badges
 
 
@@ -460,24 +485,17 @@ def _has_issue(row: pd.Series) -> bool:
     return bool(row["is_stale"] or row["low_history"])
 
 
-def _status_sort_key(row: pd.Series, freq: str, next_rel: str) -> int:
+def _status_sort_key(row: pd.Series) -> int:
     """Lower = more severe (sorts issues to top on ascending)."""
     if row["is_stale"]:
         return 0
-    if next_rel not in ("—", "") and freq not in ("D", "W"):
-        try:
-            rel_dt = pd.Timestamp(next_rel + "-01" if len(next_rel) == 7 else next_rel)
-            if (pd.Timestamp.today() - rel_dt).days > 15:
-                return 1   # overdue but not yet pipeline-flagged
-        except Exception:
-            pass
     if row["low_history"]:
-        return 2
+        return 1
     if row["is_proxy"]:
-        return 3
+        return 2
     if row["is_constructed"]:
-        return 4
-    return 5   # OK
+        return 3
+    return 4   # OK
 
 
 # ── Table building ────────────────────────────────────────────────────────────
@@ -504,7 +522,7 @@ def _signal_row(row: pd.Series, sig_meta: dict) -> html.Tr:
     next_rel = _next_release(str(row["as_of"]), freq)
     val_str = _fmt_val(float(row["value"]), str(row["units"]))
     ago = _days_ago(str(row["as_of"]))
-    badges = _badges(row, next_rel, freq)
+    badges = _badges(row, str(row["as_of"]), freq, sig_meta.get("stale_after_days"))
     issue = _has_issue(row)
 
     return html.Tr([
@@ -585,14 +603,7 @@ def _build_tbody(df: pd.DataFrame, meta: dict, sort_state: dict) -> list:
         df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
     elif sort_col == "status":
         df = df.copy()
-        df["_sk"] = df.apply(
-            lambda r: _status_sort_key(
-                r,
-                meta.get(r["id"], {}).get("frequency", "?"),
-                _next_release(str(r["as_of"]), meta.get(r["id"], {}).get("frequency", "?")),
-            ),
-            axis=1,
-        )
+        df["_sk"] = df.apply(_status_sort_key, axis=1)
         df = df.sort_values("_sk", ascending=asc).drop(columns=["_sk"])
 
     rows: list = []
@@ -699,15 +710,13 @@ def get_layout() -> html.Div:
 
     legend = html.Div([
         html.Span("✓ OK", className="dd-badge dd-badge-ok"),
-        html.Span(" feed current  ", className="dd-legend-sep"),
-        html.Span("STALE", className="dd-badge dd-badge-stale"),
-        html.Span(" past window  ", className="dd-legend-sep"),
-        html.Span("+Nd", className="dd-badge dd-badge-due"),
-        html.Span(" release overdue  ", className="dd-legend-sep"),
+        html.Span(" feed current — always shown unless a real alarm below fires  ", className="dd-legend-sep"),
+        html.Span("STALE +Nd", className="dd-badge dd-badge-stale"),
+        html.Span(" past its expected update window, Nd = days overdue  ", className="dd-legend-sep"),
         html.Span("LOW HIST", className="dd-badge dd-badge-info"),
         html.Span(" short history  ", className="dd-legend-sep"),
-        html.Span("DERIVED", className="dd-badge dd-badge-muted"),
-        html.Span(" computed from other feeds", className="dd-legend-sep"),
+        html.Span("PROXY / DERIVED / NO VINTAGE", className="dd-badge dd-badge-muted"),
+        html.Span(" informational metadata — not a freshness problem, shown alongside OK", className="dd-legend-sep"),
     ], className="dd-legend", style={"marginTop": "12px"})
 
     return html.Div([

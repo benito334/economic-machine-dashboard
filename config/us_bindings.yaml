@@ -22,7 +22,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.050
@@ -39,7 +39,7 @@ bindings:
     transformation: level
     units: billions_usd
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 20000.0
@@ -56,7 +56,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.025
@@ -73,7 +73,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.020
@@ -126,7 +126,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.015
@@ -143,7 +143,7 @@ bindings:
     transformation: level
     units: pct_level
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 4.0
@@ -160,7 +160,7 @@ bindings:
     transformation: level
     units: thousands
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # JOLTS publishes ~5-6 weeks after the month — a month-start-stamped obs is
@@ -181,7 +181,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.015
@@ -198,7 +198,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.035
@@ -215,7 +215,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.025
@@ -232,7 +232,7 @@ bindings:
     transformation: level
     units: pct_level
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 80.0
@@ -249,7 +249,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # BLS productivity for quarter Q publishes ~5 weeks after Q ends — a
@@ -270,7 +270,7 @@ bindings:
     transformation: level
     units: diffusion_index
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: true
     verified: true
     equilibrium: 0.0
@@ -288,7 +288,7 @@ bindings:
     transformation: level
     units: pct_level
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 63.0
@@ -307,7 +307,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.020
@@ -324,7 +324,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.020
@@ -341,7 +341,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.020
@@ -358,7 +358,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.035
@@ -425,7 +425,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # EIA WTI spot posts with a several-day lag — daily window (5d) flickers. 2026-08-02 audit.
@@ -565,7 +565,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.0
@@ -601,7 +601,7 @@ bindings:
     transformation: level
     units: pct_level
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # Z.1/BEA quarterly: obs stamped at quarter START; the successor print
@@ -622,7 +622,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.05
@@ -639,7 +639,7 @@ bindings:
     transformation: level
     units: net_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.0
@@ -656,7 +656,7 @@ bindings:
     transformation: level
     units: net_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.0
@@ -673,7 +673,7 @@ bindings:
     transformation: level
     units: pct_level
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # Z.1/BEA quarterly: obs stamped at quarter START; the successor print
@@ -747,7 +747,7 @@ bindings:
     transformation: spread
     units: pct_level
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 4.5
@@ -845,7 +845,7 @@ bindings:
     transformation: level
     units: millions_usd
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # Z.1/BEA quarterly: obs stamped at quarter START; the successor print
@@ -917,7 +917,7 @@ bindings:
     transformation: level
     units: millions_usd
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # Z.1/BEA quarterly: obs stamped at quarter START; the successor print
@@ -957,7 +957,7 @@ bindings:
     transformation: level
     units: index_2020eq100
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 100.0
@@ -1185,7 +1185,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.015
@@ -1207,7 +1207,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.020
@@ -1227,7 +1227,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # Z.1/BEA quarterly: obs stamped at quarter START; the successor print
@@ -1272,7 +1272,7 @@ bindings:
     transformation: yoy_pct
     units: yoy_pct
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # Z.1/BEA quarterly: obs stamped at quarter START; the successor print
@@ -1322,7 +1322,7 @@ bindings:
     transformation: level
     units: millions_usd
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 0.0
@@ -1356,7 +1356,7 @@ bindings:
     transformation: level
     units: millions_usd
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 300000.0
@@ -1564,7 +1564,7 @@ bindings:
     units: usd_millions
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: null
@@ -1615,7 +1615,7 @@ bindings:
     units: usd_millions
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: null
@@ -1632,7 +1632,7 @@ bindings:
     units: usd_millions
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: null
@@ -1649,7 +1649,7 @@ bindings:
     units: usd_millions
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: null
@@ -1666,7 +1666,7 @@ bindings:
     units: usd_millions
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: null
@@ -1687,7 +1687,7 @@ bindings:
     units: usd_millions
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: true
     verified: true
     equilibrium: null
@@ -1704,7 +1704,7 @@ bindings:
     units: pct_level
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     # ACM series updates ~weekly with lag — daily window (5d) flickers. 2026-08-02 audit.
@@ -1830,7 +1830,7 @@ bindings:
     units: pct_level
     country: US
     source_tier: free
-    vintage_available: false
+    vintage_available: true
     is_proxy: false
     verified: true
     equilibrium: 2.0
