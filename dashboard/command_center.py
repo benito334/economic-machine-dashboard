@@ -418,6 +418,7 @@ def render_command_center(country_data, page_trigger, thresholds,
         n_feat = int(srow.get("n_features") or 0)
         stage_color = STAGE_COLORS.get(stage_lbl, "var(--font-color)")
         squeeze_flag = bool(srow.get("sovereign_squeeze"))
+        spread_flag = srow.get("debt_income_spread_flag")
         priv = srow.get("stage_private")
         sov = srow.get("stage_sovereign")
         sub_bits = []
@@ -447,6 +448,21 @@ def render_command_center(country_data, page_trigger, thresholds,
                            "borderRadius": "4px", "padding": "1px 6px",
                            "marginLeft": "8px", "whiteSpace": "nowrap"})]
                   if squeeze_flag else []),
+                *([html.Span(
+                    f"DEBT-INCOME SPREAD: {spread_flag.upper()}",
+                    title="Debt is growing faster than the income available to service "
+                          "it in at least one sector (household/corporate/government) — "
+                          "Spread = DebtGrowthRate − IncomeGrowthRate, both YoY %. "
+                          "Independent early-warning gauge (Ray Dalio consult, "
+                          "2026-08-19) alongside Sovereign Squeeze; see the Debt Stress "
+                          "page for the per-sector breakdown.",
+                    style={"color": "#E8A317" if spread_flag == "warning" else "#E5484D",
+                           "fontSize": "0.62rem", "fontWeight": "800",
+                           "letterSpacing": "0.04em",
+                           "border": f"1px solid {'#E8A317' if spread_flag == 'warning' else '#E5484D'}",
+                           "borderRadius": "4px", "padding": "1px 6px",
+                           "marginLeft": "8px", "whiteSpace": "nowrap"})]
+                  if spread_flag in ("warning", "critical") else []),
             ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap",
                       "gap": "2px"}),
             html.Div(" · ".join(sub_bits), style=_SUB),
@@ -469,9 +485,13 @@ def render_command_center(country_data, page_trigger, thresholds,
     ])
 
     # ── Trend + big cycle ─────────────────────────────────────────────────────
+    from dashboard.force_detail import _productivity_divergence
     prod = _latest(hist, "productivity_score")
     prod_mom = _latest(hist, "productivity_momentum")
-    if prod is not None and g is not None:
+    divergence = _productivity_divergence(prod, g, float(t.get("gz", 0.5))) if prod is not None else None
+    if divergence:
+        trend_sub = divergence["label"]
+    elif prod is not None and g is not None:
         gap = prod - g
         trend_sub = ("trend above cycle" if gap > 0.25 else
                      "cycle running ahead of trend" if gap < -0.25 else

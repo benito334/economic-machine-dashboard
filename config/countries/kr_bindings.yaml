@@ -209,6 +209,32 @@ bindings:
     sanity_min: 0.0
     sanity_max: 8.0
 
+  # Cross-country competitiveness gauge (Ray Dalio consult, 2026-08-19):
+  # "the per-hour-worked cost of educated people is one of the best
+  # indicators of competitiveness." OECD/IMF REER unit-labor-cost-based
+  # index (via FRED) is already trade-weighted and FX-adjusted, so its YoY
+  # % change is directly comparable in DIRECTION across countries without
+  # inventing a cross-country normalization scheme (rising = unit labor
+  # costs increasing relative to trading partners = losing competitiveness).
+  # Feeds no composite — standalone Relative Cycles competitiveness ranking.
+  - id: growth.relative_ulc
+    series_id: CCRETT02KRQ661N
+    provider: FRED
+    frequency: Q
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Real effective exchange rate, unit-labor-cost based — rising means KR unit labor costs are increasing relative to trading partners (losing competitiveness); falling means gaining. Ray Dalio's cross-country competitiveness gauge."
+    sanity_min: -0.30
+    sanity_max: 0.30
+
   # ─── Policy ────────────────────────────────────────────────────────────────
 
   - id: policy.yield_10y

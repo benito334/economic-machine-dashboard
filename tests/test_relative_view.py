@@ -90,6 +90,29 @@ def test_route_registered():
     assert charting._PAGE_MAP["/relative"] is charting._page_relative_view
 
 
+# ── Relative ULC competitiveness table (Ray Dalio consult, 2026-08-19) ───────
+
+def test_competitiveness_table_ranks_and_documents_gap():
+    """Live regression: countries with a growth.relative_ulc signal appear,
+    sorted most-improving (lowest Z) first, and CN/IN/BR/ID are explicitly
+    called out as missing rather than silently dropped."""
+    out = rv._competitiveness_table({})
+    s = str(out)
+    for cc_name in ("United States", "South Korea", "Germany"):
+        assert cc_name in s
+    assert "No free REER unit-labor-cost series" in s
+    for missing in ("China", "India", "Brazil", "Indonesia"):
+        assert missing in s
+
+
+def test_render_full_page_includes_competitiveness_section():
+    out = rv.render_relative_view({"page": "/relative"}, "carbon", None)
+    s = str(out)
+    assert "Relative competitiveness" in s
+    # rendered lowercase, uppercased only via CSS textTransform
+    assert "gaining" in s or "losing" in s or "flat" in s
+
+
 # ── Clock-change notes (2026-07-30) ──────────────────────────────────────────
 
 def test_label_run_start_detects_flip():

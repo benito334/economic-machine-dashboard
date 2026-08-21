@@ -227,8 +227,13 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         # Ray ruling 2026-07-06: an early-warning flag independent of the
         # headline stage — surfaced as a ⚠ suffix on the stage chip.
         squeeze_flag = bool(stage_row.get("sovereign_squeeze")) if stage_row is not None else False
+        # Ray Dalio consult 2026-08-19: debt-growth-vs-income-growth spread —
+        # a distinct gauge from Sovereign Squeeze, kept as its own chip rather
+        # than folded into the same ⚠ suffix (this repo has a history of
+        # badges conflating unrelated signals into one alarm).
+        spread_flag = stage_row.get("debt_income_spread_flag") if stage_row is not None else None
     except Exception:
-        stage, squeeze_flag = None, False
+        stage, squeeze_flag, spread_flag = None, False, None
 
     # Debt stress (US-only model today)
     try:
@@ -259,6 +264,9 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     if stage:
         label = f"Stage · {stage}" + (" ⚠" if squeeze_flag else "")
         chips.append(_chip(label, STAGE_COLORS.get(stage, "#888")))
+    if spread_flag in ("warning", "critical"):
+        chips.append(_chip(f"Debt/Income spread · {spread_flag}",
+                           "#E8A317" if spread_flag == "warning" else "#E5484D"))
 
     # Recent clock-change notes (~30d chips / ~45d stage)
     try:
@@ -360,6 +368,81 @@ def _corr_heatmap(corr: pd.DataFrame, title: str, theme_name: str) -> dcc.Graph:
                      style={"flex": "1 1 300px", "minWidth": "280px"})
 
 
+# Countries with a live OECD/IMF REER unit-labor-cost-based series on FRED
+# (verified 2026-08-19 — CCRETT02{cc}Q661N). Not available for CN/IN/BR/ID;
+# shown as a documented gap rather than silently omitted (house convention:
+# no silent caps).
+_ULC_COUNTRIES = ["US", "EZ", "DE", "GB", "JP", "KR", "MX", "CA", "AU", "LU"]
+
+
+def _competitiveness_table(thresholds: dict) -> html.Div:
+    """Relative Cycles competitiveness ranking (Ray Dalio consult 2026-08-19):
+    each country's `growth.relative_ulc` signal is the YoY %-change of an
+    already trade-weighted, FX-adjusted REER unit-labor-cost index, so the
+    Z-score/direction is directly comparable across countries without a
+    cross-country normalization scheme — rising = losing competitiveness
+    (unit labor costs increasing relative to trading partners), falling =
+    gaining."""
+    rows = []
+    for cc in _ULC_COUNTRIES:
+        sig = load_latest_signals(cc)
+        if sig.empty:
+            continue
+        hit = sig[sig["id"].str.endswith("growth.relative_ulc")]
+        if hit.empty:
+            continue
+        r = hit.iloc[0]
+        z = r.get("zscore")
+        val = r.get("value")
+        as_of = r.get("as_of")
+        if z is None or (isinstance(z, float) and math.isnan(z)):
+            continue
+        read = "gaining" if z < -0.25 else "losing" if z > 0.25 else "flat"
+        color = "#5CBA8A" if read == "gaining" else "#E5484D" if read == "losing" else "#888"
+        rows.append((cc, float(z), float(val) if val is not None else None, as_of, read, color))
+
+    rows.sort(key=lambda t: t[1])   # most-improving (lowest Z) first
+
+    body = [html.Tr([
+        html.Td(_NAMES.get(cc, cc), style={"padding": "5px 10px"}),
+        html.Td(f"{val:+.1%}" if val is not None else "—",
+               style={"padding": "5px 10px", "textAlign": "right", "fontFamily": "monospace"}),
+        html.Td(f"{z:+.2f}",
+               style={"padding": "5px 10px", "textAlign": "right", "fontFamily": "monospace"}),
+        html.Td(read, style={"padding": "5px 10px", "textAlign": "center", "color": color,
+                             "fontWeight": "600", "textTransform": "uppercase",
+                             "fontSize": "0.7rem"}),
+        html.Td(f"{pd.Timestamp(as_of):%b %Y}" if as_of is not None else "—",
+               style={"padding": "5px 10px", "textAlign": "right", "color": "var(--muted-color)",
+                     "fontSize": "0.72rem"}),
+    ]) for cc, z, val, as_of, read, color in rows]
+
+    missing = [cc for cc in COUNTRIES if cc not in _ULC_COUNTRIES]
+    footer = html.Div(
+        f"No free REER unit-labor-cost series for {', '.join(_NAMES.get(cc, cc) for cc in missing)} "
+        "— not shown rather than proxied.",
+        style={"fontSize": "0.68rem", "color": "var(--muted-color)", "marginTop": "8px"},
+    )
+
+    table = html.Table([
+        html.Thead(html.Tr([
+            html.Th("Country", style={"padding": "5px 10px", "textAlign": "left"}),
+            html.Th("YoY Δ ULC (REER)", style={"padding": "5px 10px", "textAlign": "right"}),
+            html.Th("Z-score", style={"padding": "5px 10px", "textAlign": "right"}),
+            html.Th("Reading", style={"padding": "5px 10px", "textAlign": "center"}),
+            html.Th("As of", style={"padding": "5px 10px", "textAlign": "right"}),
+        ], style={"fontSize": "0.68rem", "textTransform": "uppercase",
+                  "letterSpacing": "0.06em", "color": "var(--muted-color)",
+                  "borderBottom": "1px solid var(--border-color)"})),
+        html.Tbody(body),
+    ], style={"width": "100%", "borderCollapse": "collapse", "fontSize": "0.82rem"})
+
+    return html.Div([table, footer], style={
+        "background": "var(--card-bg)", "border": "1px solid var(--border-color)",
+        "borderRadius": "8px", "padding": "14px 16px", "marginBottom": "8px",
+    })
+
+
 @callback(
     Output("relative-content", "children"),
     [Input("page-trigger", "data"),
@@ -406,6 +489,16 @@ def render_relative_view(page_trigger, theme_name, thresholds):
     return html.Div([
         html.Div("Where each economy sits — three clocks side by side", style=_H),
         html.Div(cards, style={"display": "flex", "gap": "12px", "flexWrap": "wrap"}),
+
+        html.Div("Relative competitiveness — unit labor cost vs. trading partners", style=_H),
+        html.Div("Ray Dalio's competitiveness gauge (2026-08-19 consult): the OECD/IMF REER "
+                 "unit-labor-cost-based index is already trade-weighted and FX-adjusted, so its "
+                 "YoY % change is directly comparable across countries — rising (losing) means "
+                 "a country's labor costs are increasing relative to its trading partners; "
+                 "falling (gaining) means the reverse. Ranked most-improving to most-eroding.",
+                 style={"fontSize": "0.75rem", "color": "var(--muted-color)",
+                        "marginBottom": "8px", "maxWidth": "820px"}),
+        _competitiveness_table(thresholds),
 
         html.Div("Cycle correlation — is that diversification real?", style=_H),
         html.Div("Pairwise correlation of the monthly composite scores, every country "

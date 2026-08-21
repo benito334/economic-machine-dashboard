@@ -370,6 +370,29 @@ sector_model:
   # Severity ranking for the worst-of headline (higher = worse stress)
   severity: {squeeze: 3, deleveraging: 2, reflation: 1, leveraging: 0}
 
+# ── Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19) ─────
+# Ray's tactical answer to "is debt growth in line with the income growth
+# needed to service it": Spread_t = DebtGrowthRate_t − IncomeGrowthRate_t,
+# both annualized %. Computed in code (indicators/debt_cycle_stage.py,
+# build_debt_income_spread()) as the YoY %-change of each sector's EXISTING
+# debt/GDP ratio signal — a first-order identity (for ratio r=Debt/GDP,
+# %Δr ≈ %ΔDebt − %ΔGDP) that needs no new data sourcing, since our debt
+# ratios are already debt-as-%-of-GDP (GDP stands in for each sector's income
+# base; Ray's ideal used disposable income for household and corporate
+# earnings for corporate — a documented simplification).
+debt_income_spread:
+  # TUNABLE — Ray: reserve-currency countries (U.S., Eurozone, Japan) tolerate
+  # more slack; everyone else gets the tighter EM-style tolerance.
+  reserve_currency_countries: [US, EZ, JP]
+  warning_threshold_pp:
+    reserve_currency: 1.5   # TUNABLE — Ray: "tolerate a modestly larger spread—up to 1.5pp for a couple of quarters"
+    other: 0.75             # TUNABLE — Ray (EM): "0.5-1pp for a single quarter" midpoint
+  warning_consecutive_quarters:
+    reserve_currency: 2     # TUNABLE — Ray's general rule: >threshold for 2 consecutive quarters
+    other: 1                # TUNABLE — Ray (EM): "a single quarter can already be concerning"
+  critical_consecutive_quarters: 3      # TUNABLE — Ray: 3+ quarters over threshold
+  critical_cumulative_annual_pp: 4.0    # TUNABLE — Ray: cumulative positive spread over a year >4pp total
+
 # Per-country sovereign inputs (concept tails; missing entries degrade
 # honestly — the sovereign vote runs on whatever exists).
 sovereign_inputs:

@@ -12,7 +12,9 @@ from indicators.debt_cycle_stage import (
     _annualized_change,
     _expanding_z_lagged,
     _rolling_mode,
+    _spread_flag,
     _to_quarterly,
+    build_debt_income_spread,
     compute_stage_history,
     expanding_percentile_lagged,
     load_stage_config,
@@ -278,6 +280,104 @@ def test_sector_stock_caps_percentile_and_size_weights(monkeypatch):
     # single-sector case still respects the cap
     pct1, _ = dcs._sector_stock(None, "US", cfg, ["credit.gov_debt_gdp"], cap=0.90)
     assert pct1.dropna().iloc[-1] == pytest.approx(0.90)
+
+
+# ── Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19) ─────
+
+def test_debt_income_spread_computes_yoy_ratio_change(monkeypatch):
+    """Spread ≈ YoY %-change of the sector's debt/GDP ratio: a ratio
+    compounding 5%/yr should read ~5pp; a flat ratio should read ~0pp."""
+    import indicators.debt_cycle_stage as dcs
+    current_qe = pd.Timestamp.today().to_period("Q").to_timestamp("Q")
+    idx = pd.date_range(end=current_qe, periods=12, freq="QE")
+    government = pd.Series(np.repeat([100.0, 105.0, 110.25], 4), index=idx)
+    household = pd.Series(np.full(12, 50.0), index=idx)
+
+    def fake_load(conn, signal_id):
+        return {"us.credit.gov_debt_gdp": government,
+                "us.credit.household_debt_gdp": household}[signal_id]
+
+    monkeypatch.setattr(dcs, "_load_signal_values", fake_load)
+    cfg = {
+        "features": {"ffill_limit_quarters": 5},
+        "sovereign_inputs": {"US": {
+            "gov_debt": "credit.gov_debt_gdp",
+            "private_debt": ["credit.household_debt_gdp"],
+        }},
+    }
+    df = build_debt_income_spread(None, "US", cfg)
+    assert set(df.columns) == {"government", "household"}
+    assert df["government"].iloc[-1] == pytest.approx(5.0, abs=0.05)
+    assert df["household"].iloc[-1] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_debt_income_spread_missing_sector_is_absent(monkeypatch):
+    """A country with government-only debt data (EZ/GB/JP/KR pattern) gets a
+    government-only spread frame, not a crash."""
+    import indicators.debt_cycle_stage as dcs
+    current_qe = pd.Timestamp.today().to_period("Q").to_timestamp("Q")
+    idx = pd.date_range(end=current_qe, periods=8, freq="QE")
+    government = pd.Series(np.linspace(100, 108, 8), index=idx)
+    monkeypatch.setattr(
+        dcs, "_load_signal_values",
+        lambda conn, sid: government if sid == "gb.credit.gov_debt_gdp" else pd.Series(dtype=float),
+    )
+    cfg = {"features": {"ffill_limit_quarters": 5},
+           "sovereign_inputs": {"GB": {"gov_debt": "credit.gov_debt_gdp", "private_debt": []}}}
+    df = build_debt_income_spread(None, "GB", cfg)
+    assert list(df.columns) == ["government"]
+
+
+def test_spread_flag_warning_needs_consecutive_quarters():
+    idx = pd.date_range("2020-03-31", periods=6, freq="QE")
+    # reserve-currency threshold = 1.5pp, needs 2 consecutive quarters
+    spread = pd.DataFrame({"government": [0.5, 0.5, 2.0, 2.0, 0.5, 0.5]}, index=idx)
+    cfg = {"debt_income_spread": {
+        "reserve_currency_countries": ["US"],
+        "warning_threshold_pp": {"reserve_currency": 1.5, "other": 0.75},
+        "warning_consecutive_quarters": {"reserve_currency": 2, "other": 1},
+        "critical_consecutive_quarters": 3,
+        "critical_cumulative_annual_pp": 4.0,
+    }}
+    flag = _spread_flag(spread, "US", cfg)
+    assert flag.iloc[2] is None          # first quarter over threshold — not yet 2 consecutive
+    assert flag.iloc[3] == "warning"     # 2nd consecutive quarter over threshold
+    assert flag.iloc[4] is None          # dropped back below threshold
+
+
+def test_spread_flag_critical_via_consecutive_or_single_spike():
+    idx = pd.date_range("2020-03-31", periods=6, freq="QE")
+    cfg = {"debt_income_spread": {
+        "reserve_currency_countries": [],   # EM tier: tighter threshold, single quarter counts
+        "warning_threshold_pp": {"reserve_currency": 1.5, "other": 0.75},
+        "warning_consecutive_quarters": {"reserve_currency": 2, "other": 1},
+        "critical_consecutive_quarters": 3,
+        "critical_cumulative_annual_pp": 4.0,
+    }}
+    persistent = pd.DataFrame({"government": [0.0, 1.0, 1.0, 1.0, 0.0, 0.0]}, index=idx)
+    assert _spread_flag(persistent, "BR", cfg).iloc[3] == "critical"   # 3 consecutive quarters over threshold
+
+    spike = pd.DataFrame({"government": [0.0, 0.0, 5.0, 0.0, 0.0, 0.0]}, index=idx)
+    assert _spread_flag(spike, "BR", cfg).iloc[2] == "critical"        # single reading past the cumulative bar
+
+
+@pytest.mark.integration
+def test_us_debt_income_spread_populated_live():
+    """Live regression: the spread features and flag must be attached to
+    every US snapshot, independent of the vote/stage scoring."""
+    cfg = load_stage_config()
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        snaps = compute_stage_history(conn, "US", cfg)
+    finally:
+        conn.close()
+    labeled = [s for s in snaps if s.stage]
+    assert labeled
+    latest = labeled[-1]
+    assert latest.feat_spread_government is not None
+    assert latest.feat_spread_household is not None
+    assert latest.feat_spread_corporate is not None
+    assert latest.debt_income_spread_flag in (None, "warning", "critical")
 
 
 def test_worst_of_headline_picks_higher_severity():

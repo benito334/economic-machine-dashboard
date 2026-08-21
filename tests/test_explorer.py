@@ -118,7 +118,8 @@ def test_load_signal_overview_returns_all_signals():
     # + 8 fed.* Fed Monitor series (2026-07-10 Digital Ray consult) = 81
     # + 7 market.* Market-Expectations series (2026-07-15 consult) = 88
     # + credit.household_debt + fed.custody_holdings (2026-07-17 data audit) = 90
-    assert len(df) == 90
+    # + growth.relative_ulc (2026-08-19 Digital Ray consult, competitiveness gauge) = 91
+    assert len(df) == 91
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns

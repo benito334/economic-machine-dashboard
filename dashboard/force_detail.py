@@ -107,6 +107,35 @@ def _chip(label: str, value: str, color: str = "var(--font-color)") -> html.Div:
     )
 
 
+# Ray Dalio consult, 2026-08-19: the diagnostic pairing he described for
+# reading the productivity trend against the cyclical Growth Z-score — a
+# labeled interpretation layer on top of the overlay chart that already
+# exists (force_detail.py:278). Thresholds reuse the same `gz` regime
+# threshold the Growth chip itself uses, so "strong" here means the same
+# thing it means everywhere else on the dashboard.
+def _productivity_divergence(prod_z: Optional[float], growth_z: Optional[float],
+                             thresh_gz: float) -> Optional[dict]:
+    if prod_z is None or growth_z is None or math.isnan(prod_z) or math.isnan(growth_z):
+        return None
+    if prod_z > 0 and growth_z <= thresh_gz:
+        return {
+            "label": "Early-stage competitive advantage",
+            "detail": ("Productivity trend rising while cyclical growth is soft/neutral — "
+                      "efficiency gains ahead of demand, a bullish long-term-competitiveness "
+                      "signal (Ray Dalio consult, 2026-08-19)."),
+            "color": "#3FBFB0",
+        }
+    if prod_z < 0 and growth_z > thresh_gz:
+        return {
+            "label": "Unsustainable-expansion watch",
+            "detail": ("Cyclical growth is strong while the productivity trend is falling — "
+                      "the expansion may be leaning on diminishing returns rather than "
+                      "capacity gains (Ray Dalio consult, 2026-08-19)."),
+            "color": "#E8A317",
+        }
+    return None
+
+
 def _build_banner(
     force: str,
     comp_z: Optional[float],
@@ -116,6 +145,7 @@ def _build_banner(
     n_agreement: int,
     thresholds: dict,
     lookback_label: str,
+    divergence: Optional[dict] = None,
 ) -> html.Div:
     fc = _FORCE_CFG[force]
     color = fc["color"]
@@ -153,8 +183,21 @@ def _build_banner(
         style={"display": "flex", "gap": "8px", "flexWrap": "wrap"},
     )
 
+    children = [title, chips]
+    if divergence:
+        children.append(html.Div(
+            [html.Span(divergence["label"], style={"fontWeight": "700"}),
+             html.Span(" — " + divergence["detail"], style={"fontWeight": "400"})],
+            style={
+                "color": divergence["color"], "fontSize": "0.72rem", "marginTop": "10px",
+                "borderLeft": f"2px solid {divergence['color']}", "paddingLeft": "8px",
+                "background": f"{divergence['color']}14", "borderRadius": "0 4px 4px 0",
+                "padding": "5px 8px",
+            },
+        ))
+
     return html.Div(
-        [title, chips],
+        children,
         style={
             "background": "var(--card-bg)", "border": "1px solid var(--border-color)",
             "borderRadius": "6px", "padding": "12px 16px",
@@ -596,8 +639,14 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             score_col=chart_score_col, thresholds=thresholds,
         )
 
+        divergence = None
+        if force == "productivity" and not comp_hist.empty and "growth_score" in comp_hist.columns:
+            g_latest = comp_hist["growth_score"].dropna()
+            growth_z = float(g_latest.iloc[-1]) if not g_latest.empty else None
+            divergence = _productivity_divergence(comp_z, growth_z, float(thresholds.get("gz", 0.5)))
+
         banner = _build_banner(force, comp_z, momentum, n_active, n_total,
-                               n_agree, thresholds, lookback_label)
+                               n_agree, thresholds, lookback_label, divergence)
         return banner, table_section, chart
 
     # ── Shared spike hover (mirrors Regime History clientside callback) ────────

@@ -184,3 +184,11 @@ class DebtCycleStageSnapshot(BaseModel):
     feat_real_growth: Optional[float] = None     # yoy %, smoothed
     feat_gov_interest_z: Optional[float] = None  # expanding Z of gov interest / GDP
     feat_refi_gap: Optional[float] = None        # pp, marginal rate − effective rate on the gov stock
+
+    # Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19 session):
+    # Spread = DebtGrowthRate − IncomeGrowthRate per sector, pp, YoY. Independent
+    # early-warning gauge alongside sovereign_squeeze — see debt_income_spread.py docstring.
+    feat_spread_household: Optional[float] = None
+    feat_spread_corporate: Optional[float] = None
+    feat_spread_government: Optional[float] = None
+    debt_income_spread_flag: Optional[str] = None  # None / "warning" / "critical"

@@ -385,6 +385,77 @@ def build_sovereign_features(conn, country: str, cfg: dict) -> pd.DataFrame:
     return pd.DataFrame(out) if out else pd.DataFrame()
 
 
+# ── Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19) ─────
+# See config/debt_cycle_stage.yaml `debt_income_spread` block for the full
+# rationale. Summary: Spread_t = DebtGrowthRate_t − IncomeGrowthRate_t, both
+# annualized %. For a ratio r = Debt/GDP, %Δr ≈ %ΔDebt − %ΔGDP to first order,
+# so the YoY %-change of a sector's EXISTING debt/GDP ratio signal already IS
+# this spread — no new series required, and YoY comparison is itself the
+# smoothing Ray asked for (vs. a separate trailing moving average on top).
+
+def build_debt_income_spread(conn, country: str, cfg: dict) -> pd.DataFrame:
+    """Per-sector spread (household/corporate/government), pp. Any column may
+    be absent if that sector's debt/GDP signal doesn't exist for this country
+    (mirrors sovereign_inputs coverage — household/corporate empty for
+    EZ/GB/JP/KR, which have government-only debt data)."""
+    scfg = (cfg.get("sovereign_inputs") or {}).get(country, {})
+    fcfg = cfg["features"]
+    prefix = country.lower()
+    ffill = int(fcfg["ffill_limit_quarters"])
+    private = scfg.get("private_debt") or []
+
+    tails = {
+        "government": scfg.get("gov_debt"),
+        "household": next((t for t in private if "household" in t), None),
+        "corporate": next((t for t in private if "corporate" in t), None),
+    }
+    out = {}
+    for sector, tail in tails.items():
+        if not tail:
+            continue
+        s = _to_quarterly(_load_signal_values(conn, f"{prefix}.{tail}"), ffill)
+        if s.empty:
+            continue
+        spread = (s.pct_change(4) * 100.0).dropna()   # Δr/r, pp — see module docstring above
+        if not spread.empty:
+            out[sector] = spread
+    return pd.DataFrame(out) if out else pd.DataFrame()
+
+
+def _spread_flag(spread_df: pd.DataFrame, country: str, cfg: dict) -> pd.Series:
+    """Per-quarter flag (None / "warning" / "critical") from the worst
+    (highest) sector spread that quarter, per the reserve-currency-vs-other
+    thresholds in config/debt_cycle_stage.yaml `debt_income_spread`."""
+    if spread_df.empty:
+        return pd.Series(dtype=object)
+    sm = cfg.get("debt_income_spread") or {}
+    tier = "reserve_currency" if country in (sm.get("reserve_currency_countries") or []) else "other"
+    thr = float((sm.get("warning_threshold_pp") or {}).get(tier, 1.0))
+    need_q = int((sm.get("warning_consecutive_quarters") or {}).get(tier, 2))
+    crit_q = int(sm.get("critical_consecutive_quarters", 3))
+    crit_cum = float(sm.get("critical_cumulative_annual_pp", 4.0))
+
+    worst = spread_df.max(axis=1, skipna=True)
+    over = worst > thr
+    out = []
+    for i in range(len(worst)):
+        warn_win = over.iloc[max(0, i - need_q + 1): i + 1]
+        crit_win = over.iloc[max(0, i - crit_q + 1): i + 1]
+        # worst.iloc[i] is already a YoY (annualized) spread, so "cumulative
+        # positive spread over a year" is just that single reading against the
+        # critical bar — NOT a sum of already-annualized quarters (that would
+        # quadruple-count the same year of drift).
+        if len(crit_win) == crit_q and crit_win.all():
+            out.append("critical")
+        elif worst.iloc[i] > crit_cum:
+            out.append("critical")
+        elif len(warn_win) == need_q and warn_win.all():
+            out.append("warning")
+        else:
+            out.append(None)
+    return pd.Series(out, index=worst.index, dtype=object)
+
+
 def _vote(feats: pd.DataFrame, cfg: dict) -> list[dict]:
     """Score one vote (private or sovereign) per quarter — same condition
     tables as always, applied to that vote's feature frame."""
@@ -510,6 +581,17 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
             | (gi_z > float(flag_cfg.get("gov_interest_z", 1.5)))
             | (gd_z > float(flag_cfg.get("gov_dsr_z", 1.0)))).fillna(False)
 
+    # ── Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19) ──
+    spread_df = build_debt_income_spread(conn, country, cfg)
+    spread_flag = _spread_flag(spread_df, country, cfg)
+    hh_spread = (spread_df["household"].reindex(idx)
+                 if "household" in spread_df.columns else pd.Series(np.nan, index=idx))
+    corp_spread = (spread_df["corporate"].reindex(idx)
+                   if "corporate" in spread_df.columns else pd.Series(np.nan, index=idx))
+    gov_spread = (spread_df["government"].reindex(idx)
+                  if "government" in spread_df.columns else pd.Series(np.nan, index=idx))
+    spread_flag = spread_flag.reindex(idx) if not spread_flag.empty else pd.Series(None, index=idx, dtype=object)
+
     def _f(v) -> Optional[float]:
         if v is None or (isinstance(v, float) and np.isnan(v)):
             return None
@@ -548,5 +630,10 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
             feat_real_growth=_f(frow.get("real_growth")),
             feat_gov_interest_z=_f(gi_z.iloc[i]),
             feat_refi_gap=_f(refi.iloc[i]),
+            feat_spread_household=_f(hh_spread.iloc[i]),
+            feat_spread_corporate=_f(corp_spread.iloc[i]),
+            feat_spread_government=_f(gov_spread.iloc[i]),
+            debt_income_spread_flag=(spread_flag.iloc[i]
+                                      if isinstance(spread_flag.iloc[i], str) else None),
         ))
     return snaps

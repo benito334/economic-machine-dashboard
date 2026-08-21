@@ -143,6 +143,19 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_refi_gap DOUBLE"
     )
+    # Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19 session).
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_spread_household DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_spread_corporate DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_spread_government DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS debt_income_spread_flag VARCHAR"
+    )
     for _col in ("zscore_12m", "zscore_18m", "zscore_24m", "zscore_36m", "zscore_48m", "zscore_60m",
                  "zscore_90m", "zscore_120m"):
         conn.execute(f"ALTER TABLE signals ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
@@ -596,6 +609,10 @@ CREATE TABLE IF NOT EXISTS debt_cycle_stage_snapshots (
     feat_real_growth        DOUBLE,
     feat_gov_interest_z     DOUBLE,
     feat_refi_gap           DOUBLE,
+    feat_spread_household   DOUBLE,
+    feat_spread_corporate   DOUBLE,
+    feat_spread_government  DOUBLE,
+    debt_income_spread_flag VARCHAR,
     created_at              TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -610,6 +627,8 @@ _DEBT_CYCLE_STAGE_COLUMNS = [
     "feat_debt_pct", "feat_debt_traj", "feat_dsr_trend", "feat_r_minus_g",
     "feat_ngdp_minus_yield", "feat_real_growth",
     "feat_gov_interest_z", "feat_refi_gap",
+    "feat_spread_household", "feat_spread_corporate", "feat_spread_government",
+    "debt_income_spread_flag",
     "created_at",
 ]
 

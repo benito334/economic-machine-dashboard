@@ -1921,3 +1921,71 @@ after the 03:00 daily auto-import) to run this automatically; it deliberately
 pushes to the public repo's main branch every run — already authorized by the
 user, task prompt says not to re-ask. `gh` CLI is pre-authenticated in this
 environment with repo+release write access — no new secrets needed.
+
+## 2026-08-19 — Digital Ray consult: debt-growth-vs-income spread, productivity divergence, relative ULC
+
+User is taking a Dalio course and asked two tactical questions live against
+Digital Ray (logged in `ray_dalio_review_log.md`), then approved building all
+three resulting punch-list items same-day.
+
+**Q1 — debt growth vs. income growth equilibrium.** Ray's answer: `Spread_t =
+DebtGrowthRate_t − IncomeGrowthRate_t`, both annualized %, a distinct metric
+from the debt/GDP stock percentiles already tracked. Implemented as
+`build_debt_income_spread()` / `_spread_flag()` in
+`indicators/debt_cycle_stage.py`: per-sector (household/corporate/government)
+spread computed as the YoY %-change of the EXISTING debt/GDP ratio signals —
+a first-order identity (`%Δr ≈ %ΔDebt − %ΔGDP` for ratio `r = Debt/GDP`) that
+needed no new data sourcing. Thresholds in `config/debt_cycle_stage.yaml`
+`debt_income_spread` block: reserve-currency tier (US/EZ/JP, Ray's named set)
+tolerates 1.5pp for 2 consecutive quarters; everyone else 0.75pp for a single
+quarter; critical at 3+ consecutive quarters or a single YoY reading past
+4.0pp (fixed a double-counting bug in an early draft that summed 4
+already-annualized quarters instead of checking the single YoY reading).
+`DebtCycleStageSnapshot` + `debt_cycle_stage_snapshots` table gained
+`feat_spread_household/corporate/government` + `debt_income_spread_flag`.
+Backfilled live for all 14 countries (no pipeline API calls needed — pure
+recompute from existing `signals` table data). Surfaced in the same 3 places
+Sovereign Squeeze uses — Command Center `stage_card`, Debt Stress page's
+`update_debt_stage_section` (badge + per-sector values in the feature-bits
+line), Relative Cycles `_country_card` — as a **separate** badge/chip, not
+folded into the Sovereign Squeeze ⚠ (this repo has a history of badges
+conflating unrelated signals into one alarm, e.g. the 2026-08 Data Feed
+Monitor and Force Component fixes). Live US read: government spread +3.2pp
+→ WARNING; several other countries (DE/GB/KR/CN/BR/CA/AU/MX/ID) read CRITICAL
+on government-sector drift. 6 new tests in `test_debt_cycle_stage.py`.
+
+**Q2 — productivity tactics.** Ray's answer largely *validated* the existing
+`productivity_score` composite (labor productivity + TFP + R&D, same
+0.6/0.3/0.1-ish weighting). Two genuinely new pieces: (1) a **divergence
+read** — `_productivity_divergence()` in `dashboard/force_detail.py`, reusing
+the same `gz` threshold the Growth chip uses: ProdScore rising + Growth Z
+soft/neutral → "Early-stage competitive advantage"; ProdScore falling +
+Growth Z strong → "Unsustainable-expansion watch". Rendered as an amber/teal
+callout on the `/signals/productivity` banner and reused (imported directly)
+in Command Center's Productivity Trend card so both surfaces read the same
+way. (2) a **cross-country competitiveness ranking** — new `growth.relative_ulc`
+signal bound to 10/14 countries (US/EZ/DE/GB/JP/KR/MX/CA/AU/LU), series
+`CCRETT02{cc}Q661N` (FRED-mirrored OECD/IMF "Real Effective Exchange Rate,
+Unit-Labor-Cost Based" — verified live via the FRED search API before
+binding, per house rule; confirmed absent for CN/IN/BR/ID). This index is
+already trade-weighted and FX-adjusted, so its YoY %-change is directly
+comparable in DIRECTION across countries without inventing a cross-country
+normalization scheme — simpler and more robust than the raw wages÷productivity
+formula Ray proposed, which would have needed a PPP/FX comparability layer
+built from scratch. New `_competitiveness_table()` section on `/relative`
+(`dashboard/relative_view.py`), ranked most-improving to most-eroding, with
+the CN/IN/BR/ID gap called out explicitly in the footer rather than silently
+omitted. Live spot-check: Korea/Japan −11.4% YoY (gaining sharply), Australia
++10.9% (losing). Ingested via a standalone one-off script (not a full
+pipeline run) since only one new signal needed fetching across 10 countries.
+9 new tests (`test_force_detail.py` new file + `test_relative_view.py`).
+
+**Verification.** Rebuilt + restarted the local `charting` Docker container
+(image bakes source, no bind mount — confirmed all three features render
+correctly via live browser check on `/relative`, `/country`, `/debt-stress`
+before/after: badges, ranking table, and divergence card all showed correct
+live values). Full suite **534 passed, zero exclusions** (one pre-existing
+hardcoded US-signal-count assertion bumped 90→91 for the new binding — not a
+regression). Methodology §15 Revision Log updated (both the copy-button and
+visible table copies). Disclaimer as always: digitalray.ai output is an AI
+approximation of Dalio's framework, not vetted by Ray Dalio.

@@ -4862,6 +4862,9 @@ _STAGE_FEATURE_LABELS = [
     ("feat_ngdp_minus_yield", "NGDP − yield",        "{:+.2f} pp"),
     ("feat_gov_interest_z",   "Gov interest Z",       "{:+.2f}"),
     ("feat_refi_gap",         "Refinancing gap",      "{:+.2f} pp"),
+    ("feat_spread_household", "Spread · household",  "{:+.2f}pp"),
+    ("feat_spread_corporate", "Spread · corporate",  "{:+.2f}pp"),
+    ("feat_spread_government", "Spread · government", "{:+.2f}pp"),
 ]
 
 
@@ -4921,6 +4924,19 @@ def update_debt_stage_section(date_range: dict, theme_name: str,
                       "2026-07-06).",
                 style={"color": "#E8A317", "fontSize": "0.68rem", "fontWeight": "800",
                        "letterSpacing": "0.04em", "border": "1px solid #E8A317",
+                       "borderRadius": "4px", "padding": "1px 8px", "marginRight": "12px"}))
+        spread_flag = latest.get("debt_income_spread_flag")
+        if spread_flag in ("warning", "critical"):
+            sf_color = "#E8A317" if spread_flag == "warning" else "#E5484D"
+            children.append(html.Span(
+                f"DEBT-INCOME SPREAD: {spread_flag.upper()}",
+                title="Debt is growing faster than the income available to service it "
+                      "in at least one sector — Spread = DebtGrowthRate − "
+                      "IncomeGrowthRate (both YoY %), computed per sector from the "
+                      "existing debt/GDP ratios. Independent of Sovereign Squeeze "
+                      "(Ray Dalio consult, 2026-08-19); see the per-sector values below.",
+                style={"color": sf_color, "fontSize": "0.68rem", "fontWeight": "800",
+                       "letterSpacing": "0.04em", "border": f"1px solid {sf_color}",
                        "borderRadius": "4px", "padding": "1px 8px", "marginRight": "12px"}))
         as_of_ts = pd.Timestamp(latest["as_of"])
         meta = f"{as_of_ts.year}-Q{as_of_ts.quarter} · {int(latest['n_features'])}/5 features"
