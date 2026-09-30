@@ -1135,6 +1135,96 @@ def fetch_imf_sdmx_series(
     return series
 
 
+
+# ─── BIS SDMX 2.1 API (stats.bis.org — international debt securities, etc.) ──
+# Distinct agency from the IMF SDMX host above but the same SDMX 2.1 CSV
+# data-query contract, so the response parsing (_parse_imf_sdmx_period) is
+# shared.
+
+_BIS_SDMX_BASE = "https://stats.bis.org/api/v1/data"
+
+
+def _bis_sdmx_cache_path(dataflow: str, key: str) -> Path:
+    safe = key.replace(".", "_").replace(",", "-")
+    return RAW_CACHE_DIR / f"bissdmx_{dataflow.replace('.', '-')}_{safe}.parquet"
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=4, max=30),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _fetch_bis_sdmx_from_api(dataflow: str, key: str) -> pd.Series:
+    resp = requests.get(
+        f"{_BIS_SDMX_BASE}/{dataflow}/{key}",
+        headers={"Accept": "application/vnd.sdmx.data+csv"},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    import csv as _csv
+    import io
+    records = []
+    for row in _csv.DictReader(io.StringIO(resp.text)):
+        period = row.get("TIME_PERIOD")
+        val = row.get("OBS_VALUE")
+        if not period or val in (None, ""):
+            continue
+        records.append((_parse_imf_sdmx_period(period), float(val)))
+    if not records:
+        raise ValueError(f"Empty BIS SDMX response for {dataflow}/{key}")
+    dates, values = zip(*sorted(records))
+    return pd.Series(list(values), index=pd.DatetimeIndex(dates), name="value", dtype=float)
+
+
+def fetch_bis_sdmx_series(
+    dataflow: str,
+    key: str,
+    frequency: str = "Q",
+    force_refresh: bool = False,
+) -> Optional[pd.Series]:
+    """
+    Fetch one series from the BIS SDMX 2.1 API (stats.bis.org).
+
+    dataflow: SDMX dataflow ref, e.g. "WS_DEBT_SEC2_PUB"
+    key: full dimension key in the dataflow's own dimension order, e.g.
+         "Q.3P.3P.1.1.C.A.A.USD.A.A.A.A.A.I" for WS_DEBT_SEC2_PUB
+         (FREQ.ISSUER_RES.ISSUER_NAT.ISSUER_BUS_IMM.ISSUER_BUS_ULT.MARKET.
+          ISSUE_TYPE.ISSUE_CUR_GROUP.ISSUE_CUR.ISSUE_OR_MAT.ISSUE_RE_MAT.
+          ISSUE_RATE.ISSUE_RISK.ISSUE_COL.MEASURE) — verified endpoint-first
+          via stats.bis.org/api/v1/data/{dataflow}/all?detail=serieskeysonly
+          per house rule (never invent series IDs).
+    Caches to parquet; returns None and logs on failure.
+    """
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = _bis_sdmx_cache_path(dataflow, key)
+
+    if not force_refresh and _is_fresh(cache, frequency):
+        logger.debug("[cache hit] BIS SDMX %s/%s", dataflow, key)
+        df = pd.read_parquet(cache)
+        return df["value"]
+
+    logger.info("[BIS SDMX fetch] %s/%s", dataflow, key)
+
+    try:
+        series = _fetch_bis_sdmx_from_api(dataflow, key)
+    except Exception as exc:
+        logger.error("[BIS SDMX] Failed to fetch %s/%s: %s", dataflow, key, exc)
+        if cache.exists():
+            logger.warning("[cache fallback] Using stale cache for BIS SDMX %s/%s", dataflow, key)
+            df = pd.read_parquet(cache)
+            return df["value"]
+        return None
+
+    try:
+        series.to_frame().to_parquet(cache)
+        logger.debug("[cached] BIS SDMX %s/%s → %s (%d obs)", dataflow, key, cache.name, len(series))
+    except PermissionError as exc:
+        logger.warning("[cache write failed] BIS SDMX %s/%s: %s — proceeding uncached", dataflow, key, exc)
+    return series
+
+
 def fetch_manual_series(
     filename: str,
     frequency: str = "A",

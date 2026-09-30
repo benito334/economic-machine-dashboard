@@ -1503,6 +1503,85 @@ bindings:
     sanity_max: 90.0
     notes: "New IMF SDMX 2.1 API (api.imf.org), dataflow IMF.STA/COFER, key COUNTRY.INDICATOR.FXR_CURRENCY.TYPE_OF_TRANSFORMATION.FREQ. Verified 2026-07-05: 109 quarterly obs 1999-Q1 (71.2%) → 2026-Q1 (57.1%)."
 
+  # ─── Dollar-dominance monitor (Ray Dalio consult 2026-08-21) ──────────────
+  # JP Morgan-style USD-dominance factors beyond reserve share: sovereign debt
+  # foreign-held (factor #5, derived from existing fed.* signals — no new
+  # sourcing) and offshore/international debt securities USD share (factor
+  # #4, new BIS SDMX binding). See docs/Guidance/ray_dalio_review_log.md
+  # Session 2026-08-21.
+
+  - id: order.foreign_treasury_holdings_share
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: derived
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 40.0
+    linkage: "Federal debt held by foreign & international investors ÷ total marketable Treasury debt (fed.foreign_holdings ÷ fed.marketable_debt — a first-order identity, no new sourcing). Dollar-dominance factor #5 (Ray consult 2026-08-21): a falling foreign-held share alongside rising issuance forces domestic/Fed absorption — an early external-order warning distinct from order.reserve_currency_share itself."
+    sanity_min: 0.0
+    sanity_max: 100.0
+    notes: "Derived: FDHBFIN ÷ MVMTD027MNFRBDAL, quarterly (MVMTD027MNFRBDAL monthly resampled to quarter-end to align with FDHBFIN's native cadence). Verified 2026-08-21: ~31-32% and falling from a mid-2010s peak near 50%, consistent with the fed.foreign_holdings narrative already in the Fed Monitor. equilibrium=40.0 is an illustrative round anchor (roughly the pre-decline 'normal' level), not a calibrated target — same convention as order.reserve_currency_share."
+
+  - id: order.offshore_usd_debt_outstanding
+    series_id: "WS_DEBT_SEC2_PUB/Q.3P.3P.1.1.C.A.A.USD.A.A.A.A.A.I"
+    provider: BIS_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: usd_millions
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "BIS international debt securities outstanding, USD-denominated (amounts outstanding, all issuers/nationalities/markets — international market only). Numerator for order.offshore_usd_issuance_share; also a standalone read of USD-denominated offshore capital-market financing."
+    sanity_min: 0.0
+    sanity_max: 100000000.0
+    notes: "BIS SDMX 2.1 API (stats.bis.org), dataflow WS_DEBT_SEC2_PUB (DSD BIS_DEBT_SEC2). Key = FREQ.ISSUER_RES.ISSUER_NAT.ISSUER_BUS_IMM.ISSUER_BUS_ULT.MARKET.ISSUE_TYPE.ISSUE_CUR_GROUP.ISSUE_CUR.ISSUE_OR_MAT.ISSUE_RE_MAT.ISSUE_RATE.ISSUE_RISK.ISSUE_COL.MEASURE; 3P=All countries excluding residents (both dims = global aggregate), 1=All issuers, C=International markets, A=All (type/cur-group/maturity/rate/risk/collateral), I=Amounts outstanding. Verified 2026-08-21: 242 quarterly obs 1966-Q1 → 2026-Q1 ($15.87T)."
+
+  - id: order.offshore_total_debt_outstanding
+    series_id: "WS_DEBT_SEC2_PUB/Q.3P.3P.1.1.C.A.A.TO1.A.A.A.A.A.I"
+    provider: BIS_SDMX
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: usd_millions
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "BIS international debt securities outstanding, all currencies combined. Denominator for order.offshore_usd_issuance_share."
+    sanity_min: 0.0
+    sanity_max: 100000000.0
+    notes: "Same key as order.offshore_usd_debt_outstanding with ISSUE_CUR=TO1 (Total all currencies) in place of USD. Verified 2026-08-21: 242 quarterly obs 1966-Q1 → 2026-Q1 ($34.35T)."
+
+  - id: order.offshore_usd_issuance_share
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: order
+    lead_lag: structural
+    transformation: derived
+    units: pct_level
+    source_tier: free
+    vintage_available: false
+    is_constructed: true
+    verified: true
+    equilibrium: 45.0
+    linkage: "order.offshore_usd_debt_outstanding ÷ order.offshore_total_debt_outstanding × 100 — USD share of international (offshore) debt securities outstanding. Dollar-dominance factor #4 (Ray consult 2026-08-21): 'offshore issuance share... capital-market centrality.' A sustained decline signals issuers/investors diversifying away from dollar-denominated cross-border financing."
+    sanity_min: 0.0
+    sanity_max: 100.0
+    notes: "Derived ratio of the two BIS_SDMX legs above. Verified 2026-08-21: 46.2% at 2026-Q1, consistent with the widely-cited ~45-50% BIS figure for USD share of international debt securities. equilibrium=45.0 is an illustrative round anchor near the current/recent-historical level, not a calibrated target."
+
   # ─── DEFERRED — not yet ingested ──────────────────────────────────────────
   # capital.portfolio_flows → IMF BOP / Treasury TIC — Phase 2
   # currency.ppp_gap        → OECD/WB PPP derived    — Phase 2

@@ -253,6 +253,8 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         return hit.iloc[0].get("value"), hit.iloc[0].get("as_of")
 
     rcs, _ = sig_val("order.reserve_currency_share")
+    fth, _ = sig_val("order.foreign_treasury_holdings_share")
+    ouis, _ = sig_val("order.offshore_usd_issuance_share")
     gini, gini_dt = sig_val("order.gini")
     prod = _latest(hist, "productivity_score")
     as_of = pd.Timestamp(hist["as_of"].iloc[-1])
@@ -291,6 +293,12 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     if rcs is not None:
         cur = {"US": "USD", "EZ": "EUR", "JP": "JPY", "GB": "GBP"}.get(country, "FX")
         order_bits.append(f"{cur} reserves {float(rcs):.1f}%")
+    # Dollar-dominance monitor (Ray Dalio review, Session 2026-08-21) — US-only
+    # (derived from FRED/BIS-global data), same as rcs above.
+    if fth is not None:
+        order_bits.append(f"UST foreign-held {float(fth):.1f}%")
+    if ouis is not None:
+        order_bits.append(f"offshore USD debt {float(ouis):.1f}%")
     if gini is not None:
         yr = pd.Timestamp(gini_dt).year if gini_dt is not None else "?"
         order_bits.append(f"Gini {float(gini):.1f} ({yr})")

@@ -41,6 +41,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.claude/settings.local.json
 
 # Synology NAS metadata
 @eaDir/

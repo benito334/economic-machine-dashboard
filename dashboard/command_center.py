@@ -503,6 +503,8 @@ def render_command_center(country_data, page_trigger, thresholds,
 
     # Big-cycle ORDER reads (Phase D + D4 manual-load slots)
     rcs = _sig(latest_sig, "order.reserve_currency_share")
+    fth = _sig(latest_sig, "order.foreign_treasury_holdings_share")
+    ouis = _sig(latest_sig, "order.offshore_usd_issuance_share")
     gini = _sig(latest_sig, "order.gini")
     gov = _sig(latest_sig, "order.governance")
     gpr = _sig(latest_sig, "order.geopolitical_risk")
@@ -512,6 +514,14 @@ def render_command_center(country_data, page_trigger, thresholds,
         d12 = rcs.get("change_12m")
         d12_txt = f" ({float(d12):+.1f}pp/yr)" if d12 is not None and not pd.isna(d12) else ""
         order_bits.append(f"{cur} reserve share {float(rcs['value']):.1f}%{d12_txt}")
+    # Dollar-dominance monitor (Ray Dalio review, Session 2026-08-21): two more
+    # legs beyond reserve share — sovereign debt foreign-held, offshore USD
+    # issuance share. Both are US-only (derived from FRED/BIS-global data),
+    # so they only populate when latest_sig is the US snapshot, same as rcs.
+    if fth.get("value") is not None:
+        order_bits.append(f"UST foreign-held {float(fth['value']):.1f}%")
+    if ouis.get("value") is not None:
+        order_bits.append(f"offshore USD debt share {float(ouis['value']):.1f}%")
     if gini.get("value") is not None:
         gini_yr = pd.Timestamp(gini["as_of"]).year if gini.get("as_of") is not None else "?"
         order_bits.append(f"Gini {float(gini['value']):.1f} ({gini_yr})")

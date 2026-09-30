@@ -168,6 +168,59 @@ def test_compute_derived_rate_expectations_missing_input_returns_none():
     assert compute_derived(binding, {}, {"policy.yield_2y": pd.Series([4.5])}) is None
 
 
+# ── Dollar-dominance derived signals (Ray Dalio review, Session 2026-08-21) ────
+
+def test_compute_derived_foreign_treasury_holdings_share():
+    # order.foreign_treasury_holdings_share = FDHBFIN ÷ MVMTD027MNFRBDAL × 100.
+    # FRED indexes both on period-START dates (quarter-start / month-start) —
+    # the derived branch must resample both to quarter-END before dividing,
+    # or misaligned indices silently produce an empty result.
+    foreign = pd.Series(
+        [9000.0, 9270.9],
+        index=pd.to_datetime(["2025-07-01", "2025-10-01"]),
+    )
+    total = pd.Series(
+        [29000.0, 29100.0, 29200.0, 29464.3, 29500.0, 29600.0],
+        index=pd.to_datetime([
+            "2025-07-01", "2025-08-01", "2025-09-01",
+            "2025-10-01", "2025-11-01", "2025-12-01",
+        ]),
+    )
+    raw_store = {"FDHBFIN": foreign, "MVMTD027MNFRBDAL": total}
+    binding = SimpleNamespace(id="order.foreign_treasury_holdings_share", frequency="Q")
+    result = compute_derived(binding, raw_store, {})
+    assert result is not None
+    assert len(result) == 2
+    # Q3 2025: 9000 / 29200 * 100 ; Q4 2025: 9270.9 / 29600 * 100
+    assert result.tolist() == pytest.approx([9000.0 / 29200.0 * 100, 9270.9 / 29600.0 * 100])
+
+
+def test_compute_derived_foreign_treasury_holdings_share_missing_input_returns_none():
+    binding = SimpleNamespace(id="order.foreign_treasury_holdings_share", frequency="Q")
+    assert compute_derived(binding, {"FDHBFIN": pd.Series([1.0])}, {}) is None
+
+
+def test_compute_derived_offshore_usd_issuance_share():
+    idx = pd.date_range("2025-06-30", periods=3, freq="QE")
+    transformed = {
+        "order.offshore_usd_debt_outstanding": pd.Series([14000.0, 14500.0, 15000.0], index=idx),
+        "order.offshore_total_debt_outstanding": pd.Series([30000.0, 31000.0, 32000.0], index=idx),
+    }
+    binding = SimpleNamespace(id="order.offshore_usd_issuance_share", frequency="Q")
+    result = compute_derived(binding, {}, transformed)
+    assert result is not None
+    assert result.tolist() == pytest.approx(
+        [14000 / 30000 * 100, 14500 / 31000 * 100, 15000 / 32000 * 100]
+    )
+
+
+def test_compute_derived_offshore_usd_issuance_share_missing_input_returns_none():
+    binding = SimpleNamespace(id="order.offshore_usd_issuance_share", frequency="Q")
+    assert compute_derived(
+        binding, {}, {"order.offshore_usd_debt_outstanding": pd.Series([1.0])}
+    ) is None
+
+
 def test_compute_derived_realized_vol_daily_annualizes_with_sqrt_252():
     idx = pd.date_range("2020-01-01", periods=40, freq="D")
     rng = np.random.default_rng(42)

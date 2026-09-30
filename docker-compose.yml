@@ -42,6 +42,7 @@ services:
       # open, sidebar-linked page.
       TRAFFIC_KEY: "${TRAFFIC_KEY:-}"
     command: python -m dashboard.charting
+    restart: always
 
   # Daily auto-import (opt-in; configured from the dashboard Settings menu).
   # Automates the manual workflow: stop charting -> run pipeline -> start
@@ -66,4 +67,10 @@ services:
       - /mnt/data/db/finance/indicators_machine:/db
       - /var/run/docker.sock:/var/run/docker.sock   # to bounce the charting container
     command: python -m indicators.scheduler
-    restart: unless-stopped
+    # `always` (not `unless-stopped`): on a hard reboot, the shutdown sequence
+    # stops containers before power actually cuts, which `unless-stopped`
+    # treats as an intentional stop and will NOT restart on the next daemon
+    # start. `always` restarts regardless of how it last stopped — verified
+    # 2026-09-07 after a hard reboot left both services down despite
+    # `unless-stopped` on this one.
+    restart: always

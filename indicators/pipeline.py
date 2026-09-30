@@ -25,7 +25,7 @@ from indicators.composites import (
     compute_composite_history,
     load_composites_config,
 )
-from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series, fetch_manual_series, fetch_ons_series, fetch_estat_series, fetch_bcb_series, fetch_bps_series
+from indicators.loader import fetch_series, fetch_wb_series, fetch_imf_series, fetch_eurostat_series, fetch_ecb_series, fetch_imf_sdmx_series, fetch_bis_sdmx_series, fetch_manual_series, fetch_ons_series, fetch_estat_series, fetch_bcb_series, fetch_bps_series
 from indicators.longterm_stress import compute_debt_stress_history, load_longterm_stress_config
 from indicators.debt_cycle_stage import compute_stage_history, load_stage_config
 from indicators.models import CountryBinding, Signal
@@ -214,6 +214,42 @@ def compute_derived(
         )
         return realized_vol.dropna()
 
+    if bid == "order.foreign_treasury_holdings_share":
+        # Federal debt held by foreign & int'l investors ÷ total marketable
+        # Treasury debt (both FRED, no new sourcing — first-order identity).
+        # Dollar-dominance factor #5 (Ray consult 2026-08-21): "USD-denominated
+        # sovereign debt held by foreign investors."
+        foreign_raw = raw_store.get("FDHBFIN")             # Q level, $B
+        total_raw = raw_store.get("MVMTD027MNFRBDAL")      # M level, $B
+        if foreign_raw is None or total_raw is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        # Both FRED series are indexed on period-START dates; resample both
+        # to quarter-END so the (already-quarterly) foreign series and the
+        # (downsampled) monthly series align on the same timestamps.
+        foreign_q = foreign_raw.resample("QE").last()
+        total_q = total_raw.resample("QE").last()
+        combined = pd.concat([foreign_q, total_q], axis=1, join="inner")
+        combined.columns = ["foreign", "total"]
+        result = (combined["foreign"] / combined["total"]) * 100.0
+        return result.dropna()
+
+    if bid == "order.offshore_usd_issuance_share":
+        # BIS international debt securities outstanding, USD-denominated ÷
+        # all currencies (WS_DEBT_SEC2_PUB, both legs bound via BIS_SDMX —
+        # order.offshore_usd_debt_outstanding / order.offshore_total_debt_outstanding).
+        # Dollar-dominance factor #4 (Ray consult 2026-08-21): "offshore issuance
+        # share" / "capital-market centrality."
+        usd = transformed_store.get("order.offshore_usd_debt_outstanding")
+        total = transformed_store.get("order.offshore_total_debt_outstanding")
+        if usd is None or total is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        combined = pd.concat([usd, total], axis=1, join="inner")
+        combined.columns = ["usd", "total"]
+        result = (combined["usd"] / combined["total"]) * 100.0
+        return result.dropna()
+
     if bid == "credit.btp_bund_spread":
         # Italian BTP 10Y minus German Bund 10Y (both in % pct_level)
         it_yield = transformed_store.get("credit.yield_it_10y")
@@ -268,6 +304,7 @@ def run_country(
     wb_bindings       = [b for b in bindings if b.provider == "WorldBank"  and b.verified]
     imf_bindings      = [b for b in bindings if b.provider == "IMF"        and b.verified]
     imf_sdmx_bindings = [b for b in bindings if b.provider == "IMF_SDMX"   and b.verified]
+    bis_sdmx_bindings = [b for b in bindings if b.provider == "BIS_SDMX"   and b.verified]
     manual_bindings   = [b for b in bindings if b.provider == "Manual"     and b.verified]
     derived_bindings  = [b for b in bindings if b.provider == "derived"    and b.verified]
     skipped           = [b for b in bindings if not b.verified]
@@ -276,7 +313,7 @@ def run_country(
     print(f"  Country: {country_code}  ({yaml_path.name})")
     print(f"  FRED: {len(fred_bindings)}  |  Eurostat: {len(estat_bindings)}  |  ECB: {len(ecb_bindings)}  "
           f"|  WorldBank: {len(wb_bindings)}  "
-          f"|  IMF: {len(imf_bindings)}  |  Manual: {len(manual_bindings)}  "
+          f"|  IMF: {len(imf_bindings)}  |  BIS SDMX: {len(bis_sdmx_bindings)}  |  Manual: {len(manual_bindings)}  "
           f"|  Derived: {len(derived_bindings)}  |  Skipped: {len(skipped)}")
     if skipped:
         print(f"    Skipped: {', '.join(b.id for b in skipped)}")
@@ -737,6 +774,61 @@ def run_country(
                 continue
             raw = fetch_imf_sdmx_series(
                 dataset, sdmx_key,
+                frequency=binding.frequency,
+                force_refresh=force_refresh,
+            )
+            if raw is None or raw.empty:
+                print(f"  [EMPTY] {binding.id} ({binding.series_id})")
+                results["empty"] += 1
+                continue
+
+            if binding.raw_scale:
+                raw = raw / binding.raw_scale
+
+            transformed = apply_transformation(raw, binding.transformation, binding.frequency)
+            transformed = transformed.dropna()
+
+            if transformed.empty:
+                print(f"  [EMPTY after transform] {binding.id}")
+                results["empty"] += 1
+                continue
+
+            transformed_store[binding.id] = transformed
+            signals = build_signals(transformed, binding, raw)
+            latest = signals[-1] if signals else None
+
+            if latest:
+                warns = sanity_check(latest, binding)
+                for w in warns:
+                    print(f"  [SANITY WARN] {w}")
+                    results["sanity_warn"] += 1
+
+            n = upsert_signals(conn, signals)
+            status = "PROXY" if binding.is_proxy else "OK"
+            latest_val = f"{transformed.iloc[-1]:.4f}" if not transformed.empty else "?"
+            latest_dt  = str(transformed.index[-1].date()) if not transformed.empty else "?"
+            print(f"  [{status:5}] {binding.id:40s}  {binding.series_id:30s}  {binding.frequency}  {latest_dt}  {latest_val}  ({n} rows)")
+            results["ok"] += 1
+
+        except Exception as exc:
+            logger.exception("[ERROR] %s: %s", binding.id, exc)
+            results["error"] += 1
+            if is_primary:
+                sys.exit(1)
+
+    # ── Pass 3.6: BIS SDMX series (stats.bis.org — debt securities etc.) ───
+    if bis_sdmx_bindings:
+        print(f"\n─── Pass 3.6: BIS SDMX series [{country_code}] ─────────────────────────")
+    for binding in bis_sdmx_bindings:
+        try:
+            # series_id convention mirrors IMF_SDMX/ECB: "DATAFLOW/KEY"
+            dataflow, _, sdmx_key = (binding.series_id or "").partition("/")
+            if not dataflow or not sdmx_key:
+                print(f"  [SKIP] {binding.id}: series_id must be 'DATAFLOW/KEY', got '{binding.series_id}'")
+                results["error"] += 1
+                continue
+            raw = fetch_bis_sdmx_series(
+                dataflow, sdmx_key,
                 frequency=binding.frequency,
                 force_refresh=force_refresh,
             )
