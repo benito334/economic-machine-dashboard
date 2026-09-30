@@ -328,17 +328,31 @@ def test_debt_income_spread_missing_sector_is_absent(monkeypatch):
     assert list(df.columns) == ["government"]
 
 
+def _legacy_flag_cfg(reserve_countries):
+    """cfg with `percentile_min_periods` far above any test series length, so
+    _spread_flag always falls back to Ray's original fixed pp bars — lets
+    these short synthetic-series tests exercise the persistence/consecutive
+    logic without needing 20+ quarters to warm up a percentile."""
+    return {
+        "features": {"percentile_min_periods": 20},
+        "debt_income_spread": {
+            "reserve_currency_countries": reserve_countries,
+            "warning_threshold_pp": {"reserve_currency": 1.5, "other": 0.75},
+            "warning_consecutive_quarters": {"reserve_currency": 2, "other": 1},
+            "critical_consecutive_quarters": 3,
+            "critical_cumulative_annual_pp": 4.0,
+        },
+    }
+
+
 def test_spread_flag_warning_needs_consecutive_quarters():
     idx = pd.date_range("2020-03-31", periods=6, freq="QE")
-    # reserve-currency threshold = 1.5pp, needs 2 consecutive quarters
-    spread = pd.DataFrame({"government": [0.5, 0.5, 2.0, 2.0, 0.5, 0.5]}, index=idx)
-    cfg = {"debt_income_spread": {
-        "reserve_currency_countries": ["US"],
-        "warning_threshold_pp": {"reserve_currency": 1.5, "other": 0.75},
-        "warning_consecutive_quarters": {"reserve_currency": 2, "other": 1},
-        "critical_consecutive_quarters": 3,
-        "critical_cumulative_annual_pp": 4.0,
-    }}
+    # reserve-currency threshold = 1.5pp, needs 2 consecutive quarters.
+    # 2.0 / 2.01 (not 2.0 / 2.0) — two genuinely distinct observations, not a
+    # single ffilled print repeated (see the print-dedup docstring on
+    # _spread_flag: exact float repeats are treated as one observation).
+    spread = pd.DataFrame({"government": [0.5, 0.5, 2.0, 2.01, 0.5, 0.5]}, index=idx)
+    cfg = _legacy_flag_cfg(["US"])
     flag = _spread_flag(spread, "US", cfg)
     assert flag.iloc[2] is None          # first quarter over threshold — not yet 2 consecutive
     assert flag.iloc[3] == "warning"     # 2nd consecutive quarter over threshold
@@ -347,18 +361,57 @@ def test_spread_flag_warning_needs_consecutive_quarters():
 
 def test_spread_flag_critical_via_consecutive_or_single_spike():
     idx = pd.date_range("2020-03-31", periods=6, freq="QE")
-    cfg = {"debt_income_spread": {
-        "reserve_currency_countries": [],   # EM tier: tighter threshold, single quarter counts
-        "warning_threshold_pp": {"reserve_currency": 1.5, "other": 0.75},
-        "warning_consecutive_quarters": {"reserve_currency": 2, "other": 1},
-        "critical_consecutive_quarters": 3,
-        "critical_cumulative_annual_pp": 4.0,
-    }}
-    persistent = pd.DataFrame({"government": [0.0, 1.0, 1.0, 1.0, 0.0, 0.0]}, index=idx)
+    cfg = _legacy_flag_cfg([])   # EM tier: tighter threshold, single quarter counts
+
+    # 1.0 / 1.01 / 1.02 — three distinct observations, not one ffilled print.
+    persistent = pd.DataFrame({"government": [0.0, 1.0, 1.01, 1.02, 0.0, 0.0]}, index=idx)
     assert _spread_flag(persistent, "BR", cfg).iloc[3] == "critical"   # 3 consecutive quarters over threshold
 
     spike = pd.DataFrame({"government": [0.0, 0.0, 5.0, 0.0, 0.0, 0.0]}, index=idx)
     assert _spread_flag(spike, "BR", cfg).iloc[2] == "critical"        # single reading past the cumulative bar
+
+
+def test_spread_flag_ffill_repeat_does_not_fake_persistence():
+    """The actual bug this audit fixed: an annual debt/GDP print forward-filled
+    across 4 quarters must NOT count as 4 (or 3) independent confirmations."""
+    idx = pd.date_range("2020-03-31", periods=6, freq="QE")
+    # Exactly-repeated 1.0 across 3 quarters — this is what ffill of one
+    # annual print looks like, NOT 3 distinct observations.
+    ffilled = pd.DataFrame({"government": [0.0, 1.0, 1.0, 1.0, 0.0, 0.0]}, index=idx)
+    cfg = _legacy_flag_cfg([])
+    flag = _spread_flag(ffilled, "BR", cfg)
+    assert flag.iloc[3] != "critical"   # one real print, not 3 — must not satisfy the consecutive-quarters rule
+
+
+def test_spread_flag_uses_country_relative_percentile_once_warmed_up():
+    """After warm-up, a country whose own history sits mostly in the 1-3pp
+    range should NOT flag critical just because 1pp exceeds some other
+    country's fixed bar — thresholds are relative to ITS OWN distribution."""
+    idx = pd.date_range("2010-03-31", periods=40, freq="QE")
+    rng = np.random.default_rng(7)
+    # Calm country: noise around 1pp, well below the old fixed 4.0 critical
+    # bar and even the old 0.75 "other"-tier warning bar most of the time.
+    calm = pd.Series(1.0 + rng.normal(0, 0.1, size=40), index=idx)
+    df = pd.DataFrame({"government": calm})
+    cfg = {
+        "features": {"percentile_min_periods": 20},
+        "debt_income_spread": {
+            "reserve_currency_countries": [],
+            "warning_percentile": {"reserve_currency": 0.85, "other": 0.80},
+            "critical_percentile": {"reserve_currency": 0.97, "other": 0.95},
+            "warning_minimum_pp": 0.5,
+            "warning_consecutive_quarters": {"reserve_currency": 2, "other": 1},
+            "critical_consecutive_quarters": 3,
+            "warning_threshold_pp": {"reserve_currency": 1.5, "other": 0.75},
+            "critical_cumulative_annual_pp": 4.0,
+        },
+    }
+    flag = _spread_flag(df, "BR", cfg)
+    warmed_tail = flag.iloc[20:]
+    # A calm, low-volatility history should mostly read clean — a fixed
+    # 0.75pp bar would have flagged "warning" almost every quarter here.
+    assert (warmed_tail == "warning").mean() < 0.5
+    assert (warmed_tail == "critical").mean() < 0.3
 
 
 @pytest.mark.integration

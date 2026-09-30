@@ -384,14 +384,36 @@ debt_income_spread:
   # TUNABLE — Ray: reserve-currency countries (U.S., Eurozone, Japan) tolerate
   # more slack; everyone else gets the tighter EM-style tolerance.
   reserve_currency_countries: [US, EZ, JP]
-  warning_threshold_pp:
-    reserve_currency: 1.5   # TUNABLE — Ray: "tolerate a modestly larger spread—up to 1.5pp for a couple of quarters"
-    other: 0.75             # TUNABLE — Ray (EM): "0.5-1pp for a single quarter" midpoint
+  # Audit finding (2026-09-27): Ray's original fixed pp bars (1.5 / 0.75
+  # warning, 4.0 critical) fired "critical" 50-95% of the time in nearly
+  # every non-US country — %Δr of a debt/GDP ratio is scale-dependent (the
+  # same absolute pp move reads as a bigger %Δr for a country with a lower
+  # baseline ratio) and naturally noisier than a universal pp bar can
+  # absorb, so the badge carried no discriminating information. Replaced
+  # with country-relative expanding percentiles (same method as the
+  # debt_pct feature below, `percentile_min_periods` warm-up, no
+  # look-ahead) — "critical" now means "worse than this country's own
+  # history," which is what an early-warning badge needs to mean. Reserve
+  # currencies still get the more-tolerant (higher/rarer) percentile bar,
+  # preserving Ray's ordering. The original pp bars are kept as a fallback
+  # ONLY for the first `percentile_min_periods` quarters of a country's
+  # history, before there's enough data to build a percentile off of.
+  warning_percentile:
+    reserve_currency: 0.85
+    other: 0.80
+  critical_percentile:
+    reserve_currency: 0.97
+    other: 0.95
+  warning_minimum_pp: 0.5   # floor — a high percentile on near-zero noise still shouldn't fire
   warning_consecutive_quarters:
     reserve_currency: 2     # TUNABLE — Ray's general rule: >threshold for 2 consecutive quarters
     other: 1                # TUNABLE — Ray (EM): "a single quarter can already be concerning"
   critical_consecutive_quarters: 3      # TUNABLE — Ray: 3+ quarters over threshold
-  critical_cumulative_annual_pp: 4.0    # TUNABLE — Ray: cumulative positive spread over a year >4pp total
+  # Pre-warm-up fallback only (see above) — Ray's original absolute bars.
+  warning_threshold_pp:
+    reserve_currency: 1.5
+    other: 0.75
+  critical_cumulative_annual_pp: 4.0
 
 # Per-country sovereign inputs (concept tails; missing entries degrade
 # honestly — the sovereign vote runs on whatever exists).

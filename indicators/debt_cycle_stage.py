@@ -424,32 +424,70 @@ def build_debt_income_spread(conn, country: str, cfg: dict) -> pd.DataFrame:
 
 def _spread_flag(spread_df: pd.DataFrame, country: str, cfg: dict) -> pd.Series:
     """Per-quarter flag (None / "warning" / "critical") from the worst
-    (highest) sector spread that quarter, per the reserve-currency-vs-other
-    thresholds in config/debt_cycle_stage.yaml `debt_income_spread`."""
+    (highest) sector spread that quarter.
+
+    Thresholds are country-relative expanding percentiles (lagged, no
+    look-ahead — same method as the debt_pct feature), not fixed pp bars: an
+    audit (2026-09-27) found fixed bars fired "critical" 50-95% of the time
+    in nearly every non-US country, since %Δr of a debt/GDP ratio is
+    scale-dependent and noisier than a universal pp number can absorb. See
+    config/debt_cycle_stage.yaml `debt_income_spread` for the full rationale.
+    Before a country has `percentile_min_periods` quarters of history, this
+    falls back to Ray's original fixed pp bars.
+
+    Persistence ("N consecutive quarters over threshold") is measured in
+    DISTINCT observations, not ffilled quarters — most countries' debt/GDP
+    ratio is annual data forward-filled to quarterly (see
+    build_debt_income_spread), so one annual print would otherwise satisfy
+    "N consecutive quarters" on its own with zero new information. Consecutive
+    quarters with an exactly-identical spread value (only possible via ffill;
+    two independently-computed real quarters essentially never land on the
+    same float) are collapsed into one observation before counting.
+    """
     if spread_df.empty:
         return pd.Series(dtype=object)
     sm = cfg.get("debt_income_spread") or {}
+    fcfg = cfg["features"]
     tier = "reserve_currency" if country in (sm.get("reserve_currency_countries") or []) else "other"
-    thr = float((sm.get("warning_threshold_pp") or {}).get(tier, 1.0))
+    warn_pctl = float((sm.get("warning_percentile") or {}).get(tier, 0.80))
+    crit_pctl = float((sm.get("critical_percentile") or {}).get(tier, 0.95))
+    floor_pp = float(sm.get("warning_minimum_pp", 0.5))
     need_q = int((sm.get("warning_consecutive_quarters") or {}).get(tier, 2))
     crit_q = int(sm.get("critical_consecutive_quarters", 3))
-    crit_cum = float(sm.get("critical_cumulative_annual_pp", 4.0))
+    legacy_warn_pp = float((sm.get("warning_threshold_pp") or {}).get(tier, 1.0))
+    legacy_crit_cum = float(sm.get("critical_cumulative_annual_pp", 4.0))
+    min_periods = int(fcfg["percentile_min_periods"])
 
     worst = spread_df.max(axis=1, skipna=True)
-    over = worst > thr
+    pctl = expanding_percentile_lagged(worst, min_periods)
+    warmed = pctl.notna().to_numpy()
+    worst_arr = worst.to_numpy()
+    pctl_arr = pctl.fillna(0.0).to_numpy()
+
+    over = np.where(
+        warmed,
+        (pctl_arr >= warn_pctl) & (worst_arr > floor_pp),
+        worst_arr > legacy_warn_pp,
+    )
+    crit_now = np.where(
+        warmed,
+        (pctl_arr >= crit_pctl) & (worst_arr > floor_pp),
+        worst_arr > legacy_crit_cum,
+    )
+
+    print_id = worst.ne(worst.shift()).cumsum().to_numpy()
+    prints_over = pd.Series(over).groupby(print_id).first().to_numpy()
+
     out = []
     for i in range(len(worst)):
-        warn_win = over.iloc[max(0, i - need_q + 1): i + 1]
-        crit_win = over.iloc[max(0, i - crit_q + 1): i + 1]
-        # worst.iloc[i] is already a YoY (annualized) spread, so "cumulative
-        # positive spread over a year" is just that single reading against the
-        # critical bar — NOT a sum of already-annualized quarters (that would
-        # quadruple-count the same year of drift).
-        if len(crit_win) == crit_q and crit_win.all():
+        pos = int(print_id[i]) - 1
+        warn_tail = prints_over[max(0, pos - need_q + 1): pos + 1]
+        crit_tail = prints_over[max(0, pos - crit_q + 1): pos + 1]
+        if crit_now[i]:
             out.append("critical")
-        elif worst.iloc[i] > crit_cum:
+        elif len(crit_tail) == crit_q and crit_tail.all():
             out.append("critical")
-        elif len(warn_win) == need_q and warn_win.all():
+        elif len(warn_tail) == need_q and warn_tail.all():
             out.append("warning")
         else:
             out.append(None)
