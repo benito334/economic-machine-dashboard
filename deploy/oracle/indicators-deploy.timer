@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for new commits every 15 minutes and redeploy if found
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

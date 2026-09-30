@@ -27,6 +27,7 @@ import sys
 import time
 from pathlib import Path
 
+from indicators import notify
 from indicators import schedule_config as cfg
 
 logging.basicConfig(
@@ -115,6 +116,11 @@ def run_import(reason: str = "scheduled") -> None:
                     last_run=started.isoformat(timespec="seconds"),
                     last_finished=datetime.datetime.now().isoformat(timespec="seconds"),
                     last_reason=reason, last_message=msg)
+    if status == "success":
+        notify.ping_healthcheck(success=True)
+    else:
+        notify.ping_healthcheck(success=False)
+        notify.send_telegram(f"⚠️ Economic Machine Dashboard import FAILED ({reason})\n{msg}")
 
 
 # ── scheduling loop ──────────────────────────────────────────────────────────

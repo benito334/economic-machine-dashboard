@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull + redeploy the Economic Machine Dashboard if main moved
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=REPO_DIR=/opt/economic-machine-dashboard
+ExecStart=/opt/economic-machine-dashboard/deploy/oracle/pull-and-deploy.sh
+# stdout/stderr land in the journal — `journalctl -u indicators-deploy` to inspect.

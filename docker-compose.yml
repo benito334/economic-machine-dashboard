@@ -1,9 +1,13 @@
+# HOST_DATA_DIR / HOST_DB_DIR let this same compose file run unmodified on any
+# machine — defaults match the NAS's locked-in CLAUDE.md paths, so nothing
+# changes there. A different host (e.g. the Oracle VM) overrides both in its
+# own .env to point at wherever its persistent volume actually lives.
 x-common: &common
   build: .
   env_file: .env
   volumes:
-    - /mnt/data/project_data/finance/indicators_machine:/data
-    - /mnt/data/db/finance/indicators_machine:/db
+    - ${HOST_DATA_DIR:-/mnt/data/project_data/finance/indicators_machine}:/data
+    - ${HOST_DB_DIR:-/mnt/data/db/finance/indicators_machine}:/db
   environment:
     DATA_DIR: /data
     DB_PATH: /db/signals.duckdb
@@ -63,8 +67,8 @@ services:
       AUTO_IMPORT_ENABLED: "${AUTO_IMPORT_ENABLED:-}"
       AUTO_IMPORT_TIME: "${AUTO_IMPORT_TIME:-}"
     volumes:
-      - /mnt/data/project_data/finance/indicators_machine:/data
-      - /mnt/data/db/finance/indicators_machine:/db
+      - ${HOST_DATA_DIR:-/mnt/data/project_data/finance/indicators_machine}:/data
+      - ${HOST_DB_DIR:-/mnt/data/db/finance/indicators_machine}:/db
       - /var/run/docker.sock:/var/run/docker.sock   # to bounce the charting container
     command: python -m indicators.scheduler
     # `always` (not `unless-stopped`): on a hard reboot, the shutdown sequence
