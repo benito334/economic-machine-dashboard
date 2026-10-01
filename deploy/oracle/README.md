@@ -29,6 +29,19 @@ Two pieces, both already in the repo:
   separate from the VCN security list — both must allow a port, or Ubuntu's
   `ufw` if you enable it.
 
+**Ampere A1 out of capacity?** This is extremely common for the free ARM
+shape in popular regions (Ashburn especially) — it can take minutes to days
+to clear. Rather than repeatedly re-clicking Create, use
+`retry-create-instance.sh`: copy `retry-create-instance.env.local.example` to
+`retry-create-instance.env.local` (gitignored) in this folder, fill in your
+tenancy's OCIDs (the comments in the file say where to find each one via the
+`oci` CLI), then run the script — it loops across your ADs until one
+succeeds, and is safe to leave running unattended (checks for an existing
+instance first, so it never double-launches). Needs the `oci` CLI configured
+(`~/.oci/config` + an API signing key added via console → My profile →
+Tokens and keys → API keys — separate from your SSH key, this one
+authenticates CLI calls).
+
 ## 2. Install Docker + Compose
 
 ```bash
