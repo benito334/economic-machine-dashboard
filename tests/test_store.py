@@ -7,6 +7,7 @@ import pytest
 
 from indicators.models import DebtStressSnapshot, Signal
 from store.store import (
+    compact_database,
     delete_future_signals,
     get_connection,
     init_schema,
@@ -85,6 +86,71 @@ class TestUpsertSignals:
         assert count == 1
         val = conn.execute("SELECT value FROM signals").fetchone()[0]
         assert abs(val - 0.030) < 1e-10
+
+
+class TestCompactDatabase:
+    def test_preserves_all_rows_across_tables(self, tmp_path):
+        db = tmp_path / "test.duckdb"
+        c = get_connection(db)
+        init_schema(c)
+        sigs = [_signal(id=f"us.growth.sig{m}", as_of=date(2024, m, 1)) for m in range(1, 7)]
+        upsert_signals(c, sigs)
+        upsert_debt_stress(c, [
+            DebtStressSnapshot(country="US", as_of=date(2024, 3, 31), stress_score=0.1),
+        ])
+        c.close()
+
+        result = compact_database(db)
+        assert result["before_bytes"] > 0
+        assert result["after_bytes"] > 0
+
+        c2 = get_connection(db)
+        assert c2.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 6
+        assert c2.execute("SELECT COUNT(*) FROM debt_stress_snapshots").fetchone()[0] == 1
+        c2.close()
+
+    def test_survives_repeated_upsert_churn_on_same_row(self, tmp_path):
+        db = tmp_path / "test.duckdb"
+        c = get_connection(db)
+        init_schema(c)
+        # Same (id, as_of) every time -> each call is a DELETE+INSERT of the one
+        # live row — the pattern that bloats signals.duckdb for real at scale
+        # (see compact_database's docstring: 2.3GB/285K rows in production).
+        for i in range(200):
+            upsert_signals(c, [_signal(value=0.01 * i)])
+        c.close()
+
+        result = compact_database(db)
+        # Correctness invariant regardless of scale: compaction never grows the
+        # file, and the live row survives with its last-written value.
+        assert result["after_bytes"] <= result["before_bytes"]
+
+        c2 = get_connection(db)
+        assert c2.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 1
+        val = c2.execute("SELECT value FROM signals").fetchone()[0]
+        assert abs(val - 0.01 * 199) < 1e-10
+        c2.close()
+
+    def test_dest_leaves_source_untouched(self, tmp_path):
+        db = tmp_path / "test.duckdb"
+        c = get_connection(db)
+        init_schema(c)
+        upsert_signals(c, [_signal()])
+        c.close()
+        before = db.stat().st_size
+
+        dest = tmp_path / "compacted.duckdb"
+        compact_database(db, dest=dest)
+
+        assert db.stat().st_size == before  # source untouched
+        assert dest.exists()
+        c2 = get_connection(dest)
+        assert c2.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 1
+        c2.close()
+
+    def test_missing_db_returns_zeros(self, tmp_path):
+        result = compact_database(tmp_path / "nope.duckdb")
+        assert result == {"before_bytes": 0, "after_bytes": 0}
 
 
 class TestUpsertDebtStress:

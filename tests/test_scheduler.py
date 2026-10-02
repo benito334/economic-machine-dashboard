@@ -136,6 +136,52 @@ def test_charting_container_none_without_docker(cfg, monkeypatch):
     assert scheduler._stop_charting() is False
 
 
+# ── DB compaction hook ────────────────────────────────────────────────────────
+
+def test_compact_db_quietly_calls_store_compact(cfg, monkeypatch):
+    from indicators import scheduler
+    importlib.reload(scheduler)
+    calls = []
+    monkeypatch.setattr(
+        "store.store.compact_database",
+        lambda path: calls.append(path) or {"before_bytes": 100, "after_bytes": 10},
+    )
+    scheduler._compact_db_quietly()
+    assert len(calls) == 1
+
+
+def test_compact_db_quietly_swallows_errors(cfg, monkeypatch):
+    """A compaction failure must never break the day's import."""
+    from indicators import scheduler
+    importlib.reload(scheduler)
+
+    def _boom(path):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("store.store.compact_database", _boom)
+    scheduler._compact_db_quietly()  # must not raise
+
+
+def test_run_import_compacts_after_pipeline_success(cfg, monkeypatch):
+    from indicators import scheduler
+    importlib.reload(scheduler)
+    monkeypatch.setattr(scheduler, "_stop_charting", lambda: False)
+    monkeypatch.setattr(scheduler, "_start_charting", lambda was_stopped: None)
+    monkeypatch.setattr(scheduler.notify, "ping_healthcheck", lambda **kw: None)
+
+    class _FakeProc:
+        returncode = 0
+        stdout = "Summary\nCountry files processed: 13"
+        stderr = ""
+
+    monkeypatch.setattr(scheduler.subprocess, "run", lambda *a, **kw: _FakeProc())
+    compacted = []
+    monkeypatch.setattr(scheduler, "_compact_db_quietly", lambda: compacted.append(True))
+
+    scheduler.run_import(reason="test")
+    assert compacted == [True]
+
+
 def test_empty_env_override_does_not_disable(monkeypatch, tmp_path):
     """docker-compose passes AUTO_IMPORT_ENABLED:"" through — an EMPTY value must
     NOT override schedule.json (it silently disabled the nightly import; found

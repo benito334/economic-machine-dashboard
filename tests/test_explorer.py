@@ -119,7 +119,10 @@ def test_load_signal_overview_returns_all_signals():
     # + 7 market.* Market-Expectations series (2026-07-15 consult) = 88
     # + credit.household_debt + fed.custody_holdings (2026-07-17 data audit) = 90
     # + growth.relative_ulc (2026-08-19 Digital Ray consult, competitiveness gauge) = 91
-    assert len(df) == 91
+    # + order.foreign_treasury_holdings_share + order.offshore_usd_issuance_share
+    #   + order.offshore_usd_debt_outstanding + order.offshore_total_debt_outstanding
+    #   (2026-08-21 Digital Ray consult, dollar-dominance monitor) = 95
+    assert len(df) == 95
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns

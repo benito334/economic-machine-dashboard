@@ -171,6 +171,56 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
 
 
+def compact_database(db_path: Path = DB_PATH, dest: Optional[Path] = None) -> dict:
+    """Rebuild db_path from scratch, dropping dead-row weight left by upsert churn.
+
+    Every upsert_* function here is DELETE-then-INSERT, and DuckDB never physically
+    reclaims row-group storage from a DELETE on its own — CHECKPOINT flushes the WAL
+    but does not rewrite row groups that still carry dead tuples. A DB written to on
+    every pipeline run (daily, via the auto-import scheduler) therefore grows without
+    bound even though the live row count barely moves: seen 2026-07-09 (2.3GB for
+    285K rows, dropped to 67MB by a one-off manual script) and recurred by 2026-10-01
+    (9.4GB for 365K rows — nothing had reclaimed space since). Call this on a cadence
+    instead of waiting for someone to notice; indicators/scheduler.py calls it after
+    every import, while the dashboard container is already stopped for the write.
+
+    With ``dest`` omitted, compacts db_path in place (atomic swap) — caller must hold
+    exclusive access, since DuckDB is single-writer and a live reader left open
+    underneath the swap will be stuck on a stale file handle. With ``dest`` given,
+    db_path is only ever opened READ_ONLY and the compacted copy is written to dest
+    instead — safe to run against a live db_path (used by scripts/build_public_bundle.py
+    to snapshot a compacted copy for public deploy without touching the working DB).
+    """
+    if not db_path.exists():
+        return {"before_bytes": 0, "after_bytes": 0}
+    before_bytes = db_path.stat().st_size
+    in_place = dest is None
+    target = dest or db_path
+    tmp_path = target.with_name(target.name + ".compact.tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+    new_conn = duckdb.connect(str(tmp_path))
+    try:
+        init_schema(new_conn)
+        new_conn.execute(f"ATTACH '{db_path}' AS old (READ_ONLY)")
+        tables = [r[0] for r in new_conn.execute("SHOW TABLES FROM old").fetchall()]
+        for t in tables:
+            # BY NAME: column order can't be assumed to match after years of
+            # ALTER TABLE ADD COLUMN migrations layered onto the base schema.
+            new_conn.execute(f'INSERT INTO "{t}" BY NAME SELECT * FROM old."{t}"')
+        new_conn.execute("DETACH old")
+        new_conn.execute("CHECKPOINT")
+    finally:
+        new_conn.close()
+    after_bytes = tmp_path.stat().st_size
+    tmp_path.replace(target)
+    if in_place:
+        wal_path = db_path.with_name(db_path.name + ".wal")
+        if wal_path.exists():
+            wal_path.unlink()
+    return {"before_bytes": before_bytes, "after_bytes": after_bytes}
+
+
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
     """Remove forecast-like rows that violate the observation-date contract."""
     count = conn.execute(

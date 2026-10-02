@@ -86,6 +86,26 @@ def _start_charting(was_stopped: bool) -> None:
 
 # ── the import job = the manual workflow ─────────────────────────────────────
 
+def _compact_db_quietly() -> None:
+    """Reclaim the dead-row space upsert churn leaves behind (see store.compact_database).
+
+    Runs the pipeline's DB write (and, normally, the charting container) just closed
+    the only writer, so this is the safe single-writer window to rebuild the file. A
+    compaction failure is logged but must never fail the day's import.
+    """
+    try:
+        from store.store import DB_PATH, compact_database
+        result = compact_database(DB_PATH)
+        before, after = result["before_bytes"], result["after_bytes"]
+        if before:
+            logger.info(
+                "db compacted: %.0f MB -> %.0f MB",
+                before / 1e6, after / 1e6,
+            )
+    except Exception as exc:
+        logger.warning("db compaction failed (non-fatal): %s", exc)
+
+
 def run_import(reason: str = "scheduled") -> None:
     """Stop the dashboard, run the pipeline, restart the dashboard. Records status."""
     started = datetime.datetime.now()
@@ -107,6 +127,7 @@ def run_import(reason: str = "scheduled") -> None:
         status = "success" if ok else "failed"
         msg = f"exit {proc.returncode}; {tail[-300:]}" if tail else f"exit {proc.returncode}"
         logger.info("import %s (exit %s)", status, proc.returncode)
+        _compact_db_quietly()
     except Exception as exc:
         status, msg = "failed", str(exc)
         logger.exception("import crashed: %s", exc)

@@ -17,28 +17,16 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
 
-import duckdb
+sys.path.insert(0, str(Path(__file__).parents[1]))
+from store.store import compact_database  # noqa: E402
 
 _DEF_DB = "/mnt/data/db/finance/indicators_machine/signals.duckdb"
 _DEF_DATA = "/mnt/data/project_data/finance/indicators_machine"
-
-
-def _compact_db(src: Path, dst: Path) -> None:
-    """Copy every table into a fresh DB so on-disk bloat is dropped."""
-    if dst.exists():
-        dst.unlink()
-    con = duckdb.connect(str(dst))
-    con.execute(f"ATTACH '{src}' AS old (READ_ONLY)")
-    tables = [r[0] for r in con.execute("SHOW TABLES FROM old").fetchall()]
-    for t in tables:
-        con.execute(f"CREATE TABLE {t} AS SELECT * FROM old.{t}")
-    con.execute("DETACH old")
-    con.execute("CHECKPOINT")
-    con.close()
 
 
 def main() -> None:
@@ -63,7 +51,7 @@ def main() -> None:
         stage = Path(tmp)
         compact = stage / "signals.duckdb"
         print("compacting…")
-        _compact_db(db_path, compact)
+        compact_database(db_path, dest=compact)
         print(f"compacted DB: {compact.stat().st_size / 1e6:,.1f} MB")
 
         # raw_cache (drill-down / yield-curve parquet + FRED meta) and snapshots
