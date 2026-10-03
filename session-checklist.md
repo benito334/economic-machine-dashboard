@@ -30,7 +30,7 @@ Everything left from the audit, triaged by whether it's buildable without a paid
 2. ✅ **DONE** — **FX reserve runway** — new `capital.fx_reserves_usd` (FRED level) + `external.imports_usd` (WB level) for CN/IN/ID/BR. Standard IMF 3mo/6mo adequacy thresholds. China 12.7mo, India 7.4mo, Brazil 10.5mo (comfortable), **Indonesia 5.4mo → warning**. See `docs/worklog.md` 2026-10-03 (7).
 3. ✅ **DONE** — **Room-to-ease gauge** — chip on Central Bank Monitor, US/EZ only (no free BOJ policy-rate series exists on FRED either). US +4.00pp, EZ +2.50pp. See `docs/worklog.md` 2026-10-03 (8).
 4. ✅ **DONE** — **Military expenditure % GDP** — WB `MS.MIL.XPND.GD.ZS`, all 14 countries incl. EZ (which has no Gini). Big-cycle card + Relative Cycles Order line. See `docs/worklog.md` 2026-10-03 (9).
-5. **Momentum gate: magnitude not sign** — classifier's `gm`/`im` momentum gates default to 0.0 (pure sign test); test a small nonzero default against a backtest comparison. → parameter change on the existing Regime Thresholds classifier, no new UI.
+5. ✅ **DONE** — **Momentum gate magnitude** — backtested 0.0/0.05/0.1 against US_SCENARIOS: identical 0.9% wrong-direction at all three, but inflation flip-rate 38%→23%→9%. Shipped 0.05 (the cited value). `_DEFAULT_THRESHOLDS` + store default + 5 fallback sites updated. See `docs/worklog.md` 2026-10-03 (10).
 6. **Rate-basket correlation check** — due diligence only: confirm nominal-10Y isn't double-counting the inflation premium against the US composite's configured weights. → Weight Audit, possible reweight.
 
 **Phase B — combines existing signals, more design judgment:**

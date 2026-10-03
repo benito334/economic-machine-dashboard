@@ -1554,10 +1554,12 @@ _THRESHOLD_MODAL = dbc.Modal(
             ),
 
             html.Label("Growth Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
-            html.P("Δ MoM of the composite growth score. 0 = any positive move counts.",
+            html.P("Δ MoM of the composite growth score. Default 0.05 (2026-10-03): a pure "
+                   "sign test (0) lets one noisy month flip the label; backtested against the "
+                   "US direction-validation scenarios with no accuracy cost.",
                    style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
             html.Div(
-                dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
+                dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.05,
                            marks={-0.1: _modal_mark("-0.10"), -0.05: _modal_mark("-0.05"),
                                   0: _modal_mark("0"), 0.05: _modal_mark("0.05"), 0.1: _modal_mark("0.10")},
                            tooltip={"always_visible": False, "style": {"display": "none"}},
@@ -1567,10 +1569,12 @@ _THRESHOLD_MODAL = dbc.Modal(
             ),
 
             html.Label("Inflation Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
-            html.P("Δ MoM of the composite inflation score. 0 = any positive move counts.",
+            html.P("Δ MoM of the composite inflation score. Default 0.05 (2026-10-03): same "
+                   "false-positive reasoning as the growth gate — cut inflation-chip label "
+                   "flips from 38% to 23% of months over the full history with no accuracy cost.",
                    style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
             html.Div(
-                dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.0,
+                dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.05,
                            marks={-0.1: _modal_mark("-0.10"), -0.05: _modal_mark("-0.05"),
                                   0: _modal_mark("0"), 0.05: _modal_mark("0.05"), 0.1: _modal_mark("0.10")},
                            tooltip={"always_visible": False, "style": {"display": "none"}},
@@ -1681,7 +1685,12 @@ app.layout = html.Div([
     dcc.Store(id="country-store",        data="US", storage_type="local"),
     # Regime classification thresholds (persisted per browser)
     dcc.Store(id="regime-threshold-store",
-              data={"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": True},
+              # gm/im 0.0->0.05: must match _DEFAULT_THRESHOLDS above (same
+              # kind of default-sync issue as the "dynamic" default-ON
+              # change). Only affects browsers with no stored value yet --
+              # an existing localStorage value isn't retroactively migrated,
+              # same as every prior default change here.
+              data={"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True},
               storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
@@ -2430,7 +2439,20 @@ _INFLATION_COLOR = "#E8734C"
 # Ray's dynamic thresholds are ON by default (his 7-step algorithm; backtest
 # G2 found dynamic ≥ fixed). Users can still turn them off in the Regime
 # Thresholds modal; an explicit choice (stored) is respected.
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": True}
+#
+# gm/im raised 0.0 -> 0.05 (coverage-audit follow-up, 2026-10-03): a pure
+# sign test on momentum lets a single noisy one-month wiggle flip the
+# Growth/Retraction (or Inflation/Disinflation) label -- exactly the
+# false-positive mode flagged in the user's own notes. Backtested against
+# the US direction-validation scenarios (indicators/backtest.py,
+# US_SCENARIOS) before changing: wrong-direction rate was IDENTICAL at
+# 0.9% (1/115 months) for gm=im in {0.0, 0.05, 0.1} -- raising the gate
+# costs nothing on known episodes. Label-flip frequency over the full PIT
+# history dropped from 37.9%->22.6% of months for inflation at 0.05 (growth
+# flips were unaffected at 0.05, needing 0.1 to move -- 0.05 is the value
+# actually cited in the source note, so that's what shipped; 0.1 tested
+# cleanly too and is a candidate if 0.05 proves too weak in practice).
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
 
 # Growth chip colors (positive = good)
 _GROWTH_CHIP  = {"Growth": "#4C9BE8", "Transition": "#888888", "Retraction": "#E8734C"}
@@ -2618,8 +2640,8 @@ def _classify_regime(
     _n = _sustained_months()
     gz  = float(t.get("gz", 0.5))
     iz  = float(t.get("iz", 0.5))
-    gm  = float(t.get("gm", 0.0))
-    im  = float(t.get("im", 0.0))
+    gm  = float(t.get("gm", 0.05))
+    im  = float(t.get("im", 0.05))
 
     # Growth regime
     if g_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
@@ -3665,8 +3687,8 @@ def update_regime_chart(
             row_t = {
                 "gz": float(_dyn_df["dyn_gz"].iloc[pos]),
                 "iz": float(_dyn_df["dyn_iz"].iloc[pos]),
-                "gm": _t.get("gm", 0.0),
-                "im": _t.get("im", 0.0),
+                "gm": _t.get("gm", 0.05),
+                "im": _t.get("im", 0.05),
             }
         else:
             row_t = _t
@@ -4026,8 +4048,8 @@ def _update_threshold_display(thresholds: "dict | None") -> list:
     t = thresholds or _DEFAULT_THRESHOLDS
     gz = float(t.get("gz", 0.5))
     iz = float(t.get("iz", 0.5))
-    gm = float(t.get("gm", 0.0))
-    im = float(t.get("im", 0.0))
+    gm = float(t.get("gm", 0.05))
+    im = float(t.get("im", 0.05))
 
     def _chip(label: str, val: float, prec: int = 2) -> html.Span:
         return html.Span([
@@ -4076,8 +4098,8 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
     return (
         float(t.get("gz", 0.5)),
         float(t.get("iz", 0.5)),
-        float(t.get("gm", 0.0)),
-        float(t.get("im", 0.0)),
+        float(t.get("gm", 0.05)),
+        float(t.get("im", 0.05)),
         ["dynamic"] if bool(t.get("dynamic", True)) else [],
     )
 

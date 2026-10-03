@@ -2536,3 +2536,42 @@ UI surface). Zero sanity warnings across all 14 ingestions.
 Confirmed live on Relative Cycles: every one of the 14 countries' Order
 line now ends with "military X.X% GDP" — including EZ, where the Order
 line previously showed only reserve share.
+
+## 2026-10-03 (10) — Remaining coverage-audit items, Phase A #5: momentum-gate magnitude backtest
+
+Fifth item — a validation task, not a build. User's Obsidian notes flagged
+that the classifier's `gm`/`im` momentum gates default to `0.0` (a pure
+sign test), "exactly the false-positive mode" a single noisy one-month
+wiggle can exploit to flip a Growth/Retraction or Inflation/Disinflation
+label. Note suggested testing `>0.05`.
+
+**Backtested before changing anything** (`indicators/backtest.py`'s
+existing PIT-score + `US_SCENARIOS` machinery, reused as-is — classified
+the full US history three times with `gm=im` at 0.0/0.05/0.1):
+- Direction-validation accuracy on the known historical scenarios was
+  **identical** across all three — 0.9% wrong-direction (1/115 months) —
+  raising the gate costs nothing against ground truth.
+- Label-flip frequency over the full PIT history dropped meaningfully:
+  inflation flips 37.9%→22.6% (at 0.05)→9.4% (at 0.1); growth flips were
+  unaffected at 0.05 (37.0%→37.0%) and only moved at 0.1 (→28.6%).
+
+Shipped **0.05** — the value actually cited in the source note, not the
+better-performing-but-unvalidated-by-the-note 0.1 (flagged as a future
+candidate if 0.05 proves too weak in practice, not adopted speculatively).
+Changed `_DEFAULT_THRESHOLDS` in `dashboard/charting.py` plus the matching
+`regime-threshold-store` dcc.Store initial data (same default-sync pattern
+already fixed once before for the "dynamic" flag) and 5 `.get("gm"/"im",
+0.0)` fallback read-sites. Left one `(gm or 0.0)` null-guard at the Apply-
+button handler deliberately untouched — `0.0 or 0.05` would silently
+override a user's deliberate zero choice with 0.05, a real bug the
+`.get(key, default)` pattern elsewhere doesn't share (only triggers when
+the key is absent, not when the value is falsy).
+
+**Verification.** Full suite: 619 passed (same pre-existing failure — no
+test pinned the old 0.0 default). Confirmed live: with a stale cached
+`regime-threshold-store` localStorage value (this session's own browser,
+set hours earlier), the header correctly still showed the OLD 0.0 —
+expected and already documented (existing per-browser values aren't
+retroactively migrated, same as every prior default change here). After
+clearing that one key, a fresh load correctly showed the new 0.05 default
+in the Regime History header's live threshold display.
