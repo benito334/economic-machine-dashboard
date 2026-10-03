@@ -31,7 +31,7 @@ Everything left from the audit, triaged by whether it's buildable without a paid
 3. ✅ **DONE** — **Room-to-ease gauge** — chip on Central Bank Monitor, US/EZ only (no free BOJ policy-rate series exists on FRED either). US +4.00pp, EZ +2.50pp. See `docs/worklog.md` 2026-10-03 (8).
 4. ✅ **DONE** — **Military expenditure % GDP** — WB `MS.MIL.XPND.GD.ZS`, all 14 countries incl. EZ (which has no Gini). Big-cycle card + Relative Cycles Order line. See `docs/worklog.md` 2026-10-03 (9).
 5. ✅ **DONE** — **Momentum gate magnitude** — backtested 0.0/0.05/0.1 against US_SCENARIOS: identical 0.9% wrong-direction at all three, but inflation flip-rate 38%→23%→9%. Shipped 0.05 (the cited value). `_DEFAULT_THRESHOLDS` + store default + 5 fallback sites updated. See `docs/worklog.md` 2026-10-03 (10).
-6. **Rate-basket correlation check** — due diligence only: confirm nominal-10Y isn't double-counting the inflation premium against the US composite's configured weights. → Weight Audit, possible reweight.
+6. ✅ **DONE** — **Rate-basket correlation check** — measured r=0.94-0.99 vs real_yield_10y, confirming the note. Found a real violation: nominal-10Y's 0.45 importance was 50% of real's 0.90, above the project's own 40% anti-redundancy ceiling. Lowered to 0.36, logged via `log_weight_changes()`. **All 6 Phase A items now done.** See `docs/worklog.md` 2026-10-03 (11).
 
 **Phase B — combines existing signals, more design judgment:**
 7. **"Pushing on a string" QE-effectiveness flag** — MP2 balance-sheet growth (now live via Central Bank Monitor) + `credit.private_credit_creation` (live via Case Study Monitor) cross-check. → Case Study Monitor's credit-creation section.

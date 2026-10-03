@@ -185,7 +185,14 @@ rate_score:
       invert: true          # positive spread = market pricing hikes = tightening ahead = less accommodative
     - id: policy.yield_10y
       base_share: 0.5
-      importance: 0.45      # CONTEXT — highly correlated with real_yield_10y; limited incremental info
+      # CONTEXT — highly correlated with real_yield_10y. Measured correlation
+      # (coverage-audit follow-up, 2026-10-03): r=0.94 full history, r=0.96
+      # last 10y, r=0.99 last 5y — well past the project's own |r|>0.80
+      # anti-redundancy trigger. The prior 0.45 was 50% of real_yield_10y's
+      # 0.90, above the stated "secondary ≤ 40% of primary" ceiling; lowered
+      # to exactly that ceiling (0.90 * 0.40 = 0.36) rather than further, since
+      # that's what the rule itself specifies, not an arbitrary extra cut.
+      importance: 0.36
       quality_factor: 0.90
       half_life_months: 6.0 # long-end nominal; less volatile than short-end; same cadence as real_yield_10y
       invert: true          # higher nominal 10y = restrictive long-end conditions

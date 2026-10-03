@@ -2575,3 +2575,46 @@ expected and already documented (existing per-browser values aren't
 retroactively migrated, same as every prior default change here). After
 clearing that one key, a fresh load correctly showed the new 0.05 default
 in the Regime History header's live threshold display.
+
+## 2026-10-03 (11) — Remaining coverage-audit items, Phase A #6: rate-basket correlation check (last Phase A item)
+
+Last of the mechanical Phase A items — a due-diligence check, not a build.
+User's Obsidian notes named a PRIMARY/STRONG/CONTEXT tiering rule and
+specifically flagged nominal 10Y yield as a likely >0.95 correlation with
+real 10Y yield, recommending nominal stay at CONTEXT tier so the
+inflation-premium component isn't double-counted against the dedicated
+inflation signals.
+
+**Checked directly against the live DB** (not the project's own automated
+`[CORR AUDIT]` tool, which runs on a different window/pairing and didn't
+happen to surface this particular pair when re-run — the direct check is
+the authoritative one here, computed straight from the same `signals`
+table values the composite actually uses): `us.policy.yield_10y` vs
+`us.policy.real_yield_10y`, r=0.94 (full history, n=5942), r=0.96 (last
+10y), r=0.99 (last 5y) — confirms the note's suspicion and clears the
+project's own documented |r|>0.80 anti-redundancy trigger by a wide margin.
+
+**Found a real violation, not just confirmation**: `policy.yield_10y` was
+already correctly tiered CONTEXT in `config/countries/us_composites.yaml`
+(importance 0.45) below `policy.real_yield_10y`'s PRIMARY (0.90) — the
+basic judgment call was already right. But 0.45 is 50% of 0.90, above the
+project's own stated "secondary ≤ 40% of primary" anti-redundancy rule.
+Lowered to 0.36 (exactly 40% of 0.90 — the rule's own ceiling, not an
+arbitrary extra cut). Logged via `log_weight_changes()` (the same
+mechanism the Weight Audit UI's Importance Editor uses) rather than
+silently hand-editing the YAML, so it shows up correctly in Weight History
+alongside the project's existing manual/regression weight-change trail.
+
+**Verification.** Full suite: 619 passed (same pre-existing failure).
+Recomputed US composites directly (`compute_composite_history` +
+`upsert_composites`, same pattern as other direct recomputes this
+session) to apply the new weight; `rate_score` updated to -0.868, a sane
+value. Confirmed live on `/weight-history`: the new log entry (log_id 10)
+renders correctly with its full reasoning, alongside the pre-existing
+2026-07-05 regression-calibration entries.
+
+**All six Phase A items are now shipped** (gov-interest payments, FX
+reserve runway, room-to-ease gauge, military expenditure, momentum-gate
+magnitude, rate-basket correlation check). Phase B ("pushing on a string"
+QE-effectiveness flag, probabilistic regime confidence) and Phase C
+(bubble-gauge scoping) remain open.
