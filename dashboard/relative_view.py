@@ -236,8 +236,12 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         # than folded into the same ⚠ suffix (this repo has a history of
         # badges conflating unrelated signals into one alarm).
         spread_flag = stage_row.get("debt_income_spread_flag") if stage_row is not None else None
+        # Foreign-vs-domestic-currency debt split (coverage-audit High #4, 2026-10-03) —
+        # another independent chip, same "don't conflate badges" convention as above.
+        fx_flag = stage_row.get("fx_debt_share_flag") if stage_row is not None else None
+        fx_share = stage_row.get("feat_fx_debt_share") if stage_row is not None else None
     except Exception:
-        stage, squeeze_flag, spread_flag = None, False, None
+        stage, squeeze_flag, spread_flag, fx_flag, fx_share = None, False, None, None, None
 
     # Debt stress — US runs the full 7-component model; 11 more countries run
     # a 2/3-component minimum-viable subset as of the 2026-10 rollout; EZ has
@@ -275,6 +279,11 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     if spread_flag in ("warning", "critical"):
         chips.append(_chip(f"Debt/Income spread · {spread_flag}",
                            "#E8A317" if spread_flag == "warning" else RED))
+    if fx_flag in ("warning", "critical") and fx_share is not None and not (
+        isinstance(fx_share, float) and math.isnan(fx_share)
+    ):
+        chips.append(_chip(f"FX debt {fx_share:.0f}% · {fx_flag}",
+                           "#E8A317" if fx_flag == "warning" else RED))
 
     # Recent clock-change notes (~30d chips / ~45d stage)
     try:

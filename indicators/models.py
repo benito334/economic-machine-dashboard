@@ -192,3 +192,10 @@ class DebtCycleStageSnapshot(BaseModel):
     feat_spread_corporate: Optional[float] = None
     feat_spread_government: Optional[float] = None
     debt_income_spread_flag: Optional[str] = None  # None / "warning" / "critical"
+
+    # Foreign-vs-domestic-currency government debt split (coverage-audit High
+    # item #4, 2026-10-03): % of general-government external debt liabilities
+    # denominated in foreign currency (IMF Currency Composition of the IIP).
+    # BR/MX/ID only — India/China have zero coverage in this dataflow.
+    feat_fx_debt_share: Optional[float] = None
+    fx_debt_share_flag: Optional[str] = None  # None / "warning" / "critical"

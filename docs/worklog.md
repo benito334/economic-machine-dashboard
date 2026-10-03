@@ -2303,3 +2303,84 @@ unwind), GB (clean "no live source" message, no crash), and a genuinely
 uncovered country CN (clean "not one of the three covered banks yet"
 message). No console errors beyond the pre-existing benign Dash
 wildcard-callback warning pattern already present on every other page.
+
+## 2026-10-03 (5) — Coverage-audit High item #4: foreign-vs-domestic-currency government debt split (all 4 High items now shipped)
+
+Last of the audit's four High-priority items, and the one the audit itself
+flagged as highest-risk ("genuine new data-source research, not a derived
+ratio... real risk it needs the coarser external-debt/reserves fallback
+instead of a true currency breakdown"). Found a real source — no fallback
+needed, though coverage came out narrower than the spec's target list.
+
+**project_plan.md §6.4** names this as the requirement: "The Credit/Debt/
+Fiscal lens must bifurcate leverage for EM countries" into domestic-currency
+debt (risk: devaluation/monetization/inflation) and foreign-currency debt
+(risk: hard default/BoP crisis) — Dalio's "single sharpest distinction" in
+*Big Debt Crises*. Never built; every EM country ran the same stage
+mechanics as the US, implicitly assuming the US's own-currency privilege.
+
+**Source found and verified**: IMF's `IIPCC` dataflow ("Currency
+Composition of the International Investment Position") carries exactly
+this — government-sector external debt liabilities broken into domestic
+(`XDC`) and foreign (`FC`) currency, in USD, quarterly. Discovered by
+listing IMF's full dataflow catalog (`api.imf.org/.../dataflow/IMF.STA/all`)
+and grep-ing for "debt"/"currency" in the names — not a guess. Verified
+with real fetched numbers before writing a single binding: Brazil 64%
+domestic / 36% foreign, Mexico 42% / 58%, Indonesia 24% / 76% — all three
+match the well-known real-world EM debt-FX-exposure ordering (Brazil has
+spent two decades de-dollarizing its debt; Mexico and Indonesia have not).
+**India and China have zero coverage in this dataflow** — confirmed via
+the same catalog probe, not assumed; documented as a real gap, same as
+GB's missing central-bank balance sheet in item #5. project_plan.md's
+original target list (BR/MX/ID/IN/CN) is now 3 of 5, not a fallback metric
+on all 5.
+
+**Two bugs caught during verification, both before any bad data shipped**:
+1. The first live data probe used a dimension order with `FREQUENCY` first
+   (`Q.BRA.L_P...`) because that's the convention `fetch_bis_sdmx_series()`
+   uses for the *different* BIS API — got a clean empty result (zero
+   series, not an error) that looked like "no data for Brazil" until the
+   actual SDMX attribute order in the keys-only listing (`COUNTRY` first,
+   `FREQUENCY` last) was checked directly instead of assumed from a
+   different provider's convention.
+2. The bindings were first written with `units: usd_millions` (copying the
+   BIS/FRED convention from items #3/#5), producing sanity-check warnings
+   ("value 166042178571 above sanity_max 10000000") — IIPCC's `OBS_VALUE`
+   is already plain USD, not millions. Caught from the pipeline's own
+   sanity-warning output, not a silent pass; fixed `units` and `sanity_max`
+   for both legs across all three countries, force-refreshed to confirm
+   clean (0 warnings).
+
+**New signals** (BR/MX/ID only): `credit.govt_debt_domestic_usd`,
+`credit.govt_debt_fc_usd` (both `provider: IMF_SDMX`, dataflow `IIPCC`).
+**New flag**: `fx_debt_share_flag` (+ `feat_fx_debt_share`, the raw %) added
+to `DebtCycleStageSnapshot`/`debt_cycle_stage_snapshots`, computed in
+`indicators/debt_cycle_stage.py::build_fx_debt_share()`/`_fx_debt_share_flag()`
+— share = FC ÷ (FC + domestic) × 100, flagged at fixed thresholds (warning
+≥50%, critical ≥65%, `config/debt_cycle_stage.yaml` `fx_debt_share` block).
+Deliberately a **fixed** threshold rather than `debt_income_spread`'s
+country-relative percentile system: that system exists specifically
+because a %Δ growth-rate spread is scale-dependent across countries (the
+2026-09-27 audit finding); a currency-composition share is already bounded
+0-100% and directly comparable, so a plain round-number bar (Dalio's own
+"majority FX-denominated = risky" framing) is the methodologically correct
+choice here, not a shortcut.
+
+**Dashboard**: new badge on Command Center's Cycle Stage card
+("FX DEBT SHARE: WARNING (58%)"), same separate-badge convention as
+Sovereign Squeeze and Debt-Income Spread (never conflate independent
+alarms into one). New chip on Relative Cycles' per-country card
+("FX debt 76% · critical").
+
+**Verification.** Full suite in Docker: 619 passed (same pre-existing
+failure). Confirmed live: Indonesia (Command Center shows "FX DEBT SHARE:
+CRITICAL (76%)"), Mexico ("WARNING (58%)"), Brazil (correctly shows no
+badge — 36% is below the 50% warning floor), India (correctly shows no
+badge — no data, not a crash). Relative Cycles: Mexico and Indonesia show
+the new chip inline with their stage chip; every other country (including
+Brazil) shows nothing, as expected.
+
+**All four of the coverage audit's High-priority items are now shipped**:
+#1 (combined CHI × Debt-Stress view), #3 (Debt-Stress rollout to 12
+countries), #4 (this entry), #5 (Central Bank Monitor). Medium/Low items
+from the same audit remain open for a future session.

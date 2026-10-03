@@ -415,6 +415,22 @@ debt_income_spread:
     other: 0.75
   critical_cumulative_annual_pp: 4.0
 
+# ── Foreign-vs-domestic-currency government debt (coverage-audit High item
+# #4, 2026-10-03) — project_plan.md §6.4. % of general-government external
+# debt denominated in foreign currency (IMF Currency Composition of the IIP;
+# BR/MX/ID only, IN/CN have zero coverage in that dataflow).
+# TUNABLE — exploratory, NOT backtested. Dalio's own framing (Big Debt
+# Crises): majority foreign-currency-denominated debt is the risky zone —
+# own-currency debt can be inflated away, foreign-currency debt cannot.
+# Unlike debt_income_spread (a %Δ growth-rate spread, genuinely
+# scale-dependent across countries, which is why THAT flag needed
+# percentile thresholds), a currency-composition share is already bounded
+# 0-100% and directly comparable across countries — a plain round-number
+# bar is methodologically appropriate here, not a shortcut.
+fx_debt_share:
+  warning_pct: 50.0   # majority foreign-currency-denominated
+  critical_pct: 65.0  # clearly FX-dominated
+
 # Per-country sovereign inputs (concept tails; missing entries degrade
 # honestly — the sovereign vote runs on whatever exists).
 sovereign_inputs:

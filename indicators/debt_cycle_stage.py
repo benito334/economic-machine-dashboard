@@ -385,6 +385,54 @@ def build_sovereign_features(conn, country: str, cfg: dict) -> pd.DataFrame:
     return pd.DataFrame(out) if out else pd.DataFrame()
 
 
+# ── Foreign-vs-domestic-currency government debt split ──────────────────────
+# project_plan.md §6.4: "The Credit/Debt/Fiscal lens must bifurcate leverage
+# for EM countries" into domestic-currency debt (risk: managed devaluation,
+# monetization, inflation) vs. foreign-currency debt (risk: hard default,
+# balance-of-payments crisis) — Dalio's own framing in Big Debt Crises calls
+# this "the single sharpest distinction": a country can inflate away debt
+# denominated in its own currency; it cannot inflate away debt owed in
+# someone else's. Source: IMF's Currency Composition of the International
+# Investment Position (IIPCC dataflow) — covers BR/MX/ID; confirmed zero
+# coverage for IN/CN (not a sourcing failure, a real gap in what IMF
+# collects for those two). See config/debt_cycle_stage.yaml `fx_debt_share`.
+
+def build_fx_debt_share(conn, country: str) -> pd.Series:
+    """General-government external debt, % denominated in foreign currency.
+
+    share = FC / (FC + domestic) * 100. Empty if either leg is missing for
+    this country (BR/MX/ID only as of 2026-10-03 — IN/CN have no binding)."""
+    prefix = country.lower()
+    fc = _load_signal_values(conn, f"{prefix}.credit.govt_debt_fc_usd")
+    dom = _load_signal_values(conn, f"{prefix}.credit.govt_debt_domestic_usd")
+    if fc.empty or dom.empty:
+        return pd.Series(dtype=float)
+    fc_q = _to_quarterly(fc, ffill_limit=4)
+    dom_q = _to_quarterly(dom, ffill_limit=4)
+    idx = fc_q.index.intersection(dom_q.index)
+    if len(idx) == 0:
+        return pd.Series(dtype=float)
+    share = (fc_q.loc[idx] / (fc_q.loc[idx] + dom_q.loc[idx]) * 100.0).dropna()
+    return share
+
+
+def _fx_debt_share_flag(share: pd.Series, cfg: dict) -> pd.Series:
+    """Per-quarter flag (None / "warning" / "critical") from a fixed %
+    threshold — not the percentile system debt_income_spread uses, and
+    deliberately so: a currency-composition share is already bounded 0-100%
+    and directly comparable across countries without debt_income_spread's
+    scale-dependency problem (a %Δ growth-rate spread), so a plain round-
+    number bar is methodologically appropriate here, not a shortcut.
+    ⚠ Exploratory threshold, not backtested — see config comments."""
+    if share.empty:
+        return pd.Series(dtype=object)
+    sm = cfg.get("fx_debt_share") or {}
+    warn = float(sm.get("warning_pct", 50.0))
+    crit = float(sm.get("critical_pct", 65.0))
+    flags = np.where(share >= crit, "critical", np.where(share >= warn, "warning", None))
+    return pd.Series(flags, index=share.index, dtype=object)
+
+
 # ── Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19) ─────
 # See config/debt_cycle_stage.yaml `debt_income_spread` block for the full
 # rationale. Summary: Spread_t = DebtGrowthRate_t − IncomeGrowthRate_t, both
@@ -630,6 +678,12 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
                   if "government" in spread_df.columns else pd.Series(np.nan, index=idx))
     spread_flag = spread_flag.reindex(idx) if not spread_flag.empty else pd.Series(None, index=idx, dtype=object)
 
+    # ── Foreign-vs-domestic-currency government debt (coverage-audit High #4, 2026-10-03) ──
+    fx_share = build_fx_debt_share(conn, country)
+    fx_flag = _fx_debt_share_flag(fx_share, cfg)
+    fx_share = fx_share.reindex(idx) if not fx_share.empty else pd.Series(np.nan, index=idx)
+    fx_flag = fx_flag.reindex(idx) if not fx_flag.empty else pd.Series(None, index=idx, dtype=object)
+
     def _f(v) -> Optional[float]:
         if v is None or (isinstance(v, float) and np.isnan(v)):
             return None
@@ -673,5 +727,8 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
             feat_spread_government=_f(gov_spread.iloc[i]),
             debt_income_spread_flag=(spread_flag.iloc[i]
                                       if isinstance(spread_flag.iloc[i], str) else None),
+            feat_fx_debt_share=_f(fx_share.iloc[i]),
+            fx_debt_share_flag=(fx_flag.iloc[i]
+                                 if isinstance(fx_flag.iloc[i], str) else None),
         ))
     return snaps

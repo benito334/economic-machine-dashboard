@@ -483,6 +483,8 @@ def render_command_center(country_data, page_trigger, thresholds,
         stage_color = STAGE_COLORS.get(stage_lbl, "var(--font-color)")
         squeeze_flag = bool(srow.get("sovereign_squeeze"))
         spread_flag = srow.get("debt_income_spread_flag")
+        fx_flag = srow.get("fx_debt_share_flag")
+        fx_share = srow.get("feat_fx_debt_share")
         priv = srow.get("stage_private")
         sov = srow.get("stage_sovereign")
         sub_bits = []
@@ -527,6 +529,22 @@ def render_command_center(country_data, page_trigger, thresholds,
                            "borderRadius": "4px", "padding": "1px 6px",
                            "marginLeft": "8px", "whiteSpace": "nowrap"})]
                   if spread_flag in ("warning", "critical") else []),
+                *([html.Span(
+                    f"FX DEBT SHARE: {fx_flag.upper()} ({fx_share:.0f}%)",
+                    title="Share of general-government external debt denominated in "
+                          "foreign currency (IMF Currency Composition of the IIP) — "
+                          "Dalio's sharpest EM distinction: own-currency debt can be "
+                          "inflated away, foreign-currency debt cannot (hard default / "
+                          "balance-of-payments risk instead). Coverage-audit High item "
+                          "#4, 2026-10-03; BR/MX/ID only.",
+                    style={"color": "#E8A317" if fx_flag == "warning" else RED,
+                           "fontSize": "0.62rem", "fontWeight": "800",
+                           "letterSpacing": "0.04em",
+                           "border": f"1px solid {'#E8A317' if fx_flag == 'warning' else RED}",
+                           "borderRadius": "4px", "padding": "1px 6px",
+                           "marginLeft": "8px", "whiteSpace": "nowrap"})]
+                  if fx_flag in ("warning", "critical") and fx_share is not None
+                  and not pd.isna(fx_share) else []),
             ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap",
                       "gap": "2px"}),
             html.Div(" · ".join(sub_bits), style=_SUB),

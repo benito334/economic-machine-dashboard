@@ -649,3 +649,41 @@ bindings:
     equilibrium: null
     linkage: "BIS debt-service ratio for the private non-financial sector (households + non-financial corporations combined) -- broader scope than the US's household-only series (FRED TDSP), used uniformly across non-US countries for cross-country comparability (BIS does not publish a household-only DSR for every country tracked here). Feeds the Debt-Stress composite's household_debt_service component (2026-10 coverage-audit rollout, High item #3)."
     notes: "BIS SDMX 2.1 API (stats.bis.org), dataflow WS_DSR (Debt service ratios). Key = FREQ.BORROWERS_CTY.DSR_BORROWERS, DSR_BORROWERS=P (private non-financial sector). Verified live 2026-10-03 via detail=serieskeysonly discovery against the real populated series keys (not the documented DSD alone). EZ and LU are not BIS reporting entities in this dataflow and stay without this component."
+
+  - id: credit.govt_debt_domestic_usd
+    series_id: "IMF.STA,IIPCC/BRA.L_P.DLNRES_DIC_S13.XDC.USD.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: credit
+    lead_lag: structural
+    transformation: level
+    units: usd
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "General-government external debt liabilities denominated in domestic currency (IMF Currency Composition of the IIP). Paired with credit.govt_debt_fc_usd for the foreign-vs-domestic-currency debt split named in project_plan.md Section 6.4 -- Dalio's 'single sharpest distinction' for EM debt-cycle risk: own-currency debt can be inflated away, foreign-currency debt cannot (coverage-audit High item #4, 2026-10-03)."
+    sanity_min: 0.0
+    sanity_max: 10000000000000.0
+    notes: "IMF SDMX 2.1 API (api.imf.org), dataflow IIPCC. Key = COUNTRY.BOP_ACCOUNTING_ENTRY.INDICATOR.CURRENCY.UNIT.FREQUENCY -- L_P=liabilities position, DLNRES_DIC_S13=debt instruments vs non-residents, general government sector, XDC=domestic currency. Verified live 2026-10-03 via a real data probe (serieskeysonly listed the key but an empty-looking first attempt turned out to be a dimension-order mistake, not missing data -- corrected by testing against a confirmed-returning query). India and China have zero coverage in this dataflow -- a confirmed gap, not attempted."
+
+  - id: credit.govt_debt_fc_usd
+    series_id: "IMF.STA,IIPCC/BRA.L_P.DLNRES_DIC_S13.FC.USD.Q"
+    provider: IMF_SDMX
+    frequency: Q
+    force: credit
+    lead_lag: structural
+    transformation: level
+    units: usd
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "General-government external debt liabilities denominated in foreign currency (IMF Currency Composition of the IIP) -- the numerator of the foreign-currency debt share. See credit.govt_debt_domestic_usd for the full rationale."
+    sanity_min: 0.0
+    sanity_max: 10000000000000.0
+    notes: "Same dataflow/key pattern as credit.govt_debt_domestic_usd, CURRENCY=FC (foreign currency) in place of XDC."
