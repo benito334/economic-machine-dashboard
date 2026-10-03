@@ -2092,3 +2092,47 @@ groups render with the right labels and links; Command Center, Data
 Dashboard, Relative Cycles, and Fed Monitor all render correctly post-change
 (Fed Monitor pixel-identical, as expected — same hex values, different
 import path).
+
+## 2026-10-03 (2) — Coverage-audit High item #1: Short-Term Health × Long-Term Stress combined view
+
+First of the audit's four open **High**-priority items (the other three —
+Debt-Stress rollout beyond the US, foreign/domestic-currency debt split,
+MP1→MP2→MP3 for EZ/JP/GB — are real multi-day builds, scoped separately).
+This one was "zero new data, pure visualization" per the audit, reusing two
+composites that already existed: CHI (`global_overview._cycle_health_history`,
+self-normalized to its own history's σ — same pattern the page already uses
+for its adaptive-threshold banding) and the Debt-Stress composite's
+`stress_score` (already a Z-score). New section at the top of `/debt-stress`
+(`dashboard/charting.py::_page_debt_stress`): a scatter + 36-month trail,
+quadrant lines at x=0/y=0/y=0.5, and a text readout from `_chi_stress_quadrant()`
+— the real 4-cell interpretation table transcribed from the source note
+(`600 Finance/.../Digital-Ray_Research/02 — The Indicators Machine —
+Regime Detection System.md` §6), not invented from the audit's one-line
+summary of it. Honest "no sharp read" fallback for the cells the note's
+table leaves undefined, rather than forcing those into the nearest labeled
+quadrant.
+
+Debt-Stress is still US-only (unchanged), so this view is too for now — same
+"not yet available" placeholder the existing page already shows for other
+countries. It will automatically go multi-country once the Debt-Stress
+rollout (High item #3) lands, since both pull from the same
+`load_debt_stress_history()` call.
+
+**Bug caught during verification**: `_cycle_health_history()` expects a
+*lowercase* country code (it rebuilds `signals` table IDs as
+`f"{country_code}.{concept}"`, and those are stored `us.master.gdp_real`
+etc.) — every existing caller already lowercases before calling it
+(`dashboard/global_overview.py:1364`), but `charting.py`'s country store
+holds uppercase `"US"`. First pass silently returned an empty CHI history
+(`len 0`, no exception — `_component_series` just returns an empty Series on
+a miss). Caught by checking the rendered figure said "Not enough history
+yet" instead of actually erroring, then confirming the row count directly
+via `docker compose exec` before touching the fix. One-line fix:
+`.lower()` the country code before the call.
+
+**Verification.** Rebuilt + full suite in Docker twice (once per fix): both
+times **619 passed**, same single pre-existing failure. Confirmed live:
+US renders a real read (currently "Entering late-deleveraging" — CHI Z
+≈ −1.4, Stress Z ≈ +0.17); switching to EZ correctly falls back to the
+US-only placeholder, consistent with the page's existing per-country
+convention.

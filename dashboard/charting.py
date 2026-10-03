@@ -60,7 +60,7 @@ from dashboard import market_expectations as _market_exp
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
-from dashboard.shared_components import RED, _concept_label, _signal_link, _zscore_color
+from dashboard.shared_components import AMBER, GREEN, RED, _concept_label, _signal_link, _zscore_color
 from dashboard.app_mode import PUBLIC_MODE, OPERATOR_ONLY_ROUTES
 from indicators import schedule_config as sched_cfg
 
@@ -1355,12 +1355,29 @@ def _page_valuations() -> html.Div:
 
 def _page_debt_stress() -> html.Div:
     return html.Div([
+        # ── Short-Term Health × Long-Term Stress — combined-quadrant read ─────
+        # Zero new data: CHI (self-normalized to its own history's sigma) on one
+        # axis, the existing Debt-Stress composite Z on the other. Quadrant
+        # rules per the Obsidian "Indicators Machine" design note §6.
+        dbc.Row([
+            dbc.Col(
+                dbc.Card(dbc.CardBody([
+                    html.H6("Short-Term Health × Long-Term Stress", className="mb-1"),
+                    html.Div(id="chi-stress-info", className="small mb-2"),
+                    dcc.Graph(id="chi-stress-scatter",
+                              responsive=True,
+                              config={"displayModeBar": False},
+                              style={"height": "360px"}),
+                ], style={"padding": "16px"})),
+                width=12,
+            ),
+        ], className="pt-2 pb-2"),
         dbc.Row([
             dbc.Col(
                 dbc.Card(dbc.CardBody(html.Div(id="debt-stress-info-box"), style={"padding": "16px"})),
                 width=12,
             ),
-        ], className="pt-2 pb-2"),
+        ], className="pb-2"),
         # ── Long-term cycle STAGE (roadmap Phase C) ───────────────────────────
         dbc.Row([
             dbc.Col(
@@ -5058,6 +5075,126 @@ def update_debt_stage_section(date_range: dict, theme_name: str,
     fig.update_yaxes(title_text="stage scores", range=[0, 1.05],
                      tickfont={"size": 9}, row=2, col=1)
     return children, fig
+
+
+def _chi_stress_quadrant(st: float, lt: float) -> str:
+    """Combined-quadrant read per the "Indicators Machine" design note §6.
+
+    st = Short-Term Health (CHI, self-normalized Z); lt = Long-Term Stress
+    (the existing Debt-Stress composite Z). The note names four cells —
+    anything outside those four gets an honest "no sharp read" fallback
+    rather than being forced into the nearest one.
+    """
+    if st > 0.5 and lt < 0:
+        return "Late-expansion of the short cycle — long-term debt still manageable."
+    if st < 0 and lt > 0:
+        return "Entering late-deleveraging — even a mild slowdown gets amplified by the debt squeeze."
+    if st > 0 and lt > 0:
+        return "Short cycle strong but debt burden building — watch for the stress gauge rising sharply."
+    if st < 0 and lt < 0:
+        return "Deep contraction, likely driven by the long-term debt crisis."
+    return "Near-neutral short cycle — no sharp combined read from this position yet."
+
+
+@callback(
+    Output("chi-stress-scatter", "figure"),
+    Output("chi-stress-info", "children"),
+    [Input("date-range", "data"),
+     Input("theme-store", "data"),
+     Input("country-store", "data"),
+     Input("page-trigger", "data")],
+    prevent_initial_call=False,
+)
+def update_chi_stress_scatter(
+    date_range: dict,
+    theme_name: str = DEFAULT_THEME,
+    country: str = "US",
+    _trigger: Any = None,
+) -> tuple[go.Figure, list]:
+    country = (country or "US").upper()
+    theme_name = theme_name or DEFAULT_THEME
+    if country != "US":
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(
+            theme_name, f"Debt Stress — US-only model  ·  {country} not yet available"))
+        return fig, [html.Span(
+            "The Debt-Stress composite (the long-term axis) is US-only today — "
+            "see the Dashboard IA/coverage-audit rollout plan.",
+            style={"color": "var(--muted-color)"})]
+
+    chi_hist = _global_overview._cycle_health_history(country.lower(), None)
+    stress_hist = load_debt_stress_history(country="US")
+    if chi_hist.empty or stress_hist.empty or "chi_adjusted" not in chi_hist:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "Not enough history yet"))
+        return fig, [html.Span("—", style={"color": "var(--muted-color)"})]
+
+    sigma = float(chi_hist["chi_adjusted"].dropna().std())
+    if not pd.notna(sigma) or sigma <= 0:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "Not enough CHI variance yet"))
+        return fig, [html.Span("—", style={"color": "var(--muted-color)"})]
+    chi_hist = chi_hist.sort_values("as_of").copy()
+    chi_hist["chi_z"] = chi_hist["chi_adjusted"] / sigma
+    stress_hist = stress_hist.sort_values("as_of")[["as_of", "stress_score"]]
+
+    merged = pd.merge_asof(chi_hist[["as_of", "chi_z"]], stress_hist,
+                            on="as_of", direction="backward")
+    merged = merged.dropna(subset=["chi_z", "stress_score"])
+    start = (date_range or {}).get("start")
+    end   = (date_range or {}).get("end")
+    if start:
+        merged = merged[merged["as_of"] >= pd.Timestamp(start)]
+    if end:
+        merged = merged[merged["as_of"] <= pd.Timestamp(end)]
+    if merged.empty:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "No overlapping history in range"))
+        return fig, [html.Span("—", style={"color": "var(--muted-color)"})]
+
+    trail = merged.tail(36)   # ~3yr trail at monthly cadence, matches the old 4-quadrant convention
+    latest = merged.iloc[-1]
+
+    fig = go.Figure()
+    fig.add_vline(x=0, line_dash="dot", line_color="#888", opacity=0.6)
+    fig.add_hline(y=0, line_dash="dot", line_color="#888", opacity=0.6)
+    fig.add_hline(y=0.5, line_dash="dot", line_color=AMBER, opacity=0.35)
+    fig.add_trace(go.Scatter(
+        x=trail["stress_score"], y=trail["chi_z"],
+        mode="lines+markers",
+        line={"color": "#9AA4B2", "width": 1.2},
+        marker={"size": 5, "color": "#9AA4B2", "opacity": 0.55},
+        hovertemplate="%{customdata|%Y-%m}<br>Stress Z: %{x:.2f}<br>CHI Z: %{y:.2f}<extra></extra>",
+        customdata=trail["as_of"],
+        name="Trail (last 36mo)",
+        showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=[latest["stress_score"]], y=[latest["chi_z"]],
+        mode="markers",
+        marker={"size": 13, "color": AMBER, "line": {"width": 1.5, "color": "#fff"}},
+        hovertemplate="Latest · %{customdata|%Y-%m}<br>Stress Z: %{x:.2f}<br>CHI Z: %{y:.2f}<extra></extra>",
+        customdata=[latest["as_of"]],
+        name="Latest",
+        showlegend=False,
+    ))
+    fig.update_layout(**figure_layout(theme_name))
+    fig.update_layout(
+        height=360,
+        margin={"l": 48, "r": 20, "t": 10, "b": 40},
+        uirevision=f"chi-stress-{country}",
+        xaxis_title="Long-Term Stress (Debt-Stress composite Z)",
+        yaxis_title="Short-Term Health (CHI, self-normalized Z)",
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)")
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.18)")
+
+    label = _chi_stress_quadrant(float(latest["chi_z"]), float(latest["stress_score"]))
+    info = [
+        html.Span(f"As of {latest['as_of']:%Y-%m}: ", style={"fontWeight": "700"}),
+        html.Span(label),
+    ]
+    return fig, info
 
 
 @callback(
