@@ -2513,3 +2513,26 @@ stat, no new signal or DB schema. Verified live: US +4.00pp (plenty of
 room), EZ +2.50pp (right at the amber/green boundary), JP correctly shows
 no chip at all rather than a fake or crashed value. Full suite: 619
 passed (same pre-existing failure).
+
+## 2026-10-03 (9) — Remaining coverage-audit items, Phase A #4: military expenditure % GDP (all 14 countries)
+
+Fourth item — one of Dalio's eight named great-power determinants
+(`Principles for Dealing with the Changing World Order`), flagged by the
+audit as "genuinely buildable... zero mentions in any prior session."
+World Bank `MS.MIL.XPND.GD.ZS`, same provider pattern as the existing
+`order.gini`/demographics bindings — verified live for all 14 countries
+before binding anything (US 3.42%, GB 2.28%, JP 1.37% — all consistent
+with known real-world defense-spending ordering). New
+`order.military_expenditure_gdp` binding added everywhere, including
+**EZ**, which has no `order.gini` at all (Gini has no sensible EZ-aggregate
+reading; military spending does) — so this is the first order-layer
+datapoint EZ has ever had beyond reserve share.
+
+Wired into Command Center's Big-cycle position card and Relative Cycles'
+Order line, same convention as Gini/COFER (append to `order_bits`, no new
+UI surface). Zero sanity warnings across all 14 ingestions.
+
+**Verification.** Full suite: 619 passed (same pre-existing failure).
+Confirmed live on Relative Cycles: every one of the 14 countries' Order
+line now ends with "military X.X% GDP" — including EZ, where the Order
+line previously showed only reserve share.

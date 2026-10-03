@@ -702,3 +702,22 @@ bindings:
     sanity_min: 0.0
     sanity_max: 50000000000000.0
     notes: "World Bank NE.IMP.GNFS.CD. Verified live 2026-10-03: current through 2025."
+
+  - id: order.military_expenditure_gdp
+    series_id: MS.MIL.XPND.GD.ZS
+    provider: WorldBank
+    frequency: A
+    force: order
+    lead_lag: structural
+    transformation: level
+    units: pct_gdp
+    country: ID
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Military expenditure, % of GDP (World Bank) -- one of Dalio's eight named great-power determinants (Principles for Dealing with the Changing World Order), genuinely buildable within the project's free-API rules, same WB pattern as the existing Gini/demographics bindings. Coverage-audit follow-up, 2026-10-03."
+    sanity_min: 0.0
+    sanity_max: 15.0
+    notes: "World Bank WDI, same provider pattern as order.gini. Verified live 2026-10-03."

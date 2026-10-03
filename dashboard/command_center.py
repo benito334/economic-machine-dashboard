@@ -605,6 +605,7 @@ def render_command_center(country_data, page_trigger, thresholds,
     fth = _sig(latest_sig, "order.foreign_treasury_holdings_share")
     ouis = _sig(latest_sig, "order.offshore_usd_issuance_share")
     gini = _sig(latest_sig, "order.gini")
+    milex = _sig(latest_sig, "order.military_expenditure_gdp")
     gov = _sig(latest_sig, "order.governance")
     gpr = _sig(latest_sig, "order.geopolitical_risk")
     order_bits = []
@@ -624,6 +625,8 @@ def render_command_center(country_data, page_trigger, thresholds,
     if gini.get("value") is not None:
         gini_yr = pd.Timestamp(gini["as_of"]).year if gini.get("as_of") is not None else "?"
         order_bits.append(f"Gini {float(gini['value']):.1f} ({gini_yr})")
+    if milex.get("value") is not None:
+        order_bits.append(f"military spend {float(milex['value']):.1f}% GDP")
     if gov.get("value") is not None:
         order_bits.append(f"V-Dem {float(gov['value']):.2f}")
     if gpr.get("value") is not None:

@@ -270,6 +270,7 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     fth, _ = sig_val("order.foreign_treasury_holdings_share")
     ouis, _ = sig_val("order.offshore_usd_issuance_share")
     gini, gini_dt = sig_val("order.gini")
+    milex, _ = sig_val("order.military_expenditure_gdp")
     prod = _latest(hist, "productivity_score")
     as_of = pd.Timestamp(hist["as_of"].iloc[-1])
 
@@ -326,6 +327,8 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     if gini is not None:
         yr = pd.Timestamp(gini_dt).year if gini_dt is not None else "?"
         order_bits.append(f"Gini {float(gini):.1f} ({yr})")
+    if milex is not None:
+        order_bits.append(f"military {float(milex):.1f}% GDP")
 
     return html.Div([
         html.Div([
