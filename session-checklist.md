@@ -22,6 +22,37 @@ From the "Dalio Framework Coverage Audit" artifact's own prioritization table �
 
 **Confirmed gaps from this work** (not retried without new sourcing): GB has no live central-bank-balance-sheet source (every FRED BOE series discontinued/years-stale). EZ has no Debt-Stress model (not BIS-covered for debt-service AND missing `fiscal.primary_balance_gdp`). India/China have zero coverage in IMF's currency-composition (IIPCC) dataflow, so the FX-debt-share split is BR/MX/ID only, not project_plan.md §6.4's full original target list.
 
+### Remaining coverage-audit items — free-source build plan (2026-10-03, in progress)
+Everything left from the audit, triaged by whether it's buildable without a paid source. Sequence below; placement follows `docs/Guidance/dashboard_ia_framework.md`. See `docs/worklog.md` for research/verification detail on each as it lands.
+
+**Phase A — mechanical, zero/near-zero new data:**
+1. ✅ **DONE** — **Government interest payments** — IMF `GFS_SOO` (`G24_T`/`POGDP_PT`, direct %GDP). Real coverage: GB/JP/KR/CN/DE/LU/BR/CA/AU/MX/ID have data; India's rows are all `OBS_VALUE`-empty (confirmed gap, not covered despite initial miscount); EZ still has none. Of those, `ffill_limit_quarters` (5→10Q) fix was also needed for the carry-forward to actually reach the latest quarter — AU/MX/ID/CN's data is still too stale (11-20Q) even at 10Q, left as an honest gap. **South Korea's Sovereign Squeeze fired for the first time ever** as a result. See `docs/worklog.md` 2026-10-03 (6).
+2. **FX reserve runway** (import-cover months) — zero new sourcing, `capital.fx_reserves_yoy` ÷ existing import series, CN/IN/ID/BR. → Regime & Cycles (new stage-classifier feature + badge, same pattern as `fx_debt_share_flag`).
+3. **Room-to-ease gauge** (distance of policy rate from zero/ELB) — zero new sourcing, derived from existing policy-rate signals. → Central Bank Monitor (Monitors group) — US/EZ/JP already have policy-rate data there.
+4. **Military expenditure % GDP** — new World Bank binding (`MS.MIL.XPND.GD.ZS`), same pattern as existing Gini/demographics. → Big-cycle position card + Relative Cycles Order line (same convention as Gini/COFER).
+5. **Momentum gate: magnitude not sign** — classifier's `gm`/`im` momentum gates default to 0.0 (pure sign test); test a small nonzero default against a backtest comparison. → parameter change on the existing Regime Thresholds classifier, no new UI.
+6. **Rate-basket correlation check** — due diligence only: confirm nominal-10Y isn't double-counting the inflation premium against the US composite's configured weights. → Weight Audit, possible reweight.
+
+**Phase B — combines existing signals, more design judgment:**
+7. **"Pushing on a string" QE-effectiveness flag** — MP2 balance-sheet growth (now live via Central Bank Monitor) + `credit.private_credit_creation` (live via Case Study Monitor) cross-check. → Case Study Monitor's credit-creation section.
+8. **Probabilistic regime confidence** — assign a regime label only above ~70% historical-frequency confidence, else "uncertain"; a complement to (not replacement for) the existing dynamic thresholds. → Command Center header / Regime Map, alongside the existing Chip Direction Agreement stat.
+
+**Phase C — needs a scoping pass before committing to a build:**
+9. **Bubble gauges** — audit's own instruction: scope which of the 6 dimensions are realistically free-buildable before building any. Check: (a) `indicators/valuations.py`'s existing Buffett Indicator (market-cap/GDP) — already built, operator-only, never connected to this effort; (b) FINRA's free margin-debt statistics for the "leverage-financed buying" dimension. The other 4 dimensions (new/unsophisticated buyers, uniform bullish sentiment, extended forward purchases) likely have no free data at all — confirm or drop each explicitly rather than leaving them silently unaddressed.
+
+**Confirmed NOT buildable free (drop, don't retry without new information):**
+- P/E Ratio (Shiller CAPE) — file checked live 2026-10-03, stopped updating Sept 2024.
+- Daily equity index for EZ/KR — no FRED series exists; stays on the monthly proxy.
+- Cross-border Global Liquidity Impulse (`project_plan.md` §6.5) — PBOC has no free live balance-sheet series (checked live); recommend an explicit drop decision rather than shipping a misleading 3-of-4 "global" sum missing China.
+- Dollar-dominance factors 3-5 (FX turnover, SWIFT, trade invoicing) — already confirmed no free API in the 2026-08-21 session, not re-investigated.
+
+**Blocked on the user, not something to attempt solo:**
+- V-Dem governance + GPR geopolitical-risk — manual-load pipeline fully built (`docs/manual_data.md`), just needs the operator to download 2 files (v-dem.net CY-Core, matteoiacoviello.com GPR xls) and drop them in `manual_data/`. Also unblocks the Internal-Order stage classifier below.
+
+**Deferred — real architectural lift, not a quick add, flagged for a dedicated future session:**
+- Internal-order stage classifier (blocked on V-Dem/GPR above, plus genuine design work).
+- Relative power index / world-trade-share (needs a cross-country aggregation layer — world totals as denominators — the per-country binding model doesn't support today).
+
 ### Stale signal-count test assertion (pre-existing, not from this session's nav/color work)
 `tests/test_explorer.py::test_load_signal_overview_returns_all_signals` hardcodes an expected signal count (currently asserts 91; live count is 105 after this session's earlier `growth.output_gap`/`credit.*`/etc. additions). Bump the assertion to match `len(load_signal_overview())` the next time signals are touched.
 

@@ -41,7 +41,17 @@ features:
   # Annual series (World Bank/IMF debt ratios) are forward-filled onto the
   # quarterly grid at most this many quarters — beyond it the feature goes
   # missing rather than silently carrying stale data (CLAUDE.md rule 7).
-  ffill_limit_quarters: 5
+  # Raised 5->10 (2026-10-03, gov_interest_gdp rollout): the US's own annual
+  # inputs (FRED fiscal-year series) land within ~4 quarters, but IMF GFS
+  # annual data for other countries typically lags 1.5-2 years in practice
+  # (confirmed: GB/JP/KR/DE/LU/BR all had real 2024 data that still fell
+  # outside the old 5Q/1.25yr cap by the time this ran). A longer ceiling
+  # only ever helps genuinely-stale cases catch up to real data that
+  # exists — it can't make fresher data look more stale, so this is safe
+  # for the quarterly signals sharing this same limit too. Same reasoning
+  # already applied to the Debt-Stress composite's max_carry_quarters (4->8)
+  # earlier this session.
+  ffill_limit_quarters: 10
 
   # Smoothing on real growth and inflation inputs before r−g / ngdp−yield are
   # formed (trailing mean, quarters). 1 = no smoothing.
@@ -448,59 +458,74 @@ sovereign_inputs:
   GB:
     gov_debt: credit.gov_debt_gdp
     private_debt: []
+    gov_interest_gdp: fiscal.gov_interest_gdp   # IMF GFS_SOO, direct %GDP (2026-10-03)
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   JP:
     gov_debt: credit.gov_debt_gdp
     private_debt: []
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   KR:
     gov_debt: credit.gov_debt_gdp
     private_debt: []
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   CN:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov_interest / gov_revenue interest series free for CN → the
-    # refinancing-gap and gov-DSR flag conditions can't evaluate; the
-    # SOVEREIGN SQUEEZE flag degrades honestly to never firing.
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.rate_3m_interbank]
   IN:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   DE:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   LU:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series → SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   BR:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.rate_policy]
   CA:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   AU:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   MX:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    gov_revenue: fiscal.govt_revenue_gdp
     marginal_yields: [policy.yield_10y]
   ID:
     gov_debt: credit.gov_debt_gdp
     private_debt: [credit.household_debt_gdp, credit.corporate_debt_gdp]
-    # No gov-interest series -> SOVEREIGN SQUEEZE flag can't fire (CN pattern).
+    gov_interest_gdp: fiscal.gov_interest_gdp
+    # No fiscal.govt_revenue_gdp for ID -> gov_dsr (interest/revenue) can't
+    # compute, but gov_interest_gdp/gov_interest_z still can (Sovereign
+    # Squeeze is an OR across conditions, so this alone can still fire it).
     marginal_yields: [policy.rate_policy]

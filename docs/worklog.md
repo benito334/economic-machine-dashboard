@@ -2384,3 +2384,74 @@ Brazil) shows nothing, as expected.
 #1 (combined CHI × Debt-Stress view), #3 (Debt-Stress rollout to 12
 countries), #4 (this entry), #5 (Central Bank Monitor). Medium/Low items
 from the same audit remain open for a future session.
+
+## 2026-10-03 (6) — Remaining coverage-audit items, Phase A #1: government interest payments for 11 countries (unblocks Sovereign Squeeze)
+
+User asked to implement everything left from the audit that doesn't need a
+paid source, sequenced sensibly. Full triage + plan written to
+`session-checklist.md`. This entry: the single highest-value item found
+during that triage — not on the audit's own ranked list at all, surfaced
+while re-checking "gov-interest series outside the US," a gap tracked
+since the 2026-07-06 Sovereign Squeeze ruling with "no source found yet."
+
+**Found**: IMF's `GFS_SOO` (Government Finance Statistics, Statement of
+Operations) carries general-government interest expense (`G24_T`, the
+GFSM2014 economic-classification code for interest) as a direct %-of-GDP
+transformation (`POGDP_PT`) — sidestepping a currency-mismatch risk the
+raw-currency figure would have created against `master.gdp_level_bn`
+(USD-converted). Verified real, sane values before binding anything (GB
+2.97% of GDP, consistent with 2022's gilt-market inflation-linked spike
+story already known from this project's other work).
+
+**Real coverage, properly re-verified**: 11 of the 12 target countries
+(GB/JP/KR/CN/DE/LU/BR/CA/AU/MX/ID) have real observations; **India does
+not** — its `<Obs>` rows exist but every one lacks an `OBS_VALUE` entirely
+(`STATUS="NA"`). First-pass verification counted raw `<Obs>` tags via grep
+and wrongly concluded India was covered; the pipeline's own ingestion
+(which filters on `OBS_VALUE` presence, same as every other provider) got
+it right immediately — correctly reported `[EMPTY]` for India without
+any code change needed. The false "it's covered" belief was corrected by
+rechecking every country with the same OBS_VALUE-presence filter the
+pipeline itself uses, not by trusting a faster but wrong manual count.
+EZ still has no entry either (checked both `U2` and `EMU` aggregate codes
+— same gap pattern as `fiscal.primary_balance_gdp`).
+
+**Code change**: `build_sovereign_features()` in `indicators/debt_cycle_stage.py`
+now accepts an optional `gov_interest_gdp` config key (a pre-computed
+%GDP signal) checked *before* falling back to the existing raw-$-level
+path (`gov_interest` ÷ `gdp_level`) that only the US uses. Necessary
+because the raw IMF figure is in LOCAL currency while `gdp_level_bn` is
+USD-converted (World Bank/IMF) — dividing one against the other would
+have silently produced a currency-mismatched ratio with no error. The
+refinancing-gap feature stays US-only (needs a currency-matched debt
+stock the new countries don't have) but Sovereign Squeeze is an OR across
+three conditions, so `gov_interest_z`/`gov_dsr_z` alone can still fire it.
+
+**A second bug, same class as the Debt-Stress rollout's**: after wiring
+and ingesting, every country but Canada still showed `gov_interest_z=None`
+at the latest quarter despite having real recent data. Root cause:
+`ffill_limit_quarters: 5` (1.25 years) — tight enough for the US's own
+fast-landing FRED fiscal-year data, but IMF GFS's real-world lag (GB/JP/
+KR/DE/LU/BR all had genuine 2024 data that was still *more* than 5
+quarters behind "today") exceeded it for everyone except Canada (2025
+data, the one country whose lag happened to fit). Raised to 10 quarters
+(2.5 years) — a global change, not a US-only carve-out this time, since
+a longer ceiling can only help genuinely-stale cases catch up and can
+never make fresh data look more stale, so it's safe for the quarterly
+signals sharing the same config value. Full test suite re-run after the
+global change specifically to check for stage-label drift on unrelated
+countries — none found.
+
+**Still doesn't reach**: AU (2022 data, ~16Q stale), MX/ID (2023, ~11-12Q),
+CN (2021, ~20Q) — all still beyond the new 10Q cap. Left as an honest gap
+rather than chasing the cap further; carrying a 4+-year-old interest
+figure as "current" would stop being a meaningfully live reading.
+
+**Verification.** Full suite: 619 passed (same pre-existing failure).
+Recomputed debt-cycle-stage directly for all 14 countries after the
+fix (no full pipeline re-run needed — same already-ingested-signal-data
+pattern used for the earlier Debt-Stress fixes). Confirmed live:
+**South Korea's Sovereign Squeeze flag fired for the first time ever**
+(Command Center now shows the SOVEREIGN SQUEEZE badge, features 4/5 → 5/5);
+GB/JP/DE/LU/BR/CA all now carry a real `gov_interest_z` where none of
+them had one before this session.

@@ -630,3 +630,22 @@ bindings:
     equilibrium: null
     linkage: "BIS debt-service ratio for the private non-financial sector (households + non-financial corporations combined) -- broader scope than the US's household-only series (FRED TDSP), used uniformly across non-US countries for cross-country comparability (BIS does not publish a household-only DSR for every country tracked here). Feeds the Debt-Stress composite's household_debt_service component (2026-10 coverage-audit rollout, High item #3)."
     notes: "BIS SDMX 2.1 API (stats.bis.org), dataflow WS_DSR (Debt service ratios). Key = FREQ.BORROWERS_CTY.DSR_BORROWERS, DSR_BORROWERS=P (private non-financial sector). Verified live 2026-10-03 via detail=serieskeysonly discovery against the real populated series keys (not the documented DSD alone). EZ and LU are not BIS reporting entities in this dataflow and stay without this component."
+
+  - id: fiscal.gov_interest_gdp
+    series_id: "IMF.STA,GFS_SOO/KOR.S13.G2M.G24_T.POGDP_PT.A"
+    provider: IMF_SDMX
+    frequency: A
+    force: fiscal
+    lead_lag: lagging
+    transformation: level
+    units: pct_gdp
+    country: KR
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "General-government interest expense, % of GDP (IMF Government Finance Statistics, Statement of Operations, GFSM2014 economic classification code 24). Unblocks the Sovereign Squeeze flag for this country (previously could never fire -- no free gov-interest source existed). Direct %GDP transformation sidesteps a currency mismatch: the raw-currency figure is in local currency, while master.gdp_level_bn is USD-converted (coverage-audit follow-up, 2026-10-03)."
+    sanity_min: -5.0
+    sanity_max: 20.0
+    notes: "IMF SDMX 2.1 API (api.imf.org), dataflow GFS_SOO (Statement of Operations). Key = COUNTRY.SECTOR.GFS_GRP.INDICATOR.TYPE_OF_TRANSFORMATION.FREQUENCY -- S13=general government, G2M=expense group, G24_T=interest (GFSM2014 code 24), POGDP_PT=percent of GDP. Verified live 2026-10-03: ~51-54 annual observations, current through 2024. No EZ aggregate exists in this dataflow (checked both U2 and EMU codes -- same gap pattern as fiscal.primary_balance_gdp)."

@@ -360,12 +360,26 @@ def build_sovereign_features(conn, country: str, cfg: dict) -> pd.DataFrame:
 
     out = {}
     gdp = sig(scfg.get("gdp_level"))                        # $B
-    interest = sig(scfg.get("gov_interest"))                # $M annual
+    interest = sig(scfg.get("gov_interest"))                # $M annual, same currency as gdp_level
     gov_debt = sig(scfg.get("gov_debt"))                    # % GDP
     revenue = sig(scfg.get("gov_revenue"))                  # % GDP
-    if not interest.empty and not gdp.empty:
-        gi_gdp = (interest / 1000.0) / gdp * 100.0          # % of GDP
-        gi_gdp = gi_gdp.dropna()
+    # Government interest / GDP has two possible sources:
+    #   - a raw $-level signal divided by GDP (US: FRED FYOINT, $M, matched
+    #     against gdp_level_bn's same USD basis), or
+    #   - a pre-computed %GDP signal (everyone else, 2026-10-03 coverage-
+    #     audit follow-up: IMF GFS_SOO G24_T/POGDP_PT) — used directly
+    #     rather than divided against gdp_level_bn, which is USD-converted
+    #     while the raw interest figure for these countries is in LOCAL
+    #     currency; dividing mismatched currencies would silently corrupt
+    #     the ratio, so the direct %GDP series sidesteps that entirely.
+    gi_gdp_direct = sig(scfg.get("gov_interest_gdp"))
+    if not gi_gdp_direct.empty:
+        gi_gdp = gi_gdp_direct.dropna()
+    elif not interest.empty and not gdp.empty:
+        gi_gdp = ((interest / 1000.0) / gdp * 100.0).dropna()
+    else:
+        gi_gdp = _empty()
+    if not gi_gdp.empty:
         out["gov_interest_gdp"] = gi_gdp
         out["gov_interest_z"] = _expanding_z_lagged(gi_gdp)
         periods = max(1, int(round(float(fcfg["dsr_trend_window_years"]) * 4)))
@@ -374,7 +388,13 @@ def build_sovereign_features(conn, country: str, cfg: dict) -> pd.DataFrame:
             gov_dsr = (gi_gdp / revenue * 100.0).dropna()   # % of revenue
             out["gov_dsr"] = gov_dsr
             out["gov_dsr_z"] = _expanding_z_lagged(gov_dsr)
-        if not gov_debt.empty:
+        # Refinancing gap needs a $-level interest figure matched to debt_bn's
+        # currency — only available on the raw-interest (US) path today; the
+        # direct-%GDP countries would need an equivalently currency-matched
+        # debt stock to do the same, which isn't sourced yet. Sovereign
+        # Squeeze can still fire for them via gov_interest_z/gov_dsr_z alone
+        # (the flag is an OR across all three conditions).
+        if not gov_debt.empty and not interest.empty and not gdp.empty:
             debt_bn = gov_debt / 100.0 * gdp
             effective = ((interest / 1000.0) / debt_bn * 100.0).dropna()
             ylds = [sig(t) for t in scfg.get("marginal_yields", [])]
