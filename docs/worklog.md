@@ -2498,3 +2498,18 @@ Center (`FX DEBT SHARE: CRITICAL (76%)` and `FX RESERVE RUNWAY: WARNING
 (5.4mo)`) — the compounding-risk read Dalio's framework is meant to
 surface. China/India/Brazil correctly show no runway badge (comfortable
 coverage, below the warning threshold).
+
+## 2026-10-03 (8) — Remaining coverage-audit items, Phase A #3: room-to-ease gauge
+
+Third item from the free-source build plan — "a simple, Dalio-specific
+diagnostic... how much conventional ammunition a central bank has left
+before it's forced into QE/MP2." Zero new sourcing: distance of the
+existing `policy.fed_funds_target` from a 0% floor (ELB), US/EZ only — no
+free BOJ policy-rate series exists on FRED either (checked live), same
+gap pattern as JP's missing Fed-Monitor-style signals elsewhere. Added as
+a chip on `dashboard/central_bank_monitor.py` (the page built for item #5
+earlier this session) rather than a new chart — purely a derived display
+stat, no new signal or DB schema. Verified live: US +4.00pp (plenty of
+room), EZ +2.50pp (right at the amber/green boundary), JP correctly shows
+no chip at all rather than a fake or crashed value. Full suite: 619
+passed (same pre-existing failure).

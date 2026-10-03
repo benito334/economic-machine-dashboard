@@ -27,6 +27,11 @@ one callback rebuilds its content on country-store changes, same pattern as
 relative_view.py.
 
 Feeds no composite; isolated force, same convention as fed.*/market.*/order.*.
+
+Room-to-ease chip (coverage-audit follow-up, 2026-10-03): distance of the
+policy rate from the zero/effective lower bound, US/EZ only — no free BOJ
+policy-rate series exists on FRED either (checked live), consistent with
+JP's other gap on this page.
 """
 from __future__ import annotations
 
@@ -56,6 +61,19 @@ _COVERAGE: dict[str, tuple[str, float, str, str]] = {
     "JP": ("policy.central_bank_balance_sheet", 1e4, "¥", "Bank of Japan"),
 }
 _NAMES = {"US": "United States", "EZ": "Euro Area", "JP": "Japan"}
+
+# Room-to-ease gauge (coverage-audit follow-up, 2026-10-03): distance of the
+# policy rate from the zero/effective lower bound — "how much conventional
+# ammunition is left before this bank is forced into QE (MP2)." US/EZ only:
+# no free BOJ policy-rate series exists on FRED (checked live) — JP has
+# only the 10y JGB yield bound, not a short-rate equivalent, consistent
+# with its other gap on this page (no balance-sheet source for GB either).
+_RATE_COVERAGE: dict[str, str] = {
+    "US": "policy.fed_funds_target",
+    "EZ": "policy.fed_funds_target",
+}
+_ELB = 0.0   # effective lower bound, a plain round-number floor -- not modeling
+             # each bank's own historical negative-rate episodes
 
 
 def _hist(cc: str, concept: str, start: str | None = _START) -> pd.DataFrame:
@@ -126,6 +144,15 @@ def _country_block(cc: str) -> html.Div:
     cur_yoy = float(yoy["value"].iloc[-1]) if not yoy.empty else None
     mp_label, mp_color = _mp_read(cur_yoy)
 
+    rate_concept = _RATE_COVERAGE.get(cc)
+    room_chip = None
+    if rate_concept:
+        cur_rate, _ = _latest(cc, rate_concept)
+        if cur_rate is not None:
+            room = cur_rate - _ELB
+            room_color = _RED if room < 1.0 else _AMBER if room < 2.5 else _GREEN
+            room_chip = _chip(f"Room to ease {room:+.2f}pp", room_color)
+
     header = html.Div([
         html.Div([
             html.Span("🏦 ", style={"fontSize": "1.3rem"}),
@@ -137,6 +164,7 @@ def _country_block(cc: str) -> html.Div:
             _chip(f"YoY {cur_yoy:+.1f}%" if cur_yoy is not None else "YoY —",
                   _RED if (cur_yoy or 0) > 5 else _GREEN if (cur_yoy or 0) < -5 else _AMBER),
             _chip(mp_label, mp_color),
+            *([room_chip] if room_chip is not None else []),
         ], style={"display": "flex", "gap": "10px", "flexWrap": "wrap", "marginTop": "8px"}),
     ], style={"borderBottom": "1px solid var(--border-color)", "paddingBottom": "12px", "marginBottom": "4px"})
 
