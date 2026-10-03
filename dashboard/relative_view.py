@@ -240,8 +240,12 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         # another independent chip, same "don't conflate badges" convention as above.
         fx_flag = stage_row.get("fx_debt_share_flag") if stage_row is not None else None
         fx_share = stage_row.get("feat_fx_debt_share") if stage_row is not None else None
+        # FX reserve runway (coverage-audit follow-up, 2026-10-03) — same convention.
+        runway_flag = stage_row.get("fx_reserve_runway_flag") if stage_row is not None else None
+        runway = stage_row.get("feat_fx_reserve_runway") if stage_row is not None else None
     except Exception:
         stage, squeeze_flag, spread_flag, fx_flag, fx_share = None, False, None, None, None
+        runway_flag, runway = None, None
 
     # Debt stress — US runs the full 7-component model; 11 more countries run
     # a 2/3-component minimum-viable subset as of the 2026-10 rollout; EZ has
@@ -284,6 +288,11 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     ):
         chips.append(_chip(f"FX debt {fx_share:.0f}% · {fx_flag}",
                            "#E8A317" if fx_flag == "warning" else RED))
+    if runway_flag in ("warning", "critical") and runway is not None and not (
+        isinstance(runway, float) and math.isnan(runway)
+    ):
+        chips.append(_chip(f"FX runway {runway:.1f}mo · {runway_flag}",
+                           "#E8A317" if runway_flag == "warning" else RED))
 
     # Recent clock-change notes (~30d chips / ~45d stage)
     try:

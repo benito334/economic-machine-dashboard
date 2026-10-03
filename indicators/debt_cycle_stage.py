@@ -453,6 +453,54 @@ def _fx_debt_share_flag(share: pd.Series, cfg: dict) -> pd.Series:
     return pd.Series(flags, index=share.index, dtype=object)
 
 
+# ── FX reserve runway (import-cover months) ──────────────────────────────────
+# project_plan.md §6.4: "FX Reserve Runway = FX reserves ÷ average monthly
+# imports (import-coverage months)" — the other EM balance-of-payments-risk
+# gauge named alongside the currency-debt split. CN/IN/ID/BR only (the same
+# countries the original project_plan EM list names; reserves + imports-level
+# data exist for all four, verified live 2026-10-03). Standard IMF/market
+# convention: below 3 months is the classic reserve-adequacy floor; below 6
+# months is the wider caution band — not something invented for this project.
+
+def build_fx_reserve_runway(conn, country: str) -> pd.Series:
+    """Months of import cover: reserves ÷ (annual imports ÷ 12).
+
+    Empty if either leg is missing for this country (CN/IN/ID/BR only as of
+    2026-10-03)."""
+    prefix = country.lower()
+    # capital.fx_reserves_usd is in MILLIONS (FRED native unit); external.imports_usd
+    # is in plain dollars (World Bank "current US$") — convert reserves to plain
+    # dollars before dividing, or the ratio silently rounds to ~0 (caught live,
+    # 2026-10-03: all four countries showed runway=0.0 before this fix).
+    reserves = _load_signal_values(conn, f"{prefix}.capital.fx_reserves_usd") * 1_000_000.0
+    imports = _load_signal_values(conn, f"{prefix}.external.imports_usd")
+    if reserves.empty or imports.empty:
+        return pd.Series(dtype=float)
+    res_q = _to_quarterly(reserves, ffill_limit=4)
+    imp_q = _to_quarterly(imports, ffill_limit=10)   # annual series, same lag reasoning as gov_interest_gdp
+    idx = res_q.index.intersection(imp_q.index)
+    if len(idx) == 0:
+        return pd.Series(dtype=float)
+    monthly_imports = imp_q.loc[idx] / 12.0
+    runway = (res_q.loc[idx] / monthly_imports).replace([np.inf, -np.inf], np.nan).dropna()
+    return runway
+
+
+def _fx_reserve_runway_flag(runway: pd.Series, cfg: dict) -> pd.Series:
+    """Per-quarter flag (None / "warning" / "critical") from fixed import-
+    cover-month thresholds — the standard IMF/market reserve-adequacy
+    convention (3 months = classic floor, 6 months = wider caution band),
+    not a project-specific invention. Lower runway = more risk, the inverse
+    direction of fx_debt_share's "higher = more risk" convention."""
+    if runway.empty:
+        return pd.Series(dtype=object)
+    sm = cfg.get("fx_reserve_runway") or {}
+    warn = float(sm.get("warning_months", 6.0))
+    crit = float(sm.get("critical_months", 3.0))
+    flags = np.where(runway <= crit, "critical", np.where(runway <= warn, "warning", None))
+    return pd.Series(flags, index=runway.index, dtype=object)
+
+
 # ── Debt-growth-vs-income-growth spread (Ray Dalio consult, 2026-08-19) ─────
 # See config/debt_cycle_stage.yaml `debt_income_spread` block for the full
 # rationale. Summary: Spread_t = DebtGrowthRate_t − IncomeGrowthRate_t, both
@@ -704,6 +752,12 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
     fx_share = fx_share.reindex(idx) if not fx_share.empty else pd.Series(np.nan, index=idx)
     fx_flag = fx_flag.reindex(idx) if not fx_flag.empty else pd.Series(None, index=idx, dtype=object)
 
+    # ── FX reserve runway (coverage-audit follow-up, 2026-10-03) ──────────
+    runway = build_fx_reserve_runway(conn, country)
+    runway_flag = _fx_reserve_runway_flag(runway, cfg)
+    runway = runway.reindex(idx) if not runway.empty else pd.Series(np.nan, index=idx)
+    runway_flag = runway_flag.reindex(idx) if not runway_flag.empty else pd.Series(None, index=idx, dtype=object)
+
     def _f(v) -> Optional[float]:
         if v is None or (isinstance(v, float) and np.isnan(v)):
             return None
@@ -750,5 +804,8 @@ def compute_stage_history(conn, country: str, cfg: dict) -> list[DebtCycleStageS
             feat_fx_debt_share=_f(fx_share.iloc[i]),
             fx_debt_share_flag=(fx_flag.iloc[i]
                                  if isinstance(fx_flag.iloc[i], str) else None),
+            feat_fx_reserve_runway=_f(runway.iloc[i]),
+            fx_reserve_runway_flag=(runway_flag.iloc[i]
+                                     if isinstance(runway_flag.iloc[i], str) else None),
         ))
     return snaps

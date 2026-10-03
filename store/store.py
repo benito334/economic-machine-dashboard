@@ -163,6 +163,13 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS fx_debt_share_flag VARCHAR"
     )
+    # FX reserve runway (coverage-audit follow-up, 2026-10-03).
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS feat_fx_reserve_runway DOUBLE"
+    )
+    conn.execute(
+        "ALTER TABLE debt_cycle_stage_snapshots ADD COLUMN IF NOT EXISTS fx_reserve_runway_flag VARCHAR"
+    )
     for _col in ("zscore_12m", "zscore_18m", "zscore_24m", "zscore_36m", "zscore_48m", "zscore_60m",
                  "zscore_90m", "zscore_120m"):
         conn.execute(f"ALTER TABLE signals ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
@@ -622,6 +629,8 @@ CREATE TABLE IF NOT EXISTS debt_cycle_stage_snapshots (
     debt_income_spread_flag VARCHAR,
     feat_fx_debt_share      DOUBLE,
     fx_debt_share_flag      VARCHAR,
+    feat_fx_reserve_runway  DOUBLE,
+    fx_reserve_runway_flag  VARCHAR,
     created_at              TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -639,6 +648,7 @@ _DEBT_CYCLE_STAGE_COLUMNS = [
     "feat_spread_household", "feat_spread_corporate", "feat_spread_government",
     "debt_income_spread_flag",
     "feat_fx_debt_share", "fx_debt_share_flag",
+    "feat_fx_reserve_runway", "fx_reserve_runway_flag",
     "created_at",
 ]
 

@@ -199,3 +199,9 @@ class DebtCycleStageSnapshot(BaseModel):
     # BR/MX/ID only — India/China have zero coverage in this dataflow.
     feat_fx_debt_share: Optional[float] = None
     fx_debt_share_flag: Optional[str] = None  # None / "warning" / "critical"
+
+    # FX reserve runway (coverage-audit follow-up, 2026-10-03): months of
+    # import cover = reserves / (annual imports / 12). CN/IN/ID/BR only.
+    # Lower = more risk (inverse direction of fx_debt_share).
+    feat_fx_reserve_runway: Optional[float] = None
+    fx_reserve_runway_flag: Optional[str] = None  # None / "warning" / "critical"

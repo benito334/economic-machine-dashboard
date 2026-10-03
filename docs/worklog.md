@@ -2455,3 +2455,46 @@ pattern used for the earlier Debt-Stress fixes). Confirmed live:
 (Command Center now shows the SOVEREIGN SQUEEZE badge, features 4/5 → 5/5);
 GB/JP/DE/LU/BR/CA all now carry a real `gov_interest_z` where none of
 them had one before this session.
+
+## 2026-10-03 (7) — Remaining coverage-audit items, Phase A #2: FX reserve runway (CN/IN/ID/BR)
+
+Second item from the free-source build plan. `project_plan.md` §6.4's other
+named EM balance-of-payments gauge, alongside the currency-debt split:
+"FX Reserve Runway = FX reserves ÷ average monthly imports." Audit's own
+assessment ("no new source — a derived ratio from signals already in the
+system") was half right: the YoY-form reserves signal already existed, but
+a genuine LEVEL was needed for a ratio, same pattern as `fed.balance_sheet`
+earlier this session — added `capital.fx_reserves_usd` (same FRED series as
+the existing `capital.fx_reserves_yoy`, `transformation: level` instead,
+reuses the cached fetch) + `external.imports_usd` (new World Bank binding,
+`NE.IMP.GNFS.CD`, current US$) for CN/IN/ID/BR.
+
+Built as a `DebtCycleStageSnapshot` feature+flag, same architecture as
+`fx_debt_share` from entry (5): `build_fx_reserve_runway()` /
+`_fx_reserve_runway_flag()` in `indicators/debt_cycle_stage.py`. Thresholds
+are the standard IMF/market reserve-adequacy convention (3 months = classic
+floor, 6 = wider caution band) — not invented for this project, unlike
+`fx_debt_share`'s exploratory bars.
+
+**Bug caught from an implausible result, not a silent pass**: first
+computation gave `runway=0.0` for all four countries — China holding $3.48T
+in reserves against $3.29T in annual imports reading as "0 months of
+cover" was obviously wrong on inspection. Root cause: `fx_reserves_usd` is
+in FRED's native millions, while the new `imports_usd` is in World Bank's
+plain current-US$ — dividing mismatched-by-1,000,000 units rounds to ~0 at
+4 decimal places. Fixed by converting reserves to plain dollars before the
+ratio. Re-verified against known reserve-adequacy reality before trusting
+the fix: China 12.7mo (famously the largest reserve holder), India 7.4mo,
+Brazil 10.5mo — all comfortable — and **Indonesia 5.4mo → warning**,
+consistent with Indonesia's well-known thinner reserve coverage relative
+to the other three.
+
+Same Command Center badge + Relative Cycles chip convention as
+`fx_debt_share` (separate badge, never conflated with another alarm).
+
+**Verification.** Full suite: 619 passed (same pre-existing failure).
+Confirmed live: Indonesia now shows both EM-risk badges stacked on Command
+Center (`FX DEBT SHARE: CRITICAL (76%)` and `FX RESERVE RUNWAY: WARNING
+(5.4mo)`) — the compounding-risk read Dalio's framework is meant to
+surface. China/India/Brazil correctly show no runway badge (comfortable
+coverage, below the warning threshold).

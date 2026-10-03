@@ -485,6 +485,8 @@ def render_command_center(country_data, page_trigger, thresholds,
         spread_flag = srow.get("debt_income_spread_flag")
         fx_flag = srow.get("fx_debt_share_flag")
         fx_share = srow.get("feat_fx_debt_share")
+        runway_flag = srow.get("fx_reserve_runway_flag")
+        runway = srow.get("feat_fx_reserve_runway")
         priv = srow.get("stage_private")
         sov = srow.get("stage_sovereign")
         sub_bits = []
@@ -545,6 +547,21 @@ def render_command_center(country_data, page_trigger, thresholds,
                            "marginLeft": "8px", "whiteSpace": "nowrap"})]
                   if fx_flag in ("warning", "critical") and fx_share is not None
                   and not pd.isna(fx_share) else []),
+                *([html.Span(
+                    f"FX RESERVE RUNWAY: {runway_flag.upper()} ({runway:.1f}mo)",
+                    title="Months of import cover from FX reserves (reserves / average "
+                          "monthly imports) — the standard IMF/market reserve-adequacy "
+                          "gauge. Below 6 months is the wider caution band; below 3 is "
+                          "the classic adequacy floor. Coverage-audit follow-up, "
+                          "2026-10-03; CN/IN/ID/BR only.",
+                    style={"color": "#E8A317" if runway_flag == "warning" else RED,
+                           "fontSize": "0.62rem", "fontWeight": "800",
+                           "letterSpacing": "0.04em",
+                           "border": f"1px solid {'#E8A317' if runway_flag == 'warning' else RED}",
+                           "borderRadius": "4px", "padding": "1px 6px",
+                           "marginLeft": "8px", "whiteSpace": "nowrap"})]
+                  if runway_flag in ("warning", "critical") and runway is not None
+                  and not pd.isna(runway) else []),
             ], style={"display": "flex", "alignItems": "center", "flexWrap": "wrap",
                       "gap": "2px"}),
             html.Div(" · ".join(sub_bits), style=_SUB),

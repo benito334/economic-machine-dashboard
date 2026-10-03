@@ -441,6 +441,14 @@ fx_debt_share:
   warning_pct: 50.0   # majority foreign-currency-denominated
   critical_pct: 65.0  # clearly FX-dominated
 
+# ── FX reserve runway (import-cover months) — coverage-audit follow-up,
+# 2026-10-03, project_plan.md §6.4. CN/IN/ID/BR only. Standard IMF/market
+# reserve-adequacy convention (not project-specific): 3 months is the
+# classic floor, 6 months the wider caution band. Lower = more risk.
+fx_reserve_runway:
+  warning_months: 6.0
+  critical_months: 3.0
+
 # Per-country sovereign inputs (concept tails; missing entries degrade
 # honestly — the sovereign vote runs on whatever exists).
 sovereign_inputs:
