@@ -2136,3 +2136,101 @@ US renders a real read (currently "Entering late-deleveraging" — CHI Z
 ≈ −1.4, Stress Z ≈ +0.17); switching to EZ correctly falls back to the
 US-only placeholder, consistent with the page's existing per-country
 convention.
+
+## 2026-10-03 (3) — Coverage-audit High item #3: Debt-Stress composite rollout to 12 more countries
+
+Second of the audit's four open High-priority items. The audit assumed "no
+new sourcing" — Ray's own 3-component minimum-viable guidance was already
+written into `config/longterm_stress.yaml`. That assumption turned out to
+be wrong for one piece: `credit.debt_service_ratio` ("the earliest stress
+signal") had zero non-US coverage anywhere in the codebase, and was
+separately tracked in the SAME audit's "already tracked gaps" table as
+"the single highest-value cross-country gap; no free API found yet."
+
+**New data source found and verified.** BIS publishes a "Debt service
+ratios" dataflow (`WS_DSR`) for the private non-financial sector, covering
+12 of our 14 countries (missing only EZ and LU — not BIS reporting
+entities in this dataflow). Discovered via the same `detail=serieskeysonly`
+live-probing technique from the 2026-08-21 dollar-dominance session (the
+documented dimension structure wasn't trustworthy on its own — had to read
+the actual populated series keys). Key format `Q.{CC}.P` (P = private
+non-financial sector, household+corporate combined — broader than the
+US's household-only FRED TDSP, used uniformly across non-US countries for
+comparability, documented in each binding's `linkage`). Verified live via
+the existing `fetch_bis_sdmx_series()` infra (US 13.9%, GB 13.0% on first
+fetch — plausible). New `credit.debt_service_ratio` binding added to
+`config/countries/{au,br,ca,cn,de,gb,id,in,jp,kr,mx}_bindings.yaml`.
+
+**Three real bugs caught and fixed before any country ran through them**
+(all in `indicators/longterm_stress.py`):
+1. `_build_primary_balance_gdp_fred()` reads raw FRED cache files with no
+   country parameter — calling it for a non-US country would have silently
+   returned the **US's own** primary balance mislabeled as that country's.
+   Fixed with a `country_prefix == "us"` guard; every other country now
+   goes straight to its own IMF/WB-sourced `fiscal.primary_balance_gdp`.
+2. `_build_gov_household_debt_gdp()` summed gov + household debt/GDP with
+   plain `pandas.add()` — NaN-propagating, so a country with no
+   `household_debt_gdp` binding (EZ/GB/JP/KR) got an entirely empty
+   component instead of falling back to government debt alone. First fix
+   attempt introduced a second bug (checked `hh.empty` *after* calling
+   `.resample()` on it — an empty Series from the loader has a default
+   RangeIndex, and `.resample()` raises on that regardless of emptiness,
+   independent of whether the check downstream would have caught it).
+   Fixed by moving the emptiness check before any resampling.
+3. The dynamic stock/flow weighting step indexed `hds_median_series` (built
+   from the `household_debt_service` raw series) by a Timestamp comparison
+   unconditionally — for a country with no debt-service source at all
+   (LU), that series is empty with the same RangeIndex problem, and the
+   comparison raised instead of the existing "fall back to static weights
+   when inputs are unavailable" path ever being reached. This one was
+   latent in the original US-only code too; just never triggered since the
+   US always has debt-service data. Fixed with an explicit emptiness guard.
+
+**Per-country configs** (`config/countries/{cc}_longterm_stress.yaml`, 11
+new 3-component files + 1 new 2-component LU file): weights renormalized
+from the US config's own 0.25/0.20/0.10 (or 0.25/0.10 for LU) to sum to
+1.0, same z-score/staleness/band methodology as the US config verbatim.
+One real methodology adjustment, not a bug: `max_carry_quarters` raised
+from the US config's 4 to 8 for all 12 — the US's primary-balance leg is a
+fast FRED fiscal-year proxy, but every other country's primary_balance_gdp
+is IMF/WB *annual* data running ~7 quarters behind in practice (confirmed:
+latest available vintage is 2024-12, current date 2026-10). At 4Q, that
+component was being dropped almost permanently for every single rolled-out
+country; verified immediately before/after on AU (2/3 components → 3/3,
+stress score only producible after the fix).
+
+**Pipeline**: new Pass 6b in `indicators/pipeline.py`, positioned after the
+country-ingestion loop (same reasoning Pass 7 already documented — a
+country's signals must be in the DB before its stage/stress features are
+built), not immediately after the original US-only Pass 6. Auto-discovers
+`config/countries/*_longterm_stress.yaml`.
+
+**Dashboard**: removed the `if country != "US"` hard gates in
+`update_debt_stress_info`, `update_debt_stress_chart`, and the new
+CHI-stress callback (`dashboard/charting.py`) — `load_debt_stress_history()`
+was already called generically in all three; the gates were the only
+thing stopping other countries' data from showing. `_build_debt_stress_info`
+now loads the calling country's own config (was unconditionally loading
+the US's 7-component file, which would have shown the wrong weights for
+every other country's table). Command Center's debt-stress card had a
+hardcoded "/7 components" label — fixed to show the actual count, since
+"3/7" would have read as 4 broken components rather than a different,
+intentionally-scoped model. Relative Cycles' stale "(US-only model)"
+fallback text and comment updated to reflect the real per-country state.
+
+**Verification.** Full suite in Docker after each round of fixes: 619
+passed throughout (same single pre-existing failure). Recomputed the
+debt-stress layer directly against the already-ingested signal data
+(no need to re-run the full 14-country pipeline a second time) to iterate
+the three bug fixes quickly; confirmed via direct DB query after each fix.
+Final state: AU/BR/CA/CN/DE/GB/ID/IN/JP/KR/MX all 3/3 components,
+~74% retained weight, real non-null stress scores; LU 2/2, ~67% retained
+weight; EZ still has no model (genuinely out of scope — not BIS-covered
+AND missing `fiscal.primary_balance_gdp`, so even the 2-component fallback
+isn't meaningful). Confirmed live in-browser across AU (3/3, combined
+CHI-stress view producing a real quadrant read), LU (2/2), EZ (clean "no
+model yet" fallback everywhere, no crashes), Command Center (AU's card now
+reads "3 components active" instead of a misleading fixed denominator),
+and Relative Cycles (all 12 rolled-out countries now show a real Debt
+Stress value in the per-country card grid, where every one previously
+showed nothing).

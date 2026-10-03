@@ -239,7 +239,9 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     except Exception:
         stage, squeeze_flag, spread_flag = None, False, None
 
-    # Debt stress (US-only model today)
+    # Debt stress — US runs the full 7-component model; 11 more countries run
+    # a 2/3-component minimum-viable subset as of the 2026-10 rollout; EZ has
+    # no model yet (see docs/worklog.md 2026-10-03).
     try:
         ds_hist = load_debt_stress_history(country=country)
         ds = _latest(ds_hist, "stress_score") if not ds_hist.empty else None
@@ -319,7 +321,7 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         *notes_block,
         _kv("Growth Z", _fmt(g) + (f" (Δ {_fmt(g_d)})" if g_d is not None else "")),
         _kv("Inflation Z", _fmt(i) + (f" (Δ {_fmt(i_d)})" if i_d is not None else "")),
-        _kv("Debt stress", _fmt(ds) if ds is not None else "— (US-only model)"),
+        _kv("Debt stress", _fmt(ds) if ds is not None else "— (not built for this country)"),
         _kv("Productivity Z", _fmt(prod)),
         _kv("Order", " · ".join(order_bits) if order_bits else "—"),
         dcc.Link("→ command center", href="/country",

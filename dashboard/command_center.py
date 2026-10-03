@@ -450,8 +450,13 @@ def render_command_center(country_data, page_trigger, thresholds,
         ds = ds_hist["stress_score"].dropna()
         ds_val = float(ds.iloc[-1]) if not ds.empty else None
         n_comp = ds_hist["n_components"].iloc[-1] if "n_components" in ds_hist.columns else "—"
+        # "/7" was accurate while this was US-only; the 2026-10 rollout to
+        # other countries runs a 2- or 3-component minimum-viable subset by
+        # design (see docs/worklog.md 2026-10-03), so a fixed denominator
+        # would misreport those as missing data rather than scoped-down.
+        comp_word = "component" if n_comp == 1 else "components"
         stress_card = _card("Debt stress", _fmt(ds_val),
-                            f"{n_comp}/7 components", "/debt-stress")
+                            f"{n_comp} {comp_word} active", "/debt-stress")
     else:
         stress_card = _card("Debt stress", "—",
                             f"not built for {country} yet", "/debt-stress")

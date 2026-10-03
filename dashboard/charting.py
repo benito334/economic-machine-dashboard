@@ -4622,6 +4622,7 @@ def _build_debt_stress_info(
     ds_latest: pd.Series | None,
     theme_name: str,
     component_dates: dict[str, Any] | None = None,
+    country: str = "US",
 ) -> list:
     """Build the full-width top-panel children for the Debt Stress tab."""
     muted = {"color": "var(--muted-color)"}
@@ -4630,9 +4631,16 @@ def _build_debt_stress_info(
         return [html.Div("No debt stress data — run pipeline.", style=muted)]
 
     # ── Load stress config for weights, frequencies, carry cap ────────────────
+    # US runs the original 7-component model; every other rolled-out country
+    # (2026-10 coverage-audit, High item #3) has its own reduced-subset file.
     try:
+        from indicators.longterm_stress import _CONFIG_DIR as _STRESS_CFG_DIR
         from indicators.longterm_stress import load_longterm_stress_config
-        stress_cfg = load_longterm_stress_config()
+        if country.upper() == "US":
+            stress_cfg = load_longterm_stress_config()
+        else:
+            cc_path = _STRESS_CFG_DIR / "countries" / f"{country.lower()}_longterm_stress.yaml"
+            stress_cfg = load_longterm_stress_config(cc_path) if cc_path.exists() else {"components": []}
         comp_cfg_list = stress_cfg.get("components", [])
         stale_cfg     = stress_cfg.get("staleness", {})
         max_carry_q   = int(stale_cfg.get("max_carry_quarters", 4))
@@ -4915,20 +4923,18 @@ def _build_debt_stress_info(
 )
 def update_debt_stress_info(date_range: dict, theme_name: str, country: str = "US", _trigger: Any = None) -> list:
     country = (country or "US").upper()
-    if country != "US":
+    end = (date_range or {}).get("end")
+    df = load_debt_stress_history(country=country, end_date=end)
+    latest = df.iloc[-1] if not df.empty else None
+    if latest is None:
         return [html.Div(
-            f"Long-Term Debt Stress model is US-only — component series (household debt, "
-            f"corporate debt, federal deficit, interest payments) are FRED-sourced US data. "
-            f"A {country}-equivalent composite is pending research.",
+            f"No Debt-Stress model for {country} yet.",
             style={"color": "var(--muted-color)", "fontSize": "0.85rem", "padding": "20px 0"},
         )]
-    end = (date_range or {}).get("end")
-    df = load_debt_stress_history(country="US", end_date=end)
-    latest = df.iloc[-1] if not df.empty else None
     comp_dates = load_debt_stress_component_dates(
-        country="US", as_of=str(latest.get("as_of")) if latest is not None else end
+        country=country, as_of=str(latest.get("as_of")) if latest is not None else end
     )
-    return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME, comp_dates)
+    return _build_debt_stress_info(latest, theme_name or DEFAULT_THEME, comp_dates, country)
 
 
 # ── Long-term debt-cycle STAGE section (roadmap Phase C) ─────────────────────
@@ -5113,20 +5119,18 @@ def update_chi_stress_scatter(
 ) -> tuple[go.Figure, list]:
     country = (country or "US").upper()
     theme_name = theme_name or DEFAULT_THEME
-    if country != "US":
-        fig = go.Figure()
-        fig.update_layout(**figure_layout(
-            theme_name, f"Debt Stress — US-only model  ·  {country} not yet available"))
-        return fig, [html.Span(
-            "The Debt-Stress composite (the long-term axis) is US-only today — "
-            "see the Dashboard IA/coverage-audit rollout plan.",
-            style={"color": "var(--muted-color)"})]
 
     chi_hist = _global_overview._cycle_health_history(country.lower(), None)
-    stress_hist = load_debt_stress_history(country="US")
-    if chi_hist.empty or stress_hist.empty or "chi_adjusted" not in chi_hist:
+    stress_hist = load_debt_stress_history(country=country)
+    if stress_hist.empty:
         fig = go.Figure()
-        fig.update_layout(**figure_layout(theme_name, "Not enough history yet"))
+        fig.update_layout(**figure_layout(theme_name, f"No Debt-Stress model for {country} yet"))
+        return fig, [html.Span(
+            f"The Debt-Stress composite (the long-term axis) has no model for {country} yet.",
+            style={"color": "var(--muted-color)"})]
+    if chi_hist.empty or "chi_adjusted" not in chi_hist:
+        fig = go.Figure()
+        fig.update_layout(**figure_layout(theme_name, "Not enough CHI history yet"))
         return fig, [html.Span("—", style={"color": "var(--muted-color)"})]
 
     sigma = float(chi_hist["chi_adjusted"].dropna().std())
@@ -5213,17 +5217,13 @@ def update_debt_stress_chart(
 ) -> go.Figure:
     country = (country or "US").upper()
     theme_name = theme_name or DEFAULT_THEME
-    if country != "US":
-        fig = go.Figure()
-        fig.update_layout(**figure_layout(theme_name, f"Debt Stress — US-only model  ·  {country} not yet available"))
-        return fig
     start = (date_range or {}).get("start")
     end   = (date_range or {}).get("end")
-    df = load_debt_stress_history(country="US", start_date=start, end_date=end)
+    df = load_debt_stress_history(country=country, start_date=start, end_date=end)
 
     if df.empty:
         fig = go.Figure()
-        fig.update_layout(**figure_layout(theme_name, "No debt stress data"))
+        fig.update_layout(**figure_layout(theme_name, f"No Debt-Stress model for {country} yet"))
         return fig
 
     comp_labels = [lbl for _, lbl, _ in _DEBT_STRESS_COMPONENTS]

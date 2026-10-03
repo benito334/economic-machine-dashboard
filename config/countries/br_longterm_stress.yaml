@@ -1,0 +1,109 @@
+# Long-Term Debt Stress Indicator — BR (3-component minimum-viable subset)
+# ─────────────────────────────────────────────────────────────────────────────
+# Rolled out 2026-10-03 (coverage-audit "Dalio Framework Coverage Audit",
+# High item #3). Ray's minimum-viable subset per config/longterm_stress.yaml's
+# own sparse-data guidance: gov+household debt/GDP, household debt-service
+# ratio, primary fiscal balance/GDP — size, cash-flow pressure, and direction
+# of the debt trajectory. Weights are the US config's own weights for these
+# three components (0.25 / 0.20 / 0.10), renormalized to sum to 1.0.
+# corporate_debt_gdp, federal_interest_gdp, structural_balance, and
+# govt_revenue_gdp are intentionally omitted — no free per-country source for
+# the first, and the other three add incremental (not fundamental) insight
+# per the same guidance. See docs/Guidance/dashboard_ia_framework.md and
+# docs/worklog.md 2026-10-03 for the full rollout.
+# ─────────────────────────────────────────────────────────────────────────────
+
+country: BR
+
+z_score:
+  window_quarters: 40
+  min_periods_quarters: 20
+  window_annual: 10
+  min_periods_annual: 5
+  look_back_shift: 1
+
+coverage:
+  # Only 2-3 weight slots total at this stage, so losing even one component
+  # is a much bigger hit than in the US's 7-component config. Kept at the
+  # same 0.60 default rather than loosening it — a genuinely thin composite
+  # should say so (low_coverage=true) rather than being propped up.
+  min_retained_weight: 0.60
+
+staleness:
+  expected_lag_quarters:
+    Q: 1
+    A: 4
+  stale_weight_halflife: 4
+  stale_min_weight_fraction: 0.20
+  # Loosened from the US config's 4Q: this country's primary_balance_gdp
+  # leg is IMF/WB annual data (not the US's faster FRED fiscal-year proxy)
+  # and runs ~7 quarters behind in practice (confirmed 2026-10-03: latest
+  # available vintage is 2024-12, ~22 months old). 4Q would drop that
+  # component almost permanently; 8Q (2 years) gives it real margin to
+  # actually contribute.
+  max_carry_quarters: 8
+  extrapolation:
+    enabled: false
+    method: rolling_mean
+    window_quarters: 8
+
+bands:
+  # ⚠ NOT VALIDATED RISK THRESHOLDS — same exploratory display bands as the
+  # US config; not recalibrated per country.
+  below_normal_upper: -0.5
+  elevated_lower: 0.5
+  high_lower: 1.0
+
+dynamic_weighting:
+  enabled: true
+  k: 0.2
+  stock_components:
+    - gov_household_debt_gdp
+  flow_components:
+    - household_debt_service
+    - primary_balance_gdp
+
+components:
+  - id: gov_household_debt_gdp
+    label: "Govt + Household debt / GDP"
+    weight: 0.45
+    stress_direction: positive
+    frequency: Q
+    construction: derived
+    sources:
+      - signal: br.credit.gov_debt_gdp
+      - signal: br.credit.household_debt_gdp
+    notes: >
+      Same construction as the US config (_build_gov_household_debt_gdp):
+      sums gov + household debt/GDP at quarterly frequency. Weight
+      renormalized from the US config's 0.25 (of 0.25+0.20+0.10=0.55 raw).
+
+  - id: household_debt_service
+    label: "Private-sector debt-service ratio (BIS)"
+    weight: 0.36
+    stress_direction: positive
+    frequency: Q
+    construction: signal
+    sources:
+      - signal: br.credit.debt_service_ratio
+    notes: >
+      BIS WS_DSR, DSR_BORROWERS=P (private non-financial sector — households
+      + non-financial corporations combined), not the US's household-only
+      TDSP. Broader scope, used for cross-country comparability — see the
+      binding's own linkage note in config/countries/br_bindings.yaml.
+      Weight renormalized from the US config's 0.20.
+
+  - id: primary_balance_gdp
+    label: "Primary fiscal balance / GDP"
+    weight: 0.19
+    stress_direction: negative
+    frequency: A
+    construction: signal
+    sources:
+      - signal: br.fiscal.primary_balance_gdp
+    notes: >
+      IMF/World-Bank-sourced general-government primary balance (unlike the
+      US, which uses a FRED federal-only proxy — see the country guard added
+      to compute_debt_stress_history() 2026-10-03). Negated: a larger
+      surplus lowers the stress contribution. Weight renormalized from the
+      US config's 0.10.

@@ -632,3 +632,20 @@ bindings:
     sanity_min: 15.0
     sanity_max: 65.0
     notes: "World Bank PIP. Verified 2026-07-07. Multi-year publication lag is inherent."
+
+  - id: credit.debt_service_ratio
+    series_id: "WS_DSR/Q.BR.P"
+    provider: BIS_SDMX
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: level
+    units: pct_level
+    country: BR
+    source_tier: free
+    vintage_available: false
+    is_proxy: true
+    verified: true
+    equilibrium: null
+    linkage: "BIS debt-service ratio for the private non-financial sector (households + non-financial corporations combined) -- broader scope than the US's household-only series (FRED TDSP), used uniformly across non-US countries for cross-country comparability (BIS does not publish a household-only DSR for every country tracked here). Feeds the Debt-Stress composite's household_debt_service component (2026-10 coverage-audit rollout, High item #3)."
+    notes: "BIS SDMX 2.1 API (stats.bis.org), dataflow WS_DSR (Debt service ratios). Key = FREQ.BORROWERS_CTY.DSR_BORROWERS, DSR_BORROWERS=P (private non-financial sector). Verified live 2026-10-03 via detail=serieskeysonly discovery against the real populated series keys (not the documented DSD alone). EZ and LU are not BIS reporting entities in this dataflow and stay without this component."

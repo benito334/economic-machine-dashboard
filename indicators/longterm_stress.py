@@ -481,6 +481,16 @@ def _build_gov_household_debt_gdp(
     hh = _load_signal_values(conn, f"{country_prefix}.credit.household_debt_gdp")
     if gov.empty and hh.empty:
         return pd.Series(dtype=float)
+    # hh.empty must be checked BEFORE resampling — an empty Series from
+    # _load_signal_values() has a default RangeIndex (no rows to infer a
+    # DatetimeIndex from), and .resample() raises on that regardless of
+    # emptiness. Caught during the 2026-10 coverage-audit rollout: GB/JP/KR
+    # have no household-debt binding at all, so hh is empty, not just NaN.
+    if hh.empty:
+        # No household-debt binding for this country — fall back to
+        # government debt alone rather than summing against an empty
+        # household series. A narrower-scope read, not a missing one.
+        return _extend_to_current_quarter(gov.resample("QE").last(), limit=ffill_limit).dropna()
     # Extend each sub-series to the current quarter before merging, so the
     # combined series covers the current quarter even when one sub-series lags.
     gov = _extend_to_current_quarter(gov.resample("QE").last(), limit=ffill_limit)
@@ -766,22 +776,38 @@ def compute_debt_stress_history(
         raw_series["federal_interest_gdp"] = pd.Series(dtype=float)
         observation_sources["federal_interest_gdp"] = []
 
-    # Primary balance: FRED FYFSD+FYOINT/GDP (federal, fiscal year Oct-Sep).
-    # Falls back to IMF signal when FRED cache is unavailable.
-    try:
-        s = _build_primary_balance_gdp_fred(data_dir, ffill_limit=max_carry_q)
-        raw_series["primary_balance_gdp"] = s
-        fyfsd_obs  = _load_raw_fred("FYFSD",  data_dir)
-        fyoint_obs = _load_raw_fred("FYOINT", data_dir)
-        _record_sources("primary_balance_gdp", fyfsd_obs, fyoint_obs)
-    except Exception as exc:
-        logger.warning("primary_balance_gdp (FRED): %s — falling back to IMF signal", exc)
+    # Primary balance: FRED FYFSD+FYOINT/GDP (federal, fiscal year Oct-Sep) —
+    # US ONLY. _build_primary_balance_gdp_fred() reads the raw FRED cache
+    # files directly with no country parameter, so it always returns the
+    # US's own series; calling it for another country would silently
+    # mislabel US fiscal data as that country's (caught during the 2026-10
+    # coverage-audit Debt-Stress rollout, before any non-US country ran
+    # through this path). Every other country goes straight to its own
+    # IMF/World-Bank-sourced `fiscal.primary_balance_gdp` signal.
+    if country_prefix == "us":
+        try:
+            s = _build_primary_balance_gdp_fred(data_dir, ffill_limit=max_carry_q)
+            raw_series["primary_balance_gdp"] = s
+            fyfsd_obs  = _load_raw_fred("FYFSD",  data_dir)
+            fyoint_obs = _load_raw_fred("FYOINT", data_dir)
+            _record_sources("primary_balance_gdp", fyfsd_obs, fyoint_obs)
+        except Exception as exc:
+            logger.warning("primary_balance_gdp (FRED): %s — falling back to IMF signal", exc)
+            try:
+                s = _load_signal_values(conn, f"{country_prefix}.fiscal.primary_balance_gdp")
+                raw_series["primary_balance_gdp"] = s
+                _record_sources("primary_balance_gdp", s)
+            except Exception as exc2:
+                logger.warning("primary_balance_gdp (IMF fallback): %s", exc2)
+                raw_series["primary_balance_gdp"] = pd.Series(dtype=float)
+                observation_sources["primary_balance_gdp"] = []
+    else:
         try:
             s = _load_signal_values(conn, f"{country_prefix}.fiscal.primary_balance_gdp")
             raw_series["primary_balance_gdp"] = s
             _record_sources("primary_balance_gdp", s)
-        except Exception as exc2:
-            logger.warning("primary_balance_gdp (IMF fallback): %s", exc2)
+        except Exception as exc:
+            logger.warning("primary_balance_gdp (IMF/WB): %s", exc)
             raw_series["primary_balance_gdp"] = pd.Series(dtype=float)
             observation_sources["primary_balance_gdp"] = []
 
@@ -920,8 +946,16 @@ def compute_debt_stress_history(
         # ── Dynamic stock/flow base weights for this quarter ──────────────────
         if dyn_enabled:
             hds_val = component_val.get("household_debt_service")
-            med_idx = hds_median_series.index[hds_median_series.index <= qt]
-            med_val = float(hds_median_series[med_idx[-1]]) if len(med_idx) > 0 else None
+            # hds_median_series is empty (default RangeIndex, not a
+            # DatetimeIndex) for a country with no household_debt_service
+            # source at all (e.g. LU — no BIS WS_DSR coverage) — indexing it
+            # by a Timestamp comparison would raise. _dynamic_group_weights()
+            # already falls back to static weights when med_val is None.
+            if hds_median_series.empty:
+                med_val = None
+            else:
+                med_idx = hds_median_series.index[hds_median_series.index <= qt]
+                med_val = float(hds_median_series[med_idx[-1]]) if len(med_idx) > 0 else None
             base_weights = _dynamic_group_weights(
                 components_cfg, dyn_stock_ids, dyn_flow_ids, hds_val, med_val, dyn_k
             )

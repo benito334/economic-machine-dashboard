@@ -1194,6 +1194,40 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             country_results["error"] += 1
         country_summaries.append((country_code.upper(), country_results))
 
+    # ── Pass 6b: Long-Term Debt Stress — additional countries ─────────────
+    # Coverage-audit rollout, 2026-10-03 (High item #3). Runs AFTER the
+    # country loop above, same reasoning as Pass 7 below: newly-ingested
+    # countries need their signals in the DB first. Auto-discovers any
+    # config/countries/{cc}_longterm_stress.yaml; a country with no file
+    # here simply doesn't get a Debt-Stress composite yet (EZ, for now —
+    # not a BIS WS_DSR reporting entity AND missing fiscal.primary_balance_gdp,
+    # so even the reduced subset isn't meaningful).
+    stress_country_yamls = sorted(
+        (_CONFIG_DIR / "countries").glob("*_longterm_stress.yaml")
+    ) if (_CONFIG_DIR / "countries").exists() else []
+    if stress_country_yamls:
+        print(f"\n─── Pass 6b: Long-Term Debt Stress [{len(stress_country_yamls)} additional countries] ───")
+    for yaml_path in stress_country_yamls:
+        try:
+            cc_config = load_longterm_stress_config(yaml_path)
+            cc = str(cc_config["country"]).upper()
+            cc_snaps = compute_debt_stress_history(conn, cc, cc_config, DATA_DIR)
+            n_cc = upsert_debt_stress(conn, cc_snaps)
+            latest_cc = cc_snaps[-1] if cc_snaps else None
+            if latest_cc:
+                sc = f"{latest_cc.stress_score:+.3f}" if latest_cc.stress_score is not None else "null"
+                rw = f"{latest_cc.retained_weight:.0%}" if latest_cc.retained_weight is not None else "?"
+                total_cc_components = len(cc_config.get("components", []))
+                print(f"  [{cc}] snapshots={n_cc}  latest ({latest_cc.as_of}): stress={sc}"
+                      f"  components={latest_cc.n_components}/{total_cc_components}  retained_weight={rw}"
+                      f"  low_coverage={latest_cc.low_coverage}")
+            else:
+                print(f"  [{cc}] [WARN] No debt stress snapshots produced")
+                post_ingestion_errors += 1
+        except Exception as exc:
+            logger.exception("[ERROR] Debt stress pass (%s): %s", yaml_path.name, exc)
+            post_ingestion_errors += 1
+
     # ── Pass 7: Long-Term Debt-Cycle Stage Classifier (all configured) ────
     # Runs AFTER the country loop so newly-ingested countries have their
     # signals in the DB before their stage features are built.
