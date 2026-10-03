@@ -1130,7 +1130,12 @@ class TestComputeDynamicThresholds:
         from dashboard.charting import compute_dynamic_thresholds
 
         idx = pd.date_range("2020-01-31", periods=30, freq="ME")
-        rng_vals = [0.1, -0.1, 0.2, -0.2, 0.1] * 6  # some variability so sigma > 0
+        # Variability must be large enough that both thresholds clear the 0.15
+        # floor added 2026-10-03 (Ray growth safeguard 2). With the old
+        # near-flat series both cases floored to exactly 0.15 and the credit
+        # multiplier was masked — see test_floor_masks_credit_multiplier below,
+        # which pins that interaction deliberately.
+        rng_vals = [0.9, -0.9, 1.2, -1.2, 0.6] * 6
         comp = pd.DataFrame({
             "growth_score": rng_vals,
             "inflation_score": rng_vals,
@@ -1148,6 +1153,31 @@ class TestComputeDynamicThresholds:
         assert tight["dyn_gz"].iloc[-1] == pytest.approx(loose["dyn_gz"].iloc[-1])
         assert tight["credit_adj"].iloc[-1] > 1.0
         assert loose["credit_adj"].iloc[-1] == pytest.approx(1.0)
+
+    def test_floor_masks_credit_multiplier_in_very_calm_regimes(self):
+        """The 0.15 floor intentionally wins over the credit multiplier.
+
+        Ray's safeguard exists precisely so an unusually calm stretch cannot
+        shrink the effective threshold toward zero. When the floor binds, both
+        the loose and tight cases clamp to it — that is the floor doing its job,
+        not the credit term breaking.
+        """
+        from dashboard.charting import compute_dynamic_thresholds
+
+        idx = pd.date_range("2020-01-31", periods=30, freq="ME")
+        calm = [0.1, -0.1, 0.2, -0.2, 0.1] * 6
+        comp = pd.DataFrame({
+            "growth_score": calm, "inflation_score": calm,
+            "credit_score": [2.0] * 30,
+        }, index=idx)
+        loose = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+        comp_tight = comp.copy()
+        comp_tight["credit_score"] = -2.0
+        tight = compute_dynamic_thresholds(comp_tight, base_gz=0.5, base_iz=0.5)
+
+        assert loose["dyn_iz"].iloc[-1] == pytest.approx(0.15)
+        assert tight["dyn_iz"].iloc[-1] == pytest.approx(0.15)
+        assert (loose["dyn_gz"] >= 0.15 - 1e-9).all()
 
     def test_noisy_composite_widens_both_thresholds(self):
         from dashboard.charting import compute_dynamic_thresholds

@@ -261,6 +261,56 @@ def compute_derived(
         combined.columns = ["it", "de"]
         return (combined["it"] - combined["de"]).dropna()
 
+    if bid == "growth.output_gap":
+        # (Real GDP − CBO Potential GDP) / Potential GDP. Both are levels in
+        # raw_store under their own FRED series IDs (GDPC1 via master.gdp_real,
+        # GDPPOT via growth.potential_gdp) regardless of those bindings' own
+        # transformations. EMP course gap-fill — the course's own "Output Gap
+        # (CB Estimate)" chart.
+        gdp_raw = raw_store.get("GDPC1")
+        potential_raw = raw_store.get("GDPPOT")
+        if gdp_raw is None or potential_raw is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        combined = pd.concat([gdp_raw, potential_raw], axis=1, join="inner")
+        combined.columns = ["gdp", "potential"]
+        result = (combined["gdp"] - combined["potential"]) / combined["potential"]
+        return result.dropna()
+
+    if bid in ("credit.private_credit_creation", "credit.govt_credit_creation"):
+        # YoY point change in a debt/GDP ratio — the FLOW of new credit
+        # creation, distinct from the stock level already tracked elsewhere.
+        # EMP course gap-fill — "Private/Govt. Credit Creation (% GDP)".
+        if bid == "credit.private_credit_creation":
+            hh = transformed_store.get("credit.household_debt_gdp")
+            corp = transformed_store.get("credit.corporate_debt_gdp")
+            if hh is None or corp is None:
+                logger.warning("[derived] Missing inputs for %s", bid)
+                return None
+            combined = pd.concat([hh, corp], axis=1, join="inner")
+            stock = combined.sum(axis=1)
+        else:
+            stock = transformed_store.get("credit.gov_debt_gdp")
+            if stock is None:
+                logger.warning("[derived] Missing inputs for %s", bid)
+                return None
+        result = stock - stock.shift(4)  # quarterly data, 4 quarters = YoY
+        return result.dropna()
+
+    if bid == "credit.net_domestic_debt_gdp":
+        # Gov + household + corporate debt/GDP, summed, 4-quarter (12mo)
+        # rolling mean. EMP course gap-fill — "Net Domestic Debt (% GDP, 12mma)".
+        gov = transformed_store.get("credit.gov_debt_gdp")
+        hh = transformed_store.get("credit.household_debt_gdp")
+        corp = transformed_store.get("credit.corporate_debt_gdp")
+        if gov is None or hh is None or corp is None:
+            logger.warning("[derived] Missing inputs for %s", bid)
+            return None
+        combined = pd.concat([gov, hh, corp], axis=1, join="inner")
+        total = combined.sum(axis=1)
+        result = total.rolling(4, min_periods=4).mean()
+        return result.dropna()
+
     logger.warning("[derived] Unknown derived binding id: %s", bid)
     return None
 

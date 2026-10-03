@@ -12,6 +12,31 @@ from dash import html
 
 _DIR_ARROW: dict[str, str] = {"rising": "↑", "falling": "↓", "flat": "→"}
 
+# ── Canonical semantic palette ────────────────────────────────────────────
+# The one place these five get named. Every page should import from here
+# instead of retyping hex — this is what Fed Monitor's own _BLUE/_AMBER/
+# _RED/_GREEN/_GREY already were; consolidated here per the 2026-10 IA/color
+# audit so the three reds (#d9534f/#E5484D/#E8534C) and three greens
+# (#5CBA8A/#2e9e5b/#5CB85C) that had drifted across pages stop drifting.
+BLUE   = "#4C9BE8"   # rate / neutral-primary
+AMBER  = "#E8A317"   # watch / flagged / amber-tier
+GREEN  = "#2e9e5b"   # good / built / positive
+RED    = "#d9534f"   # critical / negative
+GREY   = "#8a97a8"   # muted / inactive
+
+# Per-force accent colors — distinct from the semantic set above (a force's
+# identity color isn't a "good/bad" judgment), but registered once so every
+# page that needs "the Growth color" draws from the same list instead of
+# redefining its own block of six constants.
+FORCE_COLOR: dict[str, str] = {
+    "growth":       "#5CBA8A",
+    "inflation":    "#E8734C",
+    "rate":         "#4C9BE8",
+    "credit":       "#B07FD4",
+    "volatility":   "#F4C842",
+    "productivity": "#3FBFB0",
+}
+
 # Dark-theme palette anchors — interpolate from washed-out light end to vivid.
 # At low magnitude the washed-out tone is still clearly visible on a dark
 # background (unlike low-alpha rgba which blends to near-invisible).

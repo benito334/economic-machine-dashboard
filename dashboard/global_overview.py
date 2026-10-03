@@ -14,6 +14,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
 from dashboard.themes import DEFAULT_THEME, figure_layout
+from dashboard.shared_components import GREEN
 from dashboard import data_score as _ds
 
 _DB = os.getenv("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
@@ -944,7 +945,7 @@ def _overview_drill_figure(
     if metric == "chi_adjusted":
         cfg = _normalise_cycle_config(config)
         neg, pos = _cycle_thresholds(country_code, cfg)
-        fig.add_hline(y=pos, line_dash="dot", line_color="#5CB85C", opacity=0.65)
+        fig.add_hline(y=pos, line_dash="dot", line_color=GREEN, opacity=0.65)
         fig.add_hline(y=neg, line_dash="dot", line_color="#E8734C", opacity=0.65)
     elif metric == "chi_raw":
         fig.add_hline(y=0, line_dash="dot", line_color="#9AA4B2", opacity=0.6)
@@ -1109,7 +1110,7 @@ def get_layout() -> html.Div:
         html.Span("Elevated / Concerning  ", className="ov-legend-label"),
         html.Span("■ ", style={"color": "#4C9BE8", "fontSize": "0.9rem"}),
         html.Span("Notable / High  ", className="ov-legend-label"),
-        html.Span("■ ", style={"color": "#5CB85C", "fontSize": "0.9rem"}),
+        html.Span("■ ", style={"color": GREEN, "fontSize": "0.9rem"}),
         html.Span("Positive / Favourable", className="ov-legend-label"),
         html.Span("   ·   ", className="ov-legend-label"),
         html.Span("A", style={

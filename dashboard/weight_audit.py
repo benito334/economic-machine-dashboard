@@ -23,6 +23,7 @@ import re
 from dash import ALL, Input, Output, State, callback, dash_table, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+from dashboard.shared_components import GREEN as _BALANCE_OK_COLOR
 from dashboard.themes import DEFAULT_THEME, THEMES, figure_layout
 from indicators.composites import (
     compute_force_balance,
@@ -47,7 +48,6 @@ _Q_COLORS: dict[str, str] = {
 # levels — momentum deltas are unavailable per trial, so the chips proper
 # can't be computed; the season zones are the honest sensitivity read).
 _MC_THRESHOLDS = {"gz": 0.5, "iz": 0.5}
-_BALANCE_OK_COLOR   = "#5CBA8A"
 _BALANCE_WARN_COLOR = "#E8734C"
 _BALANCE_LO, _BALANCE_HI = 0.75, 1.33
 

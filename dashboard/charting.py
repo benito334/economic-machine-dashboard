@@ -55,11 +55,12 @@ from dashboard import command_center as _command_center
 from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import fed_monitor as _fed_monitor
+from dashboard import case_study_monitor as _case_study_monitor
 from dashboard import market_expectations as _market_exp
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
-from dashboard.shared_components import _signal_link
+from dashboard.shared_components import RED, _concept_label, _signal_link, _zscore_color
 from dashboard.app_mode import PUBLIC_MODE, OPERATOR_ONLY_ROUTES
 from indicators import schedule_config as sched_cfg
 
@@ -357,23 +358,6 @@ _LENS_ABOUT: dict[str, str] = {
         "urbanisation, labour force participation, and age dependency."
     ),
 }
-
-
-def _concept_label(signal_id: str) -> str:
-    parts = signal_id.split(".")
-    concept = parts[-1] if len(parts) >= 3 else signal_id
-    return concept.replace("_", " ").title()
-
-
-def _zscore_color(z: Any) -> str:
-    if z is None or (isinstance(z, float) and _math.isnan(z)):
-        return "#888"
-    z = float(z)
-    if z > 2:  return "#ff6666"
-    if z > 1:  return "#ffaa66"
-    if z < -2: return "#6699ff"
-    if z < -1: return "#88bbff"
-    return "#cccccc"
 
 
 def _stress_z_color(z: Any, direction: str) -> str:
@@ -868,19 +852,21 @@ def _left_nav() -> html.Div:
             _nl("🌍", "Relative Cycles", "/relative", nav_id="navlnk-relative"),
         ], vertical=True, pills=True, className="mb-1"),
 
-        # ── Indicators ────────────────────────────────────────────────────────
-        _label("Indicators"),
+        # ── Regime & Cycles — the regime engine's own output ──────────────────
+        _label("Regime & Cycles"),
         dbc.Nav([
             _nl("〰", "Yield Curve",    "/yield-curve",    nav_id="navlnk-yield-curve"),
             _nl("📍", "Regime Map",     "/regime-map",     nav_id="navlnk-regime-map"),
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
+        ], vertical=True, pills=True, className="mb-1"),
+
+        # ── Monitors — curated, single-topic pages that feed no composite ─────
+        _label("Monitors"),
+        dbc.Nav([
             _nl("🏛", "Fed Monitor",    "/fed",            nav_id="navlnk-fed"),
+            _nl("🗂", "Case Study Monitor", "/case-study", nav_id="navlnk-case-study"),
             _nl("📐", "Market Expectations", "/market-expectations", nav_id="navlnk-market-exp"),
-            # Buffett valuation page — operator-only, hidden on the public deploy.
-            *([] if PUBLIC_MODE else [
-                _nl("🫧", "Valuations",     "/valuations",     nav_id="navlnk-valuations"),
-            ]),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Signals — click to roll/unroll the force sub-pages ────────────────
@@ -896,22 +882,26 @@ def _left_nav() -> html.Div:
             _sub("Productivity",  "/signals/productivity"),
         ], icon="📡"),
 
-        # ── Data — collapsible, rolled up by default ──────────────────────────
-        _group("Data", [
-            _nl("📋", "Data Dashboard", "/data-dashboard", nav_id="navlnk-data-dashboard"),
+        # ── Tools — power-user exploration + model-calibration surfaces ───────
+        _group("Tools", [
             _nl("📈", "Workbench",      "/workbench",      nav_id="navlnk-workbench"),
-        ], icon="🗄"),
-
-        # ── Reference — collapsible, rolled up by default ─────────────────────
-        _group("Reference", [
-            _nl("🎓", "User Guide",     "/guide",          nav_id="navlnk-user-guide"),
-            _nl("🧭", "Assets by Environment", "/asset-environments", nav_id="navlnk-asset-env"),
-            _nl("📖", "Methodology",    "/methodology",    nav_id="navlnk-methodology"),
             # Operator-only calibration tools — hidden in public mode (they write
             # shared model config + the DB).
             *([] if PUBLIC_MODE else [
                 _nl("🔍", "Weight Audit",   "/weight-audit",   nav_id="navlnk-weight-audit"),
                 _nl("📝", "Weight History", "/weight-history", nav_id="navlnk-weight-history"),
+            ]),
+        ], icon="🧰"),
+
+        # ── Reference / Admin — docs + operator-only tooling ───────────────────
+        _group("Reference / Admin", [
+            _nl("🎓", "User Guide",     "/guide",          nav_id="navlnk-user-guide"),
+            _nl("🧭", "Assets by Environment", "/asset-environments", nav_id="navlnk-asset-env"),
+            _nl("📖", "Methodology",    "/methodology",    nav_id="navlnk-methodology"),
+            _nl("📋", "Data Dashboard", "/data-dashboard", nav_id="navlnk-data-dashboard"),
+            # Buffett valuation page — operator-only, hidden on the public deploy.
+            *([] if PUBLIC_MODE else [
+                _nl("🫧", "Valuations",     "/valuations",     nav_id="navlnk-valuations"),
             ]),
             # Traffic metrics — linked only where openly viewable (local/no key).
             *([_nl("📊", "Traffic", "/traffic", nav_id="navlnk-traffic")]
@@ -1334,6 +1324,10 @@ def _page_regime_history() -> html.Div:
 
 def _page_fed_monitor() -> html.Div:
     return _fed_monitor.get_layout()
+
+
+def _page_case_study_monitor() -> html.Div:
+    return _case_study_monitor.get_layout()
 
 
 def _page_market_expectations() -> html.Div:
@@ -2139,6 +2133,7 @@ _PAGE_MAP = {
     "/country":       _page_command_center,
     "/relative":      _page_relative_view,
     "/fed":           _page_fed_monitor,
+    "/case-study":    _page_case_study_monitor,
     "/market-expectations": _page_market_expectations,
     "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
@@ -2451,6 +2446,21 @@ _VOL_MULT_V1 = 0.25
 _DIVERGENCE_LOOKBACK_N = 3
 
 
+def _threshold_floor() -> float:
+    """Minimum effective dynamic threshold, from config (Ray 2026-10-03).
+
+    Imported lazily so a config problem can never stop the dashboard booting —
+    the floor degrades to the documented default rather than taking the page
+    down with it.
+    """
+    try:
+        from indicators.inflation_anchor import load_config
+        return float(load_config()["growth_safeguards"]["min_dynamic_threshold"])
+    except Exception:  # pragma: no cover - defensive
+        logger.warning("[thresholds] could not read threshold floor; using 0.15")
+        return 0.15
+
+
 def compute_dynamic_thresholds(
     comp: "pd.DataFrame",
     base_gz: float = 0.5,
@@ -2505,6 +2515,16 @@ def compute_dynamic_thresholds(
     dyn_gz = final_gz.where(sigma_g_24.notna(), base_gz)
     dyn_iz = final_iz.where(sigma_i_24.notna(), base_iz)
 
+    # Step 6: threshold FLOOR (Ray ruling 2026-10-03, growth safeguard 2).
+    # "consider a modest cap (e.g., never let the effective threshold fall
+    #  below 0.15 sigma) so you don't become overly sensitive during unusually
+    #  calm periods." Without it a long quiet stretch shrinks the
+    #  volatility-scaled threshold until ordinary noise trips the chip.
+    # Value is TUNABLE in config/inflation_anchor.yaml::growth_safeguards.
+    _floor = _threshold_floor()
+    dyn_gz = dyn_gz.clip(lower=_floor)
+    dyn_iz = dyn_iz.clip(lower=_floor)
+
     # Step 7: correlation-divergence overlay (diagnostic only).
     g_sign = np.sign(g)
     i_sign = np.sign(i)
@@ -2521,15 +2541,57 @@ def compute_dynamic_thresholds(
     }, index=comp.index)
 
 
+def _sustained_months() -> int:
+    """How many consecutive months the Z condition must hold (Ray 2026-10-03).
+
+    "Require the Z-score to be above the threshold for at least two consecutive
+    months... This reduces noise without sacrificing much lead time."
+    TUNABLE in config/inflation_anchor.yaml; 1 disables the filter.
+    """
+    try:
+        from indicators.inflation_anchor import load_config
+        return int(load_config()["growth_safeguards"]["sustained_months"])
+    except Exception:  # pragma: no cover - defensive
+        return 1
+
+
+def _holds_for(history: "pd.Series | None", threshold: float, above: bool,
+               n: int) -> bool:
+    """Did the Z condition hold for n consecutive periods, latest included?
+
+    Returns True when n <= 1 or no history was supplied, so callers without
+    history keep the pre-existing single-month behaviour unchanged.
+    """
+    if n <= 1 or history is None:
+        return True
+    s = history.dropna() if hasattr(history, "dropna") else None
+    if s is None or len(s) < n:
+        # Not enough history to demonstrate persistence — do not block the call
+        # on absence of evidence, or every newly-added country reads Transition
+        # for its first n months.
+        return True
+    tail = s.iloc[-n:]
+    return bool((tail > threshold).all() if above else (tail < -abs(threshold)).all())
+
+
 def _classify_regime(
     g_score: "float | None",
     i_score: "float | None",
     g_delta: "float | None",
     i_delta: "float | None",
     thresholds: "dict | None" = None,
+    g_history: "pd.Series | None" = None,
+    i_history: "pd.Series | None" = None,
 ) -> "tuple[str, str]":
-    """Return (growth_regime, inflation_regime) using dual Z + momentum conditions."""
+    """Return (growth_regime, inflation_regime) using dual Z + momentum conditions.
+
+    When `g_history` / `i_history` are supplied, the Z leg additionally has to
+    have held for `sustained_months` consecutive periods (Ray ruling
+    2026-10-03, growth safeguard 1). Callers that pass no history keep the
+    original single-month rule, so this is additive, never a silent change.
+    """
     t = thresholds or _DEFAULT_THRESHOLDS
+    _n = _sustained_months()
     gz  = float(t.get("gz", 0.5))
     iz  = float(t.get("iz", 0.5))
     gm  = float(t.get("gm", 0.0))
@@ -2539,9 +2601,9 @@ def _classify_regime(
     if g_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
         gv = float(g_score)
         gd = float(g_delta) if (g_delta is not None and not (isinstance(g_delta, float) and pd.isna(g_delta))) else 0.0
-        if gv > gz and gd > gm:
+        if gv > gz and gd > gm and _holds_for(g_history, gz, True, _n):
             g_regime = "Growth"
-        elif gv < -gz and gd < -gm:
+        elif gv < -gz and gd < -gm and _holds_for(g_history, gz, False, _n):
             g_regime = "Retraction"
         else:
             g_regime = "Transition"
@@ -2552,9 +2614,9 @@ def _classify_regime(
     if i_score is not None and not (isinstance(i_score, float) and pd.isna(i_score)):
         iv = float(i_score)
         id_ = float(i_delta) if (i_delta is not None and not (isinstance(i_delta, float) and pd.isna(i_delta))) else 0.0
-        if iv > iz and id_ > im:
+        if iv > iz and id_ > im and _holds_for(i_history, iz, True, _n):
             i_regime = "Inflation"
-        elif iv < -iz and id_ < -im:
+        elif iv < -iz and id_ < -im and _holds_for(i_history, iz, False, _n):
             i_regime = "Disinflation"
         else:
             i_regime = "Transition"
@@ -4927,7 +4989,7 @@ def update_debt_stage_section(date_range: dict, theme_name: str,
                        "borderRadius": "4px", "padding": "1px 8px", "marginRight": "12px"}))
         spread_flag = latest.get("debt_income_spread_flag")
         if spread_flag in ("warning", "critical"):
-            sf_color = "#E8A317" if spread_flag == "warning" else "#E5484D"
+            sf_color = "#E8A317" if spread_flag == "warning" else RED
             children.append(html.Span(
                 f"DEBT-INCOME SPREAD: {spread_flag.upper()}",
                 title="Debt is growing faster than the income available to service it "

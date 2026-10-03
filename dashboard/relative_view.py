@@ -32,6 +32,7 @@ from dashboard.charting_data import (
     load_latest_signals,
 )
 from dashboard.command_center import STAGE_COLORS
+from dashboard.shared_components import GREEN, RED
 
 COUNTRIES = ["US", "EZ", "GB", "JP", "KR", "CN", "IN", "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
 _NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area", "GB": "🇬🇧 United Kingdom",
@@ -163,7 +164,9 @@ def _chip_label_history(hist, g_col: str, i_col: str, t: dict, dyn) -> tuple:
         gc, ic = _classify_regime(
             float(g), float(i),
             None if pd.isna(gd) else float(gd),
-            None if pd.isna(idd) else float(idd), tt)
+            None if pd.isna(idd) else float(idd), tt,
+            g_history=hist[g_col].iloc[:pos + 1],
+            i_history=hist[i_col].iloc[:pos + 1])
         ts = pd.Timestamp(hist["as_of"].iloc[pos])
         g_out.append((ts, gc))
         i_out.append((ts, ic))
@@ -216,7 +219,8 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         else:
             t["gz"] = float(dyn["dyn_gz"].iloc[-1])
             t["iz"] = float(dyn["dyn_iz"].iloc[-1])
-    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t)
+    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
+                                      g_history=hist[g_col], i_history=hist[i_col])
 
     # Long-term cycle stage
     try:
@@ -268,7 +272,7 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         chips.append(_chip(label, STAGE_COLORS.get(stage, "#888")))
     if spread_flag in ("warning", "critical"):
         chips.append(_chip(f"Debt/Income spread · {spread_flag}",
-                           "#E8A317" if spread_flag == "warning" else "#E5484D"))
+                           "#E8A317" if spread_flag == "warning" else RED))
 
     # Recent clock-change notes (~30d chips / ~45d stage)
     try:
@@ -406,7 +410,7 @@ def _competitiveness_table(thresholds: dict) -> html.Div:
         if z is None or (isinstance(z, float) and math.isnan(z)):
             continue
         read = "gaining" if z < -0.25 else "losing" if z > 0.25 else "flat"
-        color = "#5CBA8A" if read == "gaining" else "#E5484D" if read == "losing" else "#888"
+        color = GREEN if read == "gaining" else RED if read == "losing" else "#888"
         rows.append((cc, float(z), float(val) if val is not None else None, as_of, read, color))
 
     rows.sort(key=lambda t: t[1])   # most-improving (lowest Z) first

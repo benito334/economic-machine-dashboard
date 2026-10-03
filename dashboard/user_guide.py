@@ -299,7 +299,8 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
     eff_gz = float(dyn_df["dyn_gz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t.get("gz", 0.5))
     eff_iz = float(dyn_df["dyn_iz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t.get("iz", 0.5))
     chip_t = {**t, "gz": eff_gz, "iz": eff_iz}
-    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, chip_t)
+    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, chip_t,
+                                      g_history=hist[g_col], i_history=hist[i_col])
     season_now = _season_label(g, i, chip_t)
     g_agree = chip_direction_agreement(latest_sig, "growth", g_d)
     i_agree = chip_direction_agreement(latest_sig, "inflation", i_d)

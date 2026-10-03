@@ -321,6 +321,112 @@ bindings:
     sanity_min: 55.0
     sanity_max: 70.0
 
+  # ─── Lens A supplement — EMP course gap-fill (Dalio course "US 2003-2018"
+  # case study chart audit, added after a direct review of the course's own
+  # interactive case-study chart panel — see docs/Guidance/ray_dalio_review_log.md) ──
+  - id: growth.residential_investment
+    series_id: PRFIC1
+    provider: FRED
+    frequency: Q
+    force: growth
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 0.02
+    linkage: "Real private residential fixed investment (housing construction/improvement). Highly cyclical and rate-sensitive — one of the earliest-turning GDP components in both directions."
+    sanity_min: -0.40
+    sanity_max: 0.40
+
+  - id: growth.business_investment
+    series_id: PNFIC1
+    provider: FRED
+    frequency: Q
+    force: growth
+    lead_lag: leading
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 0.03
+    linkage: "Real private nonresidential fixed investment (business capex). Leading signal for the productive capacity businesses are willing to fund — tracks credit availability and expected demand."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
+  - id: growth.savings_rate
+    series_id: PSAVERT
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: level
+    units: pct_level
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 6.0
+    linkage: "Personal saving rate. A rising rate signals precautionary retrenchment (consumption headwind); a falling rate signals consumption pulling forward against future income."
+    sanity_min: -5.0
+    sanity_max: 35.0
+
+  - id: growth.home_prices
+    series_id: CSUSHPISA
+    provider: FRED
+    frequency: M
+    force: growth
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 0.04
+    linkage: "S&P Case-Shiller US National Home Price Index. Housing wealth effects feed consumption directly (Q7, EMP course); home-price busts are a recurring trigger in Dalio's debt-cycle case studies."
+    sanity_min: -0.25
+    sanity_max: 0.30
+
+  - id: growth.potential_gdp
+    series_id: GDPPOT
+    provider: FRED
+    frequency: Q
+    force: growth
+    lead_lag: structural
+    transformation: level
+    units: billions_usd
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 20000.0
+    linkage: "CBO estimate of real potential GDP — the non-inflationary speed limit. Feeds growth.output_gap; not itself Z-scored for the regime chip."
+    sanity_min: 1000.0
+    sanity_max: 60000.0
+
+  - id: growth.output_gap
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: growth
+    lead_lag: leading
+    transformation: derived
+    units: pct_of_potential
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.0
+    linkage: "(Real GDP − CBO Potential GDP) / Potential GDP. The EMP course's own 'Output Gap (CB Estimate)' chart — spare capacity available for growth above potential without inflationary pressure (Dalio course, US case study Q3)."
+    sanity_min: -0.15
+    sanity_max: 0.15
+
   # ─── Lens B — Inflation Force ──────────────────────────────────────────────
 
   - id: inflation.cpi_headline
@@ -1008,6 +1114,27 @@ bindings:
     sanity_max: 200.0
     notes: "Fallback REER for non-BIS countries. For US, prefer currency.reer (RBUSBIS, monthly). is_proxy=true."
 
+  - id: currency.broad_dollar_index
+    # EMP course gap-fill: the course's "Currency Index (Indexed to Start)"
+    # chart — a nominal trade-weighted index, distinct from currency.reer
+    # (which is REAL and BIS-sourced). Added after a direct review of the
+    # Dalio course's US 2003-2018 case-study chart panel.
+    series_id: DTWEXBGS
+    provider: FRED
+    frequency: D
+    force: currency
+    lead_lag: coincident
+    transformation: yoy_pct
+    units: yoy_pct
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: 0.0
+    linkage: "Nominal Broad US Dollar Index (trade-weighted vs. a broad basket of partner currencies). Distinct from currency.reer (real, BIS) — this is the nominal gauge used for the course's indexed currency-performance chart."
+    sanity_min: -0.25
+    sanity_max: 0.25
+
   # ─── Lens G deferred slots ─────────────────────────────────────────────────
   # capital.portfolio_flows → IMF BOP / Treasury TIC (Phase 1A-iii)
   # currency.ppp_gap        → derived from OECD/WB PPP vs market FX (Phase 1A-iii)
@@ -1335,6 +1462,63 @@ bindings:
     linkage: "Nonfinancial corporate debt (Z.1 BCNSDODNS) as % of GDP, quarterly. Stock measure of corporate leverage; above equilibrium signals elevated refinancing risk and credit-cycle vulnerability. NOTE: narrower concept than BIS total credit (~75%) — securities + loans only."
     sanity_min: 15.0
     sanity_max: 90.0
+
+  # ─── Lens D supplement — credit creation / net domestic debt (EMP course
+  # gap-fill: "Private/Govt. Credit Creation (% GDP)" and "Net Domestic Debt
+  # (% GDP, 12mma)" charts from the Dalio course's US case-study panel) ──────
+  - id: credit.private_credit_creation
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: derived
+    units: pct_gdp_yoy_chg
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.0
+    linkage: "YoY point change in (household + corporate debt) as % of GDP — the FLOW of new private credit creation, not the stock level. Positive = new borrowing outpacing GDP growth (the 'is QE translating into private credit growth' question from the course's MP2 section)."
+    sanity_min: -40.0
+    sanity_max: 40.0
+
+  - id: credit.govt_credit_creation
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: credit
+    lead_lag: leading
+    transformation: derived
+    units: pct_gdp_yoy_chg
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
+    equilibrium: 0.0
+    linkage: "YoY point change in government debt as % of GDP — the flow of new sovereign credit creation (fiscal deficit financing), distinct from the debt stock level already tracked in credit.gov_debt_gdp."
+    sanity_min: -40.0
+    sanity_max: 40.0
+
+  - id: credit.net_domestic_debt_gdp
+    series_id: null
+    provider: derived
+    frequency: Q
+    force: credit
+    lead_lag: coincident
+    transformation: derived
+    units: pct_gdp
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    is_constructed: true
+    verified: true
+    equilibrium: 230.0
+    linkage: "Government + household + corporate debt, summed as % of GDP, 4-quarter (12mo) moving average. The economy-wide domestic leverage level — the EMP course's 'Net Domestic Debt (% GDP, 12mma)' chart."
+    sanity_min: 50.0
+    sanity_max: 500.0
 
   # ─── Lens I — Fiscal ──────────────────────────────────────────────────────
 

@@ -4,6 +4,52 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-03 — Independent chip-audit skill + first audit: the inflation score is a window artifact
+
+**The ask.** Build a skill that acts as an independent agent trained in the Dalio framework and reviews the dashboard's indicator determinations for accuracy, using outside sources to ground-truth what we show — starting with Growth and Inflation only, with historical-episode scoring to follow.
+
+**Design decision that reframed the task.** "Do experts agree?" is the *weakest* of three available ground truths, because the chip is not the claim "the economy is growing" — it is the claim "the composite sits more than `gz` sigma above **its own rolling norm** and is rising." An expert confirming the LEVEL does not confirm the RELATIVE claim, so naive comparison manufactures fake findings. Agreed hierarchy: **Tier 1 numeric benchmarks** (reproducible, the backbone) > **Tier 2 institutional narrative** (FOMC/IMF/OECD) > **Tier 3 commentary** (noisy, recency-biased; on Dalio's own terms consensus is to be tested, not deferred to). The decisive insight is that published composites exist which are *structurally the same kind of object* as our chips — standardised, mean-zero, publisher-thresholded — so the comparison can be **numeric over full history** rather than rhetorical.
+
+**Built — `indicators/audit_benchmarks.py`, 15 validation-only FRED series, all endpoint-verified 2026-10-03.** Growth: `CFNAIMA3` (primary — the only external benchmark both standardised AND publisher-thresholded at ±0.70, so the sharpest test of our `gz` calibration), `CFNAI`, `CFNAIDIFF`, `WEI`, `GDPNOW`, `STLENI`, `A191RL1Q225SBEA`, `SAHMREALTIME`, `RECPROUSM156N`, `USREC` (the historical arbiter). Inflation: `MEDCPIM158SFRBCLE`, `TRMMEANCPIM158SFRBCLE`, `PCETRIM12M159SFRBDAL`, `CORESTICKM159SFRBATL`, `MICH`. Rejected as dead or unusable: `USALOLITONOSTSAM` (OECD US CLI, ends 2024-01 — the OECD die-off again), `USSLIND` (ends 2020-02), `ADSBCI` (does not exist on FRED), Conference Board LEI (proprietary).
+
+**NON-NEGOTIABLE in the module and enforced by a test: validation-only.** No benchmark may ever be bound as a signal — the moment one feeds the composite it audits, the audit is circular. `test_no_benchmark_is_also_an_input_signal` scans `us_bindings.yaml` plus every `countries/*_bindings.yaml` on each run and **caught a real case on its first execution**: `EXPINF1YR` was already ingested as `market.exp_infl_1y`. Not in the inflation basket, but a series inside our own system cannot be offered as independent corroboration of it — dropped from the registry, rejection documented.
+
+**Honest caveat written into the module, the skill and every report:** these benchmarks are independently *constructed*, not input-*independent*. CFNAI's 85 inputs include our payrolls/IP/retail sales/capacity utilisation; median/trimmed/sticky CPI re-aggregate the same BLS price quotes. High correlation is therefore partly mechanical and proves little — the informative outputs are **CONTRADICT verdicts, disagreement episodes and lead/lag**.
+
+The module reproduces the live chips by importing `_classify_regime` / `compute_dynamic_thresholds` from `dashboard.charting` (never reimplementing them), mirroring `command_center`'s window resolution and latest/delta semantics, so the audit cannot drift from what a user sees. Read-only on the DB throughout. Deterministic verdict grid in `_verdict()` (AGREE/PARTIAL/CONTRADICT/UNKNOWN) so the tally is reproducible run to run; publisher thresholds beat the ±0.5σ fallback; **an unfired regime flag reads Neutral, not Above** (absence of a recession call is not a growth call); `best_lag()` scans ±6 months by Spearman with positive = our composite led. `--blind` emits the panel with our read, verdicts, correlations and all internal prose stripped — enforced by a test, because a reviewer who learns a chip exists reasons backwards from it.
+
+**Built — the skill at `.claude/skills/dalio-audit/`** (SKILL.md + `references/benchmarks.md`, `grading.md`, `report_template.md`). Four-stage protocol: Stage 0 pins the read with production code; Stage 1 spawns **two mutually-blinded subagents** (quantitative on the blind JSON only; narrative on web Tier 2/3 only, each unaware of the other and of the dashboard); Stage 2 reveals and scores on a fixed verdict vocabulary (`CONFIRMED` / `CONFIRMED-WITH-CAVEAT` / `DISPUTED-TIMING` / `DISPUTED-LABEL` / `INSUFFICIENT-EVIDENCE`, each requiring a **falsifier line**); Stage 3 files a dated report plus an append-only log row and a punch list that changes nothing without approval. `grading.md` front-loads the things that look like bugs but are documented design (Transition on plateaus, dynamic thresholds, display-only full-history Z, the IMF annual CPI bridges) so the reviewer cannot "discover" them. Explicitly does NOT rebuild historical replay — `indicators/backtest.py` and `backtest_g3.py` already do PIT and ALFRED-vintage replay; the skill's job is the layer they lack (what the outside world said at the time, scored as lead/lag vs `USREC`).
+
+**First audit run — `docs/audits/dalio_audit/US_2026-10.md`, logged in `docs/audits/dalio_chip_audit_log.md`.** Growth chip **Growth** and Inflation chip **Transition** both graded `CONFIRMED-WITH-CAVEAT`, with **zero CONTRADICT verdicts across 15 benchmarks** (G 4A/6P/0C, I 2A/3P/0C). Growth tracks `cfnai_ma3` at **Spearman 0.761 at lag 0** and `cfnai_diffusion` at **0.783 at lag 0** — no systematic lag, a clean pass. Input freshness verified rather than assumed, and it reconciles to externally retrieved prints: our `cpi_headline` 3.353% vs BLS 3.4%, `pce_core` 3.008% vs BEA 3.0%, `wages` 3.086% vs AHE 3.0%, no staleness flags.
+
+**Headline finding — the inflation score is a window artifact.** Same month, by window: full history **+0.040**, 120m −0.070, **90m (canonical) −0.310**, 60m **−0.904**, 48m −0.622, 36m −0.509. A **0.94-point spread from window choice alone**, because every post-2019 window is dominated by the 2021–23 shock (60m reaches back only to Oct 2021, almost entirely inside it). So the chip reads "below its own norm" in the same week the FOMC **raised rates 25bp to 3.75–4.00% — its first hike since 2023** — with headline CPI 3.4%, core PCE 3.0%, the SEP projecting core PCE *rising* to 3.4% Q4/Q4, and the OECD noting "signs that inflation has begun to rise again". Against the 2% target inflation is above it on every gauge. **The blind quantitative reviewer identified the window contamination independently, with no knowledge that a dashboard existed** — the blinding paid for itself on the first run.
+
+**Where the design earned credit.** The momentum gate blocked a Disinflation call (Δ +0.0153) in exact agreement with the Fed, OECD and Cleveland Fed nowcast on direction — the dual-condition rule caught a turn a Z-score alone would have missed. The divergence flag firing TRUE sits alongside BofA's "mild stagflation" base case.
+
+**Second finding.** The inflation composite correlates only **0.17–0.22** coincidentally with median/trimmed/sticky CPI, best fit at **+5 to +6 months**. Largest historical divergence is `sticky_core_cpi` 2004-01 → 2006-03 (**27 months**, our Z +1.47 vs −1.10) — structurally identical to today's oil-led impulse (crude +53% YoY, PPI +9.85%, sticky core 2.96%), since our basket carries `crude_oil` and `breakeven_avg` directly while sticky-price gauges exclude exactly that. Open question: are we measuring the inflation *impulse* rather than inflation?
+
+**Risk carried forward, deliberately not graded as a failure.** Audited on Aug-2026 vintage one day after a September jobs report (+29k, July revised to −10k, −60k net revisions, U3 4.2%, 12m avg +45k) the chip legitimately cannot yet see. Our growth basket is labour-heavy (payrolls 0.64 + unemployment 0.25 + job_openings 0.25 + participation 0.10) — the over-representation Ray flagged 2026-07-05, still open. Judging a chip against data it cannot have is the exact error this skill exists to prevent, but if the Growth label flips once September ingests, that is direct evidence for his re-weighting recommendation.
+
+34 new tests (`tests/test_audit_benchmarks.py`); suite **588 passed**. One pre-existing unrelated failure: `tests/test_explorer.py::test_load_signal_overview_returns_all_signals` expects 91 US signals against 105 in the DB, from the in-flight uncommitted `us_bindings.yaml` work.
+
+**Same-day follow-through — Ray consult + four fixes shipped.** Took the two design-pass items plus the threshold-calibration question to Digital Ray (full rulings in `docs/Guidance/ray_dalio_review_log.md` session 2026-10-03). His verdict on the headline finding: *"That's why your dashboard is out of sync with reality."*
+
+**Ruling 1 — inflation must be anchored to the TARGET.** Growth has no natural "right" level, so relative Z-scoring is correct there; inflation has an explicit policy target and the main chip must be distance from it, with the relative Z demoted to a clearly-secondary read ("If you just show two numbers, people will get confused. If you make one the anchor and the other a secondary signal, you help people see what matters most"). Built `config/inflation_anchor.yaml` (14 country targets, each sourced + TUNABLE; uniform ±0.5pp tolerance chosen over per-country official bands so the read stays comparable across columns) and `indicators/inflation_anchor.py`. US now reads **Above Target +1.01pp** (core PCE 3.01% vs 2.0%) where the relative frame said "below its own norm". Two bugs caught while verifying across all 14: the gap-direction test broke on a zero crossing (AU went +1.31pp → −0.10pp, clearly closing, but a sign-based test called it widening — now compares |gap| magnitudes), and six countries were anchoring to dead monthly CPI mirrors, so series selection now picks the **freshest** configured candidate with config order as tie-break, falling through to the live IMF annual bridge and surfacing `is_stale`/`age_months` rather than quoting an 18-month-old print.
+
+**Ruling 2 — inflation is a two-part machine.** Impulse (flexible prices: crude, breakevens, PPI, headline) vs persistence (sticky: core PCE, core CPI, wages), combined 30/70 and published side by side. The 5–6 month lead the audit found is *"a feature, not a bug"* — it means the composite is a leading impulse index, not a current-state gauge. US reads impulse +0.81 / persistence −0.10 → "supply-side shock that has NOT yet embedded", matching the audit's own Tier-2 finding of a 1.0pp headline-vs-core energy wedge. **Documented departure:** Ray listed trimmed-mean measures inside the persistence index; we exclude them, because those are precisely the audit's independent benchmarks and making them inputs would make the audit circular. Flagged back to him in-thread; enforced by `test_persistence_excludes_audit_benchmarks`.
+
+**Ruling 3 — the 0.23σ growth threshold is right, with safeguards.** "A threshold around 0.2–0.3 sigma works well for a leading indicator… your 0.23-sigma is in that sweet spot" — a diagnostic's job is early warning, not recession dating, so it should be looser than CFNAI's ±0.70. Shipped two of his four safeguards: a **0.15σ floor** on the dynamic threshold (binding for **9 of 14 countries** — they had been running below it, i.e. over-sensitive in calm stretches; US `iz` 0.093 → 0.150) and a **two-consecutive-month sustained filter** on the Z leg, wired at every call site rather than one page (page-level chip inconsistency was a real bug on 2026-08-15). The filter is additive — callers passing no history keep the single-month rule — and short history never blocks a newly-added country. Measured impact: exactly **1 of 14** current chips changes (LU inflation, a one-month spike that did not hold).
+
+**Ruling 4 — late-cycle, labour leads and output lags.** "In a late-cycle setting, labor is often the first to feel the pressure of a tightening short-term debt cycle, while output can still appear robust." So the labour-heavy basket is reading the right signal, but it needs smoothing, not down-weighting: he prescribes the same impulse/persistence split on growth (labour = impulse, output = persistence), a 2–3 month rolling labour average, leading demand signals (credit growth, corporate earnings, consumer confidence), and a credit-conditional weight tilt. Left open as design-pass items.
+
+Also shipped punch item 4 (benchmark `units` field — a blind reviewer had burned real effort working out whether `recession_prob` 0.62 meant 0.62% or 62%). Command Center now renders the anchor as the primary inflation chip with the relative read beside it in dashed, smaller, subordinate styling; verified by invoking `render_command_center` directly for US/CN/LU/JP rather than assuming. One pre-existing test needed a fixture fix, not a code fix: `test_credit_tightness_widens_inflation_threshold_only` used a series so calm that both the loose and tight cases floored to 0.15, masking the credit multiplier — amplified the fixture and added `test_floor_masks_credit_multiplier_in_very_calm_regimes` to pin that interaction deliberately.
+
+30 new tests (`tests/test_inflation_anchor.py`); suite **619 passed**, with the one pre-existing unrelated `test_explorer` count failure.
+
+**Next:** Ray's remaining design-pass items — growth labour/output impulse-persistence split with a 2–3m rolling labour average, credit-conditional labour-vs-output tilt, and leading demand signals (needs a data-feed check). Then re-run the audit once September data ingests, to see whether the Growth label survives the labour stall.
+
+**Superseded next-step note:** six punch-list items were open at audit time, nothing implemented — the two `needs design pass` items (inflation window frame; impulse-vs-inflation weighting) go to Digital Ray before any code changes, along with a `gz`-vs-CFNAI-±0.70 calibration comparison.
+
 ## 2026-08-16 (2) — Data Feed Monitor: two compounding bugs behind "89/90 OK but nothing shows OK"
 
 **The report.** User: the top summary says "89/90 OK" for US, but almost every row shows a "release overdue" badge and none show "✓ OK" — asked for an audit.
@@ -1989,3 +2035,60 @@ hardcoded US-signal-count assertion bumped 90→91 for the new binding — not a
 regression). Methodology §15 Revision Log updated (both the copy-button and
 visible table copies). Disclaimer as always: digitalray.ai output is an AI
 approximation of Dalio's framework, not vetted by Ray Dalio.
+
+## 2026-10-03 — Dashboard IA/color audit, Phase 1+2 (nav regroup + palette consolidation)
+
+User asked for a UI/IA audit as the dashboard grew noisy (23 pages by this
+point), presented as a pitch-deck artifact ("Dashboard IA Blueprint"):
+nav had drifted into a grab-bag ("Indicators" mixed the regime engine's own
+output with curated isolated-force monitors), only 3 of ~15 chart-bearing
+pages used the polished Fed-Monitor card style, and the color palette had
+been hand-retyped across ~15 files until it drifted (3 different reds, 3
+different greens, two duplicate Z-score coloring systems). Full 5-phase plan
+in the artifact; user approved starting Phase 1 (nav regroup) + Phase 2
+(color consolidation) — Phase 3 (promote `_chart_card` into
+`shared_components.py`) and Phases 4–5 (retrofit Signals, then Regime &
+Cycles/Overview charts) remain open.
+
+**Phase 1 — nav regroup** (`dashboard/charting.py::_left_nav()`). Split
+"Indicators" into **Regime & Cycles** (Yield Curve, Regime Map, Regime
+History, Debt Stress — the engine's own output) and **Monitors** (Fed
+Monitor, Case Study Monitor, Market Expectations — curated, feed no
+composite). Renamed "Data" → **Tools** (Workbench + Weight Audit/History,
+moved in from the old "Reference" group). Renamed "Reference" →
+**Reference / Admin** (gained Data Dashboard and Valuations, moved in from
+the old "Data"/"Indicators" groups). Every link's existing `PUBLIC_MODE`/
+`_traffic.nav_visible()` gating was preserved exactly — this was a pure
+relocation, no visibility-behavior change. New standing placement framework
+written to `docs/Guidance/dashboard_ia_framework.md` — a "where does the
+next page go" decision tree plus the chart/color rules below, so future
+features get placed by rule instead of guesswork.
+
+**Phase 2 — color consolidation** (`dashboard/shared_components.py`). Named
+the canonical semantic set (`BLUE`/`AMBER`/`GREEN`/`RED`/`GREY`, Fed
+Monitor's own five, since they were already the most-reused values) plus a
+`FORCE_COLOR` dict for the six per-force accents, both as public module-level
+constants. `fed_monitor.py` now imports the semantic five instead of
+redefining them (same hex values — zero visual change; kept the short
+`_BLUE`/`_AMBER`/etc. names since `case_study_monitor.py` and
+`market_expectations.py` import them directly). Deleted a verbatim-duplicated
+`_zscore_color()`/`_concept_label()` pair (`charting.py` had its own copy of
+both — now imports from `shared_components.py`). Reconciled the drifted
+reds/greens to the canonical hex across `command_center.py`,
+`relative_view.py` (×2), `global_overview.py` (×2), `data_dashboard.py`
+(×5), `weight_audit.py` (`_BALANCE_OK_COLOR`), and `weight_history.py`
+(`_DELTA_POS`) — each now imports `GREEN`/`RED` rather than retyping hex.
+Left force-accent and 4-way categorical colors alone (e.g. weight_audit's
+season-color map, data_score's A–D grade scale) since those are a different
+axis from the good/bad semantic drift that was actually in scope.
+
+**Verification.** All 9 edited files AST-parsed clean. Rebuilt the `charting`
+Docker image and ran the full suite inside it: **619 passed**, 1 pre-existing
+failure (`test_load_signal_overview_returns_all_signals`, a hardcoded
+signal-count assertion stale from this session's earlier `growth.output_gap`/
+`credit.*` additions — unrelated to this change, not a regression). Restarted
+the live container and confirmed via browser: all four new/renamed nav
+groups render with the right labels and links; Command Center, Data
+Dashboard, Relative Cycles, and Fed Monitor all render correctly post-change
+(Fed Monitor pixel-identical, as expected — same hex values, different
+import path).

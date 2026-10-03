@@ -336,3 +336,63 @@ Disclaimer as always: digitalray.ai output is an AI approximation of Dalio's fra
 **Implemented 2026-08-21 (items 1 + 2, user-approved same session).** Endpoint verification changed the plan for item 1: rather than a new IMF IIP binding, the exact ingredients already existed as two verified FRED signals in the `fed` force (`fed.foreign_holdings`=FDHBFIN, `fed.marketable_debt`=MVMTD027MNFRBDAL) — so **`order.foreign_treasury_holdings_share`** is a zero-new-sourcing derived ratio of the two (first-order identity, same pattern as `debt_income_spread`), not a new API integration. Item 2 needed real endpoint discovery: BIS's SDMX 2.1 REST API (`stats.bis.org/api/v1`) was probed live via `detail=serieskeysonly` to find the actual valid dimension key (BIS's shared `NA_SEC` DSD documentation is misleading — the live dataflow `WS_DEBT_SEC2_PUB` uses a different 15-dimension key than the generic docs suggest), landing on `Q.3P.3P.1.1.C.A.A.{USD|TO1}.A.A.A.A.A.I` (all-countries/all-issuers, international markets, amounts outstanding) — verified against real data (242 quarterly obs back to 1966-Q1; USD share 46.2% at 2026-Q1, matching the widely-cited ~45-50% BIS figure). Built: `fetch_bis_sdmx_series()` in `loader.py` (mirrors `fetch_imf_sdmx_series`, new `BIS_SDMX` provider), pipeline Pass 3.6, two raw legs (`order.offshore_usd_debt_outstanding` / `order.offshore_total_debt_outstanding`) + two derived signals (`order.foreign_treasury_holdings_share`, `order.offshore_usd_issuance_share`) in `us_bindings.yaml`. Wired into Command Center's Big-cycle position card and Relative Cycles' per-country Order line. Backfilled live for all 14 countries (US signal count 91→95, the four new signals are US-only by design since they measure the dollar's global standing, same convention as `order.reserve_currency_share`); zero pipeline errors. 12 new tests (`test_loader_bis.py`, `test_pipeline.py`); suite **546 passed, zero exclusions**. Items 3 (BIS FX-turnover/Eurodollar spike), 4 (SWIFT/UNCTAD/Bloomberg — no free API), and 5 (composite index) remain open/deferred.
 
 Disclaimer as always: digitalray.ai output is an AI approximation of Dalio's framework, not vetted by Ray Dalio.
+
+---
+
+## Session 2026-10-03 — Chip measurement audit: inflation needs an absolute anchor; impulse vs persistence
+
+**Context.** First run of the new independent chip-audit skill (`.claude/skills/dalio-audit/`, report `docs/audits/dalio_audit/US_2026-10.md`) surfaced three measurement questions. Taken to Ray in one thread; four rulings below. Site disclaimer applies as always — AI approximation of the framework, not vetted by Dalio himself. Third question errored twice server-side and had to be split and re-sent shorter.
+
+### Ruling 1 — Inflation must be anchored to the TARGET, not to its own history
+
+**The problem put to him.** Our inflation composite for 2026-10 reads +0.04 on full history, −0.31 on the canonical 90m window, −0.90 at 60m — a 0.94-point spread from window choice alone, because every post-2019 window is dominated by the 2021–23 shock. Net effect: the dashboard said "below its own norm" in the week the Fed hiked 25bp to 3.75–4.00% with headline CPI 3.4%.
+
+**Ray's ruling.** Growth and inflation are *different animals and must not share a framework*:
+- **Growth has no natural "right" level** — "the economy can grow at 1% or 3% or −2% and what matters is how that compares to what's normal for that country at that time." Relative Z-scoring is correct for growth. **No change.**
+- **Inflation has a target.** "The Fed says 2%. The ECB says 2%… The market, the central bank, and everyone else is always looking at inflation in terms of 'how far are we from the target?' That's the anchor." On the short-window artifact: "even 3% inflation looks 'low' on your Z-score, but it's still above target and the Fed is still hiking. **That's why your dashboard is out of sync with reality.**"
+- **Combination rule — one anchor, one secondary, never two co-equal numbers.** "The main chip should be the distance from target. That's the number that matters for policy and markets. But you can also show a relative Z-score as a secondary read… you want both, but you want to make it clear which is the anchor." Concretely: "make the inflation chip an absolute measure — distance from the 2% target, maybe color-coded for above or below target, and then add a small indicator for the Z-score or momentum." Rationale for not showing them co-equal: "If you just show two numbers, people will get confused."
+
+### Ruling 2 — Inflation is a two-part machine: impulse vs persistence, 30/70
+
+**The problem put to him.** Our inflation composite correlates only 0.17–0.22 coincidentally with median/trimmed/sticky CPI and fits best at a **+5 to +6 month lead**; the largest historical divergence is `sticky_core_cpi` 2004-01 → 2006-03 (27 months), structurally identical to today's oil-led impulse.
+
+**Ray's ruling.** "Inflation is a two-part machine: an **impulse** that shows up in flexible prices — especially commodities and expectations — and a **persistence** that shows up in core PCE, core CPI, wages and other sticky components." The half-year lead is **"a feature, not a bug"** — but it means the composite is a *leading impulse index*, not a current-state gauge, and the modest coincident correlation is the expected consequence. Prescription: **split the basket into two sub-indices**:
+- **Impulse Index** — crude oil YoY, 5y/10y breakevens, broad PPI, headline CPI. ~30–40% of total.
+- **Persistence Index** — core PCE, core CPI, wage growth, trimmed-mean measures. ~60–70%.
+- Combine at **persistence 70% / impulse 30%** ("for most macro-regime dashboards"), and **publish both readings side by side** so users can distinguish "a passing relative-price shock [from] a potential shift in the underlying trend."
+
+**Our documented departure.** Ray lists trimmed-mean measures inside the persistence index. We are deliberately **excluding** them: median CPI, trimmed-mean CPI, trimmed-mean PCE and sticky-price CPI are the independent external benchmarks the audit skill uses to grade this dashboard. Making them inputs would make the audit circular and destroy the only outside check we have (the circularity guard `test_no_benchmark_is_also_an_input_signal` already caught one such case — `EXPINF1YR`). Our persistence index is therefore **core PCE + core CPI + wages** only. Flagged back to him in-thread.
+
+### Ruling 3 — A 0.23σ growth threshold is correct for early warning, with four safeguards
+
+**The problem put to him.** Our dynamic growth threshold is 0.23σ for the US; CFNAI, which we correlate with at 0.76 at lag 0, uses publisher thresholds of ±0.70. Ours is 3× looser.
+
+**Ray's ruling.** Not too loose — *for our purpose*. "Your growth chip is essentially a diagnostic tool, not a definitive recession-or-boom detector… That is why you want a threshold that is 'looser' than the classic ±0.70 cut-offs used for a formal recession or expansion classification." He frames it as a signal-strength vs confidence trade-off and says **"a threshold around 0.2–0.3 sigma works well for a leading indicator when the data are relatively smooth and the correlation with a benchmark like the CFNAI is high. Your 0.23-sigma is in that sweet spot."** Four safeguards to add:
+1. **Momentum filter** — require the Z above threshold for **at least two consecutive months**, or a positive slope over the last three. "Reduces noise without sacrificing much lead time."
+2. **Volatility scaling** — keep the dynamic scaling, but add a **floor: never let the effective threshold fall below 0.15σ**, "so you don't become overly sensitive during unusually calm periods."
+3. **Complementary signals** — pair the growth chip with credit spreads, housing starts, manufacturing PMI; when only one fires, treat it as a tentative warning.
+4. **Scenario testing** — run the threshold through high-inflation, low-inflation, tight- and loose-policy regimes.
+If false positives prove excessive, "gradually raise it toward 0.30–0.35 sigma while monitoring the impact on lead time."
+
+### Ruling 4 — Late-cycle, labour leads and output lags; reweight accordingly
+
+**The problem put to him.** Our growth chip reads Growth on August data, but September payrolls came in at +29k with −60k of back-revisions, July revised negative, U3 to 4.2% and a 12-month average of +45k — while GDP nowcasts still print near 3%. Our basket is labour-heavy (4 slots, payrolls at our highest weight), so one month of labour data may flip the regime call.
+
+**Ray's ruling.** First ask which of the three big forces drives each signal. "In a late-cycle environment the short-term debt cycle is usually tightening… That is why you often see a modest or even negative labor reading while GDP still looks solid."
+- **Why labour can lag:** noisy, revision-prone, firms hold back hiring until sure demand holds.
+- **Why output can mislead:** "Output can look strong because it is still riding the momentum of the previous expansion. If the short-term debt cycle is just beginning to turn, the economy may still be producing at a high level while the labor market is already feeling the first signs of tightening."
+- **Bottom line: "In a late-cycle setting, labor is often the first to feel the pressure of a tightening short-term debt cycle, while output can still appear robust."** So labour is the truer forward signal here — but it must be *smoothed*, not down-weighted into irrelevance.
+- Four prescriptions: (1) same impulse/persistence split applied to growth — **labour = impulse (early warning), output = persistence (current state), again ~30/70**; (2) **add leading demand signals** — credit growth, corporate earnings, consumer confidence — "better early-warning gauges than raw payrolls… reduces the chance that a single month of weak labor flips the regime call"; (3) **use a 2–3 month rolling average of the labour composite** rather than a single month; (4) **cross-check against the short-term debt cycle** — "When credit conditions are tightening, give more weight to labor; when credit is still expanding, let output dominate." He also endorses our current situation reading as "Growth but with a lower confidence score."
+
+### Triage
+
+| # | Item | Triage |
+| --- | --- | --- |
+| 1 | Inflation chip anchored to target; Z/momentum demoted to secondary | ready to implement |
+| 2 | Impulse vs persistence sub-indices, 30/70, published side by side (minus trimmed measures, by our own ruling) | ready to implement |
+| 3 | Dynamic growth threshold floor at 0.15σ | ready to implement |
+| 4 | Two-consecutive-month sustained filter on the growth Z condition | ready to implement |
+| 5 | Growth labour/output impulse-persistence split + 2–3m rolling labour average | needs design pass |
+| 6 | Add credit growth / corporate earnings / consumer confidence as leading demand signals | needs data-feed check |
+| 7 | Credit-conditional labour-vs-output weight tilt | needs design pass |
+| 8 | Scenario-test thresholds across policy regimes | acknowledged (Phase G backtest extension) |

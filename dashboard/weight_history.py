@@ -10,10 +10,10 @@ import pandas as pd
 from dash import Input, Output, State, callback, dash_table, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+from dashboard.shared_components import GREEN as _DELTA_POS
 from store.store import get_connection, query_weight_change_log, update_weight_change_reason
 
 _SOURCE_LABELS = {"manual": "Manual", "regression": "Regression"}
-_DELTA_POS = "#5CBA8A"
 _DELTA_NEG = "#E8734C"
 _MUTED = "#8b97a8"
 

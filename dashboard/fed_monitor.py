@@ -20,13 +20,20 @@ import plotly.graph_objects as go
 from dash import dcc, html
 
 from dashboard.charting_data import DB_PATH, load_signal_history
+from dashboard.shared_components import AMBER as _AMBER
+from dashboard.shared_components import BLUE as _BLUE
+from dashboard.shared_components import GREEN as _GREEN
+from dashboard.shared_components import GREY as _GREY
+from dashboard.shared_components import RED as _RED
 from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _CC = "us"
 _START = "2006-01-01"          # a useful window that spans the GFC, COVID, QT
 
 # colours
-_BLUE, _AMBER, _RED, _GREEN, _GREY = "#4C9BE8", "#E8A317", "#d9534f", "#2e9e5b", "#8a97a8"
+# Canonical semantic palette — sourced from shared_components (see the
+# import above), not redefined here. Kept under these short names since
+# case_study_monitor.py and market_expectations.py import them directly.
 
 
 # ── data helpers ─────────────────────────────────────────────────────────────
@@ -147,14 +154,24 @@ def _info_icon(text: str) -> html.Span:
 
 def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read: str,
                 *, hline: float | None = None, hline_txt: str = "", zero_line: bool = False,
-                color: str = _BLUE, fill: bool = False, info: str = "") -> html.Div:
+                color: str = _BLUE, fill: bool = False, info: str = "",
+                df2: pd.DataFrame | None = None, color2: str = _RED,
+                label: str | None = None, label2: str | None = None) -> html.Div:
+    """Single-line by default. Pass df2 (+ optional label/label2) for a dual-line
+    overlay card — e.g. Real Growth vs. Potential Growth, Short Rate vs. Long Rate."""
+    dual = df2 is not None and not df2.empty
     fig = go.Figure()
     if df is not None and not df.empty:
         fig.add_trace(go.Scatter(
-            x=df["as_of"], y=df["value"], mode="lines",
+            x=df["as_of"], y=df["value"], mode="lines", name=label or title,
             line=dict(color=color, width=1.7),
             fill="tozeroy" if fill else None,
             fillcolor=f"rgba(76,155,232,0.12)" if fill else None,
+            hovertemplate="%{x|%b %Y}: %{y:.2f}<extra></extra>"))
+    if dual:
+        fig.add_trace(go.Scatter(
+            x=df2["as_of"], y=df2["value"], mode="lines", name=label2 or "secondary",
+            line=dict(color=color2, width=1.7),
             hovertemplate="%{x|%b %Y}: %{y:.2f}<extra></extra>"))
     if zero_line:
         fig.add_hline(y=0, line=dict(color=_GREY, width=1))
@@ -163,8 +180,13 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
                       annotation_text=hline_txt, annotation_position="top left",
                       annotation_font=dict(size=9, color=_AMBER))
     lay = figure_layout(DEFAULT_THEME)
-    lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18), showlegend=False,
+    lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18),
                xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"))
+    if dual:
+        lay.update(showlegend=True,
+                   legend=dict(orientation="h", x=0, y=1.22, font=dict(size=9), bgcolor="rgba(0,0,0,0)"))
+    else:
+        lay.update(showlegend=False)
     fig.update_layout(**lay)
     return html.Div([
         html.Div([

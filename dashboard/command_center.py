@@ -29,6 +29,7 @@ from dashboard.charting_data import (
     load_debt_stress_history,
     load_latest_signals,
 )
+from dashboard.shared_components import RED
 
 # Stage chip colors — shared with the Debt Stress page timeline.
 STAGE_COLORS = {
@@ -100,6 +101,31 @@ def _sig(latest: pd.DataFrame, concept: str) -> dict:
             "change_12m": r.get("change_12m")}
 
 
+_ANCHOR_COLOR = {"Above Target": "#E8734C", "At Target": "#4C9BE8",
+                 "Below Target": "#9B7CE8"}
+
+
+def _anchor_chip(anchor: Optional[dict]):
+    """Primary inflation chip: distance from the central-bank target.
+
+    Ray, 2026-10-03: "Inflation has a target... That's the anchor." Rendered
+    ahead of and larger than the relative read so the hierarchy is unambiguous —
+    "If you just show two numbers, people will get confused."
+    """
+    if not anchor or anchor["anchor"].gap_pp is None:
+        return _chip_span("Inflation · no target read", "#888")
+    a = anchor["anchor"]
+    label = f"Inflation · {a.label} {a.gap_pp:+.2f}pp"
+    bits = [f"{a.inflation_pct:.2f}% vs {a.target_pct:.1f}% target "
+            f"(via {a.gap_series}, {a.as_of})", f"gap {a.direction}"]
+    if a.is_stale or (a.age_months or 0) > 4:
+        bits.append(f"SOURCE {a.age_months}m old")
+    sp = anchor.get("split") or {}
+    if sp.get("impulse") is not None and sp.get("persistence") is not None:
+        bits.append(f"impulse {sp['impulse']:+.2f} / persistence {sp['persistence']:+.2f}")
+    return _chip_span(label, _ANCHOR_COLOR.get(a.label, "#888"), title=" · ".join(bits))
+
+
 def _card(label: str, big: str, sub: str, href: Optional[str] = None,
           big_color: str = "var(--font-color)", planned: bool = False,
           data_note: Optional[dict] = None) -> html.Div:
@@ -124,12 +150,26 @@ def _card(label: str, big: str, sub: str, href: Optional[str] = None,
     return html.Div(body, style=style)
 
 
-def _chip_span(text: str, color: str) -> html.Span:
-    return html.Span(text, style={
-        "background": f"{color}26", "border": f"1px solid {color}",
-        "color": color, "borderRadius": "4px", "padding": "3px 10px",
-        "fontSize": "0.78rem", "fontWeight": "600", "whiteSpace": "nowrap",
-    })
+def _chip_span(text: str, color: str, secondary: bool = False,
+               title: str = "") -> html.Span:
+    """A regime chip. `secondary` renders it visibly subordinate.
+
+    Ray 2026-10-03: show the anchor and the relative read together, but "make it
+    clear which is the anchor" — so the secondary chip is smaller, lighter and
+    outline-only rather than a peer badge.
+    """
+    style = {
+        "background": "transparent" if secondary else f"{color}26",
+        "border": f"1px {'dashed' if secondary else 'solid'} {color}{'80' if secondary else ''}",
+        "color": color, "borderRadius": "4px",
+        "padding": "2px 8px" if secondary else "3px 10px",
+        "fontSize": "0.68rem" if secondary else "0.78rem",
+        "fontWeight": "500" if secondary else "600",
+        "opacity": "0.75" if secondary else "1",
+        "whiteSpace": "nowrap",
+    }
+    kw = {"title": title} if title else {}
+    return html.Span(text, style=style, **kw)
 
 
 def chip_direction_agreement(latest_sig: pd.DataFrame, force: str,
@@ -230,7 +270,24 @@ def render_command_center(country_data, page_trigger, thresholds,
     if dynamic_on and not dyn_df.empty:
         t["gz"] = float(dyn_df["dyn_gz"].iloc[-1])
         t["iz"] = float(dyn_df["dyn_iz"].iloc[-1])
-    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t)
+    # Sustained-Z filter (Ray 2026-10-03): pass the windowed score history so the
+    # Z leg must have held for N consecutive months, not just this one.
+    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
+                                      g_history=hist[g_col], i_history=hist[i_col])
+
+    # ── Inflation anchored to the target (Ray ruling 2026-10-03) ─────────────
+    # "The main chip should be the distance from target. That's the number that
+    #  matters for policy and markets. But you can also show a relative Z-score
+    #  as a secondary read... you want to make it clear which is the anchor."
+    # The relative chip stays, demoted to the secondary slot — a Z-score against
+    # a 90-month window that is ~70% post-2021 shock said "below its own norm"
+    # in the week the Fed hiked (docs/audits/dalio_audit/US_2026-10.md).
+    try:
+        from indicators.inflation_anchor import full_read as _anchor_full
+        _anchor = _anchor_full(country)
+    except Exception as exc:  # pragma: no cover - never take the page down
+        logger.warning("[command_center] inflation anchor unavailable: %s", exc)
+        _anchor = None
     # Divergence is diagnostic — computed regardless of threshold mode.
     diverging = bool(dyn_df["divergence_flag"].iloc[-1]) if not dyn_df.empty else False
 
@@ -246,7 +303,9 @@ def render_command_center(country_data, page_trigger, thresholds,
         ]),
         html.Div([
             _chip_span(f"Growth · {g_chip}", _GROWTH_CHIP.get(g_chip, "#888")),
-            _chip_span(f"Inflation · {i_chip}", _INFLAT_CHIP.get(i_chip, "#888")),
+            _anchor_chip(_anchor),
+            _chip_span(f"vs own history · {i_chip}",
+                       _INFLAT_CHIP.get(i_chip, "#888"), secondary=True),
             html.Span(
                 "chip agreement "
                 + (f"G {g_agree:.0%}" if g_agree is not None else "G —")
@@ -456,10 +515,10 @@ def render_command_center(country_data, page_trigger, thresholds,
                           "Independent early-warning gauge (Ray Dalio consult, "
                           "2026-08-19) alongside Sovereign Squeeze; see the Debt Stress "
                           "page for the per-sector breakdown.",
-                    style={"color": "#E8A317" if spread_flag == "warning" else "#E5484D",
+                    style={"color": "#E8A317" if spread_flag == "warning" else RED,
                            "fontSize": "0.62rem", "fontWeight": "800",
                            "letterSpacing": "0.04em",
-                           "border": f"1px solid {'#E8A317' if spread_flag == 'warning' else '#E5484D'}",
+                           "border": f"1px solid {'#E8A317' if spread_flag == 'warning' else RED}",
                            "borderRadius": "4px", "padding": "1px 6px",
                            "marginLeft": "8px", "whiteSpace": "nowrap"})]
                   if spread_flag in ("warning", "critical") else []),

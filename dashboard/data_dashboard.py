@@ -19,6 +19,8 @@ import dash_bootstrap_components as dbc
 from dash import Input, Output, State, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+from dashboard.shared_components import GREEN, RED
+
 _DB = os.getenv("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
 _CONFIG_DIR = Path(__file__).parent.parent / "config"
 _PROJECT_ROOT = Path(__file__).parent.parent
@@ -286,9 +288,9 @@ def _render_pipeline_panel() -> html.Div:
         elapsed = (datetime.now() - datetime.fromisoformat(state["started_at"])).total_seconds()
         hdr_icon, hdr_text, hdr_color = "⟳", f"Running — {_fmt_elapsed(elapsed)}", "#E8A317"
     elif state["exit_code"] == 0:
-        hdr_icon, hdr_text, hdr_color = "✓", f"Completed in {_fmt_elapsed(state['elapsed_s'] or 0)}", "#5CB85C"
+        hdr_icon, hdr_text, hdr_color = "✓", f"Completed in {_fmt_elapsed(state['elapsed_s'] or 0)}", GREEN
     else:
-        hdr_icon, hdr_text, hdr_color = "✕", f"Failed after {_fmt_elapsed(state['elapsed_s'] or 0)}", "#E8534C"
+        hdr_icon, hdr_text, hdr_color = "✕", f"Failed after {_fmt_elapsed(state['elapsed_s'] or 0)}", RED
 
     started_str = datetime.fromisoformat(state["started_at"]).strftime("%Y-%m-%d %H:%M")
 
@@ -296,8 +298,8 @@ def _render_pipeline_panel() -> html.Div:
     _st_cfg = {
         "idle":    ("○",  "var(--muted-color)", "Pending",  "var(--muted-color)"),
         "running": ("⟳",  "#E8A317",            "Running…", "#E8A317"),
-        "ok":      ("✓",  "#5CB85C",            "Done",     "#5CB85C"),
-        "error":   ("✕",  "#E8534C",            "Error",    "#E8534C"),
+        "ok":      ("✓",  GREEN,                "Done",     GREEN),
+        "error":   ("✕",  RED,                  "Error",    RED),
     }
 
     rows = []
@@ -317,7 +319,7 @@ def _render_pipeline_panel() -> html.Div:
             html.Span(p["label"], style={"fontSize": "0.76rem", "flexGrow": 1}),
             html.Span(lbl, style={"fontSize": "0.74rem", "color": lbl_col}),
             *(
-                [html.Span(ps["detail"], style={"fontSize": "0.68rem", "color": "#E8534C", "marginLeft": "8px", "fontFamily": "monospace"})]
+                [html.Span(ps["detail"], style={"fontSize": "0.68rem", "color": RED, "marginLeft": "8px", "fontFamily": "monospace"})]
                 if ps.get("detail") else []
             ),
         ], style={

@@ -14,6 +14,12 @@
 
 ## Pending / Blockers
 
+### Dashboard IA/color cleanup — Phase 1+2 done, Phase 3-5 open (2026-10-03)
+Nav regroup + color-palette consolidation shipped (`docs/worklog.md` 2026-10-03; full plan in that session's "Dashboard IA Blueprint" artifact). Still open: Phase 3 (promote Fed Monitor's `_chart_card` into `shared_components.py` as a public component), Phase 4 (retrofit the Signals pages to that card style — this is the "signal graphs look crude" fix), Phase 5 (retrofit Regime & Cycles + Overview/Relative Cycles charts). Standing placement framework for new pages: `docs/Guidance/dashboard_ia_framework.md`.
+
+### Stale signal-count test assertion (pre-existing, not from this session's nav/color work)
+`tests/test_explorer.py::test_load_signal_overview_returns_all_signals` hardcodes an expected signal count (currently asserts 91; live count is 105 after this session's earlier `growth.output_gap`/`credit.*`/etc. additions). Bump the assertion to match `len(load_signal_overview())` the next time signals are touched.
+
 ### BEA data refresh — partially resolved 2026-07-05
 `debt_service_ratio` picked up Q1 2026 during the 2026-07-05 pipeline runs. `current_account` and `NIIP` are still stale (BEA hasn't published). Re-run `python3 -m indicators.pipeline` when it lands.
 

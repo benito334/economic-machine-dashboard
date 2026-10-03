@@ -1,0 +1,106 @@
+# Inflation anchor — distance from the central-bank target.
+#
+# Ray Dalio ruling, 2026-10-03 (docs/Guidance/ray_dalio_review_log.md):
+#   "Growth is a force that doesn't have a natural 'right' level... Inflation is
+#    different. Inflation has a target... That's the anchor. The main chip should
+#    be the distance from target. That's the number that matters for policy and
+#    markets. But you can also show a relative Z-score as a secondary read...
+#    you want to make it clear which is the anchor."
+#
+# Prompted by the 2026-10-03 chip audit (docs/audits/dalio_audit/US_2026-10.md):
+# the US inflation composite read +0.04 on full history, -0.31 at 90m and -0.90
+# at 60m for the SAME month, because every post-2019 window is dominated by the
+# 2021-23 shock. A relative-only frame said "below its own norm" in the week the
+# Fed hiked to 3.75-4.00% with headline CPI at 3.4%.
+#
+# EVERY value here is TUNABLE. Nothing is hardcoded in Python.
+
+# ── Classification bands ─────────────────────────────────────────────────────
+# A uniform tolerance keeps the read COMPARABLE ACROSS COUNTRIES, which is the
+# point of a cross-country dashboard. Official tolerance bands vary widely
+# (India +/-2pp, Brazil +/-1.5pp) and using each country's own band would make
+# "Above Target" mean something different in every column. The official bands
+# are recorded per country below for reference ONLY — they do not classify.
+bands:
+  tolerance_pp: 0.5        # TUNABLE: |gap| <= this => "At Target"
+  # Secondary severity shading, in percentage points of gap. Display only.
+  far_pp: 1.5              # TUNABLE: |gap| >= this => "far from target"
+
+# ── Impulse vs persistence (Ray ruling 2, same session) ──────────────────────
+# "Inflation is a two-part machine: an impulse that shows up in flexible prices
+#  -- especially commodities and expectations -- and a persistence that shows up
+#  in core PCE, core CPI, wages and other sticky components."
+# He recommended 30% impulse / 70% persistence for a macro-regime dashboard.
+#
+# DOCUMENTED DEPARTURE: Ray also listed trimmed-mean measures in the persistence
+# index. We deliberately EXCLUDE them. Median CPI, trimmed-mean CPI, trimmed-mean
+# PCE and sticky-price CPI are the independent external benchmarks used by the
+# chip-audit skill to grade this dashboard. Making them inputs would make the
+# audit circular and destroy the only outside check we have. Enforced by
+# tests/test_audit_benchmarks.py::test_no_benchmark_is_also_an_input_signal.
+split:
+  impulse_weight: 0.30     # TUNABLE
+  persistence_weight: 0.70 # TUNABLE
+  min_members: 2           # TUNABLE: fewer contributing members => sub-index is null
+  # Concept tails, matched against the signal id suffix.
+  impulse_members:
+    - crude_oil
+    - breakeven_avg
+    - ppi_broad
+    - ppi
+    - hicp_energy
+    - cpi_headline
+  persistence_members:
+    - pce_core
+    - cpi_core
+    - wages
+    - wages_lci
+
+# ── Per-country targets ──────────────────────────────────────────────────────
+# target_pct: the central bank's stated inflation objective, in percent.
+# gap_series: concept tails tried IN ORDER; the first one with data defines the
+#   gap. US leads with core PCE because that is the Fed's mandate variable.
+# official_band_pp: the country's own tolerance band half-width, for REFERENCE
+#   only (see note above) — null where the bank publishes no band.
+countries:
+  US: {target_pct: 2.0, gap_series: [pce_core, cpi_headline], official_band_pp: null,
+       note: "Fed targets 2% headline PCE; core PCE is the operational guide."}
+  EZ: {target_pct: 2.0, gap_series: [cpi_core, cpi_headline], official_band_pp: null,
+       note: "ECB symmetric 2% HICP."}
+  DE: {target_pct: 2.0, gap_series: [cpi_headline], official_band_pp: null,
+       note: "No national target; inherits the ECB's 2%."}
+  LU: {target_pct: 2.0, gap_series: [cpi_headline], official_band_pp: null,
+       note: "No national target; inherits the ECB's 2%."}
+  GB: {target_pct: 2.0, gap_series: [cpi_core, cpi_headline, cpi_imf_annual], official_band_pp: 1.0,
+       note: "BoE 2% CPI; letter to the Chancellor required beyond +/-1pp."}
+  JP: {target_pct: 2.0, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: null,
+       note: "BoJ 2% price stability target."}
+  KR: {target_pct: 2.0, gap_series: [cpi_core, cpi_headline, cpi_imf_annual], official_band_pp: null,
+       note: "BoK 2% CPI."}
+  CN: {target_pct: 3.0, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: null,
+       note: "Government annual CPI objective (~3%), not an independent CB target."}
+  IN: {target_pct: 4.0, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: 2.0,
+       note: "RBI 4% CPI with a +/-2pp tolerance band."}
+  BR: {target_pct: 3.0, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: 1.5,
+       note: "CMN 3.0% IPCA target."}
+  CA: {target_pct: 2.0, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: 1.0,
+       note: "BoC 2% midpoint of a 1-3% control range."}
+  AU: {target_pct: 2.5, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: 0.5,
+       note: "RBA 2-3% band; 2.5% midpoint used as the point target."}
+  MX: {target_pct: 3.0, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: 1.0,
+       note: "Banxico 3% +/-1pp."}
+  ID: {target_pct: 2.5, gap_series: [cpi_headline, cpi_imf_annual], official_band_pp: 1.0,
+       note: "Bank Indonesia 2.5% +/-1pp."}
+
+# ── Growth-side safeguards (Ray ruling 3, same session) ──────────────────────
+# "a threshold around 0.2-0.3 sigma works well for a leading indicator when the
+#  data are relatively smooth and the correlation with a benchmark like the
+#  CFNAI is high. Your 0.23-sigma is in that sweet spot." -- with safeguards.
+growth_safeguards:
+  # "consider a modest cap (e.g., never let the effective threshold fall below
+  #  0.15 sigma) so you don't become overly sensitive during unusually calm
+  #  periods."
+  min_dynamic_threshold: 0.15   # TUNABLE
+  # "Require the Z-score to be above the threshold for at least two consecutive
+  #  months... This reduces noise without sacrificing much lead time."
+  sustained_months: 2           # TUNABLE: 1 disables the filter
