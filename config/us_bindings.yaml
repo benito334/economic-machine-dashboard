@@ -2002,6 +2002,25 @@ bindings:
     sanity_min: -2.0
     sanity_max: 5.0
 
+  - id: fed.balance_sheet
+    series_id: WALCL
+    provider: FRED
+    frequency: W
+    force: fed
+    lead_lag: coincident
+    transformation: level
+    units: usd_millions
+    country: US
+    source_tier: free
+    vintage_available: true
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Total Fed balance sheet assets (WALCL) — the raw-level counterpart to the existing policy.fed_balance_sheet (which is bound as YoY%, not a level). Added for the Central Bank Monitor's cross-country balance-sheet comparison (coverage-audit High item #5, 2026-10-03): EZ's policy.central_bank_assets and JP's policy.central_bank_balance_sheet are both levels, so the US needed one too rather than being the odd one out. Same series WALCL already fetched for policy.fed_balance_sheet — reuses the cached raw data, just a different transformation."
+    sanity_min: 0.0
+    sanity_max: 50000000.0
+    notes: "Verified live 2026-10-03 (same fetch underlying policy.fed_balance_sheet)."
+
   # ── Market-implied expectations (Ray consult 2026-07-15) — the discount-rate
   # decomposition i = r + E(π) + RP, and the breakeven-inflation curve. Isolated
   # `market` force: feeds the /market-expectations page ONLY, not any composite,

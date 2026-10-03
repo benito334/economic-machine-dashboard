@@ -2234,3 +2234,72 @@ reads "3 components active" instead of a misleading fixed denominator),
 and Relative Cycles (all 12 rolled-out countries now show a real Debt
 Stress value in the per-country card grid, where every one previously
 showed nothing).
+
+## 2026-10-03 (4) — Coverage-audit High item #5: Central Bank Monitor (MP1->MP2->MP3 for EZ/JP)
+
+Third of the audit's four High-priority items, and the one that turned out
+to be a design decision rather than a quick extension: `dashboard/fed_monitor.py`
+is architecturally single-country (`_CC = "us"` is a hardcoded module
+constant, nothing threads the country selector in at all), and its own MP1->
+MP2->MP3 read leans on signals with no cross-country equivalent (foreign-
+holder share of marketable debt, Fed remittances/losses). Rather than
+retrofitting that page, built a new, deliberately simpler, genuinely
+country-reactive page — `dashboard/central_bank_monitor.py`, route
+`/central-bank`, "Monitors" nav group — with its own cross-country-comparable
+read: the central bank's own balance sheet, level and YoY growth.
+
+**Coverage, verified live before any binding** (per house rule — the
+audit's own assumption that "ECB/BOJ/BOE balance sheets are well-covered on
+FRED" turned out half wrong): ECB (`ECBASSETSW`, weekly, current — the
+*monthly* `ECBASSETS` is discontinued, easy to pick by mistake) and BOJ
+(`JPNASSETS`, monthly, current) are genuinely well-covered. **GB is not** —
+every Bank of England balance-sheet series on FRED is either discontinued
+or stopped updating years ago (`BOEBSTAUKA`: annual, last real observation
+2016, last updated 2018; `UKASSETS`: discontinued 2014). Documented as a
+confirmed gap on the page itself (plain "no live source" message for GB)
+rather than silently dropped from the country list.
+
+**A near-duplicate caught before it shipped**: EZ already had
+`policy.central_bank_assets` bound to the exact same `ECBASSETSW` series
+from an earlier project phase — and it already feeds EZ's `rate_score`
+composite at CONTEXT weight (0.50 importance). First draft of this page
+added a second EZ binding (`policy.central_bank_balance_sheet`) pointing at
+the identical series under a different concept id, discovered only because
+the ingestion log printed both lines side by side. Removed the duplicate
+binding and its 1,448 already-ingested DB rows; the page reuses the
+existing concept instead. JP had no prior binding, so its
+`policy.central_bank_balance_sheet` is genuinely new.
+
+**A real unit bug caught via a visibly broken chart**: the obvious US
+analogue, `policy.fed_balance_sheet`, turned out to be bound as `transformation:
+yoy_pct` — its stored value is already a YoY % change, not a dollar level.
+Treating it as a level (dividing by 1e6 for a trillions display) produced
+"$0.00T" and a "YoY -135.5%" readout with micro-scale y-axis ticks — caught
+immediately from the rendered page, not a quiet silent error. Added a new
+`fed.balance_sheet` binding (same `WALCL` series, `transformation: level`,
+reuses the already-cached raw fetch) so the US has a genuine level signal
+to pair against EZ/JP's.
+
+**No GDP normalization attempted**: all three countries' `master.gdp_level_bn`
+is USD-converted (World Bank/IMF), which would need an FX leg to pair
+cleanly against a locally-denominated balance sheet (EUR/JPY) — skipped
+rather than risk a unit-mismatched ratio. YoY growth needs no currency
+conversion at all and is the read actually used for cross-country
+comparison; it's resampled to monthly first so a weekly (US/EZ) and monthly
+(JP) native series both produce a literal "vs ~12 months ago" figure.
+
+**MP-phase read**: deliberately simpler than Fed Monitor's own US-specific
+heuristic (which needs the foreign-holder-share + remittance-loss signals
+this page doesn't have for EZ/JP) — the same YoY-growth-only threshold
+(>+5% = MP2/QE underway, <-5% = MP1/QT, else roughly stable) is applied
+uniformly to all three countries, so the comparison is honest rather than
+mixing a richer US read against two thinner ones.
+
+**Verification.** Full suite in Docker: 619 passed (same pre-existing
+failure). Confirmed live across all four cases: US ($6.74T, +2.0% YoY,
+"MP1 roughly stable"), EZ (€5.90T, -2.9% YoY), JP (¥644.66T, -11.0% YoY,
+"MP1/QT contracting" — consistent with the BOJ's actual gradual JGB-purchase
+unwind), GB (clean "no live source" message, no crash), and a genuinely
+uncovered country CN (clean "not one of the three covered banks yet"
+message). No console errors beyond the pre-existing benign Dash
+wildcard-callback warning pattern already present on every other page.

@@ -641,3 +641,22 @@ bindings:
     equilibrium: null
     linkage: "BIS debt-service ratio for the private non-financial sector (households + non-financial corporations combined) -- broader scope than the US's household-only series (FRED TDSP), used uniformly across non-US countries for cross-country comparability (BIS does not publish a household-only DSR for every country tracked here). Feeds the Debt-Stress composite's household_debt_service component (2026-10 coverage-audit rollout, High item #3)."
     notes: "BIS SDMX 2.1 API (stats.bis.org), dataflow WS_DSR (Debt service ratios). Key = FREQ.BORROWERS_CTY.DSR_BORROWERS, DSR_BORROWERS=P (private non-financial sector). Verified live 2026-10-03 via detail=serieskeysonly discovery against the real populated series keys (not the documented DSD alone). EZ and LU are not BIS reporting entities in this dataflow and stay without this component."
+
+  - id: policy.central_bank_balance_sheet
+    series_id: JPNASSETS
+    provider: FRED
+    frequency: M
+    force: policy
+    lead_lag: coincident
+    transformation: level
+    units: jpy_100millions
+    country: JP
+    source_tier: free
+    vintage_available: false
+    is_proxy: false
+    verified: true
+    equilibrium: null
+    linkage: "Bank of Japan total balance sheet assets -- the JP analogue of the US's fed.treasury_holdings/policy.fed_balance_sheet, feeding the new Central Bank Monitor's MP1->MP2->MP3 read (coverage-audit High item #5, 2026-10-03). Isolated force signal (feeds no composite), same convention as fed.*/market.*/order.*."
+    sanity_min: 0.0
+    sanity_max: 100000000.0
+    notes: "FRED JPNASSETS. Native unit is 100-million-yen (not millions -- documented here rather than silently rescaled, since this is a brand-new signal with no prior history to disturb). Verified live 2026-10-03: monthly, 341 obs, last obs 2026-08-01 (JPY 6,446,620 x100M), last_updated 2026-09-02 -- current. No %-of-GDP normalization attempted (same USD-conversion-mismatch reasoning as the EZ binding); YoY growth is the cross-country-comparable read used instead."

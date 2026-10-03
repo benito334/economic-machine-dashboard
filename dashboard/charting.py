@@ -56,6 +56,7 @@ from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import fed_monitor as _fed_monitor
 from dashboard import case_study_monitor as _case_study_monitor
+from dashboard import central_bank_monitor as _central_bank_monitor
 from dashboard import market_expectations as _market_exp
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
@@ -867,6 +868,7 @@ def _left_nav() -> html.Div:
             _nl("🏛", "Fed Monitor",    "/fed",            nav_id="navlnk-fed"),
             _nl("🗂", "Case Study Monitor", "/case-study", nav_id="navlnk-case-study"),
             _nl("📐", "Market Expectations", "/market-expectations", nav_id="navlnk-market-exp"),
+            _nl("🏦", "Central Bank Monitor", "/central-bank", nav_id="navlnk-central-bank"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Signals — click to roll/unroll the force sub-pages ────────────────
@@ -1328,6 +1330,10 @@ def _page_fed_monitor() -> html.Div:
 
 def _page_case_study_monitor() -> html.Div:
     return _case_study_monitor.get_layout()
+
+
+def _page_central_bank_monitor() -> html.Div:
+    return _central_bank_monitor.get_layout()
 
 
 def _page_market_expectations() -> html.Div:
@@ -2151,6 +2157,7 @@ _PAGE_MAP = {
     "/relative":      _page_relative_view,
     "/fed":           _page_fed_monitor,
     "/case-study":    _page_case_study_monitor,
+    "/central-bank":  _page_central_bank_monitor,
     "/market-expectations": _page_market_expectations,
     "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
