@@ -25,6 +25,7 @@ from dashboard.shared_components import BLUE as _BLUE
 from dashboard.shared_components import GREEN as _GREEN
 from dashboard.shared_components import GREY as _GREY
 from dashboard.shared_components import RED as _RED
+from dashboard.shared_components import _chart_card, _chip, _fmt, _ICON_SEQ, _info_icon, _section
 from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _CC = "us"
@@ -120,110 +121,7 @@ def _fed_interest_to_revenue() -> pd.DataFrame:
 
 # ── chart card ───────────────────────────────────────────────────────────────
 
-def _fmt(v: float | None, unit: str) -> str:
-    if v is None:
-        return "—"
-    if unit == "%":
-        return f"{v:.2f}%"
-    if unit == "$T":
-        return f"${v/1000:.2f}T"
-    if unit == "$B":
-        return f"${v:,.0f}B"
-    if unit == "idx":
-        return f"{v:,.0f}"
-    return f"{v:.2f}"
-
-
-# Per-render counter so each info icon / tooltip gets a stable, unique id.
-_ICON_SEQ = {"n": 0}
-
-
-def _info_icon(text: str) -> html.Span:
-    """A small ⓘ that reveals a detailed explanation of the chart on hover."""
-    if not text:
-        return html.Span()
-    _ICON_SEQ["n"] += 1
-    iid = f"fed-info-{_ICON_SEQ['n']}"
-    return html.Span([
-        html.Span("ⓘ", id=iid, style={
-            "cursor": "help", "color": "var(--muted-color)", "fontSize": "0.72rem",
-            "marginLeft": "5px", "opacity": "0.75", "fontWeight": "400"}),
-        dbc.Tooltip(text, target=iid, placement="top"),
-    ])
-
-
-def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read: str,
-                *, hline: float | None = None, hline_txt: str = "", zero_line: bool = False,
-                color: str = _BLUE, fill: bool = False, info: str = "",
-                df2: pd.DataFrame | None = None, color2: str = _RED,
-                label: str | None = None, label2: str | None = None) -> html.Div:
-    """Single-line by default. Pass df2 (+ optional label/label2) for a dual-line
-    overlay card — e.g. Real Growth vs. Potential Growth, Short Rate vs. Long Rate."""
-    dual = df2 is not None and not df2.empty
-    fig = go.Figure()
-    if df is not None and not df.empty:
-        fig.add_trace(go.Scatter(
-            x=df["as_of"], y=df["value"], mode="lines", name=label or title,
-            line=dict(color=color, width=1.7),
-            fill="tozeroy" if fill else None,
-            fillcolor=f"rgba(76,155,232,0.12)" if fill else None,
-            hovertemplate="%{x|%b %Y}: %{y:.2f}<extra></extra>"))
-    if dual:
-        fig.add_trace(go.Scatter(
-            x=df2["as_of"], y=df2["value"], mode="lines", name=label2 or "secondary",
-            line=dict(color=color2, width=1.7),
-            hovertemplate="%{x|%b %Y}: %{y:.2f}<extra></extra>"))
-    if zero_line:
-        fig.add_hline(y=0, line=dict(color=_GREY, width=1))
-    if hline is not None:
-        fig.add_hline(y=hline, line=dict(color=_AMBER, dash="dash", width=1),
-                      annotation_text=hline_txt, annotation_position="top left",
-                      annotation_font=dict(size=9, color=_AMBER))
-    lay = figure_layout(DEFAULT_THEME)
-    lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18),
-               xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"))
-    if dual:
-        lay.update(showlegend=True,
-                   legend=dict(orientation="h", x=0, y=1.22, font=dict(size=9), bgcolor="rgba(0,0,0,0)"))
-    else:
-        lay.update(showlegend=False)
-    fig.update_layout(**lay)
-    return html.Div([
-        html.Div([
-            html.Span(title, style={"fontSize": "0.78rem", "fontWeight": "700",
-                                    "color": "var(--font-color)"}),
-            _info_icon(info),
-            html.Span(_fmt(cur, unit), style={"fontSize": "0.95rem", "fontWeight": "700",
-                                              "fontFamily": "monospace", "color": color,
-                                              "float": "right"}),
-        ]),
-        html.Div(read, style={"fontSize": "0.66rem", "color": "var(--muted-color)",
-                              "marginBottom": "2px", "minHeight": "1.6em"}),
-        dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "180px"}),
-    ], style={"background": "var(--card-bg)", "border": "1px solid var(--border-color)",
-              "borderRadius": "8px", "padding": "10px 12px", "flex": "1 1 300px",
-              "minWidth": "280px"})
-
-
-def _section(title: str, subtitle: str, cards: list) -> html.Div:
-    return html.Div([
-        html.Div(title, style={"fontSize": "0.72rem", "fontWeight": "800",
-                               "textTransform": "uppercase", "letterSpacing": "0.06em",
-                               "color": "var(--muted-color)", "marginTop": "22px"}),
-        html.Div(subtitle, style={"fontSize": "0.72rem", "color": "var(--muted-color)",
-                                  "opacity": "0.8", "marginBottom": "10px"}),
-        html.Div(cards, style={"display": "flex", "flexWrap": "wrap", "gap": "12px"}),
-    ])
-
-
 # ── header read ──────────────────────────────────────────────────────────────
-
-def _chip(text: str, color: str) -> html.Span:
-    return html.Span(text, style={"background": f"{color}22", "border": f"1px solid {color}",
-                                  "color": color, "borderRadius": "5px", "padding": "3px 10px",
-                                  "fontSize": "0.76rem", "fontWeight": "700",
-                                  "whiteSpace": "nowrap"})
-
 
 def _header() -> html.Div:
     real, _ = _latest("policy.real_fed_funds")

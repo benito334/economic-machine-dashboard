@@ -35,7 +35,9 @@ def test_info_icon_builds_tooltip_and_empty_is_noop():
     node = fm._info_icon("Detailed explanation of the chart.")
     # icon span + Tooltip, sharing one target id
     icon, tip = node.children
-    assert icon.id == tip.target == "fed-info-1"
+    # id prefix is "mon-info-" since _info_icon lives in shared_components.py
+    # (promoted there from fed_monitor.py in the 2026-10 IA cleanup)
+    assert icon.id == tip.target == "mon-info-1"
     assert tip.children == "Detailed explanation of the chart."
     # empty info → no icon, no id consumed
     empty = fm._info_icon("")

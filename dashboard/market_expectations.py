@@ -18,9 +18,10 @@ import plotly.graph_objects as go
 from dash import dcc, html
 
 from dashboard.fed_monitor import (
-    _BLUE, _AMBER, _RED, _GREEN, _GREY, _chart_card, _section, _chip, _info_icon,
-    _hist, _latest, _fmt,
+    _BLUE, _AMBER, _RED, _GREEN, _GREY,
+    _hist, _latest,
 )
+from dashboard.shared_components import _chart_card, _chip, _fmt, _info_icon, _section
 from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _ACCENT = _AMBER

@@ -1,8 +1,10 @@
 """Case Study Monitor — the charts Dalio's own EMP course uses to position a
 country in its case studies (e.g. "Case: United States 2003-2018"), audited
 directly against that course's interactive chart panel and built where a free
-source existed. Visual pattern reused verbatim from dashboard.fed_monitor so
-this reads as a sibling page, not a different dashboard style.
+source existed. Visual pattern is the shared Monitor-card style
+(`dashboard.shared_components._chart_card`/`_section`/`_chip`, promoted
+there from fed_monitor.py in the 2026-10 IA cleanup) so this reads as a
+sibling page, not a different dashboard style.
 
 Three sections:
   1. Growth composition  — the GDP demand components beneath the headline
@@ -21,9 +23,10 @@ import pandas as pd
 from dash import html
 
 from dashboard.fed_monitor import (
-    _CC, _chart_card, _section, _chip, _hist, _hist_pct, _latest, _pct,
+    _CC, _hist, _hist_pct, _latest, _pct,
     _BLUE, _AMBER, _RED, _GREEN, _GREY,
 )
+from dashboard.shared_components import _chart_card, _chip, _section
 
 
 def _cur(concept: str):

@@ -19,10 +19,12 @@ Bank-of-England balance-sheet series on FRED is discontinued or years stale
 nowhere else, so it is documented here and shown as a plain "no live source"
 message rather than silently omitted from the country list.
 
-Visual pattern reused verbatim from dashboard.fed_monitor (same `_chart_card`/
-`_section`/`_chip`/`_info_icon` helpers case_study_monitor.py and
-market_expectations.py already import), so this reads as a sibling page.
-Unlike those two (US-only, static layout), this page is country-reactive —
+Visual pattern is the shared Monitor-card style (`dashboard.shared_components.
+_chart_card`/`_section`/`_chip`/`_info_icon`, promoted there from
+fed_monitor.py in the 2026-10 IA cleanup — case_study_monitor.py and
+market_expectations.py import the same helpers from the same place), so this
+reads as a sibling page. Unlike those two (US-only, static layout), this page
+is country-reactive —
 one callback rebuilds its content on country-store changes, same pattern as
 relative_view.py.
 
@@ -39,7 +41,7 @@ import pandas as pd
 from dash import Input, Output, callback, html, no_update
 
 from dashboard.charting_data import load_signal_history
-from dashboard.fed_monitor import _chart_card, _chip, _section
+from dashboard.shared_components import _chart_card, _chip, _section
 from dashboard.shared_components import AMBER as _AMBER
 from dashboard.shared_components import BLUE as _BLUE
 from dashboard.shared_components import GREEN as _GREEN

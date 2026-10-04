@@ -119,7 +119,12 @@ def test_load_signal_overview_returns_all_signals():
     # + 7 market.* Market-Expectations series (2026-07-15 consult) = 88
     # + credit.household_debt + fed.custody_holdings (2026-07-17 data audit) = 90
     # + growth.relative_ulc (2026-08-19 Digital Ray consult, competitiveness gauge) = 91
-    assert len(df) == 91
+    # + 4 order.* dollar-dominance signals (2026-08-21 Digital Ray consult) = 95
+    # + fed.balance_sheet, order.military_expenditure_gdp,
+    #   credit.debt_service_ratio, fiscal.gov_interest_gdp,
+    #   feat_fx_debt_share/fx_reserve_runway inputs (2026-10-03 coverage-audit
+    #   free-source build sprint) = 107 (see pipeline run summary "[US] OK: 107")
+    assert len(df) == 107
     assert "id" in df.columns
     assert "force" in df.columns
     assert "latest_value" in df.columns
