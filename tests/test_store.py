@@ -5,15 +5,20 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from indicators.models import DebtStressSnapshot, Signal
+from indicators.models import (
+    CompositeSnapshot, DebtCycleStageSnapshot, DebtStressSnapshot, Signal, ValidatorVerdict,
+)
 from store.store import (
     delete_future_signals,
     get_connection,
     init_schema,
     query_latest,
     query_series,
+    upsert_composites,
+    upsert_debt_cycle_stage,
     upsert_debt_stress,
     upsert_signals,
+    upsert_validator_verdicts,
 )
 
 
@@ -167,3 +172,98 @@ class TestDeleteFutureSignals:
         assert delete_future_signals(conn) == 1
         rows = query_series(conn, "us.growth.payrolls")
         assert list(rows["as_of"].dt.year) == [2024]
+
+
+# ── Storage-growth regression (root cause of the 10.9 GB signals.duckdb) ──────────────
+# DELETE-then-INSERT on a PRIMARY KEY table never reclaims the deleted tuples in DuckDB, so
+# rewriting the full history every pipeline run leaked a table copy per run. Upserts must
+# update in place: physical rows must stay equal to live rows however often we re-run.
+
+def _physical_rows(conn, table: str) -> int:
+    conn.execute("CHECKPOINT")
+    return conn.execute(
+        f"SELECT COALESCE(SUM(m), 0) FROM (SELECT row_group_id, MAX(count) m "
+        f"FROM pragma_storage_info('{table}') GROUP BY 1)"
+    ).fetchone()[0]
+
+
+class TestUpsertDoesNotLeakStorage:
+    def test_signals_rerun_does_not_grow_physical_rows(self, conn):
+        sigs = [_signal(as_of=date(2020, m, 1)) for m in range(1, 13)]
+        for _ in range(6):
+            upsert_signals(conn, sigs)
+        assert conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 12
+        assert _physical_rows(conn, "signals") == 12
+
+    def test_composites_rerun_does_not_grow_physical_rows(self, conn):
+        snaps = [CompositeSnapshot(country="US", as_of=date(2020, m, 28), growth_score=0.1 * m)
+                 for m in range(1, 13)]
+        for _ in range(6):
+            upsert_composites(conn, snaps)
+        assert conn.execute("SELECT COUNT(*) FROM composites").fetchone()[0] == 12
+        assert _physical_rows(conn, "composites") == 12
+
+    def test_debt_stress_and_stage_rerun_do_not_grow(self, conn):
+        qs = [date(2020, 3, 31), date(2020, 6, 30), date(2020, 9, 30), date(2020, 12, 31)]
+        stress = [DebtStressSnapshot(country="US", as_of=q, stress_score=0.1) for q in qs]
+        stage = [DebtCycleStageSnapshot(country="US", as_of=q, stage="reflation") for q in qs]
+        for _ in range(6):
+            upsert_debt_stress(conn, stress)
+            upsert_debt_cycle_stage(conn, stage)
+        assert _physical_rows(conn, "debt_stress_snapshots") == 4
+        assert _physical_rows(conn, "debt_cycle_stage_snapshots") == 4
+
+    def test_validator_verdicts_rerun_does_not_grow(self, conn):
+        v = [ValidatorVerdict(country="US", as_of=date(2026, 1, 1), axis="growth",
+                              validator_key="cfnai_ma3", verdict="AGREE")]
+        for _ in range(6):
+            upsert_validator_verdicts(conn, v)
+        assert conn.execute("SELECT COUNT(*) FROM validator_verdicts").fetchone()[0] == 1
+        assert _physical_rows(conn, "validator_verdicts") == 1
+
+
+class TestUpsertSemantics:
+    def test_composites_replace_same_month_with_new_as_of(self, conn):
+        upsert_composites(conn, [CompositeSnapshot(country="US", as_of=date(2020, 5, 10),
+                                                   growth_score=1.0)])
+        upsert_composites(conn, [CompositeSnapshot(country="US", as_of=date(2020, 5, 20),
+                                                   growth_score=2.0)])
+        rows = conn.execute("SELECT as_of, growth_score FROM composites").fetchall()
+        assert rows == [(date(2020, 5, 20), 2.0)]
+
+    def test_composites_other_months_and_countries_untouched(self, conn):
+        upsert_composites(conn, [
+            CompositeSnapshot(country="US", as_of=date(2020, 4, 30), growth_score=1.0),
+            CompositeSnapshot(country="EZ", as_of=date(2020, 5, 10), growth_score=3.0),
+        ])
+        upsert_composites(conn, [CompositeSnapshot(country="US", as_of=date(2020, 5, 20),
+                                                   growth_score=2.0)])
+        rows = conn.execute(
+            "SELECT country, as_of, growth_score FROM composites ORDER BY country, as_of"
+        ).fetchall()
+        assert rows == [("EZ", date(2020, 5, 10), 3.0), ("US", date(2020, 4, 30), 1.0),
+                        ("US", date(2020, 5, 20), 2.0)]
+
+    def test_base_composite_upsert_preserves_rolling_columns(self, conn):
+        upsert_composites(conn, [CompositeSnapshot(country="US", as_of=date(2020, 5, 28),
+                                                   growth_score=1.0)])
+        conn.execute("UPDATE composites SET growth_score_48m = 7.5, inflation_score_90m = -2.5")
+        upsert_composites(conn, [CompositeSnapshot(country="US", as_of=date(2020, 5, 28),
+                                                   growth_score=1.5)])
+        row = conn.execute(
+            "SELECT growth_score, growth_score_48m, inflation_score_90m FROM composites"
+        ).fetchone()
+        assert row == (1.5, 7.5, -2.5)
+
+    def test_signals_upsert_updates_value_in_place(self, conn):
+        upsert_signals(conn, [_signal(value=0.01)])
+        upsert_signals(conn, [_signal(value=0.02, zscore=1.25)])
+        assert conn.execute("SELECT value, zscore FROM signals").fetchone() == (0.02, 1.25)
+
+    def test_debt_stage_replaces_same_quarter(self, conn):
+        upsert_debt_cycle_stage(conn, [DebtCycleStageSnapshot(country="US", as_of=date(2020, 3, 15),
+                                                              stage="squeeze")])
+        upsert_debt_cycle_stage(conn, [DebtCycleStageSnapshot(country="US", as_of=date(2020, 3, 31),
+                                                              stage="reflation")])
+        assert conn.execute("SELECT as_of, stage FROM debt_cycle_stage_snapshots").fetchall() == [
+            (date(2020, 3, 31), "reflation")]

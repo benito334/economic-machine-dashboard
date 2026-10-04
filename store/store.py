@@ -196,6 +196,54 @@ def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
     return count
 
 
+def _upsert_in_place(
+    conn: duckdb.DuckDBPyConnection, table: str, staging: str,
+    columns: list, keys: list,
+) -> None:
+    """INSERT … ON CONFLICT (keys) DO UPDATE — the one way every table here is upserted.
+
+    Why not DELETE-then-INSERT (what this module used to do everywhere): on a table with
+    a PRIMARY KEY, DuckDB cannot physically reclaim DELETEd tuples — they stay in their
+    row groups forever. A pipeline that rewrites its whole history each run therefore
+    leaked one full copy of the table per run (measured 2026-10-04: signals went from
+    368,150 live rows to 52,051,808 physical rows / 10.9 GB over ~140 runs; replaying the
+    same churn on a copy with the PK dropped stayed flat, and ON CONFLICT DO UPDATE with
+    the PK kept also stayed flat). An UPDATE of non-key columns happens in place, so it
+    leaves nothing behind, and the PK stays as the actual idempotency guarantee
+    (CLAUDE.md rule #6) instead of being worked around.
+
+    Only the listed columns are SET, so columns owned by a later pass (e.g. composites'
+    rolling-window columns) are left intact rather than blanked by the baseline write.
+    """
+    cols = ", ".join(columns)
+    sets = ", ".join(f"{c} = excluded.{c}" for c in columns if c not in keys)
+    conn.execute(
+        f"INSERT INTO {table} ({cols}) SELECT {cols} FROM {staging} "
+        f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {sets}"
+    )
+
+
+def _delete_stale_bucket_rows(
+    conn: duckdb.DuckDBPyConnection, table: str, staging: str, bucket: str,
+) -> None:
+    """Remove rows that share a (country, month|quarter) bucket with a staged row but
+    carry a *different* as_of — e.g. yesterday's mid-month snapshot once today's has
+    moved the latest date. Rows whose as_of matches a staged row are left for
+    _upsert_in_place to update. Normally a handful of rows per run, not the table."""
+    conn.execute(f"""
+        DELETE FROM {table}
+        WHERE EXISTS (
+            SELECT 1 FROM {staging} s
+            WHERE s.country = {table}.country
+              AND DATE_TRUNC('{bucket}', s.as_of::DATE) = DATE_TRUNC('{bucket}', {table}.as_of)
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM {staging} s
+            WHERE s.country = {table}.country AND s.as_of::DATE = {table}.as_of
+        )
+    """)
+
+
 def upsert_signals(conn: duckdb.DuckDBPyConnection, signals: List[Signal]) -> int:
     if not signals:
         return 0
@@ -213,18 +261,7 @@ def upsert_signals(conn: duckdb.DuckDBPyConnection, signals: List[Signal]) -> in
 
     try:
         conn.execute("BEGIN TRANSACTION")
-        conn.execute("""
-            DELETE FROM signals
-            WHERE EXISTS (
-                SELECT 1 FROM _staging
-                WHERE _staging.id = signals.id
-                  AND _staging.as_of::DATE = signals.as_of
-            )
-        """)
-        columns = ", ".join(_SIGNAL_COLUMNS)
-        conn.execute(
-            f"INSERT INTO signals ({columns}) SELECT {columns} FROM _staging"
-        )
+        _upsert_in_place(conn, "signals", "_staging", _SIGNAL_COLUMNS, ["id", "as_of"])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -335,17 +372,9 @@ def upsert_composites(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
     try:
         conn.execute("BEGIN TRANSACTION")
         conn.execute("DELETE FROM composites WHERE as_of > CURRENT_DATE")
-        conn.execute("""
-            DELETE FROM composites
-            WHERE EXISTS (
-                SELECT 1 FROM _composite_staging
-                WHERE _composite_staging.country = composites.country
-                  AND DATE_TRUNC('month', _composite_staging.as_of::DATE)
-                      = DATE_TRUNC('month', composites.as_of)
-            )
-        """)
-        cols = ", ".join(_COMPOSITE_COLUMNS)
-        conn.execute(f"INSERT INTO composites ({cols}) SELECT {cols} FROM _composite_staging")
+        _delete_stale_bucket_rows(conn, "composites", "_composite_staging", "month")
+        _upsert_in_place(conn, "composites", "_composite_staging",
+                         _COMPOSITE_COLUMNS, ["country", "as_of"])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -560,19 +589,9 @@ def upsert_debt_stress(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
     try:
         conn.execute("BEGIN TRANSACTION")
         conn.execute("DELETE FROM debt_stress_snapshots WHERE as_of > CURRENT_DATE")
-        conn.execute("""
-            DELETE FROM debt_stress_snapshots
-            WHERE EXISTS (
-                SELECT 1 FROM _debt_stress_staging
-                WHERE _debt_stress_staging.country = debt_stress_snapshots.country
-                  AND DATE_TRUNC('quarter', _debt_stress_staging.as_of::DATE)
-                      = DATE_TRUNC('quarter', debt_stress_snapshots.as_of)
-            )
-        """)
-        cols = ", ".join(_DEBT_STRESS_COLUMNS)
-        conn.execute(
-            f"INSERT INTO debt_stress_snapshots ({cols}) SELECT {cols} FROM _debt_stress_staging"
-        )
+        _delete_stale_bucket_rows(conn, "debt_stress_snapshots", "_debt_stress_staging", "quarter")
+        _upsert_in_place(conn, "debt_stress_snapshots", "_debt_stress_staging",
+                         _DEBT_STRESS_COLUMNS, ["country", "as_of"])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -677,19 +696,9 @@ def upsert_debt_cycle_stage(conn: duckdb.DuckDBPyConnection, snapshots: list) ->
     conn.register("_stage_staging", df)
     try:
         conn.execute("BEGIN TRANSACTION")
-        conn.execute("""
-            DELETE FROM debt_cycle_stage_snapshots
-            WHERE EXISTS (
-                SELECT 1 FROM _stage_staging
-                WHERE _stage_staging.country = debt_cycle_stage_snapshots.country
-                  AND DATE_TRUNC('quarter', _stage_staging.as_of::DATE)
-                      = DATE_TRUNC('quarter', debt_cycle_stage_snapshots.as_of)
-            )
-        """)
-        cols = ", ".join(_DEBT_CYCLE_STAGE_COLUMNS)
-        conn.execute(
-            f"INSERT INTO debt_cycle_stage_snapshots ({cols}) SELECT {cols} FROM _stage_staging"
-        )
+        _delete_stale_bucket_rows(conn, "debt_cycle_stage_snapshots", "_stage_staging", "quarter")
+        _upsert_in_place(conn, "debt_cycle_stage_snapshots", "_stage_staging",
+                         _DEBT_CYCLE_STAGE_COLUMNS, ["country", "as_of"])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -771,20 +780,9 @@ def upsert_validator_verdicts(conn: duckdb.DuckDBPyConnection, verdicts: list) -
     conn.register("_validator_staging", df)
     try:
         conn.execute("BEGIN TRANSACTION")
-        conn.execute("""
-            DELETE FROM validator_verdicts
-            WHERE EXISTS (
-                SELECT 1 FROM _validator_staging
-                WHERE _validator_staging.country = validator_verdicts.country
-                  AND _validator_staging.as_of::DATE = validator_verdicts.as_of
-                  AND _validator_staging.axis = validator_verdicts.axis
-                  AND _validator_staging.validator_key = validator_verdicts.validator_key
-            )
-        """)
-        cols = ", ".join(_VALIDATOR_VERDICTS_COLUMNS)
-        conn.execute(
-            f"INSERT INTO validator_verdicts ({cols}) SELECT {cols} FROM _validator_staging"
-        )
+        _upsert_in_place(conn, "validator_verdicts", "_validator_staging",
+                         _VALIDATOR_VERDICTS_COLUMNS,
+                         ["country", "as_of", "axis", "validator_key"])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
