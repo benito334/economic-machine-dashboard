@@ -509,54 +509,53 @@ def test_load_yield_curve_term_structure_future_returns_empty():
 
 
 @pytest.mark.integration
-
-
+# Regime History Phase 5 retrofit (2026-10-04): update_regime_chart now
+# returns (band_fig, cards_children) — a compact categorical band figure
+# plus a _section() of 6 _chart_cards (Growth Z/Momentum, Inflation
+# Z/Momentum, Direction Agreement, Disequilibrium) — replacing the single
+# 7-row make_subplots mega-figure, same pattern Phase 4 applied to the
+# Signals force-detail pages. The cross-subplot shared-hover-line feature
+# (tested below, pre-retrofit) is a deliberate, accepted tradeoff: each card
+# now gets independent hover, consistent with every other chart-card page.
 def test_regime_chart_callback():
     import plotly.graph_objects as go
     from dashboard.charting import update_regime_chart
-    fig = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
-    assert isinstance(fig, go.Figure)
-    assert len(fig.data) >= 3  # growth score, inflation score, quadrant markers
+    band_fig, cards = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
+    assert isinstance(band_fig, go.Figure)
+    assert len(band_fig.data) >= 2  # growth regime markers, inflation regime markers
+    assert cards is not None
 
 
 @pytest.mark.integration
-def test_regime_chart_synchronizes_hover_across_subplots():
+def test_regime_chart_band_figure_is_compact_and_themed():
     from dashboard.charting import update_regime_chart
 
-    fig = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
+    band_fig, _ = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
 
-    assert fig.layout.hovermode == "x"
-    assert fig.layout.hoversubplots == "axis"
-    assert fig.layout.xaxis.matches == "x7"
-    assert fig.layout.hoverlabel.bgcolor == "#000000"
-    assert fig.layout.hoverlabel.bordercolor == "#000000"
-    assert fig.layout.hoverlabel.font.color == "#ffffff"
+    assert band_fig.layout.yaxis.range == (0, 1)
+    assert band_fig.layout.yaxis.ticktext == ("Growth", "Inflation")
 
 
-def test_regime_chart_registers_explicit_hover_synchronizer():
-    from dashboard.charting import app
+@pytest.mark.integration
+def test_regime_chart_cards_cover_all_six_metrics():
+    from dashboard.charting import update_regime_chart
 
-    callbacks = [
-        item for item in app._callback_list
-        if item.get("output") == "hover-sync-init.data"
-    ]
-
-    assert len(callbacks) == 1
-    assert callbacks[0]["inputs"] == [{"id": "regime-chart", "property": "figure"}]
-    assert callbacks[0]["clientside_function"] is not None
+    _, cards = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", 0)
+    card_list = cards.children[2].children  # _section()'s card-row Div
+    assert len(card_list) == 6
 
 
 @pytest.mark.integration
 def test_regime_chart_highlight_at_step():
-    """Step > 0 adds highlight marker traces (one per subplot = 3 extra)."""
-    import plotly.graph_objects as go
+    """Step > 0 moves the band figure's vline/highlight markers to a different
+    date — same trace count either way (always 2 base + 2 highlight), but a
+    vline shape must be present and its x position must track the step."""
     from dashboard.charting import update_regime_chart
-    fig0 = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", step=0)
-    fig5 = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", step=5)
-    # step=5 adds up to 3 highlight marker traces on top of the base traces
-    assert len(fig5.data) >= len(fig0.data)
-    # A vline shape should be present
+    fig0, _ = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", step=0)
+    fig5, _ = update_regime_chart({"start": "2010-01-01", "end": None}, "carbon", step=5)
     assert len(fig5.layout.shapes) >= 1
+    assert len(fig0.data) == len(fig5.data)
+    assert fig0.layout.shapes[0].x0 != fig5.layout.shapes[0].x0
 
 
 @pytest.mark.integration
@@ -794,15 +793,14 @@ class TestRegimeMomentumDisplay:
         assert (recent["inflation_momentum"].between(0, 1)).all()
 
     @pytest.mark.integration
-    def test_regime_chart_has_five_subplots(self):
+    def test_regime_chart_returns_band_figure_and_six_cards(self):
+        # Post Phase-5-retrofit shape: a compact band figure (no multi-row
+        # subplot axes anymore) plus a _section() of 6 _chart_cards.
         from dashboard.charting import update_regime_chart
-        fig = update_regime_chart({}, "carbon", 0)
-        # 5 subplots → subplot_titles has 5 entries; figure has at least 5 base traces
-        assert len(fig.data) >= 5
-        # y-axis domains: should have yaxis, yaxis2, yaxis3, yaxis4, yaxis5
-        layout_keys = set(fig.layout.to_plotly_json().keys())
-        for ax in ("yaxis", "yaxis2", "yaxis3", "yaxis4", "yaxis5"):
-            assert ax in layout_keys, f"Missing axis {ax} in layout"
+        band_fig, cards = update_regime_chart({}, "carbon", 0)
+        layout_keys = set(band_fig.layout.to_plotly_json().keys())
+        assert "yaxis2" not in layout_keys  # single-axis figure, not a 7-row subplot grid
+        assert len(cards.children[2].children) == 6
 
 
 # ── Component table rollup (html.Details) ────────────────────────────────────

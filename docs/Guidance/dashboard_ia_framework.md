@@ -62,16 +62,28 @@ nearest group just to ship it.
 
 ## Chart styling — one component, used everywhere
 
-Fed Monitor's `_chart_card()` (in `dashboard/fed_monitor.py`, reused directly
-by `case_study_monitor.py` and `market_expectations.py`) is the standard:
-fixed compact height, muted grid, optional `fill="tozeroy"`, clean hover,
-rounded card border. Every new chart-bearing page should use it (or the
-promoted shared version once Phase 3 of the 2026-10 rollout lands it in
-`shared_components.py`) rather than hand-building a `go.Figure`.
+`_chart_card()` (in `dashboard/shared_components.py`, promoted there from
+`fed_monitor.py` in the 2026-10 rollout's Phase 3 — every Monitors/Signals
+page imports it from there now) is the standard: fixed compact height, muted
+grid, optional `fill="tozeroy"`, clean hover, rounded card border, plus
+`hline`/`hline2` (horizontal reference lines) and `vline_x` (a single
+vertical reference line, e.g. a "you are here" step marker) for the common
+threshold/selection overlays. Every new chart-bearing page should use it
+rather than hand-building a `go.Figure` — this is what Phase 4 (Signals
+force-detail pages) and Phase 5 (Regime History) each retrofitted an old
+stacked `make_subplots` mega-chart into.
 
 Exception: **Tools** pages (Workbench, Weight Audit) are built for dense
 interactive exploration — multi-series overlays, draggable zoom, correlation
-heatmaps — and are reasonably exempt from the card treatment. Everything
+heatmaps — and are reasonably exempt from the card treatment. The same
+exemption applies to any page's chart that is **not genuinely single-series**
+— a 2D scatter (Regime Map), a categorical/discrete display (a regime-label
+strip), or a deliberate multi-line overlay meant for at-a-glance comparison
+(Debt Stress's 7-component chart) all stay hand-built; forcing them into
+individual cards would lose the comparison the chart exists to show, not
+just restyle it. The 2026-10 Phase 5 scoping pass is the worked example —
+read `docs/worklog.md` 2026-10-04 for the full per-page reasoning before
+assuming a page's charts "should" convert. Everything
 else should converge on it.
 
 ## Color — one palette, imported, not retyped
@@ -100,7 +112,9 @@ accent, add it to `FORCE_COLOR` rather than inventing a local constant.
 ---
 
 *Full audit and rollout plan: see the 2026-10 "Dashboard IA Blueprint"
-session. Phases 1–2 (nav regroup + color consolidation) are complete as of
-this writing; Phase 3 (promote `_chart_card` into `shared_components.py`)
-and Phases 4–5 (retrofit Signals, then Regime & Cycles/Overview pages) are
-still open.*
+session — all 5 phases complete as of 2026-10-04 (nav regroup, color
+consolidation, `_chart_card` promotion, the Signals force-detail retrofit,
+and the Regime History retrofit + a color-consistency pass on
+`relative_view.py`/`global_overview.py`). See `docs/worklog.md` 2026-10-04
+for the Phase 5 scoping reasoning — not every chart-bearing page converts to
+the card pattern, and that doc explains why each one did or didn't.*

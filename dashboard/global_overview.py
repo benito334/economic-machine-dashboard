@@ -14,7 +14,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 
 from dashboard.themes import DEFAULT_THEME, figure_layout
-from dashboard.shared_components import GREEN
+from dashboard.shared_components import AMBER, BLUE, GREEN, GREY, RED
 from dashboard import data_score as _ds
 
 _DB = os.getenv("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb")
@@ -928,7 +928,7 @@ def _overview_drill_figure(
         x=hist["as_of"],
         y=hist[value_col],
         mode="lines",
-        line={"color": "#E8A317", "width": 2},
+        line={"color": AMBER, "width": 2},
         hovertemplate="%{x|%Y-%m-%d}<br>%{customdata}<extra></extra>",
         customdata=hover_vals,
         name=_metric_title(country_code, metric),
@@ -946,9 +946,9 @@ def _overview_drill_figure(
         cfg = _normalise_cycle_config(config)
         neg, pos = _cycle_thresholds(country_code, cfg)
         fig.add_hline(y=pos, line_dash="dot", line_color=GREEN, opacity=0.65)
-        fig.add_hline(y=neg, line_dash="dot", line_color="#E8734C", opacity=0.65)
+        fig.add_hline(y=neg, line_dash="dot", line_color=RED, opacity=0.65)
     elif metric == "chi_raw":
-        fig.add_hline(y=0, line_dash="dot", line_color="#9AA4B2", opacity=0.6)
+        fig.add_hline(y=0, line_dash="dot", line_color=GREY, opacity=0.6)
     return fig
 
 
@@ -1108,14 +1108,14 @@ def get_layout() -> html.Div:
     legend = html.Div([
         html.Span("■ ", style={"color": "#E8853A", "fontSize": "0.9rem"}),
         html.Span("Elevated / Concerning  ", className="ov-legend-label"),
-        html.Span("■ ", style={"color": "#4C9BE8", "fontSize": "0.9rem"}),
+        html.Span("■ ", style={"color": BLUE, "fontSize": "0.9rem"}),
         html.Span("Notable / High  ", className="ov-legend-label"),
         html.Span("■ ", style={"color": GREEN, "fontSize": "0.9rem"}),
         html.Span("Positive / Favourable", className="ov-legend-label"),
         html.Span("   ·   ", className="ov-legend-label"),
         html.Span("A", style={
             "display": "inline-block", "padding": "0 5px", "borderRadius": "4px",
-            "background": "#2e9e5b", "color": "#fff", "fontSize": "0.62rem",
+            "background": GREEN, "color": "#fff", "fontSize": "0.62rem",
             "fontWeight": "700"}),
         html.Span(" Data confidence after each country (A best → D) — hover for the "
                   "breakdown of coverage, freshness and proxy reliance.",

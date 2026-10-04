@@ -62,7 +62,9 @@ from dashboard import validator_monitor as _validator_monitor
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
-from dashboard.shared_components import AMBER, GREEN, RED, _concept_label, _signal_link, _zscore_color
+from dashboard.shared_components import (
+    AMBER, GREEN, RED, _chart_card, _concept_label, _section, _signal_link, _zscore_color,
+)
 from dashboard.app_mode import PUBLIC_MODE, OPERATOR_ONLY_ROUTES
 from indicators import schedule_config as sched_cfg
 
@@ -1233,21 +1235,25 @@ def _build_rh_help_panel() -> html.Div:
         *_row("0.5 – 1.5", "Moderate tension."),
         *_row("> 1.5", "High — system stretched far from long-run equilibrium."),
 
-        html.Div("Chart Rows", style=_H),
-        *_row("Row 1 · Regime  (Growth · Inflation)",
+        html.Div("Band Strip + Cards", style=_H),
+        *_row("Regime  (Growth · Inflation)",
               ("Dual-band chip history: each month's Growth chip (lower band) and "
-               "Inflation chip (upper band), colored by label.")),
-        *_row("Rows 2–3 · Growth Z + Momentum",
+               "Inflation chip (upper band), colored by label. The dashed vertical "
+               "line marks the currently stepped-to date — click any dot, or use "
+               "Prev/Now/Next, to move it.")),
+        *_row("Growth Z + Momentum cards",
               ("Level of the growth composite (amber dashed lines = the ±threshold), then the "
                "fraction of growth signals whose 3-month direction is growth-positive. "
                "50% = neutral split — the fraction can exceed 50% while the Z is still "
                "negative if the score is rising from a low base.")),
-        *_row("Rows 4–5 · Inflation Z + Momentum",
+        *_row("Inflation Z + Momentum cards",
               "Same pair for the inflation composite."),
-        *_row("Row 6 · Direction Agreement (legacy)",
+        *_row("Direction Agreement (legacy) card",
               ("The stored per-month direction-agreement series, kept for historical "
                "context. Its definition predates the chips — read trends, not the "
                "absolute level, and use the live Chip Agreement in the card for today.")),
+        *_row("Disequilibrium Score card",
+              "Mean absolute Z-score across the five structural force groups — see above."),
 
         html.Div("Force Component Table", style=_H),
         *_row("Signal", "Constituent indicator name."),
@@ -1312,14 +1318,23 @@ def _page_regime_history() -> html.Div:
             "backgroundColor": "var(--page-bg)", "paddingBottom": "4px",
         }),
         # ── Chart (scrolls under sticky header) ───────────────────────────────
+        # Regime-history Phase 5 retrofit (2026-10-04): the old single 7-row
+        # stacked make_subplots figure is now a compact band chart (the
+        # regime-row markers, which are categorical and don't fit the
+        # single-series card shape) plus a grid of shared _chart_cards for
+        # the six genuinely single-series rows — same pattern Phase 4 applied
+        # to the Signals force-detail pages.
         dbc.Row([
             dbc.Col(
-                dcc.Graph(id="regime-chart",
+                dcc.Graph(id="regime-band-chart",
                           responsive=True,
-                          config={"displayModeBar": True},
-                          style={"height": "calc(100vh - 175px)", "minHeight": "700px"}),
+                          config={"displayModeBar": False},
+                          style={"height": "140px"}),
                 width=12,
             ),
+        ]),
+        dbc.Row([
+            dbc.Col(html.Div(id="regime-history-cards"), width=12),
         ]),
         # ── Help panel (fixed, off-screen right by default) ────────────────────
         _build_rh_help_panel(),
@@ -1678,7 +1693,6 @@ app.layout = html.Div([
     # Keyboard navigation: interval polls the delta set by the key listener
     dcc.Store(id="nav-event",            data=None),
     dcc.Interval(id="key-interval",      interval=80, disabled=True, n_intervals=0),
-    dcc.Store(id="hover-sync-init",      data=None),
     dcc.Store(id="regime-components-open",          data=False),
     dcc.Store(id="regime-components-toggle-init",   data=None),
     # Settings: growth Z-score rolling window (0 = full history)
@@ -1987,83 +2001,6 @@ app.clientside_callback(
     """,
     Output("nav-event", "data"),
     Input("key-interval", "n_intervals"),
-)
-
-# Plotly's native ``hoversubplots='axis'`` does not expand across the matched
-# axes created by ``make_subplots(shared_xaxes=True)``. Mirror the hovered
-# timestamp explicitly to every Cartesian subplot instead.
-app.clientside_callback(
-    """
-    function(figure) {
-        if (!figure) return dash_clientside.no_update;
-        setTimeout(function() {
-            var wrapper = document.getElementById('regime-chart');
-            var gd = wrapper && wrapper.querySelector('.js-plotly-plot');
-            if (!gd || typeof gd.on !== 'function' || gd._rhHoverSyncBound) return;
-
-            gd._rhHoverSyncBound = true;
-            function drawSharedHoverLine(rawX) {
-                var layout = gd._fullLayout;
-                var hoverLayer = gd.querySelector('.hoverlayer');
-                var xAxis = layout && layout.xaxis;
-                var yAxes = layout && layout._subplots ? layout._subplots.yaxis : null;
-                if (!hoverLayer || !xAxis || !yAxes || !yAxes.length) return;
-
-                var xPixel = xAxis._offset + xAxis.d2p(rawX);
-                var top = Infinity;
-                var bottom = -Infinity;
-                yAxes.forEach(function(axisId) {
-                    var key = axisId === 'y' ? 'yaxis' : 'yaxis' + axisId.slice(1);
-                    var axis = layout[key];
-                    if (!axis) return;
-                    top = Math.min(top, axis._offset);
-                    bottom = Math.max(bottom, axis._offset + axis._length);
-                });
-                if (!Number.isFinite(xPixel) || !Number.isFinite(top) || !Number.isFinite(bottom)) return;
-
-                var line = hoverLayer.querySelector('.rh-shared-hover-line');
-                if (!line) {
-                    line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                    line.setAttribute('class', 'rh-shared-hover-line');
-                    line.setAttribute('stroke', 'rgba(210, 215, 225, 0.72)');
-                    line.setAttribute('stroke-width', '1');
-                    line.setAttribute('stroke-dasharray', '4,3');
-                    line.setAttribute('pointer-events', 'none');
-                    hoverLayer.insertBefore(line, hoverLayer.firstChild);
-                }
-                line.setAttribute('x1', xPixel);
-                line.setAttribute('x2', xPixel);
-                line.setAttribute('y1', top);
-                line.setAttribute('y2', bottom);
-            }
-
-            gd.on('plotly_hover', function(eventData) {
-                if (gd._rhHoverSyncing || !eventData || !eventData.points || !eventData.points.length) return;
-                var rawX = eventData.points[0].x;
-                var xValue = rawX instanceof Date ? rawX.getTime() : Date.parse(rawX);
-                var subplots = gd._fullLayout && gd._fullLayout._subplots
-                    ? gd._fullLayout._subplots.cartesian : null;
-                if (!Number.isFinite(xValue) || !subplots || !subplots.length) return;
-
-                gd._rhHoverSyncing = true;
-                try {
-                    Plotly.Fx.hover(gd, {xval: xValue}, subplots);
-                    requestAnimationFrame(function() { drawSharedHoverLine(rawX); });
-                } finally {
-                    setTimeout(function() { gd._rhHoverSyncing = false; }, 0);
-                }
-            });
-            gd.on('plotly_unhover', function() {
-                var line = gd.querySelector('.rh-shared-hover-line');
-                if (line) line.remove();
-            });
-        }, 0);
-        return Date.now();
-    }
-    """,
-    Output("hover-sync-init", "data"),
-    Input("regime-chart", "figure"),
-    prevent_initial_call=True,
 )
 
 # Same shared-hover-line treatment for the signal drill-down modal chart.
@@ -3456,13 +3393,19 @@ def update_regime_step(
 
 @callback(
     Output("regime-step-index", "data", allow_duplicate=True),
-    Input("regime-chart", "clickData"),
+    Input("regime-band-chart", "clickData"),
     State("date-range", "data"),
     State("regime-step-index", "data"),
     prevent_initial_call=True,
 )
 def select_regime_point(click_data: dict, date_range: dict, current_step: int) -> int:
-    """Move the shared Regime History snapshot to the date clicked in any subplot."""
+    """Move the shared Regime History snapshot to the date clicked on the band
+    chart. Pre-Phase-5-retrofit this listened across all 7 subplots of one
+    shared figure; the individual _chart_cards below don't carry a stable
+    component id to wire the same click-anywhere behavior onto (dcc.Graph
+    inside _chart_card is anonymous by design), so click-to-jump is now
+    scoped to the band chart — the Prev/Now/Next buttons remain the way to
+    step from anywhere on the page."""
     points = (click_data or {}).get("points") or []
     raw_date = points[0].get("x") if points else None
     if raw_date is None:
@@ -3667,8 +3610,56 @@ def update_regime_info(
     )
 
 
+def _build_regime_band_chart(
+    comp: pd.DataFrame, g_regimes: list, i_regimes: list,
+    theme_name: str, sel_ts, sel_idx: int,
+) -> go.Figure:
+    """The regime-history page's dual-band chip-label strip (Growth @ y=0.25,
+    Inflation @ y=0.75) — categorical, not a numeric series, so it stays a
+    small standalone figure rather than becoming a _chart_card."""
+    g_colors = [_GROWTH_CHIP.get(r, "#888") for r in g_regimes]
+    i_colors = [_INFLAT_CHIP.get(r, "#888") for r in i_regimes]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=comp["as_of"], y=[0.25] * len(comp), mode="markers", name="Growth Regime",
+        marker={"color": g_colors, "size": 7, "symbol": "square"},
+        customdata=g_regimes,
+        hovertemplate="%{x|%Y-%m-%d}<br>Growth: %{customdata}<extra></extra>",
+        showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=comp["as_of"], y=[0.75] * len(comp), mode="markers", name="Inflation Regime",
+        marker={"color": i_colors, "size": 7, "symbol": "square"},
+        customdata=i_regimes,
+        hovertemplate="%{x|%Y-%m-%d}<br>Inflation: %{customdata}<extra></extra>",
+        showlegend=False,
+    ))
+    fig.update_yaxes(tickvals=[0.25, 0.75], ticktext=["Growth", "Inflation"], range=[0, 1])
+
+    fig.add_vline(x=sel_ts, line_dash="dot", line_color="rgba(255,255,255,0.35)", line_width=1.5)
+    _sel_g = g_regimes[sel_idx] if sel_idx < len(g_regimes) else "Transition"
+    _sel_i = i_regimes[sel_idx] if sel_idx < len(i_regimes) else "Transition"
+    for _y, _regime, _chip in [(0.25, _sel_g, _GROWTH_CHIP), (0.75, _sel_i, _INFLAT_CHIP)]:
+        fig.add_trace(go.Scatter(
+            x=[sel_ts], y=[_y], mode="markers",
+            marker={"size": 14, "symbol": "circle-open",
+                   "color": _chip.get(_regime, "#888"), "line": {"width": 2.5}},
+            showlegend=False, hoverinfo="skip",
+        ))
+
+    layout = figure_layout(theme_name, "Regime  (Growth · Inflation)")
+    layout.update(height=140, margin={"l": 55, "r": 20, "t": 28, "b": 22}, showlegend=False)
+    fig.update_layout(**layout)
+    fig.update_xaxes(
+        showspikes=True, spikemode="across", spikesnap="cursor",
+        spikedash="dot", spikethickness=1, spikecolor="rgba(180,180,180,0.6)",
+    )
+    return fig
+
+
 @callback(
-    Output("regime-chart", "figure"),
+    [Output("regime-band-chart",   "figure"),
+     Output("regime-history-cards", "children")],
     [Input("date-range",               "data"),
      Input("theme-store",              "data"),
      Input("regime-step-index",        "data"),
@@ -3702,7 +3693,7 @@ def update_regime_chart(
     if comp.empty:
         fig = go.Figure()
         fig.update_layout(**figure_layout(theme_name, "No composite data"))
-        return fig
+        return fig, []
 
     # Resolve which columns to use — Growth and Inflation have independent windows.
     # Rolling columns exist for every country as of the 2026-07-06 audit;
@@ -3771,296 +3762,73 @@ def update_regime_chart(
         g_regimes.append(gr)
         i_regimes.append(ir)
 
-    fig = make_subplots(
-        rows=7, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=[0.16, 0.18, 0.10, 0.18, 0.10, 0.14, 0.14],
-        subplot_titles=[
-            "Regime  (Growth · Inflation)",
-            f"Growth Force Z-Score (composite{win_label})",
-            "Growth Momentum (fraction of signals growth-positive)",
-            f"Inflation Force Z-Score (composite{win_label})",
-            "Inflation Momentum (fraction of signals inflation-positive)",
-            "Direction Agreement (stored series — legacy definition; live Chip Agreement is in the card above)",
-            f"Disequilibrium Score (mean distance from equilibrium{diseq_label})",
-        ],
-    )
-
-    # Row 1: Dual-regime colour-coded bands (Growth @ y=0.25, Inflation @ y=0.75)
-    g_colors = [_GROWTH_CHIP.get(r, "#888") for r in g_regimes]
-    i_colors = [_INFLAT_CHIP.get(r, "#888") for r in i_regimes]
-    fig.add_trace(
-        go.Scatter(
-            x=comp["as_of"], y=[0.25] * len(comp),
-            mode="markers",
-            name="Growth Regime",
-            marker={"color": g_colors, "size": 7, "symbol": "square"},
-            customdata=g_regimes,
-            hovertemplate="%{x|%Y-%m-%d}<br>Growth: %{customdata}<extra></extra>",
-            showlegend=False,
-        ),
-        row=1, col=1,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=comp["as_of"], y=[0.75] * len(comp),
-            mode="markers",
-            name="Inflation Regime",
-            marker={"color": i_colors, "size": 7, "symbol": "square"},
-            customdata=i_regimes,
-            hovertemplate="%{x|%Y-%m-%d}<br>Inflation: %{customdata}<extra></extra>",
-            showlegend=False,
-        ),
-        row=1, col=1,
-    )
-    fig.update_yaxes(
-        tickvals=[0.25, 0.75],
-        ticktext=["Growth", "Inflation"],
-        range=[0, 1], row=1, col=1,
-    )
-
-    # Keep q_numeric / q_label for the step-highlight marker below
-    quadrant_map = {
-        "Expansion": 1, "Inflationary Boom": 2,
-        "Stagflation": 3, "Disinflationary Slowdown": 0,
-    }
-    q_numeric = quadrant_series.map(quadrant_map).fillna(-1)
-
-    # Row 2: Growth score (rolling or full-history)
-    fig.add_trace(
-        go.Scatter(
-            x=comp["as_of"], y=comp[g_col],
-            name="Growth Score",
-            line={"color": _COLORS[0], "width": 1.5},
-            hovertemplate="%{x|%Y-%m-%d}<br>Growth Force Z: %{y:.2f}<extra></extra>",
-            fill="tozeroy",
-            fillcolor="rgba(76, 155, 232, 0.15)",
-        ),
-        row=2, col=1,
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
-    fig.add_hline(y=_gz,  line=_th_line, row=2, col=1)
-    fig.add_hline(y=-_gz, line=_th_line, row=2, col=1)
-
-    # Row 3: Growth momentum
-    if "growth_momentum" in comp.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=comp["as_of"], y=comp["growth_momentum"],
-                name="Growth Momentum",
-                line={"color": _COLORS[0], "width": 1.5, "dash": "dot"},
-                hovertemplate="%{x|%Y-%m-%d}<br>Growth Momentum: %{y:.0%}<extra></extra>",
-                fill="tozeroy",
-                fillcolor="rgba(76, 155, 232, 0.10)",
-            ),
-            row=3, col=1,
-        )
-    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=3, col=1)
-    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=3, col=1)
-
-    # Row 4: Inflation score
-    fig.add_trace(
-        go.Scatter(
-            x=comp["as_of"], y=comp[i_col],
-            name="Inflation Score",
-            line={"color": _INFLATION_COLOR, "width": 1.5},
-            hovertemplate="%{x|%Y-%m-%d}<br>Inflation Force Z: %{y:.2f}<extra></extra>",
-            fill="tozeroy",
-            fillcolor="rgba(232, 115, 76, 0.15)",
-        ),
-        row=4, col=1,
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=4, col=1)
-    fig.add_hline(y=_iz,  line=_th_line, row=4, col=1)
-    fig.add_hline(y=-_iz, line=_th_line, row=4, col=1)
-
-    # Row 5: Inflation momentum
-    if "inflation_momentum" in comp.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=comp["as_of"], y=comp["inflation_momentum"],
-                name="Inflation Momentum",
-                line={"color": _INFLATION_COLOR, "width": 1.5, "dash": "dot"},
-                hovertemplate="%{x|%Y-%m-%d}<br>Inflation Momentum: %{y:.0%}<extra></extra>",
-                fill="tozeroy",
-                fillcolor="rgba(232, 115, 76, 0.10)",
-            ),
-            row=5, col=1,
-        )
-    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=5, col=1)
-    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=5, col=1)
-
-    # Row 6: Confidence
-    if "confidence" in comp.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=comp["as_of"], y=comp["confidence"],
-                name="Direction Agreement (legacy)",
-                line={"color": _COLORS[4], "width": 1.5},
-                hovertemplate="%{x|%Y-%m-%d}<br>Direction agreement (stored, legacy definition): %{y:.0%}<extra></extra>",
-                fill="tozeroy",
-                fillcolor="rgba(176, 127, 212, 0.15)",
-            ),
-            row=6, col=1,
-        )
-    fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=6, col=1)
-    fig.update_yaxes(tickformat=".0%", range=[0, 1], row=6, col=1)
-
-    # Row 7: Disequilibrium (rolling or full-history)
-    if d_col in comp.columns:
-        fig.add_trace(
-            go.Scatter(
-                x=comp["as_of"], y=comp[d_col],
-                name="Disequilibrium",
-                line={"color": _COLORS[1], "width": 1.5},
-                hovertemplate="%{x|%Y-%m-%d}<br>Disequilibrium: %{y:.3f}<extra></extra>",
-                fill="tozeroy",
-                fillcolor="rgba(244, 200, 66, 0.12)",
-            ),
-            row=7, col=1,
-        )
-
-    fig.update_layout(
-        **figure_layout(theme_name),
-        hovermode="x",
-        hoversubplots="axis",
-        hoverlabel={
-            "bgcolor": "#000000",
-            "bordercolor": "#000000",
-            "font": {"color": "#ffffff"},
-        },
-        showlegend=False,
-        uirevision="regime-history",  # constant → Plotly.react() preserves user zoom
-    )
-    fig.update_layout(margin={"l": 55, "r": 20, "t": 30, "b": 40})
-    fig.update_xaxes(
-        showspikes=True,
-        spikemode="across",
-        spikesnap="cursor",
-        spikedash="dot",
-        spikethickness=1,
-        spikecolor="rgba(180,180,180,0.6)",
-    )
-
-    # ── Step-selection highlight ──────────────────────────────────────────────
+    # ── Step selection (used by both the band chart and every card below) ─────
     step = step or 0
     n = len(comp)
     sel_idx = max(0, min(n - 1 - step, n - 1))
     sel = comp.iloc[sel_idx]
     sel_ts = sel["as_of"]
 
-    # Vertical dashed guide line spanning all subplots
-    fig.add_vline(
-        x=sel_ts,
-        line_dash="dot",
-        line_color="rgba(255,255,255,0.35)",
-        line_width=1.5,
-    )
+    # ── Band chart — the regime-row markers are categorical (a chip label per
+    # month, not a numeric series), so they stay their own compact figure
+    # rather than becoming a _chart_card. Everything else below is a genuine
+    # single series and converts cleanly.
+    band_fig = _build_regime_band_chart(comp, g_regimes, i_regimes, theme_name, sel_ts, sel_idx)
 
-    # Highlighted marker — regime row (row 1): open circles on both bands
-    _sel_g = g_regimes[sel_idx] if sel_idx < len(g_regimes) else "Transition"
-    _sel_i = i_regimes[sel_idx] if sel_idx < len(i_regimes) else "Transition"
-    for _y, _regime, _chip in [(0.25, _sel_g, _GROWTH_CHIP), (0.75, _sel_i, _INFLAT_CHIP)]:
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[_y],
-                mode="markers",
-                marker={
-                    "size": 14, "symbol": "circle-open",
-                    "color": _chip.get(_regime, "#888"),
-                    "line": {"width": 2.5},
-                },
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=1, col=1,
-        )
+    # ── Cards — Growth Z, Growth Momentum, Inflation Z, Inflation Momentum,
+    # Direction Agreement, Disequilibrium (the old Rows 2-7) ──────────────────
+    def _series_df(col: str) -> pd.DataFrame:
+        if col not in comp.columns:
+            return pd.DataFrame(columns=["as_of", "value"])
+        return comp[["as_of", col]].dropna().rename(columns={col: "value"})
 
-    # Highlighted marker — growth score (row 2, rolling-aware)
-    g_val = sel.get(g_col)
-    if g_val is not None and not pd.isna(g_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[g_val],
-                mode="markers",
-                marker={"size": 11, "color": _COLORS[0],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=2, col=1,
-        )
+    def _cur(col: str, fmt: str) -> tuple[Optional[float], Optional[str]]:
+        v = sel.get(col)
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return None, None
+        v = float(v)
+        return v, format(v, fmt)
 
-    # Highlighted marker — growth momentum (row 3)
-    gm_val = sel.get("growth_momentum")
-    if gm_val is not None and not pd.isna(gm_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[gm_val],
-                mode="markers",
-                marker={"size": 9, "color": _COLORS[0],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=3, col=1,
-        )
+    g_cur, g_fmt = _cur(g_col, "+.2f")
+    gm_cur, gm_fmt = _cur("growth_momentum", ".0%")
+    i_cur, i_fmt = _cur(i_col, "+.2f")
+    im_cur, im_fmt = _cur("inflation_momentum", ".0%")
+    conf_cur, conf_fmt = _cur("confidence", ".0%")
+    d_cur, d_fmt = _cur(d_col, ".3f")
 
-    # Highlighted marker — inflation score (row 4, rolling-aware)
-    i_val = sel.get(i_col)
-    if i_val is not None and not pd.isna(i_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[i_val],
-                mode="markers",
-                marker={"size": 11, "color": _INFLATION_COLOR,
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=4, col=1,
-        )
+    cards = [
+        _chart_card(
+            f"Growth Force Z-Score (composite{win_label})", _series_df(g_col), g_cur, "z", "",
+            zero_line=True, hline=_gz, hline_txt=f"+{_gz:.2f}", hline2=-_gz, hline2_txt=f"-{_gz:.2f}",
+            color=_COLORS[0], fill=True, vline_x=sel_ts, fmt_override=g_fmt,
+        ),
+        _chart_card(
+            "Growth Momentum (fraction of signals growth-positive)", _series_df("growth_momentum"),
+            gm_cur, "pct", "", hline=0.5, hline_txt="50%",
+            color=_COLORS[0], vline_x=sel_ts, fmt_override=gm_fmt,
+        ),
+        _chart_card(
+            f"Inflation Force Z-Score (composite{win_label})", _series_df(i_col), i_cur, "z", "",
+            zero_line=True, hline=_iz, hline_txt=f"+{_iz:.2f}", hline2=-_iz, hline2_txt=f"-{_iz:.2f}",
+            color=_INFLATION_COLOR, fill=True, vline_x=sel_ts, fmt_override=i_fmt,
+        ),
+        _chart_card(
+            "Inflation Momentum (fraction of signals inflation-positive)", _series_df("inflation_momentum"),
+            im_cur, "pct", "", hline=0.5, hline_txt="50%",
+            color=_INFLATION_COLOR, vline_x=sel_ts, fmt_override=im_fmt,
+        ),
+        _chart_card(
+            "Direction Agreement (legacy)", _series_df("confidence"), conf_cur, "pct",
+            "Stored series — legacy definition; live Chip Agreement is in the card above.",
+            hline=0.5, hline_txt="50%", color=_COLORS[4], vline_x=sel_ts, fmt_override=conf_fmt,
+        ),
+        _chart_card(
+            f"Disequilibrium Score{diseq_label}", _series_df(d_col), d_cur, "", "",
+            color=_COLORS[1], fill=True, vline_x=sel_ts, fmt_override=d_fmt,
+        ),
+    ]
 
-    # Highlighted marker — inflation momentum (row 5)
-    im_val = sel.get("inflation_momentum")
-    if im_val is not None and not pd.isna(im_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[im_val],
-                mode="markers",
-                marker={"size": 9, "color": _INFLATION_COLOR,
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=5, col=1,
-        )
-
-    # Highlighted marker — confidence (row 6)
-    conf_val = sel.get("confidence")
-    if conf_val is not None and not pd.isna(conf_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[conf_val],
-                mode="markers",
-                marker={"size": 9, "color": _COLORS[4],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=6, col=1,
-        )
-
-    # Highlighted marker — disequilibrium (row 7, rolling-aware)
-    diseq_val = sel.get(d_col)
-    if diseq_val is not None and not pd.isna(diseq_val):
-        fig.add_trace(
-            go.Scatter(
-                x=[sel_ts], y=[diseq_val],
-                mode="markers",
-                marker={"size": 9, "color": _COLORS[1],
-                        "line": {"width": 2, "color": "#ffffff"}},
-                showlegend=False, hoverinfo="skip",
-            ),
-            row=7, col=1,
-        )
-
-    return fig
+    return band_fig, _section("", "", cards)
 
 
 # ── Regime History help panel — callbacks ─────────────────────────────────────

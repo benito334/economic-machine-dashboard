@@ -103,13 +103,17 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
                 color: str = BLUE, fill: bool = False, info: str = "",
                 df2: "pd.DataFrame | None" = None, color2: str = RED,
                 label: str | None = None, label2: str | None = None,
-                fmt_override: str | None = None) -> html.Div:
+                fmt_override: str | None = None,
+                vline_x=None) -> html.Div:
     """Single-line by default. Pass df2 (+ optional label/label2) for a dual-line
     overlay card — e.g. Real Growth vs. Potential Growth, Short Rate vs. Long Rate.
     hline/hline2 draw one or two dashed reference lines (e.g. symmetric ± regime
     thresholds). fmt_override replaces the computed `_fmt(cur, unit)` header value
     with an already-formatted string — for callers whose unit vocabulary (e.g. a
-    signal's native `units`, or a signed Z-score) isn't one `_fmt` knows."""
+    signal's native `units`, or a signed Z-score) isn't one `_fmt` knows. vline_x
+    draws a single vertical dashed reference line (e.g. a "you are here" marker
+    for a stepped/selected date) — distinct from hline/hline2, which are
+    horizontal."""
     dual = df2 is not None and not df2.empty
     fig = go.Figure()
     if df is not None and not df.empty:
@@ -134,6 +138,8 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
         fig.add_hline(y=hline2, line=dict(color=AMBER, dash="dash", width=1),
                       annotation_text=hline2_txt, annotation_position="bottom left",
                       annotation_font=dict(size=9, color=AMBER))
+    if vline_x is not None:
+        fig.add_vline(x=vline_x, line=dict(color="rgba(255,255,255,0.35)", dash="dot", width=1.5))
     lay = figure_layout(DEFAULT_THEME)
     lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18),
                xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"))

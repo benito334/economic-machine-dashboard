@@ -32,7 +32,7 @@ from dashboard.charting_data import (
     load_latest_signals,
 )
 from dashboard.command_center import STAGE_COLORS
-from dashboard.shared_components import GREEN, RED
+from dashboard.shared_components import AMBER, BLUE, FORCE_COLOR, GREEN, RED, _hex_to_rgba
 
 COUNTRIES = ["US", "EZ", "GB", "JP", "KR", "CN", "IN", "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
 _NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area", "GB": "🇬🇧 United Kingdom",
@@ -283,17 +283,17 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         chips.append(_chip(label, STAGE_COLORS.get(stage, "#888")))
     if spread_flag in ("warning", "critical"):
         chips.append(_chip(f"Debt/Income spread · {spread_flag}",
-                           "#E8A317" if spread_flag == "warning" else RED))
+                           AMBER if spread_flag == "warning" else RED))
     if fx_flag in ("warning", "critical") and fx_share is not None and not (
         isinstance(fx_share, float) and math.isnan(fx_share)
     ):
         chips.append(_chip(f"FX debt {fx_share:.0f}% · {fx_flag}",
-                           "#E8A317" if fx_flag == "warning" else RED))
+                           AMBER if fx_flag == "warning" else RED))
     if runway_flag in ("warning", "critical") and runway is not None and not (
         isinstance(runway, float) and math.isnan(runway)
     ):
         chips.append(_chip(f"FX runway {runway:.1f}mo · {runway_flag}",
-                           "#E8A317" if runway_flag == "warning" else RED))
+                           AMBER if runway_flag == "warning" else RED))
 
     # Recent clock-change notes (~30d chips / ~45d stage)
     try:
@@ -306,11 +306,11 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     except Exception:
         change_notes = []
     notes_block = ([html.Div(
-        [html.Div(f"🔄 {n}", style={"fontSize": "0.68rem", "color": "#F4C842",
+        [html.Div(f"🔄 {n}", style={"fontSize": "0.68rem", "color": AMBER,
                                     "lineHeight": "1.5"}) for n in change_notes],
-        style={"borderLeft": "2px solid #E8A317", "paddingLeft": "7px",
+        style={"borderLeft": f"2px solid {AMBER}", "paddingLeft": "7px",
                "margin": "0 0 8px 0",
-               "background": "rgba(232,163,23,0.06)", "borderRadius": "0 4px 4px 0",
+               "background": _hex_to_rgba(AMBER, 0.06), "borderRadius": "0 4px 4px 0",
                "padding": "3px 7px"},
     )] if change_notes else [])
 
@@ -387,7 +387,7 @@ def _corr_heatmap(corr: pd.DataFrame, title: str, theme_name: str) -> dcc.Graph:
         z=corr.values.astype(float),
         x=list(corr.columns), y=list(corr.index),
         zmin=-1, zmax=1,
-        colorscale=[[0.0, "#4C9BE8"], [0.5, "#2b2b2b"], [1.0, "#E8734C"]],
+        colorscale=[[0.0, BLUE], [0.5, "#2b2b2b"], [1.0, FORCE_COLOR["inflation"]]],
         text=[[("" if pd.isna(v) else f"{v:+.2f}") for v in row] for row in corr.values],
         texttemplate="%{text}",
         textfont={"size": 13, "family": "monospace"},
