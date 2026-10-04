@@ -1291,6 +1291,23 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     except Exception as exc:
         logger.warning("[WARN] External validator verdicts: %s", exc)
 
+    # ── Pass 11: SPF forecast cache refresh (docs/external_validators_plan.md) ──
+    # The SPF loader self-manages freshness (7-day TTL on its own raw_cache
+    # files, falls back to stale cache on fetch failure) — this pass just
+    # proactively triggers that check daily, same convention as Pass 8's
+    # Buffett feed, rather than leaving the first dashboard visitor after a
+    # long gap to trigger the refresh. Quarterly data; no DB write at all
+    # (unlike Pass 10) — the dashboard card recomputes live from the cache.
+    print("\n─── Pass 11: SPF forecast cache refresh ────────────────────────────")
+    try:
+        from indicators.spf_loader import fetch_spf_panel
+        panel = fetch_spf_panel()
+        n_rows = sum(len(df) for df in panel.values())
+        print(f"  SPF cache checked — {n_rows} survey-quarter rows across "
+              f"{len(panel)} variables")
+    except Exception as exc:
+        logger.warning("[WARN] SPF forecast cache refresh: %s", exc)
+
     # ── Summary ────────────────────────────────────────────────────────────
     print()
     print("─── Summary ───────────────────────────────────────────────────────")

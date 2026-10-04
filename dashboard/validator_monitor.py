@@ -29,7 +29,7 @@ import pandas as pd
 from dash import html
 
 from dashboard.shared_components import (
-    GREY as _GREY, VERDICT_COLOR, _chart_card, _chip, _section,
+    FORCE_COLOR, GREY as _GREY, VERDICT_COLOR, _chart_card, _chip, _section,
     summarize_validator_axis,
 )
 
@@ -116,6 +116,82 @@ def _benchmark_card(axis: str, b: dict, chip_hist: pd.DataFrame,
     # every other chart card on the dashboard.
 
 
+# ── Survey of Professional Forecasters (plan item 2, 2026-10-03) ──────────────
+# Deliberately NOT part of the AGREE/PARTIAL/CONTRADICT tally above — quarterly,
+# not monthly, and a genuinely different kind of read: a true forecaster-
+# consensus SURPRISE (actual vs. what professional economists predicted before
+# the quarter happened), closer to "surprise" in the academic sense than the
+# Z-score-vs-own-history comparisons above. Its own section, own card style.
+
+def _spf_card(key: str, label: str, surprise_data: dict, color: str) -> html.Div:
+    from indicators.spf_loader import forecast_vs_realized
+
+    fcst, realized = forecast_vs_realized(key)
+    fcst_df = pd.DataFrame({"as_of": fcst.index, "value": fcst.values}) if not fcst.empty else pd.DataFrame(columns=["as_of", "value"])
+    real_df = pd.DataFrame({"as_of": realized.index, "value": realized.values}).dropna() if not realized.empty else pd.DataFrame(columns=["as_of", "value"])
+
+    surprise = surprise_data.get("surprise")
+    target_q = surprise_data.get("surprise_target_quarter")
+    fdate = surprise_data.get("surprise_forecast_date")
+    nowcast = surprise_data.get("nowcast")
+    next_q = surprise_data.get("next_q")
+
+    if surprise is None:
+        read = "No resolved quarter yet to compare (target quarter not yet realized)."
+        fmt_override = "—"
+    else:
+        read = (f"Q{pd.Timestamp(target_q).quarter} {pd.Timestamp(target_q).year} actual vs. "
+                f"the forecast made a quarter ahead (survey of {fdate}).")
+        fmt_override = f"{surprise:+.2f}pp"
+
+    info = (f"Current survey nowcast {nowcast:+.2f}pp, one-quarter-ahead forecast "
+            f"{next_q:+.2f}pp. " if nowcast is not None and next_q is not None else "") + (
+            "Surprise = realized actual minus the forecast made one quarter in advance "
+            "(SPF's own 'one quarter ahead' horizon, shifted to the quarter it targets) — "
+            "a genuine ex-ante forecast error, not an in-quarter nowcast. Philadelphia Fed, "
+            "not FRED-hosted (own quarterly Excel files).")
+
+    return _chart_card(
+        f"SPF {label} — surprise", fcst_df, None, "pp", read,
+        color=color, zero_line=False, info=info,
+        df2=real_df, color2=_GREY, label="Forecast (1Q ahead)", label2="Realized",
+        fmt_override=fmt_override,
+    )
+
+
+def _spf_section() -> Optional[html.Div]:
+    from indicators.spf_loader import compute_spf_surprise
+
+    try:
+        data = compute_spf_surprise()
+    except Exception:
+        return None
+    if data.get("as_of") is None:
+        return None
+
+    as_of = pd.Timestamp(data["as_of"])
+    freshness = _chip(f"last SPF read: Q{as_of.quarter} {as_of.year}", _GREY)
+
+    cards = [
+        _spf_card("rgdp_growth", "Real GDP growth",
+                  data["variables"]["rgdp_growth"], FORCE_COLOR.get("growth", "#888")),
+        _spf_card("cpi", "Headline CPI inflation",
+                  data["variables"]["cpi"], FORCE_COLOR.get("inflation", "#888")),
+    ]
+
+    return html.Div([
+        html.Div([
+            html.Span("Survey of Professional Forecasters (Philadelphia Fed)",
+                      style={"fontSize": "0.9rem", "fontWeight": "700",
+                             "color": "var(--font-color)", "marginRight": "10px"}),
+            freshness,
+        ], style={"marginTop": "18px", "display": "flex", "alignItems": "center", "gap": "8px"}),
+        _section("", "A true forecaster-consensus surprise measure — a different kind of "
+                     "validator from the monthly benchmarks above, quarterly and not part of "
+                     "their AGREE/PARTIAL/CONTRADICT tally.", cards),
+    ])
+
+
 def get_layout() -> html.Div:
     data = _load()
     if data is None:
@@ -151,7 +227,6 @@ def get_layout() -> html.Div:
               "marginBottom": "4px"})
 
     sections = []
-    from dashboard.shared_components import FORCE_COLOR
     for axis in ("growth", "inflation"):
         axis_data = data["axes"][axis]
         result = axis_data["result"]
@@ -182,5 +257,9 @@ def get_layout() -> html.Div:
             _section("", f"{result['n_benchmarks_graded']} benchmarks graded, "
                          f"canonical {window}-month window.", cards),
         ]))
+
+    spf_section = _spf_section()
+    if spf_section is not None:
+        sections.append(spf_section)
 
     return html.Div([header] + sections, className="p-3", style={"maxWidth": "1500px"})
