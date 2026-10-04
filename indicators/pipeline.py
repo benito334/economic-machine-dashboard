@@ -1308,6 +1308,20 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     except Exception as exc:
         logger.warning("[WARN] SPF forecast cache refresh: %s", exc)
 
+    # ── Pass 12: Bubble-gauge cache refresh (coverage-audit Phase C) ────────
+    # FINRA margin debt + CFTC leveraged-fund positioning self-manage
+    # freshness the same way the SPF loader does (TTL raw_cache, stale-cache
+    # fallback) — this pass just proactively triggers that check daily. No
+    # DB write; the dashboard card recomputes live from the cache.
+    print("\n─── Pass 12: Bubble-gauge cache refresh ────────────────────────────")
+    try:
+        from indicators.bubble_gauge import compute_bubble_gauge
+        dims = compute_bubble_gauge()
+        ok = [k for k, v in dims.items() if v is not None]
+        print(f"  Bubble-gauge cache checked — {len(ok)}/3 dimensions available ({', '.join(ok)})")
+    except Exception as exc:
+        logger.warning("[WARN] Bubble-gauge cache refresh: %s", exc)
+
     # ── Summary ────────────────────────────────────────────────────────────
     print()
     print("─── Summary ───────────────────────────────────────────────────────")

@@ -59,6 +59,7 @@ from dashboard import case_study_monitor as _case_study_monitor
 from dashboard import central_bank_monitor as _central_bank_monitor
 from dashboard import market_expectations as _market_exp
 from dashboard import validator_monitor as _validator_monitor
+from dashboard import bubble_gauge_monitor as _bubble_gauge_monitor
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
@@ -873,6 +874,10 @@ def _left_nav() -> html.Div:
             _nl("📐", "Market Expectations", "/market-expectations", nav_id="navlnk-market-exp"),
             _nl("🏦", "Central Bank Monitor", "/central-bank", nav_id="navlnk-central-bank"),
             _nl("🧪", "Validator Audit", "/validator-audit", nav_id="navlnk-validator-audit"),
+            # Operator-only — reuses the gated Buffett Indicator (/valuations).
+            *([] if PUBLIC_MODE else [
+                _nl("\U0001fac7", "Bubble Gauge", "/bubble-gauge", nav_id="navlnk-bubble-gauge"),
+            ]),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Signals — click to roll/unroll the force sub-pages ────────────────
@@ -1359,6 +1364,13 @@ def _page_market_expectations() -> html.Div:
 
 def _page_validator_audit() -> html.Div:
     return _validator_monitor.get_layout()
+
+
+def _page_bubble_gauge() -> html.Div:
+    # Operator-only (same gating as /valuations, whose Buffett Indicator
+    # feeds this page's valuation dimension). PUBLIC_MODE is intercepted
+    # earlier in route_page, so this only runs for the operator.
+    return _bubble_gauge_monitor.get_layout()
 
 
 def _page_asset_environments() -> html.Div:
@@ -2112,6 +2124,7 @@ _PAGE_MAP = {
     "/central-bank":  _page_central_bank_monitor,
     "/market-expectations": _page_market_expectations,
     "/validator-audit": _page_validator_audit,
+    "/bubble-gauge": _page_bubble_gauge,
     "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
     "/asset-environments": _page_asset_environments,

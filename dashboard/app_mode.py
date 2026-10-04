@@ -24,4 +24,4 @@ PUBLIC_MODE: bool = os.environ.get("PUBLIC_MODE", "").strip().lower() in (
 # Routes hidden from the public/cloud view — blocked even by direct URL.
 # (Shared-write operator tools, plus the Buffett valuation page, which the user
 #  keeps off the public deploy.)
-OPERATOR_ONLY_ROUTES = frozenset({"/weight-audit", "/weight-history", "/valuations"})
+OPERATOR_ONLY_ROUTES = frozenset({"/weight-audit", "/weight-history", "/valuations", "/bubble-gauge"})
