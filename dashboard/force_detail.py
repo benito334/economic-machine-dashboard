@@ -324,11 +324,14 @@ def _build_force_cards(
             sync_hover=True,
         ))
 
+    # Composite Z/Momentum run full-width, one per row; basket signal cards
+    # (raw + Z pairs) sit two per row.
+    comp_cols, sig_cols = 1, 2
     sections: list[html.Div] = []
     if composite_cards:
-        sections.append(_section(f"{fc['label']} composite", "", composite_cards))
+        sections.append(_section(f"{fc['label']} composite", "", composite_cards, columns=comp_cols))
     if signal_cards:
-        sections.append(_section("Basket signals", "", signal_cards))
+        sections.append(_section("Basket signals", "", signal_cards, columns=sig_cols))
     return sections
 
 

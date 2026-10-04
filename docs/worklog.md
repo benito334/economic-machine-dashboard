@@ -145,6 +145,12 @@ Wired into Command Center's header as `persistence G {x%} · I {x%}`, directly b
 
 ---
 
+## 2026-10-04 (5) — Signals pages: shared crosshair + new card layout
+
+Per-metric chart cards (Phase 4) had lost the old stacked-subplot synced hover. Added `dashboard/assets/hover_sync.js` + `_chart_card(sync_hover=True)`: hovering one card shows the same date (nearest observation at or before) on every other card; used on all six `/signals/{force}` pages and Regime History (not the Monitors pages — their cards are unrelated metrics). Observer is a throttle, not a debounce (Regime History mutates continuously and starved the debounce version). Layout: `_section(columns=N)` — composite Z-score/Momentum cards full-width one-per-row, basket signal cards (raw + Z pairs) two per row, on all force pages. Regime History's card grid is unchanged. Suite 678 passed.
+
+---
+
 ## 2026-10-04 (4) — DuckDB bloat: root cause fixed (in-place upserts), not another compaction
 
 **Why this was still an issue.** Commit `4c2026a` ("auto-compact after every import") had been made on a side branch (`claude/serene-clarke-3321dd`) and **never merged to `main`** — so the NAS scheduler image never contained it, and the file kept growing to 10.9 GB. It was also the wrong kind of fix: a nightly compaction treats the symptom and needs the dashboard down for it.

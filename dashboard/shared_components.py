@@ -174,14 +174,17 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
         className="sync-hover-card" if sync_hover else None)
 
 
-def _section(title: str, subtitle: str, cards: list) -> html.Div:
+def _section(title: str, subtitle: str, cards: list, *, columns: int | None = None) -> html.Div:
     return html.Div([
         html.Div(title, style={"fontSize": "0.72rem", "fontWeight": "800",
                                "textTransform": "uppercase", "letterSpacing": "0.06em",
                                "color": "var(--muted-color)", "marginTop": "22px"}),
         html.Div(subtitle, style={"fontSize": "0.72rem", "color": "var(--muted-color)",
                                   "opacity": "0.8", "marginBottom": "10px"}),
-        html.Div(cards, style={"display": "flex", "flexWrap": "wrap", "gap": "12px"}),
+        html.Div(cards, style=(
+            {"display": "grid", "gap": "8px",
+             "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))"} if columns
+            else {"display": "flex", "flexWrap": "wrap", "gap": "12px"})),
     ])
 
 
