@@ -273,3 +273,83 @@ def test_window_column_falls_back_when_empty():
     assert ab._window_column(hist, "inflation", 90) == "inflation_score_90m"
     assert ab._window_column(hist, "growth", None) == "growth_score"
     assert ab._window_column(hist, "growth", 36) == "growth_score"
+
+
+# ── persist_validator_verdicts (docs/external_validators_plan.md, 2026-10-03) ─
+# Runs entirely through an in-memory DuckDB connection (passed explicitly via
+# `conn=`), seeded with fake composite history — chip_state() now threads
+# `conn` all the way down (the pipeline fix, 2026-10-03: a second connection
+# to the real DB with a different read_only configuration while the
+# pipeline's own was open raised "Can't open a connection to same database
+# file with a different configuration") — so both the read (chip_state) and
+# the write (upsert_validator_verdicts) go through the same connection, and
+# the real production file is never touched here.
+
+def _mem_conn():
+    import duckdb
+    from indicators.models import CompositeSnapshot
+    from store.store import init_schema, upsert_composites
+
+    conn = duckdb.connect(":memory:")
+    init_schema(conn)
+    idx = pd.date_range("2015-01-31", periods=120, freq="ME")
+    rng = np.random.default_rng(42)
+    snaps = [
+        CompositeSnapshot(
+            country="US", as_of=d.date(),
+            growth_score=float(rng.normal(0, 1)), inflation_score=float(rng.normal(0, 1)),
+            n_growth_signals=10, n_inflation_signals=5, n_forces=5,
+        )
+        for d in idx
+    ]
+    upsert_composites(conn, snaps)
+    return conn
+
+
+def test_persist_writes_one_row_per_benchmark(monkeypatch):
+    idx = pd.date_range("2010-01-31", periods=120, freq="ME")
+    rng = np.random.default_rng(2)
+
+    def fake_panel(axis, force_refresh=False):
+        return pd.DataFrame(
+            {b.key: pd.Series(rng.normal(0, 1, 120), index=idx)
+             for b in ab.benchmarks_for(axis)}
+        )
+
+    monkeypatch.setattr(ab, "load_benchmark_panel", fake_panel)
+    conn = _mem_conn()
+    n_growth = len(ab.GROWTH_BENCHMARKS)
+    n_inflation = len(ab.INFLATION_BENCHMARKS)
+
+    n = ab.persist_validator_verdicts(country="US", conn=conn)
+    assert n == n_growth + n_inflation
+
+    from store.store import query_latest_validator_verdicts
+    df = query_latest_validator_verdicts(conn, "US")
+    assert len(df) == n_growth + n_inflation
+    assert set(df["axis"]) == {"growth", "inflation"}
+    assert set(df["verdict"]).issubset({"AGREE", "PARTIAL", "CONTRADICT", "UNKNOWN"})
+    # chip_label is threaded down from the axis-level result into every row
+    assert df["chip_label"].notna().all()
+
+
+def test_persist_is_idempotent_on_rerun(monkeypatch):
+    idx = pd.date_range("2010-01-31", periods=120, freq="ME")
+    rng = np.random.default_rng(3)
+
+    def fake_panel(axis, force_refresh=False):
+        return pd.DataFrame(
+            {b.key: pd.Series(rng.normal(0, 1, 120), index=idx)
+             for b in ab.benchmarks_for(axis)}
+        )
+
+    monkeypatch.setattr(ab, "load_benchmark_panel", fake_panel)
+    conn = _mem_conn()
+
+    ab.persist_validator_verdicts(country="US", conn=conn)
+    ab.persist_validator_verdicts(country="US", conn=conn)  # re-run, same day
+
+    from store.store import query_latest_validator_verdicts
+    df = query_latest_validator_verdicts(conn, "US")
+    expected = len(ab.GROWTH_BENCHMARKS) + len(ab.INFLATION_BENCHMARKS)
+    assert len(df) == expected  # no duplicates from the second run

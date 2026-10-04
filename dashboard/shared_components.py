@@ -179,6 +179,43 @@ def _chip(text: str, color: str) -> html.Span:
                                   "whiteSpace": "nowrap"})
 
 
+# ── External validator rollup (docs/external_validators_plan.md, 2026-10-03) ──
+# Mirrors CreovaOne's own app.core.validator_badges.summarize_axis() exactly —
+# same rollup rule, so a badge here and a badge there never disagree about
+# what a mixed set of per-benchmark verdicts rolls up to.
+
+VERDICT_COLOR: dict[str, str] = {
+    "AGREE": GREEN, "PARTIAL": AMBER, "CONTRADICT": RED, "UNKNOWN": GREY,
+}
+
+
+def summarize_validator_axis(verdicts) -> dict:
+    """Roll up one axis' validator rows (each with a 'verdict' key) into a
+    single badge. 'No judgement calls': UNKNOWN rows are ignored (an
+    unreachable/unfitted benchmark says nothing about agreement); any
+    CONTRADICT wins over everything else — a validation badge exists to
+    surface disagreement, not average it away; otherwise any PARTIAL wins;
+    otherwise AGREE if every graded row agrees; None if nothing was
+    gradeable (empty, or every row UNKNOWN)."""
+    graded = [v for v in verdicts if v.get("verdict") != "UNKNOWN"]
+    n_unknown = len(verdicts) - len(graded)
+    n_agree = sum(1 for v in graded if v["verdict"] == "AGREE")
+    n_partial = sum(1 for v in graded if v["verdict"] == "PARTIAL")
+    n_contradict = sum(1 for v in graded if v["verdict"] == "CONTRADICT")
+    if not graded:
+        verdict = None
+    elif n_contradict > 0:
+        verdict = "CONTRADICT"
+    elif n_partial > 0:
+        verdict = "PARTIAL"
+    else:
+        verdict = "AGREE"
+    return {
+        "verdict": verdict, "n_agree": n_agree, "n_partial": n_partial,
+        "n_contradict": n_contradict, "n_unknown": n_unknown,
+    }
+
+
 # Dark-theme palette anchors — interpolate from washed-out light end to vivid.
 # At low magnitude the washed-out tone is still clearly visible on a dark
 # background (unlike low-alpha rgba which blends to near-invisible).

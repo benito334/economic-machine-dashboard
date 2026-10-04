@@ -91,6 +91,36 @@ def _conf_row_color(g_conf: dict, i_conf: dict) -> str:
     return "var(--muted-color)"
 
 
+_VERDICT_SYMBOL = {"AGREE": "✓", "PARTIAL": "~", "CONTRADICT": "✗"}
+_VERDICT_RANK = {"CONTRADICT": 2, "PARTIAL": 1, "AGREE": 0}  # worse wins the row color
+
+
+def _validator_badge(rollup: Optional[tuple]):
+    """Small clickable pill summarizing the external-validator rollup for
+    both axes — None (omit entirely) when there's nothing to show yet."""
+    if rollup is None:
+        return None
+    from dashboard.shared_components import VERDICT_COLOR
+    g, i = rollup
+    g_sym = _VERDICT_SYMBOL.get(g["verdict"], "—")
+    i_sym = _VERDICT_SYMBOL.get(i["verdict"], "—")
+    worst = max((g["verdict"], i["verdict"]), key=lambda v: _VERDICT_RANK.get(v, -1),
+                default=None)
+    color = VERDICT_COLOR.get(worst, "var(--muted-color)")
+    return dcc.Link(
+        html.Span(
+            f"validated G {g_sym} · I {i_sym}",
+            title="Independent FRED-benchmark cross-check against the chip "
+                  "(CFNAI, trimmed-mean CPI/PCE, GDPNow, Sahm rule, ...) — "
+                  "AGREE/PARTIAL/CONTRADICT per axis, click for detail. "
+                  "docs/external_validators_plan.md, 2026-10-03.",
+            style={"fontSize": "0.74rem", "color": color, "border": f"1px dashed {color}80",
+                   "borderRadius": "4px", "padding": "2px 8px"},
+        ),
+        href="/validator-audit", style={"textDecoration": "none"},
+    )
+
+
 def _latest(hist: pd.DataFrame, col: str) -> Optional[float]:
     if hist.empty or col not in hist.columns:
         return None
@@ -300,6 +330,22 @@ def render_command_center(country_data, page_trigger, thresholds,
     g_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "growth")
     i_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "inflation")
 
+    # External validator rollup (docs/external_validators_plan.md, 2026-10-03):
+    # independent FRED-benchmark cross-check against the chip — a different
+    # kind of confirmation than chip agreement/persistence above (outside
+    # sources, not our own basket's internal agreement). US-only, since the
+    # benchmark panel (CFNAI, trimmed-mean CPI/PCE, ...) is US-specific data.
+    validator_rollup = None
+    if country == "US":
+        from dashboard.charting_data import load_validator_verdicts
+        from dashboard.shared_components import summarize_validator_axis
+        vdf = load_validator_verdicts("US")
+        if not vdf.empty:
+            validator_rollup = (
+                summarize_validator_axis(vdf[vdf["axis"] == "growth"].to_dict("records")),
+                summarize_validator_axis(vdf[vdf["axis"] == "inflation"].to_dict("records")),
+            )
+
     # ── Inflation anchored to the target (Ray ruling 2026-10-03) ─────────────
     # "The main chip should be the distance from target. That's the number that
     #  matters for policy and markets. But you can also show a relative Z-score
@@ -351,6 +397,7 @@ def render_command_center(country_data, page_trigger, thresholds,
                       "'(uncertain)' flags below the audit's suggested ~70% cutoff. "
                       "'—' on Transition, which makes no persistence claim.",
                 style={"fontSize": "0.74rem", "color": _conf_row_color(g_conf, i_conf)}),
+            *([_validator_badge(validator_rollup)] if validator_rollup else []),
             html.Span(f"diseq {_fmt(diseq, '.2f')}",
                       style={"fontSize": "0.74rem", "color": "var(--muted-color)"}),
             html.Span(f"window {win_label}",

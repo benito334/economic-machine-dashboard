@@ -175,3 +175,30 @@ def test_dynamic_thresholds_computed_on_windowed_series():
                                         {"page": "/regime-map"}, thr)
     rects = [s for s in (fig.layout.shapes or []) if s.type == "rect"]
     assert rects[0].x0 == pytest.approx(float(dyn_win["dyn_gz"].iloc[-1]), abs=1e-6)
+
+
+# ── External validator badge (docs/external_validators_plan.md, 2026-10-03) ──
+
+def test_validator_badge_none_rollup_renders_nothing():
+    assert cc._validator_badge(None) is None
+
+
+def test_validator_badge_shows_symbols_for_both_axes():
+    rollup = (
+        {"verdict": "AGREE", "n_agree": 4, "n_partial": 0, "n_contradict": 0, "n_unknown": 0},
+        {"verdict": "PARTIAL", "n_agree": 1, "n_partial": 2, "n_contradict": 0, "n_unknown": 0},
+    )
+    badge = cc._validator_badge(rollup)
+    assert badge is not None
+    text = badge.children.children
+    assert "G ✓" in text and "I ~" in text
+
+
+def test_validator_badge_color_follows_the_worse_axis():
+    from dashboard.shared_components import VERDICT_COLOR
+    rollup = (
+        {"verdict": "AGREE", "n_agree": 1, "n_partial": 0, "n_contradict": 0, "n_unknown": 0},
+        {"verdict": "CONTRADICT", "n_agree": 0, "n_partial": 0, "n_contradict": 1, "n_unknown": 0},
+    )
+    badge = cc._validator_badge(rollup)
+    assert badge.children.style["color"] == VERDICT_COLOR["CONTRADICT"]

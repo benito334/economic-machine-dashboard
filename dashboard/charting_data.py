@@ -476,6 +476,32 @@ def load_debt_cycle_stage_history(
     return df
 
 
+def load_validator_verdicts(country: str = "US") -> pd.DataFrame:
+    """Latest independent-validator verdict per (axis, validator_key) —
+    docs/external_validators_plan.md, 2026-10-03. Empty frame if the pipeline
+    hasn't run Pass 10 yet (table not created) or there's no data for this
+    country (the benchmark panel is US-only today)."""
+    con = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        df = con.execute("""
+            SELECT * FROM validator_verdicts
+            WHERE country = ?
+            QUALIFY row_number() OVER (
+                PARTITION BY axis, validator_key ORDER BY as_of DESC, created_at DESC
+            ) = 1
+            ORDER BY axis ASC, validator_key ASC
+        """, [country]).df()
+    except duckdb.CatalogException:
+        return pd.DataFrame()          # table not created yet — pipeline not run
+    finally:
+        con.close()
+
+    if not df.empty:
+        df["as_of"] = pd.to_datetime(df["as_of"])
+        df["latest_date"] = pd.to_datetime(df["latest_date"])
+    return df
+
+
 # ── Signal overview helpers (for Regime Map panels) ───────────────────────────
 
 def load_latest_signals(

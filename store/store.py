@@ -93,6 +93,7 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(_CREATE_DEBT_STRESS)
     conn.execute(_CREATE_DEBT_CYCLE_STAGE)
     conn.execute(_CREATE_WEIGHT_CHANGE_LOG)
+    conn.execute(_CREATE_VALIDATOR_VERDICTS)
     # Migrations for databases created by earlier releases.
     conn.execute(
         "ALTER TABLE debt_stress_snapshots "
@@ -712,6 +713,101 @@ def query_debt_cycle_stage_history(
     return conn.execute(
         "SELECT * FROM debt_cycle_stage_snapshots WHERE country = ? ORDER BY as_of", [country]
     ).df()
+
+
+# ── External validator verdicts (docs/external_validators_plan.md, 2026-10-03) ─
+#
+# Schema is locked to CreovaOne's existing consumer query
+# (IndicatorsMachineMacroAdapter.validator_verdicts() in that project) — column
+# names/order must not change without updating that side too. Keeps full
+# history (as_of is part of the primary key, not just the latest row) so a
+# detail page can show how a verdict evolved; the consumer picks the latest
+# per (axis, validator_key) itself (e.g. CreovaOne's own QUALIFY ROW_NUMBER()).
+
+_CREATE_VALIDATOR_VERDICTS = """
+CREATE TABLE IF NOT EXISTS validator_verdicts (
+    country          VARCHAR   NOT NULL,
+    as_of            DATE      NOT NULL,
+    axis             VARCHAR   NOT NULL,
+    validator_key    VARCHAR   NOT NULL,
+    chip_label       VARCHAR,
+    benchmark_state  VARCHAR,
+    verdict          VARCHAR   NOT NULL,
+    spearman_full    DOUBLE,
+    best_lag_months  INTEGER,
+    latest_value     DOUBLE,
+    latest_date      DATE,
+    note             VARCHAR   DEFAULT '',
+    created_at       TIMESTAMP NOT NULL,
+    PRIMARY KEY (country, as_of, axis, validator_key)
+)
+"""
+
+_VALIDATOR_VERDICTS_COLUMNS = [
+    "country", "as_of", "axis", "validator_key", "chip_label", "benchmark_state",
+    "verdict", "spearman_full", "best_lag_months", "latest_value", "latest_date",
+    "note", "created_at",
+]
+
+
+def upsert_validator_verdicts(conn: duckdb.DuckDBPyConnection, verdicts: list) -> int:
+    """Idempotent upsert of ValidatorVerdict rows on (country, as_of, axis,
+    validator_key) — re-running the same day's job overwrites that day's rows
+    rather than duplicating them; prior days' rows are untouched history."""
+    if not verdicts:
+        return 0
+
+    now = datetime.now(timezone.utc)
+    rows = []
+    for v in verdicts:
+        row = v.model_dump()
+        row["as_of"] = row["as_of"].isoformat()
+        if row.get("latest_date") is not None:
+            row["latest_date"] = row["latest_date"].isoformat()
+        row["created_at"] = now
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    conn.register("_validator_staging", df)
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute("""
+            DELETE FROM validator_verdicts
+            WHERE EXISTS (
+                SELECT 1 FROM _validator_staging
+                WHERE _validator_staging.country = validator_verdicts.country
+                  AND _validator_staging.as_of::DATE = validator_verdicts.as_of
+                  AND _validator_staging.axis = validator_verdicts.axis
+                  AND _validator_staging.validator_key = validator_verdicts.validator_key
+            )
+        """)
+        cols = ", ".join(_VALIDATOR_VERDICTS_COLUMNS)
+        conn.execute(
+            f"INSERT INTO validator_verdicts ({cols}) SELECT {cols} FROM _validator_staging"
+        )
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.unregister("_validator_staging")
+
+    return len(df)
+
+
+def query_latest_validator_verdicts(
+    conn: duckdb.DuckDBPyConnection, country: str = "US",
+) -> pd.DataFrame:
+    """The most recent row per (axis, validator_key) for one country — the
+    same "latest per benchmark" grain CreovaOne's own QUALIFY query picks."""
+    return conn.execute("""
+        SELECT * FROM validator_verdicts
+        WHERE country = ?
+        QUALIFY row_number() OVER (
+            PARTITION BY axis, validator_key ORDER BY as_of DESC, created_at DESC
+        ) = 1
+        ORDER BY axis ASC, validator_key ASC
+    """, [country]).df()
 
 
 def log_weight_changes(

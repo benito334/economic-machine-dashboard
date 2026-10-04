@@ -1278,6 +1278,19 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
     except Exception as exc:
         logger.warning("[WARN] Vintage capture: %s", exc)
 
+    # ── Pass 10: External validator verdicts (docs/external_validators_plan.md) ─
+    # Refreshes the AGREE/PARTIAL/CONTRADICT badge against independent FRED
+    # benchmarks (CFNAI, trimmed-mean CPI/PCE, etc.) on the same cadence as the
+    # chips themselves. US-only (the benchmark panel is US-specific data).
+    # Best-effort, never fails the run; feeds no composite/regime.
+    print("\n─── Pass 10: External validator verdicts ───────────────────────────")
+    try:
+        from indicators.audit_benchmarks import persist_validator_verdicts
+        n_verdicts = persist_validator_verdicts(country="US", conn=conn)
+        print(f"  {n_verdicts} validator verdicts refreshed")
+    except Exception as exc:
+        logger.warning("[WARN] External validator verdicts: %s", exc)
+
     # ── Summary ────────────────────────────────────────────────────────────
     print()
     print("─── Summary ───────────────────────────────────────────────────────")

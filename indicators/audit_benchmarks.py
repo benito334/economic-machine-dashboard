@@ -301,16 +301,24 @@ def load_benchmark_panel(axis: str, force_refresh: bool = False) -> pd.DataFrame
 
 # ── Our side of the comparison ───────────────────────────────────────────────
 
-def load_composite_history(country: str = "US") -> pd.DataFrame:
-    """Read-only pull of the composites table. Never writes — the DB is
-    single-writer and the dashboard may hold it."""
-    conn = duckdb.connect(str(DB_PATH), read_only=True)
+def load_composite_history(country: str = "US", conn=None) -> pd.DataFrame:
+    """Read-only pull of the composites table. Never writes.
+
+    `conn`: pass an existing connection (e.g. the pipeline's own, already
+    open for writes) to query through it instead of opening a new one — two
+    connections to the same DuckDB file with different configurations
+    (read_only vs. not) cannot coexist, so a caller that already holds a
+    connection MUST pass it rather than let this open a second one."""
+    owns_conn = conn is None
+    if owns_conn:
+        conn = duckdb.connect(str(DB_PATH), read_only=True)
     try:
         df = conn.execute(
             "SELECT * FROM composites WHERE country = ? ORDER BY as_of", [country]
         ).df()
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
     if not df.empty:
         df["as_of"] = pd.to_datetime(df["as_of"])
     return df
@@ -334,6 +342,7 @@ def chip_state(
     growth_window: int = CANONICAL_GROWTH_WINDOW,
     inflation_window: int = CANONICAL_INFLATION_WINDOW,
     thresholds: Optional[dict] = None,
+    conn=None,
 ) -> dict:
     """Reproduce the dashboard's live chips EXACTLY, using production code.
 
@@ -341,12 +350,15 @@ def chip_state(
     dashboard.charting rather than reimplementing them, so this can never drift
     from what a user actually sees. Mirrors command_center's window resolution,
     latest/delta semantics and dynamic-threshold wiring.
+
+    `conn`: see load_composite_history — pass an existing connection when the
+    caller already holds one (e.g. the pipeline).
     """
     from dashboard.charting import (  # lazy: charting is a heavy Dash module
         _DEFAULT_THRESHOLDS, _classify_regime, compute_dynamic_thresholds,
     )
 
-    hist = load_composite_history(country)
+    hist = load_composite_history(country, conn=conn)
     if hist.empty:
         raise RuntimeError(f"No composite rows for {country} — run the pipeline.")
     if as_of:
@@ -589,9 +601,13 @@ def build_evidence_pack(
     as_of: Optional[str] = None,
     force_refresh: bool = False,
     thresholds: Optional[dict] = None,
+    conn=None,
 ) -> dict:
-    """Everything the reviewing agent needs on the numeric side, in one dict."""
-    chip = chip_state(country=country, as_of=as_of, thresholds=thresholds)
+    """Everything the reviewing agent needs on the numeric side, in one dict.
+
+    `conn`: see load_composite_history — pass an existing connection when the
+    caller already holds one (e.g. the pipeline)."""
+    chip = chip_state(country=country, as_of=as_of, thresholds=thresholds, conn=conn)
     out = {
         "country": country,
         "as_of": chip["as_of"],
@@ -733,6 +749,64 @@ def render_markdown(pack: dict) -> str:
                          f"our Z {e['our_z_mean']} vs benchmark Z {e['benchmark_z_mean']}")
             L.append("")
     return "\n".join(L)
+
+
+# ── Persistence (docs/external_validators_plan.md, 2026-10-03) ────────────────
+#
+# Promotes the comparison above from a manual CLI audit into a live badge: one
+# ValidatorVerdict row per (axis, validator_key), refreshed on the same
+# schedule as the chips themselves (the pipeline run). Still strictly
+# read-only against signals.duckdb for the comparison itself — this function
+# is the one place in this module that writes, and it writes to its own
+# separate validator_verdicts table, never the signals/composites tables the
+# chip is built from.
+
+def persist_validator_verdicts(
+    country: str = "US", force_refresh: bool = False, conn=None,
+) -> int:
+    """Compute build_evidence_pack() and upsert one row per (axis,
+    validator_key) into validator_verdicts. Returns the row count written.
+
+    `conn`: pass an existing writable connection (e.g. from the pipeline,
+    which already holds one) to upsert through it; otherwise opens and closes
+    its own. Never raises on a benchmark-fetch failure — best-effort, same
+    convention as the other isolated-force passes (fed.*/market.*/order.*).
+    """
+    from indicators.models import ValidatorVerdict
+    from store.store import get_connection, init_schema, upsert_validator_verdicts
+
+    pack = build_evidence_pack(country=country, force_refresh=force_refresh, conn=conn)
+    as_of = pack["as_of"]
+
+    verdicts: list[ValidatorVerdict] = []
+    for axis, axis_result in pack["axes"].items():
+        chip_label = axis_result.get("chip")
+        for b in axis_result.get("benchmarks", []):
+            latest_date = b.get("latest_date")
+            verdicts.append(ValidatorVerdict(
+                country=country,
+                as_of=as_of,
+                axis=axis,
+                validator_key=b["benchmark"],
+                chip_label=chip_label,
+                benchmark_state=b.get("state"),
+                verdict=b["verdict"],
+                spearman_full=b.get("spearman_full"),
+                best_lag_months=b.get("best_lag_months"),
+                latest_value=b.get("latest_value"),
+                latest_date=latest_date,
+                note=b.get("note") or "",
+            ))
+
+    owns_conn = conn is None
+    if owns_conn:
+        conn = get_connection()
+        init_schema(conn)
+    try:
+        return upsert_validator_verdicts(conn, verdicts)
+    finally:
+        if owns_conn:
+            conn.close()
 
 
 def main(argv: Optional[list[str]] = None) -> int:

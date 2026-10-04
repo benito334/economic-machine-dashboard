@@ -60,6 +60,9 @@ Everything left from the audit, triaged by whether it's buildable without a paid
 - Internal-order stage classifier (blocked on V-Dem/GPR above, plus genuine design work).
 - Relative power index / world-trade-share (needs a cross-country aggregation layer — world totals as denominators — the per-country binding model doesn't support today).
 
+### External validator badges — item 1 shipped, items 2-3 open (2026-10-03)
+`docs/external_validators_plan.md` (dropped in by a parallel session, independently validated against both this repo and CreovaOne's consumer code before building — see `docs/worklog.md` 2026-10-03 entry 6). **Item 1 done**: CFNAI + trimmed-mean CPI/PCE live badges — new `validator_verdicts` table (schema locked to CreovaOne's `IndicatorsMachineMacroAdapter.validator_verdicts()` query, do not change column names/order without updating that side), pipeline Pass 10 (US-only, best-effort), Command Center badge pill, new `/validator-audit` Monitor page with per-benchmark dual-line cards. This unblocks CreovaOne's Beta Engine, which was explicitly parked on this table existing. **Item 2 open**: Philadelphia Fed SPF — not FRED-hosted (own CSV/XLS files), quarterly not monthly, needs its own loader + a lower-frequency "last SPF read: Qx 20xx" UI treatment rather than forcing it into the same AGREE/PARTIAL/CONTRADICT tally. **Item 3 confirmed dead** — Scotti Surprise Index has no live, structured, currently-maintained 2026 data feed (checked live); drop, don't design around it.
+
 ### Stale signal-count test assertion (pre-existing, not from this session's nav/color work)
 `tests/test_explorer.py::test_load_signal_overview_returns_all_signals` hardcodes an expected signal count (currently asserts 91; live count is 105 after this session's earlier `growth.output_gap`/`credit.*`/etc. additions). Bump the assertion to match `len(load_signal_overview())` the next time signals are touched.
 

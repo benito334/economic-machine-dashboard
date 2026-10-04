@@ -205,3 +205,30 @@ class DebtCycleStageSnapshot(BaseModel):
     # Lower = more risk (inverse direction of fx_debt_share).
     feat_fx_reserve_runway: Optional[float] = None
     fx_reserve_runway_flag: Optional[str] = None  # None / "warning" / "critical"
+
+
+class ValidatorVerdict(BaseModel):
+    """One external-validator comparison row (coverage-audit Phase, 2026-10-03:
+    docs/external_validators_plan.md) — the persisted form of one benchmark row
+    from indicators.audit_benchmarks.compare_axis(), one per (country, as_of,
+    axis, validator_key). Read-only cross-check against the chip; this table is
+    never read by the regime engine and never feeds a composite — see
+    audit_benchmarks.py's own NON-NEGOTIABLE header for why.
+
+    Schema is locked to CreovaOne's existing consumer query
+    (IndicatorsMachineMacroAdapter.validator_verdicts() in that project) —
+    column names/order here must not change without updating that side too.
+    """
+
+    country: str
+    as_of: date
+    axis: str                        # "growth" | "inflation"
+    validator_key: str                # e.g. "cfnai_ma3", "trimmed_pce"
+    chip_label: Optional[str] = None  # our own chip state at this as_of
+    benchmark_state: Optional[str] = None  # Above | Below | Neutral | Unknown
+    verdict: str                      # AGREE | PARTIAL | CONTRADICT | UNKNOWN
+    spearman_full: Optional[float] = None
+    best_lag_months: Optional[int] = None
+    latest_value: Optional[float] = None
+    latest_date: Optional[date] = None
+    note: str = ""

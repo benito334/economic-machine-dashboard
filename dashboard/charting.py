@@ -58,6 +58,7 @@ from dashboard import fed_monitor as _fed_monitor
 from dashboard import case_study_monitor as _case_study_monitor
 from dashboard import central_bank_monitor as _central_bank_monitor
 from dashboard import market_expectations as _market_exp
+from dashboard import validator_monitor as _validator_monitor
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
@@ -869,6 +870,7 @@ def _left_nav() -> html.Div:
             _nl("🗂", "Case Study Monitor", "/case-study", nav_id="navlnk-case-study"),
             _nl("📐", "Market Expectations", "/market-expectations", nav_id="navlnk-market-exp"),
             _nl("🏦", "Central Bank Monitor", "/central-bank", nav_id="navlnk-central-bank"),
+            _nl("🧪", "Validator Audit", "/validator-audit", nav_id="navlnk-validator-audit"),
         ], vertical=True, pills=True, className="mb-1"),
 
         # ── Signals — click to roll/unroll the force sub-pages ────────────────
@@ -1338,6 +1340,10 @@ def _page_central_bank_monitor() -> html.Div:
 
 def _page_market_expectations() -> html.Div:
     return _market_exp.get_layout()
+
+
+def _page_validator_audit() -> html.Div:
+    return _validator_monitor.get_layout()
 
 
 def _page_asset_environments() -> html.Div:
@@ -2168,6 +2174,7 @@ _PAGE_MAP = {
     "/case-study":    _page_case_study_monitor,
     "/central-bank":  _page_central_bank_monitor,
     "/market-expectations": _page_market_expectations,
+    "/validator-audit": _page_validator_audit,
     "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
     "/asset-environments": _page_asset_environments,
