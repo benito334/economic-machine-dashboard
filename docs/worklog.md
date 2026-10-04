@@ -145,6 +145,18 @@ Wired into Command Center's header as `persistence G {x%} · I {x%}`, directly b
 
 ---
 
+## 2026-10-04 (3) — Oracle Cloud VM migration: parallel instance live (not cut over)
+
+**What was done.** Stood up a full second copy of the dashboard on the Oracle Cloud ARM VM (Oracle Linux 9, aarch64, 10 GB RAM): installed Docker CE + compose plugin + git from the el9 repos, cloned the public repo, copied `.env` (secrets over scp only, never printed) with `HOST_DATA_DIR`/`HOST_DB_DIR`/`TZ` appended, rsynced the data dir (15 MB, excluding `traffic.log`/`schedule_status.json`), built all three images natively on ARM64, started `charting` + `scheduler` (never bare `up -d` — the one-shot `pipeline` service stays out of it). Both containers `restart: always`, Docker enabled at boot. Acceptance test = the project's own standard: the **full pipeline ran on the VM** (all 14 countries, Passes 1–12, same OK counts and the same known exit 1 as the NAS), then charting restarted; the dashboard's Command Center values matched the NAS exactly.
+
+**Key finding — the NAS `signals.duckdb` is 10.9 GB of which ~133 MB is real data.** Row-checked before assuming: 368,150 rows, zero duplicate `(id, as_of)` keys, 556 signals. The rest is dead space — the idempotent delete-then-insert upserts (`upsert_signals`, `upsert_composites`, …) never return freed blocks to the file, so it grows every pipeline run. Migrated a **compacted copy** (`ATTACH … (READ_ONLY)` + `COPY FROM DATABASE` into a fresh file, per-table row counts verified equal for all 6 tables; source untouched) — 10.9 GB → 133 MB, which also turned a 20-minute-class transfer into a few minutes. **The bloat continues on the VM:** one pipeline run grew the compact file 133 → 247 MB (~114 MB/run); at the 17 GB free left, a daily schedule fills the disk in roughly five months. Not fixed here (out of the migration's scope, and it needs a careful compaction step in the pipeline/scheduler) — **open follow-up, and the same bloat is eating NAS disk right now.**
+
+**Unrelated pre-existing finding.** Brazil's central-bank API (`api.bcb.gov.br`) does not resolve in DNS from the NAS either (9 errors in the NAS's own pipeline log), so the 3 BCB Brazil series fall back to stale cache on both machines — not a migration regression.
+
+**Deliberately NOT done (decisions for the owner).** (1) No public exposure — no OCI security-list ingress, no firewalld port; reached via `ssh -L`. Going public needs the ingress rule **and** `PUBLIC_MODE=1` (the VM currently runs operator mode with the write-capable Settings/Weight-Audit surfaces). (2) No cutover — the NAS keeps running with its own DB; both instances run their own 03:00 CT auto-import against the same free APIs. Facts for the VM are in memory `reference-oracle-vm`; update procedure: `git pull && sudo docker compose build charting pipeline scheduler && sudo docker compose up -d charting scheduler`.
+
+---
+
 ## 2026-10-04 (2) — Coverage Audit Phase C build-out: Late-Stage Bubble Gauge (3 of 6 dimensions)
 
 **The ask.** Build out the 3 dimensions the 2026-10-03 Phase C scoping pass confirmed were genuinely free-buildable: valuation (already built — the Buffett Indicator), leverage (FINRA margin debt, new), and positioning (CFTC leveraged-fund futures positioning, new). Explicitly NOT a 6-dimension gauge — that scoping pass was clear a full Dalio bubble composite was never realistic on free data; the other 3 dimensions (sentiment, forward-earnings pricing, new-buyer participation) stay confirmed dead ends.
