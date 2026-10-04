@@ -3813,31 +3813,31 @@ def update_regime_chart(
         _chart_card(
             f"Growth Force Z-Score (composite{win_label})", _series_df(g_col), g_cur, "z", "",
             zero_line=True, hline=_gz, hline_txt=f"+{_gz:.2f}", hline2=-_gz, hline2_txt=f"-{_gz:.2f}",
-            color=_COLORS[0], fill=True, vline_x=sel_ts, fmt_override=g_fmt,
+            color=_COLORS[0], fill=True, vline_x=sel_ts, sync_hover=True, fmt_override=g_fmt,
         ),
         _chart_card(
             "Growth Momentum (fraction of signals growth-positive)", _series_df("growth_momentum"),
             gm_cur, "pct", "", hline=0.5, hline_txt="50%",
-            color=_COLORS[0], vline_x=sel_ts, fmt_override=gm_fmt,
+            color=_COLORS[0], vline_x=sel_ts, sync_hover=True, fmt_override=gm_fmt,
         ),
         _chart_card(
             f"Inflation Force Z-Score (composite{win_label})", _series_df(i_col), i_cur, "z", "",
             zero_line=True, hline=_iz, hline_txt=f"+{_iz:.2f}", hline2=-_iz, hline2_txt=f"-{_iz:.2f}",
-            color=_INFLATION_COLOR, fill=True, vline_x=sel_ts, fmt_override=i_fmt,
+            color=_INFLATION_COLOR, fill=True, vline_x=sel_ts, sync_hover=True, fmt_override=i_fmt,
         ),
         _chart_card(
             "Inflation Momentum (fraction of signals inflation-positive)", _series_df("inflation_momentum"),
             im_cur, "pct", "", hline=0.5, hline_txt="50%",
-            color=_INFLATION_COLOR, vline_x=sel_ts, fmt_override=im_fmt,
+            color=_INFLATION_COLOR, vline_x=sel_ts, sync_hover=True, fmt_override=im_fmt,
         ),
         _chart_card(
             "Direction Agreement (legacy)", _series_df("confidence"), conf_cur, "pct",
             "Stored series — legacy definition; live Chip Agreement is in the card above.",
-            hline=0.5, hline_txt="50%", color=_COLORS[4], vline_x=sel_ts, fmt_override=conf_fmt,
+            hline=0.5, hline_txt="50%", color=_COLORS[4], vline_x=sel_ts, sync_hover=True, fmt_override=conf_fmt,
         ),
         _chart_card(
             f"Disequilibrium Score{diseq_label}", _series_df(d_col), d_cur, "", "",
-            color=_COLORS[1], fill=True, vline_x=sel_ts, fmt_override=d_fmt,
+            color=_COLORS[1], fill=True, vline_x=sel_ts, sync_hover=True, fmt_override=d_fmt,
         ),
     ]
 

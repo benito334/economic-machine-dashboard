@@ -282,6 +282,7 @@ def _build_force_cards(
             info="The composite score this force's chip/basket is built from.",
             df2=df2, color2=color2, label2=label2,
             fmt_override=f"{cur:+.3f}" if cur is not None else None,
+            sync_hover=True,
         ))
 
     if has_momentum:
@@ -297,6 +298,7 @@ def _build_force_cards(
             color="#E8A317",
             info="Momentum agreement fraction feeding this force's composite.",
             fmt_override=f"{mcur:.0%}" if mcur is not None else None,
+            sync_hover=True,
         ))
 
     signal_cards: list[html.Div] = []
@@ -310,6 +312,7 @@ def _build_force_cards(
             lbl, raw_df, raw_cur, "", f"Units: {units}",
             color=color,
             fmt_override=_fmt_value(raw_cur, units),
+            sync_hover=True,
         ))
 
         z_df = _series_df(z_wide, sid)
@@ -318,6 +321,7 @@ def _build_force_cards(
             f"{lbl} · Z-score", z_df, z_cur, "z", "Standardized within this basket.",
             zero_line=True, color=color,
             fmt_override=f"{z_cur:+.2f}" if z_cur is not None else None,
+            sync_hover=True,
         ))
 
     sections: list[html.Div] = []

@@ -1322,3 +1322,15 @@ class TestComputeRegimeConfidence:
 
         assert result["label"] == "Inflation"
         assert result["confidence"] == pytest.approx(1.0)
+
+
+def test_chart_card_sync_hover_flag_marks_card_and_enables_spikes():
+    import pandas as pd
+    from dashboard.shared_components import _chart_card
+    df = pd.DataFrame({"as_of": pd.to_datetime(["2024-01-01", "2024-02-01"]), "value": [1.0, 2.0]})
+    on = _chart_card("t", df, 2.0, "z", "", sync_hover=True)
+    off = _chart_card("t", df, 2.0, "z", "")
+    assert on.className == "sync-hover-card" and off.className is None
+    fig = on.children[-1].figure
+    assert fig.layout.xaxis.showspikes and fig.layout.hovermode == "x"
+    assert not off.children[-1].figure.layout.xaxis.showspikes
