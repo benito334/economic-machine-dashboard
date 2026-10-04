@@ -1252,3 +1252,75 @@ class TestDynamicToggleImmediateApply:
         # the store — must not rewrite the store (would cause a needless re-render).
         assert _apply_dynamic_toggle([], {"dynamic": False}) is no_update
         assert _apply_dynamic_toggle(["dynamic"], {"dynamic": True}) is no_update
+
+
+# ── compute_regime_confidence (coverage-audit Phase B, 2026-10-03) ────────────
+
+class TestComputeRegimeConfidence:
+    _T = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05}
+
+    @staticmethod
+    def _comp(growth_vals, inflation_vals=None):
+        n = len(growth_vals)
+        idx = pd.date_range("2020-01-31", periods=n, freq="ME")
+        return pd.DataFrame({
+            "growth_score": growth_vals,
+            "inflation_score": inflation_vals or [0.0] * n,
+        }, index=idx)
+
+    def test_persistently_growing_reading_has_high_confidence(self):
+        from dashboard.charting import compute_regime_confidence
+
+        # Steady +0.1/month climb starting well above threshold: every month
+        # from the 2nd onward clears both the Z (>0.5) and momentum (>0.05)
+        # legs, so every historical "Growth" month is followed by another one.
+        vals = [round(1.0 + 0.1 * i, 2) for i in range(10)]
+        comp = self._comp(vals)
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T, force="growth")
+
+        assert result["label"] == "Growth"
+        assert result["confidence"] == pytest.approx(1.0)
+        assert result["n"] > 0
+
+    def test_flip_flopping_reading_has_low_confidence(self):
+        from dashboard.charting import compute_regime_confidence
+
+        # Alternates between a high Z/positive-momentum month (classifies
+        # Growth) and a sharp drop back to zero (classifies Transition) —
+        # every historical Growth month is immediately followed by Transition,
+        # so Growth never actually "holds".
+        vals = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
+        comp = self._comp(vals)
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T, force="growth")
+
+        assert result["label"] == "Growth"  # today (last point) is a Growth month
+        assert result["confidence"] == pytest.approx(0.0)
+        assert result["n"] == 4  # idx 1,3,5,7 — idx9 (today) excluded from the precedent count
+
+    def test_transition_today_returns_no_confidence_claim(self):
+        from dashboard.charting import compute_regime_confidence
+
+        # Flat near zero throughout -> Transition every month, including today.
+        comp = self._comp([0.0] * 10)
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T, force="growth")
+
+        assert result["label"] == "Transition"
+        assert result["confidence"] is None
+
+    def test_too_short_history_returns_none(self):
+        from dashboard.charting import compute_regime_confidence
+
+        comp = self._comp([1.0])
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T, force="growth")
+
+        assert result == {"confidence": None, "label": None, "n": 0}
+
+    def test_inflation_force_reads_the_inflation_column(self):
+        from dashboard.charting import compute_regime_confidence
+
+        vals = [round(1.0 + 0.1 * i, 2) for i in range(10)]
+        comp = self._comp([0.0] * 10, inflation_vals=vals)
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T, force="inflation")
+
+        assert result["label"] == "Inflation"
+        assert result["confidence"] == pytest.approx(1.0)

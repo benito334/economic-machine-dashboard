@@ -74,6 +74,23 @@ def _fmt(v: Optional[float], spec: str = "+.3f") -> str:
     return format(float(v), spec)
 
 
+_REGIME_CONFIDENCE_CUTOFF = 0.70  # coverage-audit Phase B's suggested threshold
+
+
+def _conf_str(c: dict) -> str:
+    conf = c.get("confidence")
+    if conf is None:
+        return "—"
+    return f"{conf:.0%}" + (" (uncertain)" if conf < _REGIME_CONFIDENCE_CUTOFF else "")
+
+
+def _conf_row_color(g_conf: dict, i_conf: dict) -> str:
+    for c in (g_conf, i_conf):
+        if c.get("confidence") is not None and c["confidence"] < _REGIME_CONFIDENCE_CUTOFF:
+            return RED
+    return "var(--muted-color)"
+
+
 def _latest(hist: pd.DataFrame, col: str) -> Optional[float]:
     if hist.empty or col not in hist.columns:
         return None
@@ -214,6 +231,7 @@ def render_command_center(country_data, page_trigger, thresholds,
     from dashboard.charting import (
         _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
         _INFLATION_WINDOW_COL, _classify_regime, compute_dynamic_thresholds,
+        compute_regime_confidence,
     )
 
     country = str(country_data or "US").upper()
@@ -275,6 +293,13 @@ def render_command_center(country_data, page_trigger, thresholds,
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
                                       g_history=hist[g_col], i_history=hist[i_col])
 
+    # Probabilistic regime confidence (coverage-audit Phase B, 2026-10-03):
+    # empirical frequency that a reading like today's actually held into the
+    # next month, historically. A complement to the chip, never a
+    # replacement — g_chip/i_chip above are unchanged by this.
+    g_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "growth")
+    i_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "inflation")
+
     # ── Inflation anchored to the target (Ray ruling 2026-10-03) ─────────────
     # "The main chip should be the distance from target. That's the number that
     #  matters for policy and markets. But you can also show a relative Z-score
@@ -315,6 +340,17 @@ def render_command_center(country_data, page_trigger, thresholds,
                       "in the same direction as its chip's heading (Ray audit "
                       "2026-07-06; replaces the legacy quadrant-based confidence).",
                 style={"fontSize": "0.74rem", "color": "var(--muted-color)"}),
+            html.Span(
+                "persistence "
+                + f"G {_conf_str(g_conf)}" + " · " + f"I {_conf_str(i_conf)}",
+                title="Probabilistic regime confidence — the empirical frequency "
+                      "that a reading carrying today's chip label has historically "
+                      "held into the following month (coverage-audit Phase B, "
+                      "2026-10-03). A complement to the chip above, not a "
+                      "replacement — the chip itself is unchanged by this; "
+                      "'(uncertain)' flags below the audit's suggested ~70% cutoff. "
+                      "'—' on Transition, which makes no persistence claim.",
+                style={"fontSize": "0.74rem", "color": _conf_row_color(g_conf, i_conf)}),
             html.Span(f"diseq {_fmt(diseq, '.2f')}",
                       style={"fontSize": "0.74rem", "color": "var(--muted-color)"}),
             html.Span(f"window {win_label}",

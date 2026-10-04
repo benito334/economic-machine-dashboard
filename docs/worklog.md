@@ -42,6 +42,24 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-03 (4) — Coverage Audit Phase B: "pushing on a string" flag + probabilistic regime confidence
+
+**The ask.** With the Dashboard IA Blueprint's chart-card phases done (Phase 3, Phase 4; Phase 5 explicitly deferred — its targets are scatter plots, cross-country tables, and heatmaps, not single-series charts, so a uniform card conversion doesn't apply and the user chose to skip it for now), return to the remaining coverage-audit items. Phase B combines signals already live elsewhere with more design judgment than Phase A's mechanical items.
+
+**Item 7 — "pushing on a string" QE-effectiveness flag.** `case_study_monitor.py` already showed the Fed balance-sheet-YoY chart beside the private-credit-creation chart with prose explaining the pattern, but computed no actual flag. Added `_pushing_on_a_string(bs_yoy_pct, priv_credit_pp)`: fires when balance-sheet YoY > +5% (reused verbatim — not reinvented — from `central_bank_monitor.py`'s own `_mp_read()` MP2 cutoff) AND private credit creation ≤ +0.5pp (reused from this page's own `priv_read` "not expanding" cutoff). Renders as a 5th header chip, same "separate badge, never conflate alarms" convention as Sovereign Squeeze / Debt-Income Spread. Checked the live number before calling it done: balance sheet is +2.4% YoY right now, well under the QE threshold, so the flag correctly stays dormant despite private credit actively deleveraging (-1.9pp) — confirmed via a standalone script, not just "didn't crash."
+
+**Item 8 — probabilistic regime confidence.** New `compute_regime_confidence()` in `dashboard/charting.py`, placed beside `_classify_regime()`/`compute_dynamic_thresholds()` since it's a genuine regime-engine concern, not a page-local helper. Operationalized "historical-frequency confidence" as: of all past months carrying the SAME chip label as today, what fraction were followed (next month) by that label holding rather than reversing? Replays the production `_classify_regime()` call month-by-month — same function the live chip uses, so there is exactly one classification implementation — against whatever windowed composite history the caller already has loaded (no new DB connection, no point-in-time Z recompute; an empirical hold-rate-so-far doesn't need backtest-grade PIT discipline the way an accuracy claim would). Mirrors `indicators/backtest.py`'s own `classify_history()` replay loop, including its precedent of not passing the sustained-months history guard.
+
+Wired into Command Center's header as `persistence G {x%} · I {x%}`, directly beside the existing Chip Direction Agreement stat — "(uncertain)" below the audit's suggested 70% cutoff, "—" when today's chip is Transition (no persistence claim makes sense on the neutral band). The underlying `g_chip`/`i_chip` values are completely unchanged by this — a complement, never a replacement, exactly as specified. Live right now: Growth reads 31% (uncertain) — today's Growth reading has a genuinely weak track record of holding — Inflation reads "—" (currently Transition).
+
+**Not done — Regime Map.** The audit item named both Command Center and Regime Map as display targets; only Command Center shipped this session. Regime Map's own header/chip area would need the same treatment — flagged as a quick follow-up, not forgotten.
+
+**Verification.** 5 new tests for `compute_regime_confidence` (`tests/test_charting.py::TestComputeRegimeConfidence` — persistent-growth→100% confidence, flip-flopping→0% confidence, Transition→no claim, too-short-history→None, inflation-column routing) + 7 new tests for `_pushing_on_a_string` (`tests/test_case_study_monitor.py`, new file — fires/doesn't-fire across the threshold boundary, missing-input guards, plus a basic layout smoke test matching the Fed Monitor/Market Expectations convention). Full suite: 632 passed, zero exclusions. Live-verified both features in the browser plus the live-data sanity check above; re-confirmed Fed Monitor and Case Study Monitor's existing chips/charts still render correctly (no regressions from the new import/helper additions).
+
+**Next.** Phase C (bubble-gauge scoping): check `indicators/valuations.py`'s existing unconnected Buffett Indicator and FINRA's free margin-debt data before building anything, per the audit's own instruction to scope before committing to a build. Then the Regime Map follow-up noted above.
+
+---
+
 ## 2026-10-03 — Independent chip-audit skill + first audit: the inflation score is a window artifact
 
 **The ask.** Build a skill that acts as an independent agent trained in the Dalio framework and reviews the dashboard's indicator determinations for accuracy, using outside sources to ground-truth what we show — starting with Growth and Inflation only, with historical-episode scoring to follow.

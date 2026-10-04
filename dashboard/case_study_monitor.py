@@ -48,11 +48,32 @@ def _yoy_from_level(concept: str, periods: int = 4) -> pd.DataFrame:
     return out
 
 
+# Coverage-audit Phase B (2026-10-03): the "pushing on a string" cross-check
+# the course's own chart juxtaposition (section 3 below) implies but never
+# computed — QE underway without private credit following. Thresholds are
+# reused, not invented: >+5% balance-sheet YoY is central_bank_monitor.py's
+# own MP2 cutoff (_mp_read); <=0.5pp private credit is this page's own
+# priv_read "not expanding" cutoff, just below. A separate badge, not folded
+# into either existing chip — same convention as Sovereign Squeeze /
+# Debt-Income Spread elsewhere on the dashboard.
+def _pushing_on_a_string(bs_yoy_pct, priv_credit_pp):
+    if bs_yoy_pct is None or priv_credit_pp is None:
+        return None
+    if bs_yoy_pct > 5.0 and priv_credit_pp <= 0.5:
+        return {
+            "label": f"Pushing on a string — balance sheet {bs_yoy_pct:+.1f}% YoY, "
+                     f"private credit {priv_credit_pp:+.1f}pp",
+            "color": _RED,
+        }
+    return None
+
+
 def _header() -> html.Div:
     gap = _cur("growth.output_gap")
     priv = _cur("credit.private_credit_creation")
     home = _cur("growth.home_prices")
     dxy = _cur("currency.broad_dollar_index")
+    bs_yoy = _pct(_cur("policy.fed_balance_sheet"))
 
     gap_pct = None if gap is None else gap * 100.0
     gap_read = ("running hot" if (gap_pct or 0) > 1.0 else
@@ -62,6 +83,8 @@ def _header() -> html.Div:
     priv_read = ("private credit expanding" if (priv or 0) > 0.5 else
                  "private deleveraging" if (priv or 0) < -0.5 else "flat")
     priv_col = _RED if (priv or 0) > 0.5 else _GREEN if (priv or 0) < -0.5 else _AMBER
+
+    pots = _pushing_on_a_string(bs_yoy, priv)
 
     return html.Div([
         html.Div([
@@ -76,6 +99,7 @@ def _header() -> html.Div:
             _chip(f"Private credit creation {priv:+.1f}pp · {priv_read}" if priv is not None else "credit creation —", priv_col),
             _chip(f"Home prices {home*100:+.1f}% YoY" if home is not None else "home prices —", _BLUE),
             _chip(f"Dollar index {dxy*100:+.1f}% YoY" if dxy is not None else "dollar index —", _GREY),
+            *([_chip(pots["label"], pots["color"])] if pots else []),
         ], style={"display": "flex", "gap": "10px", "flexWrap": "wrap", "marginTop": "8px"}),
     ], style={"borderBottom": "1px solid var(--border-color)", "paddingBottom": "12px"})
 

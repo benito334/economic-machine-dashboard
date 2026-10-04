@@ -2672,6 +2672,70 @@ def _classify_regime(
     return g_regime, i_regime
 
 
+def compute_regime_confidence(comp_input: "pd.DataFrame", dynamic: bool,
+                               thresholds: "dict | None", force: str) -> dict:
+    """Probabilistic regime confidence (coverage-audit Phase B, 2026-10-03):
+    the empirical frequency that a historical reading carrying TODAY'S chip
+    label actually held into the following month, rather than reversing to
+    Transition or the opposite chip.
+
+    A complement to — never a replacement for — the dynamic/fixed Z+momentum
+    thresholds that decide the chip itself: this function never changes what
+    _classify_regime returns, it only reports how often history-to-date has
+    borne out a reading like today's. Callers display "uncertain" below the
+    audit's suggested ~70% cutoff without altering the underlying label.
+
+    Mirrors indicators/backtest.py's classify_history() replay loop (same
+    production _classify_regime call; no sustained-months history arg,
+    consistent with that module's own simplification) but runs against
+    whatever comp_input the caller already has loaded — no DB connection, no
+    point-in-time Z recompute — since an empirical hold-rate-so-far stat
+    doesn't need the look-ahead discipline a backtest accuracy claim would.
+
+    comp_input: a frame with "growth_score"/"inflation_score" columns (e.g.
+    from _dyn_threshold_input(), so the SAME windowed series the live chip
+    uses). force: "growth" or "inflation".
+    """
+    base = dict(_DEFAULT_THRESHOLDS)
+    if thresholds:
+        base.update(thresholds)
+    comp = comp_input.dropna(subset=["growth_score", "inflation_score"], how="all")
+    if len(comp) < 2:
+        return {"confidence": None, "label": None, "n": 0}
+
+    dyn_df = compute_dynamic_thresholds(
+        comp, base_gz=base["gz"], base_iz=base["iz"],
+    ) if dynamic else None
+
+    g_delta = comp["growth_score"].diff()
+    i_delta = comp["inflation_score"].diff()
+    labels = []
+    for pos in range(len(comp)):
+        t = dict(base)
+        if dyn_df is not None:
+            t["gz"] = float(dyn_df["dyn_gz"].iloc[pos])
+            t["iz"] = float(dyn_df["dyn_iz"].iloc[pos])
+        g_chip, i_chip = _classify_regime(
+            comp["growth_score"].iloc[pos], comp["inflation_score"].iloc[pos],
+            g_delta.iloc[pos], i_delta.iloc[pos], t,
+        )
+        labels.append(g_chip if force == "growth" else i_chip)
+
+    s = pd.Series(labels, index=comp.index)
+    current = s.iloc[-1]
+    if current is None or current == "Transition":
+        return {"confidence": None, "label": current, "n": 0}
+
+    hist_s = s.iloc[:-1]             # each has a known next-month outcome
+    next_s = s.shift(-1).iloc[:-1]   # that outcome
+    same_mask = hist_s == current
+    n = int(same_mask.sum())
+    if n == 0:
+        return {"confidence": None, "label": current, "n": 0}
+    held = next_s[same_mask] == current
+    return {"confidence": float(held.mean()), "label": current, "n": n}
+
+
 def _dyn_threshold_input(comp: "pd.DataFrame", g_col: str, i_col: str) -> "pd.DataFrame":
     """Frame for compute_dynamic_thresholds using the ACTIVE score columns.
 
