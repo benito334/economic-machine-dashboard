@@ -86,13 +86,30 @@ def _info_icon(text: str) -> html.Span:
     ])
 
 
+def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """'#5CBA8A' -> 'rgba(92,186,138,0.12)'. Falls back to the color as-is if
+    it isn't a plain 6-digit hex (e.g. an already-rgba string)."""
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return hex_color
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read: str,
-                *, hline: float | None = None, hline_txt: str = "", zero_line: bool = False,
+                *, hline: float | None = None, hline_txt: str = "",
+                hline2: float | None = None, hline2_txt: str = "",
+                zero_line: bool = False,
                 color: str = BLUE, fill: bool = False, info: str = "",
                 df2: "pd.DataFrame | None" = None, color2: str = RED,
-                label: str | None = None, label2: str | None = None) -> html.Div:
+                label: str | None = None, label2: str | None = None,
+                fmt_override: str | None = None) -> html.Div:
     """Single-line by default. Pass df2 (+ optional label/label2) for a dual-line
-    overlay card — e.g. Real Growth vs. Potential Growth, Short Rate vs. Long Rate."""
+    overlay card — e.g. Real Growth vs. Potential Growth, Short Rate vs. Long Rate.
+    hline/hline2 draw one or two dashed reference lines (e.g. symmetric ± regime
+    thresholds). fmt_override replaces the computed `_fmt(cur, unit)` header value
+    with an already-formatted string — for callers whose unit vocabulary (e.g. a
+    signal's native `units`, or a signed Z-score) isn't one `_fmt` knows."""
     dual = df2 is not None and not df2.empty
     fig = go.Figure()
     if df is not None and not df.empty:
@@ -100,7 +117,7 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
             x=df["as_of"], y=df["value"], mode="lines", name=label or title,
             line=dict(color=color, width=1.7),
             fill="tozeroy" if fill else None,
-            fillcolor="rgba(76,155,232,0.12)" if fill else None,
+            fillcolor=_hex_to_rgba(color, 0.12) if fill else None,
             hovertemplate="%{x|%b %Y}: %{y:.2f}<extra></extra>"))
     if dual:
         fig.add_trace(go.Scatter(
@@ -113,6 +130,10 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
         fig.add_hline(y=hline, line=dict(color=AMBER, dash="dash", width=1),
                       annotation_text=hline_txt, annotation_position="top left",
                       annotation_font=dict(size=9, color=AMBER))
+    if hline2 is not None:
+        fig.add_hline(y=hline2, line=dict(color=AMBER, dash="dash", width=1),
+                      annotation_text=hline2_txt, annotation_position="bottom left",
+                      annotation_font=dict(size=9, color=AMBER))
     lay = figure_layout(DEFAULT_THEME)
     lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18),
                xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"))
@@ -122,14 +143,15 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
     else:
         lay.update(showlegend=False)
     fig.update_layout(**lay)
+    value_str = fmt_override if fmt_override is not None else _fmt(cur, unit)
     return html.Div([
         html.Div([
             html.Span(title, style={"fontSize": "0.78rem", "fontWeight": "700",
                                     "color": "var(--font-color)"}),
             _info_icon(info),
-            html.Span(_fmt(cur, unit), style={"fontSize": "0.95rem", "fontWeight": "700",
-                                              "fontFamily": "monospace", "color": color,
-                                              "float": "right"}),
+            html.Span(value_str, style={"fontSize": "0.95rem", "fontWeight": "700",
+                                        "fontFamily": "monospace", "color": color,
+                                        "float": "right"}),
         ]),
         html.Div(read, style={"fontSize": "0.66rem", "color": "var(--muted-color)",
                               "marginBottom": "2px", "minHeight": "1.6em"}),

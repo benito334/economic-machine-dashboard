@@ -3,8 +3,12 @@
 Layout per page:
   1. Banner strip  — Force Z, Momentum, Active signals, In agreement, Threshold, Lookback
   2. Collapsible 8-column signal table  (same as /signals, one force only)
-  3. Stacked time-series chart  — composite Z on top, then per-signal dual panels
-     (raw value + Z-score), shared spike hover across all subplots.
+  3. Chart cards — the shared Monitor-card style (`dashboard.shared_components.
+     _chart_card`/`_section`, 2026-10 IA cleanup Phase 4): a Composite Z card
+     (+ Momentum card where the force has one), then one raw-value + one
+     Z-score card per basket signal. Replaces the previous single stacked
+     make_subplots mega-chart with per-card hover, consistent with every
+     other chart surface on the dashboard.
 
 Routes: /signals/growth  /signals/inflation  /signals/rate  /signals/credit  /signals/volatility
 """
@@ -15,11 +19,8 @@ import math
 from typing import Optional
 
 import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-import dash_bootstrap_components as dbc
-from dash import Input, Output, dcc, html, no_update
+from dash import Input, Output, html, no_update
 
 from dashboard.charting_data import (
     load_composite_component_status,
@@ -41,7 +42,7 @@ from dashboard.signals_page import (
     _momentum_score_color,
     _semantic_z_color,
 )
-from dashboard.themes import figure_layout
+from dashboard.shared_components import _chart_card, _fmt_value, _section
 from indicators.composites import load_composites_config
 
 # ── Force config ───────────────────────────────────────────────────────────────
@@ -64,20 +65,11 @@ _INFLATION_WINDOW_COL = {60: "60m", 90: "90m", 120: "120m"}
 # ── Layout factory ─────────────────────────────────────────────────────────────
 
 def get_layout(force: str) -> html.Div:
-    fc = _FORCE_CFG[force]
     return html.Div(
         [
             html.Div(id=f"fd-banner-{force}"),
             html.Div(id=f"fd-table-{force}", style={"marginTop": "10px"}),
-            html.Div(
-                dcc.Graph(
-                    id=f"fd-chart-{force}",
-                    config={"displayModeBar": False},
-                    style={"width": "100%"},
-                ),
-                style={"marginTop": "18px"},
-            ),
-            dcc.Store(id=f"fd-hover-init-{force}", data=0),
+            html.Div(id=f"fd-chart-{force}", style={"marginTop": "6px"}),
         ],
         className="pe-2",
         style={"maxWidth": "1600px", "margin": "0 auto"},
@@ -205,39 +197,28 @@ def _build_banner(
     )
 
 
-# ── Chart builder ──────────────────────────────────────────────────────────────
+# ── Chart builder — shared Monitor-card style ───────────────────────────────
 
-_COMPOSITE_H = 160   # px — composite Z panel
-_MOMENTUM_H  = 110   # px — composite momentum panel
-_SIGNAL_PH   = 100   # px — each raw/Z sub-panel
-
-# Per-force fill colours for the composite Z area (matches force brand colour)
-_FORCE_FILL: dict[str, str] = {
-    "growth":    "rgba(92, 186, 138, 0.15)",
-    "inflation": "rgba(232, 115, 76, 0.15)",
-    "rate":      "rgba(76, 155, 232, 0.15)",
-    "credit":    "rgba(176, 127, 212, 0.15)",
-    "volatility":"rgba(244, 200, 66, 0.12)",
-    "productivity":"rgba(63, 191, 176, 0.12)",
-}
-_MOM_COLOR = "#E8A317"          # amber — distinct from all force colours
-_MOM_FILL  = "rgba(232, 163, 23, 0.12)"
-_TH_LINE   = dict(color="rgba(232, 163, 23, 0.40)", width=1, dash="dash")
+def _series_df(wide: pd.DataFrame, sid: str) -> pd.DataFrame:
+    """One signal's column from a load_multi_signal_history() wide frame,
+    reshaped to the {"as_of", "value"} long form _chart_card expects."""
+    if wide.empty or sid not in wide.columns:
+        return pd.DataFrame(columns=["as_of", "value"])
+    s = wide[sid].dropna()
+    return pd.DataFrame({"as_of": s.index, "value": s.values})
 
 
-def _build_force_chart(
+def _build_force_cards(
     force: str,
-    country: str,
     signal_ids: list[str],
     labels: dict[str, str],
     units_map: dict[str, str],
     comp_hist: pd.DataFrame,
     raw_wide: pd.DataFrame,
     z_wide: pd.DataFrame,
-    theme_name: str = "carbon",
     score_col: Optional[str] = None,
     thresholds: Optional[dict] = None,
-) -> go.Figure:
+) -> list[html.Div]:
     fc = _FORCE_CFG[force]
     color = fc["color"]
     score_col = score_col or fc["score_col"]
@@ -251,40 +232,9 @@ def _build_force_chart(
         and not comp_hist[mom_col].dropna().empty
     )
 
-    n_signals       = len(signal_ids)
-    momentum_offset = 1 if has_momentum else 0
-    n_rows          = 1 + momentum_offset + n_signals * 2
-
-    composite_h = _COMPOSITE_H
-    momentum_h  = _MOMENTUM_H if has_momentum else 0
-    signal_ph   = _SIGNAL_PH
-    total_h     = composite_h + momentum_h + n_signals * 2 * signal_ph
-
-    row_heights = [composite_h / total_h]
-    if has_momentum:
-        row_heights.append(momentum_h / total_h)
-    row_heights += [signal_ph / total_h] * (n_signals * 2)
-
-    subplot_titles: list[str] = [f"{fc['label']} Composite Z-score"]
-    if has_momentum:
-        subplot_titles.append(f"{fc['label']} Momentum (signal agreement %)")
-    for sid in signal_ids:
-        lbl = labels.get(sid, sid.split(".")[-1].replace("_", " ").title())
-        subplot_titles += [lbl, f"{lbl}  ·  Z-score"]
-
-    fig = make_subplots(
-        rows=n_rows,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.012,
-        row_heights=row_heights,
-        subplot_titles=subplot_titles,
-    )
-
-    # ── Normalize signal dates to month-start to align with monthly composites ─
-    # Only resample when a composite row exists (all forces are composites now,
-    # including Volatility since 2026-07-05 — daily signals like VIX/realized_vol
-    # take their month-end last value, same as Rate's daily fed_funds/DFF).
+    # Normalize signal dates to month-start to align with monthly composites —
+    # daily signals like VIX/realized_vol/fed_funds take their month-end last
+    # value, same convention the composite engine itself uses.
     if has_composite:
         if not raw_wide.empty:
             raw_wide = raw_wide.copy()
@@ -295,121 +245,99 @@ def _build_force_chart(
             z_wide.index = pd.to_datetime(z_wide.index).to_period("M").to_timestamp()
             z_wide = z_wide.groupby(z_wide.index).last()
 
-    # ── Row 1: Composite Z — filled area + threshold lines ────────────────────
+    composite_cards: list[html.Div] = []
+
     if has_composite:
-        ser = comp_hist[["as_of", score_col]].dropna().copy()
+        ser = comp_hist[["as_of", score_col]].dropna().rename(columns={score_col: "value"})
+        ser = ser.copy()
         ser["as_of"] = pd.to_datetime(ser["as_of"]).dt.to_period("M").dt.to_timestamp()
-        fig.add_trace(go.Scatter(
-            x=ser["as_of"], y=ser[score_col],
-            name="Composite Z",
-            line=dict(color=color, width=1.5),
-            fill="tozeroy",
-            fillcolor=_FORCE_FILL.get(force, "rgba(128,128,128,0.15)"),
-            hovertemplate="%{x|%b %Y}: %{y:.3f}<extra></extra>",
-            showlegend=False,
-        ), row=1, col=1)
-        fig.add_hline(y=0, line_dash="dot", line_color="#555", row=1, col=1)
+        cur = float(ser["value"].iloc[-1]) if not ser.empty else None
+
         thresh_key = fc["thresh_key"]
+        hline = hline2 = None
+        hline_txt = hline2_txt = ""
         if thresh_key:
             tv = float(thresholds.get(thresh_key, 0.5))
-            fig.add_hline(y= tv, line=_TH_LINE, row=1, col=1)
-            fig.add_hline(y=-tv, line=_TH_LINE, row=1, col=1)
+            hline,  hline_txt  = tv,  f"+{tv:.2f}"
+            hline2, hline2_txt = -tv, f"-{tv:.2f}"
 
+        df2 = label2 = None
+        color2 = _GROWTH_COLOR
         # Productivity page: overlay cyclical growth so "cyclically strong but
         # trend-decelerating" (or the reverse) is visible at a glance — Ray's
         # framing of the trend line vs. the short-term cycle (roadmap Phase B).
         if force == "productivity" and "growth_score" in comp_hist.columns:
-            g_ser = comp_hist[["as_of", "growth_score"]].dropna().copy()
-            g_ser["as_of"] = pd.to_datetime(g_ser["as_of"]).dt.to_period("M").dt.to_timestamp()
-            fig.add_trace(go.Scatter(
-                x=g_ser["as_of"], y=g_ser["growth_score"],
-                name="Cyclical growth Z",
-                line=dict(color=_GROWTH_COLOR, width=1.0, dash="dot"),
-                hovertemplate="cyclical growth %{x|%b %Y}: %{y:.3f}<extra></extra>",
-                showlegend=True,
-            ), row=1, col=1)
-            fig.update_layout(legend=dict(
-                orientation="h", yanchor="bottom", y=1.005, xanchor="left", x=0,
-                font=dict(size=9), bgcolor="rgba(0,0,0,0)",
-            ))
+            g = comp_hist[["as_of", "growth_score"]].dropna().rename(columns={"growth_score": "value"})
+            if not g.empty:
+                g = g.copy()
+                g["as_of"] = pd.to_datetime(g["as_of"]).dt.to_period("M").dt.to_timestamp()
+                df2, label2 = g, "Cyclical growth Z"
 
-    # ── Row 2 (optional): Composite Momentum — amber fill ─────────────────────
+        composite_cards.append(_chart_card(
+            f"{fc['label']} Composite Z-score", ser, cur, "z",
+            f"Weighted Z-score across the {fc['label'].lower()} basket."
+            + (f" Dashed lines = ±{hline:.2f} regime threshold." if hline is not None else ""),
+            hline=hline, hline_txt=hline_txt, hline2=hline2, hline2_txt=hline2_txt,
+            zero_line=True, color=color, fill=True,
+            info="The composite score this force's chip/basket is built from.",
+            df2=df2, color2=color2, label2=label2,
+            fmt_override=f"{cur:+.3f}" if cur is not None else None,
+        ))
+
     if has_momentum:
-        mom_ser = comp_hist[["as_of", mom_col]].dropna().copy()
+        mom_ser = comp_hist[["as_of", mom_col]].dropna().rename(columns={mom_col: "value"})
+        mom_ser = mom_ser.copy()
         mom_ser["as_of"] = pd.to_datetime(mom_ser["as_of"]).dt.to_period("M").dt.to_timestamp()
-        fig.add_trace(go.Scatter(
-            x=mom_ser["as_of"], y=mom_ser[mom_col],
-            name="Momentum",
-            line=dict(color=_MOM_COLOR, width=1.5),
-            fill="tozeroy",
-            fillcolor=_MOM_FILL,
-            hovertemplate="%{x|%b %Y}: %{y:.0%}<extra></extra>",
-            showlegend=False,
-        ), row=2, col=1)
-        fig.add_hline(y=0.5, line_dash="dot", line_color="#555", row=2, col=1)
-        fig.update_yaxes(tickformat=".0%", range=[0, 1],
-                         title_text="%", title_font_size=9, row=2, col=1)
+        mcur = float(mom_ser["value"].iloc[-1]) if not mom_ser.empty else None
+        composite_cards.append(_chart_card(
+            f"{fc['label']} Momentum", mom_ser, mcur, "pct",
+            "Share of basket signals moving in their 'good' direction. "
+            "50% = no net agreement either way.",
+            hline=0.5, hline_txt="50%",
+            color="#E8A317",
+            info="Momentum agreement fraction feeding this force's composite.",
+            fmt_override=f"{mcur:.0%}" if mcur is not None else None,
+        ))
 
-    # ── Rows 3+ : per-signal dual panels ──────────────────────────────────────
-    for i, sid in enumerate(signal_ids):
-        row_raw = 2 + momentum_offset + i * 2
-        row_z   = 3 + momentum_offset + i * 2
-        lbl     = labels.get(sid, sid.split(".")[-1].replace("_", " ").title())
-        units   = units_map.get(sid, "value")
+    signal_cards: list[html.Div] = []
+    for sid in signal_ids:
+        lbl   = labels.get(sid, sid.split(".")[-1].replace("_", " ").title())
+        units = units_map.get(sid, "value")
 
-        if sid in raw_wide.columns:
-            raw_s = raw_wide[sid].dropna()
-            if not raw_s.empty:
-                fig.add_trace(go.Scatter(
-                    x=raw_s.index, y=raw_s.values,
-                    name=lbl,
-                    line=dict(color=color, width=1.4),
-                    hovertemplate=f"%{{x|%b %Y}}: %{{y:.4g}} ({units})<extra></extra>",
-                    showlegend=False,
-                ), row=row_raw, col=1)
+        raw_df = _series_df(raw_wide, sid)
+        raw_cur = float(raw_df["value"].iloc[-1]) if not raw_df.empty else None
+        signal_cards.append(_chart_card(
+            lbl, raw_df, raw_cur, "", f"Units: {units}",
+            color=color,
+            fmt_override=_fmt_value(raw_cur, units),
+        ))
 
-        if sid in z_wide.columns:
-            z_s = z_wide[sid].dropna()
-            if not z_s.empty:
-                fig.add_trace(go.Scatter(
-                    x=z_s.index, y=z_s.values,
-                    name=f"{lbl} Z",
-                    mode="lines",
-                    line=dict(color=color, width=1.2),
-                    hovertemplate=f"%{{x|%b %Y}}  Z=%{{y:+.2f}}<extra></extra>",
-                    showlegend=False,
-                ), row=row_z, col=1)
-                fig.add_hline(y=0, line_dash="dot",
-                              line_color="rgba(130,130,130,0.35)", line_width=1,
-                              row=row_z, col=1)
+        z_df = _series_df(z_wide, sid)
+        z_cur = float(z_df["value"].iloc[-1]) if not z_df.empty else None
+        signal_cards.append(_chart_card(
+            f"{lbl} · Z-score", z_df, z_cur, "z", "Standardized within this basket.",
+            zero_line=True, color=color,
+            fmt_override=f"{z_cur:+.2f}" if z_cur is not None else None,
+        ))
 
-        fig.update_yaxes(title_text=units, title_font_size=9, row=row_raw, col=1)
-        fig.update_yaxes(title_text="Z", title_font_size=9, zeroline=False,
-                         row=row_z, col=1)
+    sections: list[html.Div] = []
+    if composite_cards:
+        sections.append(_section(f"{fc['label']} composite", "", composite_cards))
+    if signal_cards:
+        sections.append(_section("Basket signals", "", signal_cards))
+    return sections
 
-    # ── Global layout ─────────────────────────────────────────────────────────
-    layout = figure_layout(theme_name)
-    layout.update({
-        "height":        max(400, total_h),
-        "margin":        {"l": 55, "r": 20, "t": 28, "b": 30},
-        "hovermode":     "x",
-        "hoversubplots": "axis",
-        "showlegend":    False,
-        "uirevision":    f"force-{force}-{country}",
-    })
-    fig.update_yaxes(title_text="Z", title_font_size=9, zeroline=False, row=1, col=1)
-    fig.update_xaxes(
-        showspikes=True, spikemode="across", spikesnap="cursor",
-        spikedash="dot", spikethickness=1, spikecolor="rgba(180,180,180,0.6)",
-    )
-    for ann in fig.layout.annotations:
-        ann.update(font=dict(size=9), xanchor="left", x=0.01)
 
-    fig.update_layout(**layout)
-    return fig
-
+# ── Callback registration ──────────────────────────────────────────────────────
 
 # ── Shared-hover clientside callback JS (parameterised by element ID) ─────────
+#
+# No longer used by this module's own pages (Phase 4 IA cleanup replaced the
+# single stacked multi-panel figure with independent chart cards, each with
+# its own hover). Kept here and still exported: dashboard/charting.py wires
+# this same JS onto the Workbench page's stacked chart ("wb-chart"), which is
+# a genuinely separate multi-panel figure that still needs a synced crosshair
+# across its panes — do not remove without updating that caller too.
 
 def _hover_sync_js(element_id: str, store_id: str) -> str:
     return f"""
@@ -481,7 +409,7 @@ def _hover_sync_js(element_id: str, store_id: str) -> str:
 # ── Callback registration ──────────────────────────────────────────────────────
 
 def register_callbacks(app, force: str) -> None:  # noqa: C901
-    """Register main content + hover-sync callbacks for one force page."""
+    """Register main content callbacks for one force page."""
 
     route = f"/signals/{force}"
     fc    = _FORCE_CFG[force]
@@ -490,7 +418,7 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
         [
             Output(f"fd-banner-{force}", "children"),
             Output(f"fd-table-{force}",  "children"),
-            Output(f"fd-chart-{force}",  "figure"),
+            Output(f"fd-chart-{force}",  "children"),
         ],
         [
             Input("country-store",          "data"),
@@ -508,7 +436,6 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             return no_update, no_update, no_update
 
         country      = str(country_data or "US").upper()
-        theme_name   = theme or "carbon"
         thresholds   = thresholds or {}
         zscore_window    = int(zscore_window    or 0)
         inflation_window = int(inflation_window or 0)
@@ -633,9 +560,9 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             if not comp_hist.empty and rc in comp_hist.columns:
                 chart_score_col = rc
 
-        chart = _build_force_chart(
-            force, country, signal_ids, labels_map, units_map,
-            comp_hist, raw_wide_df, z_wide_df, theme_name,
+        chart_cards = _build_force_cards(
+            force, signal_ids, labels_map, units_map,
+            comp_hist, raw_wide_df, z_wide_df,
             score_col=chart_score_col, thresholds=thresholds,
         )
 
@@ -647,12 +574,4 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
 
         banner = _build_banner(force, comp_z, momentum, n_active, n_total,
                                n_agree, thresholds, lookback_label, divergence)
-        return banner, table_section, chart
-
-    # ── Shared spike hover (mirrors Regime History clientside callback) ────────
-    app.clientside_callback(
-        _hover_sync_js(f"fd-chart-{force}", f"fd-hover-init-{force}"),
-        Output(f"fd-hover-init-{force}", "data"),
-        Input(f"fd-chart-{force}", "figure"),
-        prevent_initial_call=True,
-    )
+        return banner, table_section, chart_cards
