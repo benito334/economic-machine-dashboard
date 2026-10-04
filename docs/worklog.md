@@ -60,6 +60,24 @@ Wired into Command Center's header as `persistence G {x%} · I {x%}`, directly b
 
 ---
 
+## 2026-10-03 (5) — Coverage Audit Phase C: bubble-gauge scoping (research only, per the audit's own instruction)
+
+**The ask.** Phase C's own definition in the coverage audit is explicit: "needs a scoping pass before committing to a build" — scope all 6 of Dalio's late-stage-bubble dimensions for free-data buildability, don't build yet.
+
+**Method.** Checked each dimension live rather than relying on the audit's own guesses (which were right on some, wrong on others):
+
+- **Dimension 1, "prices high relative to traditional measures"** — already built. `indicators/valuations.py` computes a live Buffett Indicator (market-cap/GDP, two numerators: FRED Z.1 official + a Yahoo VTI proxy anchored to a published market-cap level), fully wired into the dashboard at `/valuations` (operator-only, hidden in PUBLIC_MODE, pipeline Pass 8 refreshes it). It was simply never labeled or connected as "part of a bubble gauge" — a framing gap, not a data gap.
+- **Dimension 5, "leverage-financed buying"** — the audit's own suggestion (FINRA margin statistics) checked out. `curl -I` on `https://www.finra.org/sites/default/files/2021-03/margin-statistics.xlsx` returned `200`, `last-modified: Mon, 14 Sep 2026` — genuinely live and actively maintained at a stable URL (the "2021-03" segment is a CMS upload-date artifact from whenever the file was first created at that path, not a staleness signal — confirmed by the live last-modified header, the same kind of trap the Shiller CAPE check caught the OTHER way around earlier this session). No login, no API — direct Excel download only, monthly since 1997. **Buildable, not yet built.**
+- **Dimension 6, "extended forward purchases"** — not one of the audit's suggestions, found independently: CFTC Commitments of Traders reports are published free via an official Socrata REST API (`publicreporting.cftc.gov`), no auth, historical futures positioning back to 2006+. Speculative net-long positioning in equity-index futures is a reasonable proxy for this dimension. **Buildable, not yet built** — this contradicts the audit's own assumption that this dimension had no free data.
+- **Dimension 4, "uniform bullish sentiment"** — the audit guessed right, confirmed why: AAII's current-week bull/bear/neutral % is public with no login, but fetching the page directly showed the full historical series explicitly gated behind a $198/yr AAII membership. A single current snapshot can't feed a Z-score composite the way this project's signals work. **Confirmed dead end.**
+- **Dimensions 2 and 3** ("prices discounting unsustainable future conditions", "new/unsophisticated buyers") — searched for a free forward-earnings/analyst-consensus series and a free retail-participation series respectively; found only proprietary research products (FactSet Earnings Insight, bank outlook notes) and academic papers discussing the concept with no live public feed for either. **Confirmed dead ends.**
+
+**Verdict.** 2 of 6 dimensions are genuinely free-buildable and not yet built (leverage via FINRA, positioning via CFTC); 1 already exists but was never connected to this framing; 3 are real dead ends, not oversights. A full 6-dimension "Bubble Gauge" the audit may have had in mind was never realistic on free data — at most a 3-dimension partial gauge (valuation + leverage + positioning) is honestly buildable. Documented per-dimension in `session-checklist.md` so the next session doesn't re-research any of this from scratch.
+
+**Not done this session, deliberately** — per Phase C's own scope, this was research only. Building the FINRA/CFTC ingestion and wiring a 3-dimension gauge display is flagged as a real future-session task.
+
+---
+
 ## 2026-10-03 — Independent chip-audit skill + first audit: the inflation score is a window artifact
 
 **The ask.** Build a skill that acts as an independent agent trained in the Dalio framework and reviews the dashboard's indicator determinations for accuracy, using outside sources to ground-truth what we show — starting with Growth and Inflation only, with historical-episode scoring to follow.
