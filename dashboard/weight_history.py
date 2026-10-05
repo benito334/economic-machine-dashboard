@@ -10,6 +10,7 @@ import pandas as pd
 from dash import Input, Output, State, callback, dash_table, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+from dashboard.app_mode import PUBLIC_MODE
 from dashboard.shared_components import GREEN as _DELTA_POS
 from store.store import get_connection, query_weight_change_log, update_weight_change_reason
 
@@ -234,6 +235,11 @@ def load_history(_, _refresh, country_filter):
     prevent_initial_call=True,
 )
 def save_notes(n_clicks, table_data, country_filter):
+    # Writes the weight_change_log table — shared state. Same reasoning as
+    # weight_audit.save_importance: route-level gating alone does not stop a
+    # crafted callback invocation.
+    if PUBLIC_MODE:
+        raise PreventUpdate
     if not n_clicks or not table_data:
         raise PreventUpdate
 

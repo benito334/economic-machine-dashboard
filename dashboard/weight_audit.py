@@ -31,6 +31,7 @@ from indicators.composites import (
     load_composites_config,
     monte_carlo_regime_sensitivity,
 )
+from dashboard.app_mode import PUBLIC_MODE
 from indicators.calibrate import calibrate_growth_weights
 from store.store import get_connection, log_weight_changes
 
@@ -966,6 +967,15 @@ def reset_editor_table(n_clicks, original):
     prevent_initial_call=True,
 )
 def save_importance(n_clicks, rows, original_rows, reason, country, run_count):
+    # Writes config/countries/{cc}_composites.yaml AND the weight_change_log
+    # table — shared state that changes the regime read for EVERY viewer.
+    # Hiding the nav link and blocking the route is NOT sufficient on its own:
+    # the app runs with suppress_callback_exceptions=True, so Dash does not
+    # check that the component is on the page, and this callback's full
+    # signature is advertised to anyone via /_dash-dependencies. The guard has
+    # to be here, in the callback body, same as workbench.py's wb_views.
+    if PUBLIC_MODE:
+        raise PreventUpdate
     if not n_clicks or not rows:
         raise PreventUpdate
     country = (country or "US").upper()

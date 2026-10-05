@@ -2982,3 +2982,86 @@ writes `conc_adj: true` to the threshold store the moment it is ticked.
 
 **Next:** Phase 2 (SEC EDGAR XBRL provider + the Tier-2 filings metrics), then Phase 3 (the
 stage classifier). The growth-composite decision (§10 item 1) is still the owner's.
+
+## 2026-10-05 — PUBLIC_MODE gating audit: two unguarded shared-state writers found and fixed
+
+Prompted by the owner's question while planning the Oracle VM public cutover:
+"I want to make sure nothing that is configurable that affects things for all viewers is
+exposed." Audited rather than assumed — and the assumption would have been wrong.
+
+**The finding.** Hiding a page is not the same as disabling it. Three facts compose into a
+real gap:
+1. `dashboard/charting.py:80` sets `suppress_callback_exceptions=True`, so Dash does **not**
+   verify that a callback's components are present in the rendered layout.
+2. `weight_audit` and `weight_history` are imported unconditionally by `charting.py`, so all
+   their callbacks register in both modes.
+3. `/_dash-dependencies` — a public endpoint Dash serves by design — advertises every
+   registered callback's full signature.
+
+Verified live against the **public Cloud Run deploy** by READING that endpoint (no exploit
+attempted): 93 callbacks advertised, including
+
+    output : ..wa-editor-save-msg.children...wa-run-store.data..
+    inputs : ['wa-editor-save-btn']
+    state  : ['wa-editor-table','wa-editor-original','wa-editor-reason','country-store','wa-run-store']
+
+That is `save_importance`, which writes `config/countries/{cc}_composites.yaml` **and** the
+`weight_change_log` table — i.e. the weights behind every viewer's regime read. `OPERATOR_ONLY_
+ROUTES` blocked the page and the nav link was hidden, but the callback stayed reachable.
+
+**Severity, honestly stated.** On Cloud Run this is survivable: the container filesystem is
+ephemeral and the DB is a frozen snapshot rebuilt from the GitHub release each deploy, so a
+write is wiped on the next build. On the **Oracle VM it is not** — that is the live writable
+system, and it is the machine being prepared for public exposure. This was a prerequisite to
+fix before cutover, not a nice-to-have.
+
+**Complete inventory of shared-state writes reachable from a callback** (grep for the write
+primitives, every hit triaged):
+
+| Write | Gating before | After |
+|---|---|---|
+| `charting.py:1910` `save_schedule` | ✅ registration skipped (`if not PUBLIC_MODE:`) | unchanged |
+| `charting.py:1922` `request_run_now` | ✅ same block | unchanged |
+| `workbench_data.py:328/337` saved_views.json | ✅ `if PUBLIC_MODE: raise PreventUpdate` in `wb_views` | unchanged |
+| `weight_audit.py:141` YAML + `:999` `log_weight_changes` | ❌ **none** | ✅ guard added |
+| `weight_history.py:249` `update_weight_change_reason` | ❌ **none** | ✅ guard added |
+
+**The fix** follows the pattern already in the repo rather than inventing one: `workbench.py`'s
+`wb_views` guards inside the callback body with `if PUBLIC_MODE: raise PreventUpdate`. Same
+guard added as the FIRST statement of `save_importance` and `save_notes`, before any other
+validation, so a crafted invocation carrying well-formed arguments is still refused. The
+callbacks remain *listed* in `/_dash-dependencies` but are now inert — the listing is
+information disclosure, the guard is the actual control.
+
+**Verification.** New `tests/test_public_mode_gating.py`, 9 tests. Critically, the tests were
+confirmed to FAIL when the guard is removed (2 failures) and pass when restored — a gating test
+that cannot fail is worse than none. Also confirmed by executing both callbacks under a real
+`PUBLIC_MODE=1` import: both raise `PreventUpdate` before touching anything. The file includes
+a tripwire test that greps `dashboard/*.py` for write primitives and fails if a new one appears
+in a module with no corresponding guard test, plus a test pinning that the scheduler keeps its
+registration-skip strategy.
+
+**Per-viewer settings confirmed safe, not assumed:** 11 `localStorage` stores (country, the
+Z-score / inflation / disequilibrium windows, regime thresholds, theme, sidebar, session id,
+timezone region). None touch the server.
+
+**An own-goal worth recording.** Proving the new tests can fail required removing the guard and
+re-running them — and with the guard gone, the test's own arguments (`[{"yaml_id":
+"growth.payrolls", "importance": 0.9}]`) travelled all the way down the real write path and
+wrote `importance: 0.90` into `config/countries/us_composites.yaml`. It surfaced as an
+unrelated-looking failure in `test_composites.py::test_growth_importance_guidance_defaults`
+(expected 0.64, found 0.90) on the next full-suite run. Restored with `git checkout`; the
+`weight_change_log` table was NOT affected (latest row is still log_id 10 from 2026-10-03 —
+`log_weight_changes` never fired because the empty `original_rows` yielded no delta).
+
+The fix is a `no_real_writes` fixture that stubs every reachable write primitive to raise, so
+the tests prove the guard without the *capacity* to perform a real write. Re-verified after
+hardening: removing the guard still produces 2 failures, and the YAML's md5 is unchanged. The
+general lesson — a test that calls a real callback with arguments chosen to reach a write path
+is itself a hazard the moment the thing it is testing is absent; neutralise the primitive, not
+just the path.
+
+**Also worth knowing for future sessions:** two pytest processes against this repo will produce
+convincing phantom failures — DuckDB is single-writer, and a concurrent run made 24 unrelated
+`test_charting.py` tests fail. Run alone, that file is 103 passed. Check `ps aux | grep pytest`
+before believing a surprising suite result.
