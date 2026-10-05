@@ -60,6 +60,7 @@ from dashboard import central_bank_monitor as _central_bank_monitor
 from dashboard import market_expectations as _market_exp
 from dashboard import validator_monitor as _validator_monitor
 from dashboard import bubble_gauge_monitor as _bubble_gauge_monitor
+from dashboard import ai_capex_monitor as _ai_capex_monitor
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
@@ -877,6 +878,7 @@ def _left_nav() -> html.Div:
             # Operator-only — reuses the gated Buffett Indicator (/valuations).
             *([] if PUBLIC_MODE else [
                 _nl("\U0001fac7", "Bubble Gauge", "/bubble-gauge", nav_id="navlnk-bubble-gauge"),
+                _nl("⚡", "AI Capex Cycle", "/ai-capex-cycle", nav_id="navlnk-ai-capex"),
             ]),
         ], vertical=True, pills=True, className="mb-1"),
 
@@ -1373,6 +1375,13 @@ def _page_bubble_gauge() -> html.Div:
     return _bubble_gauge_monitor.get_layout()
 
 
+def _page_ai_capex() -> html.Div:
+    # Operator-only while the copy settles (plan doc §10 decision 2) —
+    # PUBLIC_MODE is intercepted earlier in route_page, so this only runs
+    # for the operator.
+    return _ai_capex_monitor.get_layout()
+
+
 def _page_asset_environments() -> html.Div:
     return _asset_env.get_layout()
 
@@ -1564,6 +1573,25 @@ _THRESHOLD_MODAL = dbc.Modal(
                 style={"fontSize": "0.72rem", "color": "var(--muted-color)", "marginBottom": "18px",
                        "fontStyle": "italic"},
             ),
+            dcc.Checklist(
+                id="rh-conc-toggle",
+                options=[{
+                    "label": " Widen the growth threshold when capex is concentrated",
+                    "value": "conc_adj",
+                }],
+                value=[],
+                style={"fontSize": "0.85rem", "color": "var(--font-color)", "marginBottom": "6px"},
+            ),
+            html.P(
+                "US only. When IT investment supplies more than a quarter of all real GDP "
+                "growth, a growth composite built from broad-economy signals is partly "
+                "reading one sector's capex schedule — a lower-confidence read, so the "
+                "growth threshold widens (never the score itself, and never the inflation "
+                "chip). Today's 34% share widens it about 7%. See "
+                "docs/ai_bubble_monitor_plan.md §6.",
+                style={"fontSize": "0.72rem", "color": "var(--muted-color)", "marginBottom": "18px",
+                       "fontStyle": "italic"},
+            ),
             html.Label("Growth Z-Score threshold  (±)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
             html.Div(
                 dcc.Slider(id="rh-gz-slider", min=0.0, max=2.0, step=0.05, value=0.5,
@@ -1722,7 +1750,8 @@ app.layout = html.Div([
               # change). Only affects browsers with no stored value yet --
               # an existing localStorage value isn't retroactively migrated,
               # same as every prior default change here.
-              data={"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True},
+              data={"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True,
+                    "conc_adj": False},
               storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
@@ -2125,6 +2154,7 @@ _PAGE_MAP = {
     "/market-expectations": _page_market_expectations,
     "/validator-audit": _page_validator_audit,
     "/bubble-gauge": _page_bubble_gauge,
+    "/ai-capex-cycle": _page_ai_capex,
     "/valuations":    _page_valuations,
     "/guide":         _page_user_guide,
     "/asset-environments": _page_asset_environments,
@@ -2409,7 +2439,8 @@ _INFLATION_COLOR = "#E8734C"
 # flips were unaffected at 0.05, needing 0.1 to move -- 0.05 is the value
 # actually cited in the source note, so that's what shipped; 0.1 tested
 # cleanly too and is a candidate if 0.05 proves too weak in practice).
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True,
+                       "conc_adj": False}
 
 # Growth chip colors (positive = good)
 _GROWTH_CHIP  = {"Growth": "#4C9BE8", "Transition": "#888888", "Retraction": "#E8734C"}
@@ -2447,6 +2478,51 @@ _CREDIT_TIGHT_C1 = 0.30
 _VOL_MULT_HI = 1.0
 _VOL_MULT_V1 = 0.25
 _DIVERGENCE_LOOKBACK_N = 3
+# Capex-concentration multiplier (AI-capex panel 2026-10-04). Kicks in above a
+# 25% IT share of all real GDP growth; +0.20 per additional 25pp of share.
+# At 34.2% (today) this widens the growth threshold ~7%; at the 41.3% cycle
+# peak, ~13%. OFF by default — the caller must pass conc_share.
+_CONC_ADJ_HI = 0.25
+_CONC_ADJ_C2 = 0.20
+
+
+_CONC_SHARE_CACHE: "dict[str, pd.Series]" = {}
+
+
+def _it_concentration_series() -> "pd.Series | None":
+    """IT share of all real GDP growth (percent), monthly-aligned, memoized.
+
+    US-only by construction — the underlying BEA contribution series have no
+    cross-country equivalent — so this returns None for every other country
+    and conc_adj falls back to 1.0 there.
+    """
+    if "us" in _CONC_SHARE_CACHE:
+        return _CONC_SHARE_CACHE["us"]
+    try:
+        from indicators.ai_capex import it_growth_share
+        df = it_growth_share()
+        if df.empty:
+            return None
+        s = pd.Series(df["value"].values,
+                      index=pd.to_datetime(df["as_of"])).sort_index()
+        # Quarterly -> month-end, forward-filled: a quarter's share stands
+        # until the next one is published.
+        s = s.resample("ME").ffill()
+        _CONC_SHARE_CACHE["us"] = s
+        return s
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("[conc_adj] IT concentration unavailable: %s", exc)
+        return None
+
+
+def _conc_share_for(country: str, thresholds: "dict | None") -> "pd.Series | None":
+    """The conc_share argument for compute_dynamic_thresholds, or None when the
+    multiplier is switched off or the country isn't covered."""
+    if not bool((thresholds or {}).get("conc_adj", False)):
+        return None
+    if (country or "US").upper() != "US":
+        return None
+    return _it_concentration_series()
 
 
 def _threshold_floor() -> float:
@@ -2468,6 +2544,7 @@ def compute_dynamic_thresholds(
     comp: "pd.DataFrame",
     base_gz: float = 0.5,
     base_iz: float = 0.5,
+    conc_share: "pd.Series | None" = None,
 ) -> "pd.DataFrame":
     """Country-vol-scaled, credit/volatility-adjusted regime thresholds.
 
@@ -2476,7 +2553,7 @@ def compute_dynamic_thresholds(
     DataFrame aligned to comp's index with columns:
       dyn_gz, dyn_iz      — adjusted thresholds, feed directly into
                              _classify_regime's `thresholds["gz"/"iz"]`
-      credit_adj, vol_adj — the individual multipliers, for audit/display
+      credit_adj, vol_adj, conc_adj — the individual multipliers, for audit/display
       divergence_flag     — True when growth/inflation have moved in opposite
                              directions for _DIVERGENCE_LOOKBACK_N consecutive
                              periods (diagnostic only)
@@ -2509,8 +2586,50 @@ def compute_dynamic_thresholds(
     vol_adj_i = 1.0 + (sigma_i_12 - _VOL_MULT_HI).clip(lower=0.0) * _VOL_MULT_V1
     vol_adj = pd.concat([vol_adj_g, vol_adj_i], axis=1).max(axis=1)
 
+    # Step 4b: capex-concentration multiplier (GROWTH ONLY) — AI-capex panel,
+    # 2026-10-04, docs/ai_bubble_monitor_plan.md §6. Off unless the caller
+    # supplies `conc_share` (the 4-quarter-rolling IT-investment share of all
+    # real GDP growth, in percent, from indicators.ai_capex.it_growth_share).
+    #
+    # Rationale is statistical, not narrative: when a single investment
+    # category supplies more than a quarter of all GDP growth, a growth
+    # composite built from broad-economy signals is partly reading one
+    # sector's capex schedule. That is a LOWER-CONFIDENCE growth read —
+    # exactly what vol_adj already encodes for a different reason — so the
+    # threshold widens. The score itself is untouched, which is what keeps
+    # this consistent with the "curated narratives feed no composite" rule.
+    #
+    # Inflation is deliberately excluded: there is no analogous concentration
+    # problem on that side.
+    if conc_share is not None and not conc_share.empty:
+        # Align on DATES, not on comp's index. _dyn_threshold_input keeps
+        # `as_of` as a column and leaves a RangeIndex behind, so reindexing a
+        # date-indexed series by comp.index silently yields all-NaN.
+        if "as_of" in comp.columns:
+            dates = pd.to_datetime(comp["as_of"])
+        elif isinstance(comp.index, pd.DatetimeIndex):
+            dates = pd.Series(comp.index, index=comp.index)
+        else:
+            dates = None
+
+        if dates is None:
+            conc_adj = pd.Series(1.0, index=comp.index)
+        else:
+            src = conc_share.sort_index()
+            aligned = pd.Series(
+                src.reindex(src.index.union(pd.DatetimeIndex(dates)))
+                   .ffill()
+                   .reindex(pd.DatetimeIndex(dates)).values,
+                index=comp.index,
+            )
+            share = aligned / 100.0
+            conc_adj = (1.0 + ((share - _CONC_ADJ_HI).clip(lower=0.0)
+                               / _CONC_ADJ_HI * _CONC_ADJ_C2)).fillna(1.0)
+    else:
+        conc_adj = pd.Series(1.0, index=comp.index)
+
     # Step 5: combine multiplicatively.
-    final_gz = base_dyn_gz * vol_adj
+    final_gz = base_dyn_gz * vol_adj * conc_adj
     final_iz = base_dyn_iz * credit_adj * vol_adj
 
     # Fall back to the static base threshold wherever there isn't enough
@@ -2540,6 +2659,7 @@ def compute_dynamic_thresholds(
         "dyn_iz": dyn_iz,
         "credit_adj": credit_adj,
         "vol_adj": vol_adj,
+        "conc_adj": conc_adj,
         "divergence_flag": divergence_flag.fillna(False),
     }, index=comp.index)
 
@@ -2660,6 +2780,12 @@ def compute_regime_confidence(comp_input: "pd.DataFrame", dynamic: bool,
     if len(comp) < 2:
         return {"confidence": None, "label": None, "n": 0}
 
+    # conc_adj is deliberately NOT applied here. This function reports how often
+    # a reading like today's has historically held, and it already runs a
+    # simplified replay (no sustained-months history, no country argument). A
+    # US-only multiplier threaded through a historical hold-rate would change
+    # the stat's meaning for one country only, which is worse than leaving the
+    # complement slightly conservative.
     dyn_df = compute_dynamic_thresholds(
         comp, base_gz=base["gz"], base_iz=base["iz"],
     ) if dynamic else None
@@ -3600,6 +3726,7 @@ def update_regime_info(
         dyn_df = compute_dynamic_thresholds(
             _dyn_threshold_input(comp, _eff_g, _eff_i),
             base_gz=float(_t.get("gz", 0.5)), base_iz=float(_t.get("iz", 0.5)),
+            conc_share=_conc_share_for(country, _t),
         )
         row_dyn = dyn_df.iloc[idx]
         thresholds_for_row = {**_t, "gz": float(row_dyn["dyn_gz"]), "iz": float(row_dyn["dyn_iz"])}
@@ -3746,6 +3873,7 @@ def update_regime_chart(
     _dynamic = bool(_t.get("dynamic", True))
     _dyn_df = compute_dynamic_thresholds(
         _dyn_threshold_input(comp, g_col, i_col), base_gz=_gz, base_iz=_iz,
+        conc_share=_conc_share_for(country, _t),
     ) if _dynamic else None
     if _dynamic and not _dyn_df.empty:
         # Use the latest row's dynamic threshold as the reference hline —
@@ -3936,7 +4064,8 @@ def _update_threshold_display(thresholds: "dict | None") -> list:
      Output("rh-iz-slider", "value"),
      Output("rh-gm-slider", "value"),
      Output("rh-im-slider", "value"),
-     Output("rh-dynamic-toggle", "value")],
+     Output("rh-dynamic-toggle", "value"),
+     Output("rh-conc-toggle", "value")],
     Input("regime-threshold-modal", "is_open"),
     State("regime-threshold-store", "data"),
     prevent_initial_call=True,
@@ -3945,7 +4074,7 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
     """Populate slider values from store when modal opens."""
     if not is_open:
         from dash import no_update
-        return no_update, no_update, no_update, no_update, no_update
+        return (no_update,) * 6
     t = stored or _DEFAULT_THRESHOLDS
     return (
         float(t.get("gz", 0.5)),
@@ -3953,6 +4082,7 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
         float(t.get("gm", 0.05)),
         float(t.get("im", 0.05)),
         ["dynamic"] if bool(t.get("dynamic", True)) else [],
+        ["conc_adj"] if bool(t.get("conc_adj", False)) else [],
     )
 
 
@@ -3980,7 +4110,8 @@ def _save_thresholds(
     if ctx.triggered_id == "rh-threshold-apply":
         return {"gz": float(gz or 0.5), "iz": float(iz or 0.5),
                 "gm": float(gm or 0.0), "im": float(im or 0.0),
-                "dynamic": bool(dynamic_val)}
+                "dynamic": bool(dynamic_val),
+                "conc_adj": bool((current or {}).get("conc_adj", False))}
     return no_update
 
 
@@ -4003,6 +4134,24 @@ def _apply_dynamic_toggle(dynamic_val: "list | None", current: "dict | None") ->
         # set the checkbox to match the store) — don't rewrite the store.
         return no_update
     t["dynamic"] = new_val
+    return t
+
+
+@callback(
+    Output("regime-threshold-store", "data", allow_duplicate=True),
+    Input("rh-conc-toggle", "value"),
+    State("regime-threshold-store", "data"),
+    prevent_initial_call=True,
+)
+def _apply_conc_toggle(conc_val: "list | None", current: "dict | None") -> dict:
+    """Same mode-switch treatment as the dynamic toggle — apply on change, not
+    on Apply."""
+    from dash import no_update
+    t = dict(current or _DEFAULT_THRESHOLDS)
+    new_val = bool(conc_val)
+    if bool(t.get("conc_adj", False)) == new_val:
+        return no_update
+    t["conc_adj"] = new_val
     return t
 
 
@@ -4161,6 +4310,7 @@ def update_scatter_chart(
         _dyn_bg = compute_dynamic_thresholds(
             _dyn_threshold_input(comp_all, g_col, i_col),
             base_gz=float(_bg_th.get("gz", 0.5)), base_iz=float(_bg_th.get("iz", 0.5)),
+            conc_share=_conc_share_for(country, _bg_th),
         )
         if not _dyn_bg.empty:
             _bg_th["gz"] = float(_dyn_bg["dyn_gz"].iloc[sel_idx_all])

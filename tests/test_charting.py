@@ -1104,6 +1104,79 @@ class TestRoutedRegimeStepButtons:
         assert charting.select_regime_point(click_data, {}, 0) is charting.no_update
 
 
+# ── conc_adj capex-concentration multiplier (AI-capex panel 2026-10-04) ──────
+
+class TestConcentrationMultiplier:
+    """docs/ai_bubble_monitor_plan.md §6 — widens the GROWTH threshold only,
+    off unless the caller supplies conc_share."""
+
+    @staticmethod
+    def _history(n=30):
+        idx = pd.date_range("2020-01-31", periods=n, freq="ME")
+        vals = [0.9, -0.9, 1.2, -1.2, 0.6] * (n // 5)
+        return pd.DataFrame({
+            "growth_score": vals, "inflation_score": vals,
+            "credit_score": [0.0] * n,
+        }, index=idx)
+
+    @staticmethod
+    def _share(index, pct):
+        return pd.Series([pct] * len(index), index=index)
+
+    def test_off_by_default(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        comp = self._history()
+        res = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+        assert (res["conc_adj"] == 1.0).all()
+
+    def test_below_threshold_is_inert(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        comp = self._history()
+        res = compute_dynamic_thresholds(
+            comp, base_gz=0.5, base_iz=0.5,
+            conc_share=self._share(comp.index, 20.0))  # under the 25% cut-in
+        assert (res["conc_adj"] == 1.0).all()
+
+    def test_widens_growth_threshold_only(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        comp = self._history()
+        off = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5)
+        on = compute_dynamic_thresholds(
+            comp, base_gz=0.5, base_iz=0.5,
+            conc_share=self._share(comp.index, 50.0))
+        assert on["dyn_gz"].iloc[-1] > off["dyn_gz"].iloc[-1]
+        # Inflation has no analogous concentration problem — must not move.
+        assert on["dyn_iz"].iloc[-1] == pytest.approx(off["dyn_iz"].iloc[-1])
+
+    def test_multiplier_magnitude_matches_the_documented_formula(self):
+        from dashboard.charting import compute_dynamic_thresholds
+
+        comp = self._history()
+        # 34.2% share -> 1 + (0.342-0.25)/0.25*0.20 = 1.0736 (~7% widening,
+        # the figure quoted in the plan and on the page).
+        res = compute_dynamic_thresholds(
+            comp, base_gz=0.5, base_iz=0.5,
+            conc_share=self._share(comp.index, 34.2))
+        assert res["conc_adj"].iloc[-1] == pytest.approx(1.0736, abs=1e-4)
+
+    def test_aligns_on_as_of_column_not_positional_index(self):
+        """_dyn_threshold_input keeps `as_of` as a COLUMN and leaves a
+        RangeIndex behind. Reindexing a date-indexed share by that RangeIndex
+        silently yields all-NaN and the multiplier dies quietly — a real bug
+        caught by running it against live data, pinned here."""
+        from dashboard.charting import compute_dynamic_thresholds
+
+        comp = self._history().reset_index().rename(columns={"index": "as_of"})
+        share = pd.Series([34.2] * 30,
+                          index=pd.date_range("2020-01-31", periods=30, freq="ME"))
+        res = compute_dynamic_thresholds(comp, base_gz=0.5, base_iz=0.5,
+                                         conc_share=share)
+        assert res["conc_adj"].iloc[-1] == pytest.approx(1.0736, abs=1e-4)
+
+
 # ── compute_dynamic_thresholds (Ray Dalio review 2026-07-05, #23) ─────────────
 
 class TestComputeDynamicThresholds:

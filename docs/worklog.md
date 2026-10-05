@@ -2811,3 +2811,174 @@ reserve runway, room-to-ease gauge, military expenditure, momentum-gate
 magnitude, rate-basket correlation check). Phase B ("pushing on a string"
 QE-effectiveness flag, probabilistic regime confidence) and Phase C
 (bubble-gauge scoping) remain open.
+
+## 2026-10-04 (5) — AI capex bubble: six-expert research panel, monitor designed (not built)
+
+Research + design session, no code shipped. User asked how to monitor the AI bubble from a
+data perspective, "think like a hedge fund, think like Ray Dalio," using a mixture of experts
+including Digital Ray, with a dashboard addition as the end goal.
+
+**Panel.** Digital Ray consult (digitalray.ai thread `88cc245d-…`, logged in
+`docs/Guidance/ray_dalio_review_log.md`) plus five specialist research agents run in parallel:
+credit/structured finance, hyperscaler & semis equity, power & infrastructure, forensic
+accounting, macro transmission. Each was given the free-data-only constraint and the
+never-invent-a-series-ID rule, and required to paste live verification evidence. Outputs
+synthesized into **`docs/ai_bubble_monitor_plan.md`** (the build plan) and a published artifact.
+
+**Ray's ruling — stage classifier, not a score.** Verbatim: *"I don't like blended scores for
+bubbles because they hide the real mechanics and create false confidence."* Independently
+confirms the judgment already made in `bubble_gauge.py`. He specified a full 5-stage cascade
+with entry conditions, 2-quarter confirmation and un-advance rules, plus the lead-time chain
+(coverage breach → spreads 3-6m → capex slowdown 6-12m → market 12-24m; ~9-12m total for this
+cycle). He also ruled "drop it" on two legs whose only sources were paid (data-centre ABS
+issuance; real-time productivity proxy) — both dropped as instructed rather than proxied.
+
+**A real panel disagreement, resolved rather than averaged.** The macro desk argued no stage
+classifier is buildable at all — the AI sector has no observable debt stock, no sector DSR, and
+12.7 years of Census data with zero prior downturns, so a `debt_cycle_stage.py`-style
+percentile argmax would be "a random number generator with a Dalio vocabulary." Correct, and it
+kills the obvious implementation. But Ray's cascade is a **threshold ladder**, not a percentile
+argmax — absolute levels with confirmation counters need no cross-cycle history. Resolution
+recorded in the plan: build the *shape* of the debt-cycle classifier, explicitly do not port its
+percentile machinery, and suppress Z-scores on the Census series entirely.
+
+**Verified independently by me, not just reported by agents** (the load-bearing claims):
+- EIA-930 subregion hourly feed parses and the metric computes: Dominion-zone (Data Center
+  Alley) overnight trough load **+12.7% YoY** against an adjacent same-weather control (PEP+BC)
+  at **+3.6%** — a **+9.1pp excess**. This is the panel's best idea and it closes most of the
+  gap Ray declared unclosable: realized electricity draw is the one number in the complex that
+  cannot be booked, prepaid or round-tripped, at ~1-day lag. The 2001 "lit traffic vs reported
+  revenue" lesson.
+- ABCP − nonfinancial CP 30d spread reproduces the 2007 path exactly (2007-08-01 +0.09 →
+  08-10 +0.39 → 08-20 +0.68 → 09-10 +1.24) and reads **+0.09pp today** against a 4,524-day
+  median of +0.10. Best free tripwire available, with its calibration event in-sample.
+- SEC EDGAR XBRL works from this machine (MSFT FY26 capex $115.9B; NVDA receivables
+  $40.7B → $63.1B in one quarter). The duplicate-facts trap the forensic desk warned about is
+  visible in the raw response — dedup is mandatory.
+
+**Two non-AI defects surfaced, both logged in `session-checklist.md`:**
+1. **FRED truncated every ICE BofA OAS series to a rolling 3-year window in April 2026.**
+   `BAMLH0A0HYM2` now starts 2023-10-03 (794 obs). **`us.premium.high_yield_spread` is already
+   truncated in our own DB to 863 obs from 2023-06-19**, and both raw-cache parquets
+   (`fred_` and `alfred_`) are truncated too — the long history is already gone locally. A live
+   signal in the premium force is being Z-scored against a window with no crisis in it. Needs a
+   daily archive started (every uncaptured day is permanently lost) and `BAA10Y`/`BAA` as the
+   long-history substitute meanwhile.
+2. **`EIA_API_KEY` in `.env` is the literal placeholder `your_eia_key_here`** — CLAUDE.md lists
+   EIA as an available provider and it is not. Didn't block this plan (every EIA source used is
+   a key-free static download) but will silently break any future work assuming it.
+
+**Most interesting finding, which nobody appears to be watching.** The two legs of BIS's own
+AI-investment measure are moving violently apart: private **chip-fab** facility construction is
+**−45.2% YoY and −59% from its Jun-2024 peak ($126.4bn → $52.3bn SAAR)** while **data-centre**
+construction runs **+73.2% YoY ($84.95bn SAAR)**. Facility decisions are committed 2-3 years
+ahead, so this is the only metric in the whole roster with a genuine structural lead. It is
+either the telecom-1999 sequencing (upstream orders roll over before downstream deployment) or
+CHIPS-Act expiry with no AI content — **the data cannot distinguish these**, which is exactly
+why it belongs on a monitored page rather than in a conclusion.
+
+**Also corrected a standing assumption.** Measured productivity does *not* discriminate a
+self-validating boom from a debt-financed one: nonfarm output per hour grew +3.05%/yr during
+1996-2000 and **+3.65%/yr during 2001-04, after the bust**. Our existing
+`force_detail._productivity_divergence()` would have printed "Early-stage competitive advantage"
+through the four years the capex was being written off. Not a bug — it answers a different
+question — but it means `productivity_score` must not be used as the AI-bust discriminator. The
+separation that works is Ray's own impulse/persistence inflation split (his 2026-10-03 Ruling 2,
+already triaged ready-to-implement), which now has a second independent reason to be built.
+
+**Status: nothing built.** Four open decisions are the owner's (plan doc §10), the most
+consequential being whether to adopt a `conc_adj` threshold multiplier — the only proposed item
+that touches the regime engine, and the only one that changes a reading today rather than
+waiting for an event. Next session starts at plan §9 Phase 1. Test suite untouched at 677.
+
+## 2026-10-04 (6) — AI Capex Cycle Monitor, Phase 1 shipped
+
+Owner approved three of the four open decisions from `docs/ai_bubble_monitor_plan.md` §10
+(adopt `conc_adj`, keep the page operator-gated, start Phase 1); the growth-composite question
+stays open and deliberately unbuilt. Phase 1 is the **trigger layer** — the Tier-1 metrics that
+can advance a stage. Tier 2 (SEC XBRL filings forensics) and the stage classifier itself remain
+Phases 2 and 3.
+
+**Shipped.**
+- **`indicators/ai_capex.py`** (new) — all 8 Tier-1 metrics. Census C30 both legs (data centre
+  AND chip-fab), EIA-930 subregion trough-load with its weather control, ABCP−CP spread,
+  bank NDFI loans, CCC−BB dispersion, IT share of GDP growth, computers/electronics new orders.
+- **`indicators/loader.py`** — new `fetch_url_cached()`, the documented home for providers that
+  publish a plain file rather than an API (Census xlsx, EIA csv). Cache-first with an explicit
+  TTL, falls back to a stale cache on a failed fetch, returns None only when there is no cache
+  at all. `bubble_gauge.py` still has its own near-identical `_download_bytes` — consolidating
+  the two is a small follow-up, deliberately not done here to avoid touching that module's 24
+  passing tests mid-session.
+- **`dashboard/ai_capex_monitor.py`** + route `/ai-capex-cycle`, Monitors nav group,
+  operator-gated (added to `OPERATOR_ONLY_ROUTES`), built on the shared `_chart_card` from day
+  one per `dashboard_ia_framework.md`'s rule 4. The page carries its own lead-time table and a
+  "what free data cannot see" panel — the plan's instruction that a monitor documenting its
+  blindness is worth more than one implying foresight.
+- **`conc_adj`** — the one approved engine touch. A third multiplier in
+  `compute_dynamic_thresholds()` beside the shipped `credit_adj`/`vol_adj`, **growth chip only,
+  off by default**, toggled from the Regime Thresholds modal. `1 + max(0, (share-0.25)/0.25)*0.20`.
+  Verified live: at today's 34.2% IT share it widens the US growth threshold **+7.4%**, leaves
+  the inflation threshold bit-identical, and affects 23 of 562 historical months. The composite
+  score is never touched, which is what keeps it consistent with "curated narratives feed no
+  composite." Deliberately NOT applied in `compute_regime_confidence()` — that stat is an
+  explicitly simplified historical hold-rate replay, and threading a US-only multiplier through
+  it would change the metric's meaning for one country only.
+- **ICE BofA spread archive** — `archive_spreads()`, append-only, union-merged on
+  (series_id, as_of) so it is idempotent and can never shrink. 3,929 rows seeded. This is the
+  mitigation for the FRED 3-year-truncation finding: every day not captured is permanently lost.
+
+**Three real bugs, every one caught by RUNNING the code, not by reading it.**
+1. **Two-digit-year pivot.** The C30 file reaches back to 1993, so a naive `"20" + yy` turned
+   `Jan-99` into 2099 — which silently poisoned the chip-fab series (it reported `-96.6% from
+   peak` against a 2099 "latest"). Caught because the number disagreed with the panel's
+   independently-derived −58.6%.
+2. **Partial-month contamination in EIA-930.** These files update daily, so the current month
+   is always partial. October 2026 was being built from four days and compared against a full
+   October 2025, producing a fabricated +2.4pp excess against a true ~+9pp. Same failure mode as
+   the SPF loader's incomplete-quarter CPI average (2026-10-03 entry 7); fixed the same way,
+   with an explicit completeness guard, and pinned by a regression test. A follow-on pass also
+   added 3-month smoothing before the YoY — the raw monthly excess swung between +2.9pp and
+   +13.8pp on an underlying trend that is steady.
+3. **`conc_adj` silently died on date alignment.** `_dyn_threshold_input()` keeps `as_of` as a
+   COLUMN and leaves a RangeIndex behind, so reindexing a date-indexed share series by
+   `comp.index` yielded all-NaN and `fillna(1.0)` turned the multiplier into a no-op. It
+   *looked* like it worked (conc_adj reported 1.0736 in a hand-built test where I had set a
+   DatetimeIndex myself) and only failed against the real call path. Now aligns on `as_of` when
+   present, with a regression test that reproduces the RangeIndex shape specifically.
+
+A fourth issue was investigated and correctly *not* "fixed": a large blank band when scrolling
+the page looked like a layout bug, but measuring the DOM showed all 8 cards at a uniform 260px
+in a 788px three-row flex section. It was a Browser-pane scroll artifact, not a real defect.
+
+**One display change driven by actually looking at the render.** The IT-concentration card
+originally charted the share, whose y-axis ran ±200% — when 4-quarter GDP growth approaches
+zero the denominator collapses and the share swings wildly, compressing today's 34% into an
+invisible line. The card now charts the **pp contribution** (a stable series) with the share in
+the header and read line. Both numbers are still shown, because the share alone is misleading in
+exactly the situation the metric exists to catch.
+
+**Pre-existing issue found, not fixed here.** Every Monitors page logs a Dash console error
+(`A nonexistent object was used in an 'Input'`, naming stale `mon-info-N` tooltip targets) —
+`shared_components._ICON_SEQ` is a never-resetting module counter. Reproduced on `/fed` as well
+as the new page, so it is shared-component behaviour and not introduced here. Cosmetic, but it
+fills the console; spun off as its own task rather than touching machinery 8 pages depend on
+mid-session.
+
+**Live reading at ship time.** Three Tier-1 metrics in warning: the data-centre/chip-fab
+divergence (WARNING — data centre +73.2% YoY against chip fab −45.2% YoY, −59% from its
+Jun-2024 peak), CCC−BB dispersion (CRITICAL at 10.11pp, 100th percentile — but with the caveat
+on the card itself that FRED has no sector OAS, so its AI attribution cannot be verified), and
+IT concentration (WARNING, 34.2% of all real GDP growth, 98th percentile). The two fast credit
+tripwires are benign: ABCP−CP at +0.09pp against a +0.08pp median over 5,990 days, and bank NDFI
+lending still expanding at +15.8% 13-week annualized. Realized demand is validated — Dominion
+and AEP overnight trough load +11.9% YoY against a +3.7% weather control, a +8.3pp excess.
+
+**Verification.** Full suite **701 passed, zero failures** (was 677; +24 new — 18 in
+`tests/test_ai_capex.py`, 5 for `conc_adj`, plus one). Rebuilt and restarted the `charting`
+container (a restart alone does NOT pick up code changes — memory `feedback-docker-rebuild`),
+then confirmed in the browser: all 8 cards render with correct live values, both panels render,
+the nav entry appears in Monitors, and the `conc_adj` checkbox is present, defaults to OFF, and
+writes `conc_adj: true` to the threshold store the moment it is ticked.
+
+**Next:** Phase 2 (SEC EDGAR XBRL provider + the Tier-2 filings metrics), then Phase 3 (the
+stage classifier). The growth-composite decision (§10 item 1) is still the owner's.

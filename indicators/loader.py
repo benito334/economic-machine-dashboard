@@ -1280,3 +1280,48 @@ def fetch_manual_series(
         filename, len(series), series.index[0].date(), series.index[-1].date(),
     )
     return series
+
+
+# ── Generic cached URL download ───────────────────────────────────────────────
+# For providers that publish a plain file rather than an API: Census C30 (xlsx),
+# EIA-930 / EIA-861M (csv/xlsx), FINRA margin statistics (xlsx). Same
+# cache-first discipline as fetch_series, but keyed on a caller-supplied name
+# and an explicit TTL, because these files have no "frequency" to infer from.
+def fetch_url_cached(
+    url: str,
+    cache_name: str,
+    ttl_seconds: int,
+    force_refresh: bool = False,
+    timeout: int = 60,
+) -> Optional[bytes]:
+    """Download `url`, caching the raw bytes under RAW_CACHE_DIR/`cache_name`.
+
+    Returns the cached copy when it is younger than `ttl_seconds`. On a failed
+    fetch, falls back to a stale cache if one exists (so a provider outage
+    degrades to old data rather than to nothing) and returns None only when
+    there is no cache at all.
+    """
+    RAW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache = RAW_CACHE_DIR / cache_name
+
+    if not force_refresh and cache.exists():
+        if (time.time() - cache.stat().st_mtime) < ttl_seconds:
+            logger.debug("[cache hit] %s", cache_name)
+            return cache.read_bytes()
+
+    try:
+        resp = requests.get(url, timeout=timeout,
+                            headers={"User-Agent": "Mozilla/5.0 (indicators-machine)"})
+        resp.raise_for_status()
+        data = resp.content
+        if not data:
+            raise ValueError("empty response body")
+        cache.write_bytes(data)
+        logger.info("[fetch] %s → %d bytes", cache_name, len(data))
+        return data
+    except Exception as exc:
+        logger.warning("[fetch failed] %s: %s", cache_name, exc)
+        if cache.exists():
+            logger.warning("[stale cache] using existing %s", cache_name)
+            return cache.read_bytes()
+        return None

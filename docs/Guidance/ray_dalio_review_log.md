@@ -396,3 +396,91 @@ If false positives prove excessive, "gradually raise it toward 0.30–0.35 sigma
 | 6 | Add credit growth / corporate earnings / consumer confidence as leading demand signals | needs data-feed check |
 | 7 | Credit-conditional labour-vs-output weight tilt | needs design pass |
 | 8 | Scenario-test thresholds across policy regimes | acknowledged (Phase G backtest extension) |
+
+---
+
+### Session 2026-10-04 — AI-capex bubble monitor (new thread)
+
+Thread: digitalray.ai conversation `88cc245d-a4ad-45e4-960b-c0ddabd91045`. Standard site
+disclaimer applies — responses are an AI approximation of Dalio's framework, **not vetted by
+the real Ray**. Run as part of a 6-expert panel (Ray + 5 specialist research agents: credit/
+structured finance, hyperscaler/semis equity, power & infrastructure, forensic accounting,
+macro transmission). Full synthesis and build plan: `docs/ai_bubble_monitor_plan.md`.
+
+**Brief.** Asked Ray to place the AI capex boom mechanistically in the debt cycle, name the
+5-8 things to monitor in real time that separate a self-validating productivity boom from a
+debt-financed asset boom, and say what breaks first and with how much lead time — under this
+project's free-data-only constraint.
+
+**Ray's core ruling — build a STAGE CLASSIFIER, not a blended bubble score.** Verbatim: *"You
+should build a stage classifier. I don't like blended scores for bubbles because they hide the
+real mechanics and create false confidence. Stages show you where you are and what comes next."*
+This independently confirms the design judgment already made in `indicators/bubble_gauge.py`
+(which deliberately refused to average 3 partial dimensions into one number), and points the
+new work at the same architecture as `indicators/debt_cycle_stage.py`.
+
+**The cascade Ray specified** (entry conditions his, verbatim in substance; 2 consecutive
+quarters to confirm at every stage; stages CAN un-advance if conditions reverse for 2 quarters):
+
+| Stage | Entry condition | Un-advance |
+|---|---|---|
+| 1 Expansion | AI capex growth positive YoY **and** OCF/Capex > 1.5 for ≥2 consecutive quarters | — |
+| 2 Cash-Flow Squeeze | OCF/Capex < 1.5 for 2 quarters **and** debt/EBITDA above sector historical average (~>2.5x) | OCF/Capex > 1.5 **and** debt/EBITDA < 2.5x for 2 quarters |
+| 3 Credit Stress | AI-related credit spreads widen ≥50bp above their 2-year average for 2 quarters, **or** data-centre ABS issuance growth > 30% YoY for 2 quarters | spreads back within 25bp of the 2-yr average for 2 quarters |
+| 4 Capex Slowdown | AI capex growth turns negative YoY for 2 quarters **and** hiring freezes/layoffs reported | capex growth positive for 2 quarters |
+| 5 Broad Market Impact | tech payrolls / industrial production / GDP growth inflect down for 2 quarters **and** ≥1 broad market indicator moves materially (e.g. S&P −10% from peak, unemployment +0.5pp) | broad indicators recover for 2 quarters |
+
+**First break and lead time** (the most useful single output of the consult): *"The cash-flow
+coverage ratio is the earliest canary."* His stated chain — **coverage breach → credit-spread
+widening: 3-6 months; spreads → capex slowdown: 6-12 months; capex slowdown → broad market
+impact: 12-24 months.** He then compressed it for this cycle: past tech bubbles (dot-com,
+telecom) ran 12-18 months from first cash-flow warning to a visible capex slowdown, but *"with
+today's faster digital infrastructure and tighter financing markets, you might see a shorter
+window — perhaps **9-12 months** before the macro economy feels the drag."* Trigger level:
+OCF/Capex **below ~1.0 for two consecutive quarters** means the hyperscalers are funding the
+same level of spending purely on new borrowing.
+
+**Ray's three honest "drop it" rulings** (asked specifically because several of his first-pass
+sources were paid — Bloomberg, S&P Global ABS, Gartner/IDC):
+- **AI-related credit spreads** — use the FRED high-yield index as an imperfect, directional
+  proxy. *(Panel note: the credit desk subsequently found FRED carries **no** US sector OAS at
+  all and that every ICE BofA series was cut to a rolling 3-year window in April 2026 —
+  independently reconfirmed this session. Ray's proxy is weaker than he knew; see the plan doc
+  for the ABCP-spread substitute adopted instead.)*
+- **Data-centre ABS issuance** — *"There is no perfect free substitute... If you can't get
+  data-center specific, drop this item rather than use a misleading proxy."* **Dropped.**
+- **Productivity / unit-cost proxy** — *"There is no real-time free proxy for unit-cost or
+  productivity in AI. If you can't get it, drop it."* **Dropped as specified**, with one
+  qualification the panel found and Ray did not — see below.
+
+**Should any of this feed the Growth/Inflation chips?** Ray's position: there IS a real case,
+because if AI capex is ~44% of recent GDP growth then an AI capex stall is a growth event the
+current basket catches late — but only *"if you can track it cleanly and it's not just a
+narrative... add it as a standalone term in your growth chip. Don't average it in with
+everything else; keep it explicit so you can see the impact. If it's noisy or unreliable, keep
+it isolated."* **Not adopted in the initial build** (see plan doc §integration): the Census
+data-centre series is US-only and revision-heavy — +22% upward revision on a single month, and
+18 of 18 historical "rollover" fires were false positives. Logged as an open decision for the
+owner, not a closed one.
+
+**Is the productivity payoff observable in real time?** Ray: *"There is no real-time free
+indicator that shows the productivity payoff from AI capex... real-time productivity validation
+is not observable with free data. That means you should put more weight on the financing-side
+signals (cash-flow coverage, debt ratios, credit spreads) and treat the validation-side as a
+lagged confirmation, not a real-time trigger."*
+
+**Where the panel improved on Ray.** The power & infrastructure desk found a genuine exception
+to that last ruling. **Realized overnight-trough electricity demand in data-centre-dense grid
+subregions is a real-time *utilization* validator** — EIA-930 hourly, key-free, ~1-day lag —
+and it is the one number in the whole complex that cannot be booked, prepaid or round-tripped:
+a GPU that is not computing does not draw power. This is the 2001 "lit traffic vs reported
+revenue" lesson, and it closes most of the gap Ray declared unclosable. Verified independently
+this session: Dominion zone (Data Center Alley) overnight trough **+12.7% YoY** against an
+adjacent same-weather control (PEP+BC) at **+3.6%** — a **+9.1pp excess**, i.e. the load is
+genuinely arriving and the buildout is currently validated on the demand side.
+
+**Punch-list triage.** Stage classifier → *ready to implement* (entry conditions fully
+specified). AI-capex term in the growth force → *needs owner decision*. ABS issuance +
+productivity proxy → *acknowledged, no build* (Ray's own instruction). Credit-spread leg →
+*needs design pass* (Ray's proposed source does not exist as described; substitute proposed in
+the plan doc).

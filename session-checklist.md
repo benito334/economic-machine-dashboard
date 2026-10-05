@@ -14,6 +14,65 @@
 
 ## Pending / Blockers
 
+### AI Capex Cycle Monitor — PHASE 1 SHIPPED (2026-10-04), Phases 2-3 open
+`/ai-capex-cycle` is live (Monitors, operator-gated) with all 8 Tier-1 trigger metrics;
+`conc_adj` adopted (off by default, growth chip only, Regime Thresholds modal); ICE BofA spread
+archive seeded. Suite 701 passing. Full detail: `docs/worklog.md` 2026-10-04 (6).
+
+**Next up — Phase 2:** SEC EDGAR XBRL provider (`fetch_sec_xbrl_concept()` in `loader.py`) +
+Tier-2 filings metrics. Three non-negotiables recorded in the plan §6, all verified live:
+per-CIK `companyconcept` NOT the `frames` API (which silently omits Alphabet and Oracle); key on
+the period `end` date, never `fy`/`fp` (Alphabet tags two different periods as `fy=2026, fp=Q2`);
+and dedupe, because duplicate facts per period appear in the raw response. **Phase 3** is the
+5-stage threshold-ladder classifier.
+
+**Still the owner's call** (plan §10 item 1): whether an AI-capex term should feed the Growth
+composite. Recommendation remains no — the Census series is US-only and revision-heavy (one
+month revised +22%; 18 of 18 historical rollover fires were false positives).
+
+**Small follow-up:** `bubble_gauge.py` still carries its own `_download_bytes` near-identical to
+the new `loader.fetch_url_cached()`. Consolidate when next touching that module.
+
+### (superseded) AI Capex Cycle Monitor — researched and planned, NOT built (2026-10-04)
+Six-expert panel (Digital Ray + credit / semis-equity / power / forensic-accounting / macro-
+transmission agents). Full plan: **`docs/ai_bubble_monitor_plan.md`**; Ray consult logged in
+`docs/Guidance/ray_dalio_review_log.md` (session 2026-10-04). Nothing built yet — the next
+session picks up at the plan's §9 Phase 1.
+
+**Design settled:** a 5-stage threshold-ladder classifier (Ray's cascade: Expansion → Cash-Flow
+Squeeze → Credit Stress → Capex Slowdown → Broad Market Impact), **not** a blended score, and
+**not** a port of `debt_cycle_stage.py`'s percentile/argmax machinery — the AI sector has no
+cross-cycle history to percentile against (Census data-centre series: 12.7 years, zero prior
+downturns). Corollary enforced in the plan: **suppress Z-scores on the Census series.** New
+Monitors page `/ai-capex-cycle`, namespace `ai.*`, feeds no composite. One new provider:
+**SEC EDGAR XBRL** (keyless, User-Agent required, verified working from this machine) plus
+key-free Census C30 and EIA-930 direct downloads.
+
+**Live reading at plan time:** Stage 1 Expansion at the Stage-2 boundary (median OCF/Capex
+~1.59 vs a 1.5 trigger; ORCL 0.57 / AMZN 1.06 / CRWV 0.30 already through). The one genuinely
+leading object: **chip-fab facility construction −45.2% YoY and −59% from its Jun-2024 peak
+while data-centre construction runs +73.2% YoY** — the two legs of BIS's own AI-investment
+measure moving violently apart.
+
+**Open decisions for the owner** (plan doc §10): AI-capex term in the growth composite
+(recommend no, initially); `conc_adj` threshold multiplier (recommend yes); operator-gated vs
+public (recommend gated initially); XBRL watchlist size.
+
+### TWO NON-AI DEFECTS SURFACED BY THAT RESEARCH — both need action
+1. **FRED truncated every ICE BofA OAS series to a rolling 3-year window (April 2026).**
+   Verified live: `BAMLH0A0HYM2` returns `observation_start: 2023-10-03`, 794 obs; requesting
+   1997 onward changes nothing. **`us.premium.high_yield_spread` is already truncated in our own
+   DB to 863 obs from 2023-06-19**, and both the `fred_` and `alfred_` raw-cache parquets are
+   truncated too — the history is already lost locally. That live signal (premium force →
+   Disequilibrium) is being Z-scored against a 3-year window containing no crisis, which
+   understates its own tail. → **Start a daily archive of these series into raw_cache/DuckDB**
+   (every uncaptured day is permanently lost); substitute `BAA10Y` (1986→) or `BAA` (1919→)
+   for any long-history credit-stress Z-score meanwhile.
+2. **`EIA_API_KEY` in `.env` is the literal placeholder `your_eia_key_here`** — EIA v2 returns
+   `API_KEY_INVALID`. CLAUDE.md lists EIA as an available provider; it is not. Free
+   registration at eia.gov/opendata/register.php. Not blocking the AI plan — every EIA source
+   it uses is a key-free static download.
+
 ### Oracle VM migration — parallel instance live, 3 owner decisions open (2026-10-04)
 Full second copy running on the Oracle ARM VM (see `docs/worklog.md` 2026-10-04 (3) and memory `reference-oracle-vm`). **Open:** (1) ~~DuckDB bloat~~ — **FIXED 2026-10-04** at the root (in-place ON CONFLICT upserts, `docs/worklog.md` 2026-10-04 (4)); NAS file compacted 10.9 GB → 133 MB (delete `signals.duckdb.bak` when satisfied); **VM still needs `git pull` + rebuild** to get the fix; (2) **public exposure** — needs OCI ingress + `PUBLIC_MODE=1`, not done; (3) **cutover vs. keep-both** — NAS and VM both run their own 03:00 CT import today. Also: `api.bcb.gov.br` doesn't resolve from either machine (3 Brazil series on stale cache).
 
