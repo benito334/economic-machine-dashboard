@@ -215,3 +215,23 @@ def test_module_does_not_zscore_census_construction():
     body = text.split("def compute_ai_capex_metrics")[1]
     assert "zscore" not in body.lower()
     assert "_full_history_z" not in body
+
+
+# ── operator gating (the public Cloud Run deploy runs PUBLIC_MODE=1) ─────────
+
+def test_ai_capex_route_is_operator_only():
+    """deploy/cloudrun/Dockerfile sets PUBLIC_MODE=1, and a push to main
+    auto-deploys it. The page must therefore be gated two ways: hidden from
+    the nav, AND blocked by direct URL in route_page via this frozenset."""
+    from dashboard.app_mode import OPERATOR_ONLY_ROUTES
+    assert "/ai-capex-cycle" in OPERATOR_ONLY_ROUTES
+
+
+def test_ai_capex_nav_link_is_inside_the_public_mode_guard():
+    """The nav entry must sit in charting.py's `[] if PUBLIC_MODE else [...]`
+    block alongside Bubble Gauge — a route that is gated but still listed in
+    the sidebar leaks its existence on the public deploy."""
+    import pathlib
+    src = pathlib.Path("dashboard/charting.py").read_text()
+    guard = src.split("*([] if PUBLIC_MODE else [")[1].split("]),")[0]
+    assert "/ai-capex-cycle" in guard
