@@ -37,3 +37,57 @@ def test_all_unknown_or_empty_has_no_verdict():
 def test_verdict_color_covers_every_verdict_and_unknown_fallback():
     for v in ("AGREE", "PARTIAL", "CONTRADICT", "UNKNOWN"):
         assert v in VERDICT_COLOR
+
+
+# ── info-icon ids ────────────────────────────────────────────────────────────
+# Content-addressed (2026-10-05): the ids used to come from a module counter
+# that never reset, so each render minted fresh ones and left every prior
+# dbc.Tooltip target dangling. Two things have to hold: stable across renders,
+# and unique within one page's layout.
+
+def test_monitor_page_layouts_have_no_duplicate_info_icon_ids():
+    import pytest
+    from dash.development.base_component import Component
+
+    def _info_ids(node, out):
+        cid = getattr(node, "id", None)
+        if isinstance(cid, str) and cid.startswith("mon-info-"):
+            out.append(cid)
+        for child in getattr(node, "children", None) or []:
+            if isinstance(child, Component):
+                _info_ids(child, out)
+            elif isinstance(child, list):
+                for c in child:
+                    if isinstance(c, Component):
+                        _info_ids(c, out)
+        return out
+
+    builders = []
+    for mod, fn, args in (
+        ("dashboard.fed_monitor", "get_layout", ()),
+        ("dashboard.case_study_monitor", "get_layout", ()),
+        ("dashboard.market_expectations", "get_layout", ()),
+        ("dashboard.bubble_gauge_monitor", "get_layout", ()),
+        ("dashboard.ai_capex_monitor", "get_layout", ()),
+        ("dashboard.validator_monitor", "get_layout", ()),
+        ("dashboard.central_bank_monitor", "_country_block", ("US",)),
+        ("dashboard.force_detail", "get_layout", ("growth",)),
+        ("dashboard.force_detail", "get_layout", ("inflation",)),
+    ):
+        import importlib
+        builders.append((f"{mod}.{fn}{args}", getattr(importlib.import_module(mod), fn), args))
+
+    checked = 0
+    for label, build, args in builders:
+        try:                      # DB-guarded, same convention as the layout tests
+            layout = build(*args)
+        except Exception:
+            continue
+        # the dbc.Tooltip's `target` is a prop, not an id, so only the ⓘ spans
+        # are collected here — every one of them must be unique in the layout
+        ids = _info_ids(layout, [])
+        dupes = {i for i in ids if ids.count(i) > 1}
+        assert not dupes, f"{label} reuses info-icon id(s): {sorted(dupes)}"
+        checked += 1
+    if checked == 0:
+        pytest.skip("no page layout could be built (signals DB absent)")

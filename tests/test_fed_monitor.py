@@ -31,24 +31,38 @@ def test_layout_renders_on_db():
 
 
 def test_info_icon_builds_tooltip_and_empty_is_noop():
-    fm._ICON_SEQ["n"] = 0
     node = fm._info_icon("Detailed explanation of the chart.")
     # icon span + Tooltip, sharing one target id
     icon, tip = node.children
     # id prefix is "mon-info-" since _info_icon lives in shared_components.py
     # (promoted there from fed_monitor.py in the 2026-10 IA cleanup)
-    assert icon.id == tip.target == "mon-info-1"
+    assert icon.id == tip.target
+    assert icon.id.startswith("mon-info-")
     assert tip.children == "Detailed explanation of the chart."
-    # empty info → no icon, no id consumed
+    # empty info → no icon at all
     empty = fm._info_icon("")
     assert not getattr(empty, "children", None)
-    assert fm._ICON_SEQ["n"] == 1
+
+
+def test_info_icon_ids_are_content_addressed_not_monotonic():
+    # The id must be a pure function of (scope, text) — it used to come from a
+    # module counter that never reset, so re-rendering a page minted brand-new
+    # ids and left every prior tooltip target dangling.
+    first = fm._info_icon("Same explanation.").children[0].id
+    for _ in range(5):
+        fm._info_icon("some other icon rendered in between")
+    assert fm._info_icon("Same explanation.").children[0].id == first
+    # different text → different id; same text under a different scope too
+    assert fm._info_icon("A different explanation.").children[0].id != first
+    assert fm._info_icon("Same explanation.", scope="card B").children[0].id != first
 
 
 def test_chart_card_with_info_renders_icon():
     import pandas as pd
-    fm._ICON_SEQ["n"] = 0
     df = pd.DataFrame({"as_of": pd.to_datetime(["2025-01-01"]), "value": [1.0]})
     card = fm._chart_card("T", df, 1.0, "%", "one-liner", info="the long version")
-    assert fm._ICON_SEQ["n"] == 1        # icon was emitted
+    # the card scopes its icon id by title, so two cards sharing info prose
+    # still get distinct ids
+    assert card.children[0].children[1].children[0].id == \
+        fm._info_icon("the long version", scope="T").children[0].id
     assert type(card).__name__ == "Div"

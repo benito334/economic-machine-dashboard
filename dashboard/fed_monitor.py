@@ -25,7 +25,7 @@ from dashboard.shared_components import BLUE as _BLUE
 from dashboard.shared_components import GREEN as _GREEN
 from dashboard.shared_components import GREY as _GREY
 from dashboard.shared_components import RED as _RED
-from dashboard.shared_components import _chart_card, _chip, _fmt, _ICON_SEQ, _info_icon, _section
+from dashboard.shared_components import _chart_card, _chip, _fmt, _info_icon, _section
 from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _CC = "us"
@@ -169,8 +169,6 @@ def _header() -> html.Div:
 # ── layout ───────────────────────────────────────────────────────────────────
 
 def get_layout() -> html.Div:
-    _ICON_SEQ["n"] = 0             # stable icon ids per render
-
     # helper values for reads
     def cur(c):
         v, _ = _latest(c)

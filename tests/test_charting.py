@@ -993,9 +993,8 @@ class TestRoutedRegimeStepButtons:
             lambda **_kwargs: pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=4, freq="ME")}),
         )
         result = charting.update_regime_step(
-            1 if action == "prev" else None,
-            1 if action == "current" else None,
-            1 if action == "next" else None,
+            # one ALL-wildcard input now, so the three buttons arrive as a list
+            [1 if action == a else None for a in ("prev", "current", "next")],
             None,
             {},
             {},
@@ -1020,9 +1019,7 @@ class TestRoutedRegimeStepButtons:
         monkeypatch.setattr(charting, "load_composite_history", _history)
 
         result = charting.update_regime_step(
-            1,
-            None,
-            None,
+            [1, None, None],
             None,
             {},
             {},
@@ -1056,7 +1053,7 @@ class TestRoutedRegimeStepButtons:
             lambda **_k: pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=6, freq="ME")}),
         )
         result = charting.update_regime_step(
-            1, None, None, None, {}, {"page": page}, "US", 3,   # current_step=3 (walked back)
+            [1, None, None], None, {}, {"page": page}, "US", 3,   # current_step=3 (walked back)
         )
         if expected_reset:
             assert result == 0            # snapped to current

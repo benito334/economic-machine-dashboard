@@ -13,6 +13,7 @@ all import these directly from here.
 """
 from __future__ import annotations
 
+import hashlib as _hashlib
 import math as _math
 from typing import Any
 
@@ -68,16 +69,28 @@ def _fmt(v: float | None, unit: str) -> str:
     return f"{v:.2f}"
 
 
-# Per-render counter so each info icon / tooltip gets a stable, unique id.
-_ICON_SEQ = {"n": 0}
+def _info_icon_id(text: str, scope: str = "") -> str:
+    """Deterministic component id for one info icon, derived from its own
+    content (plus an optional scope — usually the owning card's title).
+
+    Content-addressed deliberately: this used to be a module-level counter
+    that never reset, so the same icon got id `mon-info-7` on one render and
+    `mon-info-31` on the next. A content hash is stable across re-renders of
+    the same page AND across the per-page render callbacks that build cards
+    outside get_layout() (e.g. central_bank_monitor's cbm-content), which a
+    counter reset at the top of get_layout() cannot cover. `scope` exists so
+    two cards that happen to share identical info prose still get distinct
+    ids — identical text AND identical title on one page would collide.
+    """
+    key = f"{scope}\x1f{text}"
+    return f"mon-info-{_hashlib.sha1(key.encode()).hexdigest()[:10]}"
 
 
-def _info_icon(text: str) -> html.Span:
+def _info_icon(text: str, scope: str = "") -> html.Span:
     """A small ⓘ that reveals a detailed explanation of the chart on hover."""
     if not text:
         return html.Span()
-    _ICON_SEQ["n"] += 1
-    iid = f"mon-info-{_ICON_SEQ['n']}"
+    iid = _info_icon_id(text, scope)
     return html.Span([
         html.Span("ⓘ", id=iid, style={
             "cursor": "help", "color": "var(--muted-color)", "fontSize": "0.72rem",
@@ -160,7 +173,7 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
         html.Div([
             html.Span(title, style={"fontSize": "0.78rem", "fontWeight": "700",
                                     "color": "var(--font-color)"}),
-            _info_icon(info),
+            _info_icon(info, scope=title),
             html.Span(value_str, style={"fontSize": "0.95rem", "fontWeight": "700",
                                         "fontFamily": "monospace", "color": color,
                                         "float": "right"}),

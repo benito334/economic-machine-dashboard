@@ -1304,7 +1304,8 @@ def _page_regime_history() -> html.Div:
                     html.Div(id="rh-threshold-display",
                              style={"display": "flex", "alignItems": "center",
                                     "gap": "12px", "marginRight": "12px"}),
-                    dbc.Button("Regime Thresholds", id="rh-threshold-open",
+                    dbc.Button("Regime Thresholds",
+                               id={"type": "rh-threshold-open", "idx": 0},
                                color="warning", size="sm", n_clicks=0,
                                style={"fontSize": "0.78rem", "fontWeight": "600",
                                       "padding": "4px 12px", "marginRight": "6px",
@@ -3458,9 +3459,14 @@ def _regime_info_children(
 
 @callback(
     Output("regime-step-index", "data"),
-    [Input({"type": "regime-step-button", "action": "prev"}, "n_clicks"),
-     Input({"type": "regime-step-button", "action": "current"}, "n_clicks"),
-     Input({"type": "regime-step-button", "action": "next"}, "n_clicks"),
+    # ALL, not three exact {"action": "prev"|"current"|"next"} ids: the walk
+    # buttons only exist on /regime-map + /regime-history, and an exact id that
+    # isn't in the current layout makes the Dash renderer log "A nonexistent
+    # object was used in an `Input`" on every OTHER page's load (page-trigger
+    # below is global, so this callback resolves everywhere). A wildcard input
+    # matching zero components is legal and silent. triggered_id still carries
+    # the concrete {"type", "action"} dict, so the action dispatch is unchanged.
+    [Input({"type": "regime-step-button", "action": ALL}, "n_clicks"),
      Input("nav-event", "data"),
      Input("date-range", "data"),
      Input("page-trigger", "data"),
@@ -3469,7 +3475,7 @@ def _regime_info_children(
     prevent_initial_call=True,
 )
 def update_regime_step(
-    _prev_clicks: Any, _current_clicks: Any, _next_clicks: Any,
+    _step_clicks: list,
     nav_event: dict,
     date_range: dict,
     page_trigger: dict,
@@ -4001,7 +4007,12 @@ def _update_rh_help_panel_style(is_open: bool) -> dict:
 
 @callback(
     Output("regime-threshold-modal", "is_open"),
-    [Input("rh-threshold-open",  "n_clicks"),
+    # The opener button lives on /regime-history only, while the modal itself,
+    # Apply/Reset and page-trigger are all global — so this callback resolves on
+    # every page, and an exact id absent from the current layout made the Dash
+    # renderer log "A nonexistent object was used in an `Input`" on every other
+    # page's load. A wildcard input matching zero components is legal and silent.
+    [Input({"type": "rh-threshold-open", "idx": ALL}, "n_clicks"),
      Input("rh-threshold-apply", "n_clicks"),
      Input("rh-threshold-reset", "n_clicks"),
      Input("page-trigger",       "data")],
@@ -4009,13 +4020,15 @@ def _update_rh_help_panel_style(is_open: bool) -> dict:
     prevent_initial_call=False,  # fire on load to guarantee is_open=False
 )
 def _toggle_threshold_modal(
-    n_open: int, n_apply: int, n_reset: int,
+    n_open: list, n_apply: int, n_reset: int,
     page_trigger: dict, is_open: bool,
 ) -> bool:
     from dash import ctx
+    trig = ctx.triggered_id
     # Guard on n_clicks > 0: initial load fires with n_clicks=0 which must not open
-    if ctx.triggered_id == "rh-threshold-open" and (n_open or 0) > 0:
-        return True
+    if isinstance(trig, dict) and trig.get("type") == "rh-threshold-open":
+        if any((n or 0) > 0 for n in (n_open or [])):
+            return True
     return False  # initial load, Apply, Reset, or page navigation all close
 
 
