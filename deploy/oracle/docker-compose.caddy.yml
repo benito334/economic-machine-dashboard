@@ -1,0 +1,33 @@
+# Caddy reverse proxy — PUBLIC VM ONLY. Never used on the NAS.
+#
+# Usage on the VM (from the repo root):
+#   docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml up -d caddy charting scheduler
+#
+# Keeping it in a separate file rather than a profile means the NAS's plain
+# `docker compose up -d` can never accidentally start a public listener.
+#
+# Caddy is the only service that publishes a port to the outside world. The
+# dashboard itself must be bound to 127.0.0.1 via CHARTING_BIND in .env; the
+# two together mean the app is unreachable except through this proxy.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"     # required for the ACME HTTP-01 challenge AND the HTTPS redirect
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./deploy/oracle/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/oracle/maintenance.html:/srv/maintenance.html:ro
+      - caddy_data:/data        # certificates — MUST persist, or Let's Encrypt
+      - caddy_config:/config    # rate limits will bite on repeated reissues
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - charting
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

@@ -1,0 +1,82 @@
+# Reverse proxy for the public deployment (Oracle VM).
+#
+# Caddy is the ONLY thing listening on a public port. The dashboard binds to
+# 127.0.0.1:8502 (CHARTING_BIND in .env) and is reachable solely through here,
+# so a firewall misconfiguration still doesn't expose the app directly.
+#
+# TLS is automatic: Caddy obtains and renews a Let's Encrypt certificate over
+# HTTP-01, which is why ports 80 AND 443 must both be open. Port 80 is not
+# optional — it carries the ACME challenge and the redirect to HTTPS.
+#
+# Assumes the DNS record is "DNS only" (grey cloud) in Cloudflare. If the
+# proxy (orange cloud) is ever turned on, two things change and both need
+# handling: Cloudflare serves its own certificate, and every client IP arrives
+# as a Cloudflare address unless `trusted_proxies` + CF-Connecting-IP are
+# configured below.
+{
+	# No email configured, so ACME registers anonymously — certificates still
+	# issue and renew normally; you just don't get expiry-warning mail. Add
+	# `email you@example.com` here if you want those.
+	admin off
+}
+
+dashboard.creovalabs.com {
+	encode gzip zstd
+
+	# Access log feeds GoAccess. Client IPs are MASKED at write time — the
+	# last octet of IPv4 (and the host portion of IPv6) is zeroed, so the log
+	# never contains a full address. Country-level geo still resolves fine
+	# from a /24, which is the agreed trade-off: country yes, stored IPs no.
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 20MiB
+			roll_keep 14
+		}
+		format filter {
+			wrap json
+			fields {
+				request>remote_ip ip_mask {
+					ipv4 24
+					ipv6 32
+				}
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+			}
+		}
+	}
+
+	# Security headers. The dashboard is Dash/Plotly, which needs inline
+	# scripts and styles, so a strict CSP would break it — these are the
+	# headers that can be set without breaking the app.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The nightly 03:00 CT import stops the dashboard so the pipeline can take
+	# the DuckDB write lock (the file allows exactly one writer). During that
+	# window the proxy has nothing to talk to, so serve a static page rather
+	# than a bare gateway error.
+	handle_errors {
+		@unavailable expression {err.status_code} in [502, 503, 504]
+		handle @unavailable {
+			rewrite * /maintenance.html
+			file_server {
+				root /srv
+			}
+		}
+		respond "{err.status_code} {err.status_text}"
+	}
+
+	reverse_proxy charting:8502 {
+		# Dash polls /_dash-update-component; a slow first render after a
+		# container restart shouldn't surface as an error to the visitor.
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 60s
+		}
+	}
+}

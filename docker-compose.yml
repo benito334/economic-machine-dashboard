@@ -28,7 +28,11 @@ services:
   charting:
     <<: *common
     ports:
-      - "8502:8502"
+      # CHARTING_BIND defaults to all interfaces, which is what a local/NAS
+      # instance wants. The public VM sets CHARTING_BIND=127.0.0.1 so the app
+      # is reachable ONLY through the reverse proxy — if the host firewall is
+      # ever misconfigured, the app still isn't directly exposed.
+      - "${CHARTING_BIND:-0.0.0.0}:8502:8502"
     environment:
       DATA_DIR: /data
       DB_PATH: /db/signals.duckdb
