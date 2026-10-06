@@ -2850,6 +2850,41 @@ def _dyn_threshold_input(comp: "pd.DataFrame", g_col: str, i_col: str) -> "pd.Da
     return comp[cols].rename(columns={g_col: "growth_score", i_col: "inflation_score"})
 
 
+def _resolve_row_thresholds(
+    comp: "pd.DataFrame", idx: int, g_sfx: "str | None", i_sfx: "str | None",
+    use_g_rolling: bool, use_i_rolling: bool,
+    country: str, base: "dict | None",
+) -> dict:
+    """Thresholds actually in force for one row of `comp`.
+
+    Dynamic thresholds (Ray Dalio review 2026-07-05, #23) override the static
+    gz/iz with the country-vol-scaled, credit/vol-adjusted values for that
+    specific month. Computed on the ACTIVE (windowed or full) score columns per
+    the 2026-07-06 window-unification audit. The momentum gates gm/im are NOT
+    scaled (Ray's step 6), so they pass through untouched.
+
+    One place, because two surfaces need the same answer: the regime info card
+    (which classifies with it) and the header's threshold readout (which has to
+    show the reader the same number the classifier used).
+    """
+    t = base or _DEFAULT_THRESHOLDS
+    if comp is None or comp.empty or not bool(t.get("dynamic", True)):
+        return dict(t)
+    eff_g = f"growth_score_{g_sfx}" if (g_sfx and use_g_rolling) else "growth_score"
+    eff_i = f"inflation_score_{i_sfx}" if (i_sfx and use_i_rolling) else "inflation_score"
+    if eff_g not in comp.columns or eff_i not in comp.columns:
+        return dict(t)
+    dyn = compute_dynamic_thresholds(
+        _dyn_threshold_input(comp, eff_g, eff_i),
+        base_gz=float(t.get("gz", 0.5)), base_iz=float(t.get("iz", 0.5)),
+        conc_share=_conc_share_for(country, t),
+    )
+    if dyn.empty:
+        return dict(t)
+    row = dyn.iloc[max(0, min(idx, len(dyn) - 1))]
+    return {**t, "gz": float(row["dyn_gz"]), "iz": float(row["dyn_iz"])}
+
+
 def _season_label(g_score, i_score, thresholds: "dict | None" = None) -> str:
     """Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06, Q2).
 
@@ -3736,23 +3771,11 @@ def update_regime_info(
     except (TypeError, json.JSONDecodeError):
         weight_audit = {}
 
-    # Dynamic thresholds (Ray Dalio review 2026-07-05, #23) — override the
-    # static gz/iz with the country-vol-scaled, credit/vol-adjusted values
-    # for this specific row when dynamic mode is enabled. Computed on the
-    # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
-    _t = thresholds or _DEFAULT_THRESHOLDS
-    if bool(_t.get("dynamic", True)):
-        _eff_g = f"growth_score_{g_sfx}" if (g_sfx and rolling.get("window")) else "growth_score"
-        _eff_i = f"inflation_score_{i_sfx}" if (i_sfx and rolling.get("inflation_window")) else "inflation_score"
-        dyn_df = compute_dynamic_thresholds(
-            _dyn_threshold_input(comp, _eff_g, _eff_i),
-            base_gz=float(_t.get("gz", 0.5)), base_iz=float(_t.get("iz", 0.5)),
-            conc_share=_conc_share_for(country, _t),
-        )
-        row_dyn = dyn_df.iloc[idx]
-        thresholds_for_row = {**_t, "gz": float(row_dyn["dyn_gz"]), "iz": float(row_dyn["dyn_iz"])}
-    else:
-        thresholds_for_row = _t
+    thresholds_for_row = _resolve_row_thresholds(
+        comp, idx, g_sfx, i_sfx,
+        bool(rolling.get("window")), bool(rolling.get("inflation_window")),
+        country, thresholds,
+    )
 
     return (
         _regime_info_children(
@@ -3769,6 +3792,65 @@ def update_regime_info(
         ),
         date_display,
     )
+
+
+def _threshold_display_chips(effective: "dict | None",
+                             base: "dict | None" = None) -> list:
+    """The Regime History header's threshold readout.
+
+    Shows the thresholds ACTUALLY IN FORCE for the selected month. In dynamic
+    mode those are the country-vol-scaled values, not the sliders' base values
+    — the two can differ a lot (US 2026-10: base 0.50, effective 0.226), and
+    showing the base next to a lit DYNAMIC badge misread as "the chip needs
+    +0.50" when the real bar was less than half that. The base is kept in
+    parentheses so the slider setting is still visible.
+    """
+    t = effective or _DEFAULT_THRESHOLDS
+    b = base or t
+    dynamic = bool(b.get("dynamic", True))
+    gz, iz = float(t.get("gz", 0.5)), float(t.get("iz", 0.5))
+    gm, im = float(t.get("gm", 0.05)), float(t.get("im", 0.05))
+    base_gz, base_iz = float(b.get("gz", 0.5)), float(b.get("iz", 0.5))
+
+    def _chip(label: str, val: float, prec: int = 2,
+              base_val: "float | None" = None) -> html.Span:
+        parts = [
+            html.Span(label, style={"color": "var(--muted-color)", "fontSize": "0.65rem",
+                                    "textTransform": "uppercase", "letterSpacing": "0.05em",
+                                    "marginRight": "3px"}),
+            html.Span(f"{val:+.{prec}f}" if prec > 1 else f"{val:.{prec}f}",
+                      style={"color": "#E8A317", "fontFamily": "monospace", "fontSize": "0.75rem",
+                             "fontWeight": "600"}),
+        ]
+        # Only worth the ink when the dynamic value actually moved off the base.
+        if base_val is not None and abs(base_val - val) >= 0.005:
+            parts.append(html.Span(f"({base_val:.2f})",
+                                   style={"color": "var(--muted-color)", "fontSize": "0.62rem",
+                                          "fontFamily": "monospace", "marginLeft": "3px",
+                                          "opacity": "0.75"}))
+        return html.Span(parts, style={"whiteSpace": "nowrap"})
+
+    def _dot() -> html.Span:
+        return html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"})
+
+    chips = [
+        _chip("G·Z", gz, 2, base_gz if dynamic else None), _dot(),
+        _chip("I·Z", iz, 2, base_iz if dynamic else None), _dot(),
+        # gm/im are untouched by the dynamic algorithm (step 6) — no base shown.
+        _chip("G·Δ", gm, 3), _dot(),
+        _chip("I·Δ", im, 3),
+    ]
+    if dynamic:
+        chips += [_dot(), html.Span(
+            "DYNAMIC", id="rh-dynamic-badge",
+            style={"color": "#E8A317", "fontSize": "0.65rem",
+                   "fontWeight": "700", "letterSpacing": "0.05em", "cursor": "help"})]
+        chips.append(dbc.Tooltip(
+            "Z thresholds shown are the values in force for the selected month "
+            "(country-vol-scaled, credit/volatility-adjusted). The slider's base "
+            "value is in parentheses. Momentum gates are not scaled.",
+            target="rh-dynamic-badge", placement="bottom"))
+    return chips
 
 
 # Left gutter shared by every chart on the Regime History page. Wide enough for
@@ -4069,42 +4151,56 @@ def _toggle_threshold_modal(
 
 @callback(
     Output("rh-threshold-display", "children"),
-    Input("regime-threshold-store", "data"),
+    [Input("regime-threshold-store", "data"),
+     Input("regime-step-index",      "data"),
+     Input("zscore-window-store",    "data"),
+     Input("inflation-window-store", "data"),
+     Input("country-store",          "data"),
+     Input("date-range",             "data"),
+     Input("page-trigger",           "data")],
     prevent_initial_call=False,
 )
-def _update_threshold_display(thresholds: "dict | None") -> list:
-    t = thresholds or _DEFAULT_THRESHOLDS
-    gz = float(t.get("gz", 0.5))
-    iz = float(t.get("iz", 0.5))
-    gm = float(t.get("gm", 0.05))
-    im = float(t.get("im", 0.05))
+def _update_threshold_display(
+    thresholds: "dict | None", step: int = 0,
+    zscore_window: int = 0, inflation_window: int = 0,
+    country: str = "US", date_range: "dict | None" = None, _trigger: Any = None,
+) -> list:
+    """Header readout of the thresholds in force for the SELECTED month.
 
-    def _chip(label: str, val: float, prec: int = 2) -> html.Span:
-        return html.Span([
-            html.Span(label, style={"color": "var(--muted-color)", "fontSize": "0.65rem",
-                                    "textTransform": "uppercase", "letterSpacing": "0.05em",
-                                    "marginRight": "3px"}),
-            html.Span(f"{val:+.{prec}f}" if prec > 1 else f"{val:.{prec}f}",
-                      style={"color": "#E8A317", "fontFamily": "monospace", "fontSize": "0.75rem",
-                             "fontWeight": "600"}),
-        ], style={"whiteSpace": "nowrap"})
+    Takes the same selection inputs the regime info card does, because in
+    dynamic mode the thresholds move month to month — a readout wired to the
+    threshold store alone could only ever show the sliders' base values, which
+    is what made the header say "G·Z +0.50" while the classifier was using
+    0.226 (US, Oct 2026).
+    """
+    country = str(country or "US")
+    base = thresholds or _DEFAULT_THRESHOLDS
+    if not bool(base.get("dynamic", True)):
+        return _threshold_display_chips(base)
+    try:
+        comp = load_composite_history(
+            start_date=(date_range or {}).get("start"),
+            end_date=(date_range or {}).get("end"),
+            country=country,
+        )
+    except Exception:
+        return _threshold_display_chips(base)
+    if comp.empty:
+        return _threshold_display_chips(base)
+    idx = max(0, min(len(comp) - 1 - int(step or 0), len(comp) - 1))
+    g_sfx = _FORCE_WINDOW_COL.get(int(zscore_window or 0))
+    i_sfx = _INFLATION_WINDOW_COL.get(int(inflation_window or 0))
 
-    chips = [
-        _chip("G·Z", gz),
-        html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
-        _chip("I·Z", iz),
-        html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
-        _chip("G·Δ", gm, 3),
-        html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
-        _chip("I·Δ", im, 3),
-    ]
-    if bool(t.get("dynamic", True)):
-        chips += [
-            html.Span("·", style={"color": "var(--border-color)", "fontSize": "0.65rem"}),
-            html.Span("DYNAMIC", style={"color": "#E8A317", "fontSize": "0.65rem",
-                                        "fontWeight": "700", "letterSpacing": "0.05em"}),
-        ]
-    return chips
+    def _has(col: "str | None") -> bool:
+        return bool(col) and col in comp.columns and comp[col].notna().any()
+
+    eff = _resolve_row_thresholds(
+        comp, idx, g_sfx, i_sfx,
+        _has(f"growth_score_{g_sfx}" if g_sfx else None),
+        _has(f"inflation_score_{i_sfx}" if i_sfx else None),
+        country, base,
+    )
+    return _threshold_display_chips(eff, base)
 
 
 @callback(

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import pytest
+import numpy as np
 import pandas as pd
 
 # ── charting_data unit tests ──────────────────────────────────────────────────
@@ -1404,3 +1405,82 @@ def test_chart_card_sync_hover_flag_marks_card_and_enables_spikes():
     fig = on.children[-1].figure
     assert fig.layout.xaxis.showspikes and fig.layout.hovermode == "x"
     assert not off.children[-1].figure.layout.xaxis.showspikes
+
+
+# ── Regime History header threshold readout ───────────────────────────────────
+# The readout used to be wired to the threshold store alone, so with dynamic
+# mode on it showed the sliders' base values (G·Z +0.50) while the classifier
+# was using the country-vol-scaled ones (0.23 for the US in Oct 2026) — the
+# number on screen was not the number doing the classifying.
+
+def _chip_text(node) -> str:
+    if isinstance(node, str):
+        return node
+    children = getattr(node, "children", None)
+    if children is None:
+        return ""
+    if isinstance(children, list):
+        return "".join(_chip_text(c) for c in children)
+    return _chip_text(children)
+
+
+def test_threshold_display_shows_effective_value_with_base_in_parens():
+    import dashboard.charting as charting
+    eff  = {"gz": 0.226, "iz": 0.150, "gm": 0.05, "im": 0.05, "dynamic": True}
+    base = {"gz": 0.50,  "iz": 0.50,  "gm": 0.05, "im": 0.05, "dynamic": True}
+    text = "".join(_chip_text(c) for c in charting._threshold_display_chips(eff, base))
+    assert "+0.23" in text          # effective — what the classifier used
+    assert "(0.50)" in text         # base — what the slider is set to
+    assert "DYNAMIC" in text
+
+
+def test_threshold_display_omits_base_when_dynamic_is_off():
+    import dashboard.charting as charting
+    static = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": False}
+    text = "".join(_chip_text(c) for c in charting._threshold_display_chips(static))
+    assert "+0.50" in text
+    assert "(0.50)" not in text     # nothing to disambiguate
+    assert "DYNAMIC" not in text
+
+
+def test_threshold_display_omits_base_when_dynamic_did_not_move_it():
+    # Same value either way → the parenthetical would be noise.
+    import dashboard.charting as charting
+    same = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
+    text = "".join(_chip_text(c) for c in charting._threshold_display_chips(same, same))
+    assert "(0.50)" not in text     # the tooltip prose still mentions parentheses
+    assert "DYNAMIC" in text
+
+
+def test_resolve_row_thresholds_passes_momentum_gates_through_unscaled():
+    # Ray's step 6: the dynamic algorithm scales the Z thresholds only.
+    import dashboard.charting as charting
+    comp = pd.DataFrame({
+        "as_of": pd.date_range("2015-01-31", periods=60, freq="ME"),
+        "growth_score": np.linspace(-1.0, 1.0, 60),
+        "inflation_score": np.linspace(1.0, -1.0, 60),
+    })
+    base = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
+    out = charting._resolve_row_thresholds(comp, 59, None, None, False, False, "US", base)
+    assert out["gm"] == 0.05 and out["im"] == 0.05
+
+
+def test_resolve_row_thresholds_is_a_noop_when_dynamic_is_off():
+    import dashboard.charting as charting
+    comp = pd.DataFrame({
+        "as_of": pd.date_range("2015-01-31", periods=60, freq="ME"),
+        "growth_score": np.linspace(-1.0, 1.0, 60),
+        "inflation_score": np.linspace(1.0, -1.0, 60),
+    })
+    base = {"gz": 0.42, "iz": 0.37, "gm": 0.05, "im": 0.05, "dynamic": False}
+    assert charting._resolve_row_thresholds(comp, 59, None, None, False, False, "US", base) == base
+
+
+def test_resolve_row_thresholds_survives_missing_columns_and_empty_input():
+    import dashboard.charting as charting
+    base = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
+    assert charting._resolve_row_thresholds(
+        pd.DataFrame(), 0, None, None, False, False, "US", base) == base
+    bare = pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=3, freq="ME")})
+    assert charting._resolve_row_thresholds(
+        bare, 2, None, None, False, False, "US", base) == base
