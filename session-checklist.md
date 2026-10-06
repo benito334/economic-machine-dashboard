@@ -12,6 +12,32 @@
 
 ---
 
+## Open items (updated 2026-10-06)
+
+- **Signals force pages show the BASE regime threshold, not the dynamic one.**
+  `/signals/{force}` banner reads "THRESHOLD ±0.50" and its composite chart draws
+  its bands there, while the classifier uses the dynamic vol-scaled value (0.226
+  for US growth today). Same bug class fixed on the Regime History header this
+  session (commit `ee3d3ed`); `_resolve_row_thresholds()` +
+  `_threshold_display_chips()` in `charting.py` are the ready-made fix.
+- **`gz` calibration is an open question, separate from the momentum work.**
+  Our growth level threshold is far less demanding than the Chicago Fed's
+  published one — our growth family covers 37% of months, CFNAI-MA3 above its
+  +0.70 publisher threshold covers 3% (and below −0.70 is 93% in-recession).
+  Different concepts, so CFNAI can't validate `gz` directly, but the gap is
+  worth a deliberate look. Logged in `docs/Guidance/ray_dalio_review_log.md`.
+- **digitalray.ai errors on long prompts.** A ~2,000-character brief fails with
+  "Something went wrong" (Regenerate does not help); ~450 characters works first
+  time. Run consults as several short turns. Newlines in its input box submit the
+  form, so compose without them.
+
+> Everything below this line predates 2026-07 and is stale — it describes the
+> 119-signal era (63 US + 34 EZ + 22 KR) and a Signals page that has since been
+> built. Kept for history; do not treat it as current state. `docs/worklog.md`
+> and `CLAUDE.md` are authoritative.
+
+---
+
 ## Pending / Blockers
 
 ### AI Capex Cycle Monitor — PHASE 1 SHIPPED (2026-10-04), Phases 2-3 open
