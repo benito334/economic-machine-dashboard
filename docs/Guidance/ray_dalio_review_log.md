@@ -592,3 +592,69 @@ level threshold, not accelerating. That is the honest answer to the question tha
 - Ray's volatility-scaled momentum gate → **rejected on evidence** (+0.01pp separation).
 - Probabilistic / soft-assignment regime weighting → **acknowledged, no build** for now; a
   genuine alternative architecture, but a much larger change than the seam that prompted this.
+
+#### External validation of the proposed rule (same session, before implementing anything)
+
+Ray is an AI approximation of a framework, and the backtest above scored our composite against
+forward GDP — the quantity that composite is built to proxy. Both sides of that test lean on our
+own basket. Before acting on the punch list we re-tested against the two outside sources the
+project already wires up in `indicators/audit_benchmarks.py`, with their independence stated
+honestly: **NBER recession dating** (committee judgement, genuinely independent of every series we
+ingest) and **CFNAI-MA3** (Chicago Fed — independent *weighting*, 85 series via principal
+component, but overlapping *data*: it also contains payrolls, industrial production, retail sales
+and capacity utilisation).
+
+**Test A — the proposed labels against NBER recession dating, 1980-2026, 6 onsets.**
+
+| proposed label | n | median months to next NBER onset | within 12m of an onset | already in recession |
+|---|---|---|---|---|
+| Growth (accelerating) | 105 | 51 | 2% | **0%** |
+| Growth (flat) | 39 | 77 | 3% | **0%** |
+| Growth (fading) | 65 | 41 | 0% | **0%** |
+| Transition | 208 | 52 | 23% | 5% |
+| Retraction | 145 | 70 | 21% | 33% |
+
+**Test B — rebuild the identical rule on the Chicago Fed's composite** (48-month rolling Z of
+CFNAI-MA3, our dynamic thresholds, same 0.04 gate — so the only thing that changes is whose
+weights built the index).
+
+| | ours | CFNAI-MA3 |
+|---|---|---|
+| coarse family agreement (GROWTH / Transition / Retraction) | — | 69% of 537 months |
+| sub-state agreement inside the growth family | — | **54%** of 154 months |
+| accelerating − flat separation, fwd-12m GDP | +0.39pp | **+0.21pp** |
+| sub-state ordering | acc > fading > flat | acc = fading > flat |
+
+**What survives.**
+- **The level gate is strongly corroborated.** All three high sub-states contain **zero** NBER
+  recession months, against 33% for Retraction and 5% for Transition. Being above the level
+  threshold is a real, externally-confirmed state.
+- **Not ejecting high-but-flat readings from the growth family is the well-supported part of the
+  change.** A flat month sits a median 77 months from the next recession onset with 3% within a
+  year. Labelling it "Transition" puts it in a bucket that is 23%-within-a-year of a recession and
+  5% already in one. That is the actual defect, and NBER confirms it independently.
+
+**What does not survive.**
+- **Ray's causal story is not supported.** He justified the separate flat category as *"the tail
+  end of an unsustainable expansion"*. In US data flat readings are the **furthest** from the next
+  recession of any growth state (77 months, 3% within a year) and fading readings are **0%** within
+  a year. If anything the data points the other way. Adopt his structure; do not adopt his
+  rationale, and do not put that wording in the UI.
+- **The three-way sub-split only half-reproduces out of sample.** 54% sub-state agreement against
+  an independently weighted composite is weak for a 3-way split, and the accelerating−flat
+  separation nearly halves (+0.39pp → +0.21pp) when the Chicago Fed's weights are used instead of
+  ours. The ordering is directionally right; the magnitude is partly an artefact of our basket.
+
+**Separate calibration finding, logged not actioned.** Our growth level threshold is far less
+demanding than the Chicago Fed's published one: our growth family covers 37% of months, CFNAI-MA3
+above its publisher threshold of +0.70 covers 3%, and below −0.70 is 93% in-recession. These are
+not the same concept — theirs is calibrated as a recession call, ours as a regime boundary. Not a
+defect, but it means CFNAI's thresholds cannot be used to validate our `gz` directly.
+
+**Revised recommendation — narrower than the punch list above.** Do the part NBER confirms: stop
+collapsing above-threshold-but-flat months into Transition, so the growth family is the whole
+region above the level gate. Treat accelerating / flat / fading as a **secondary annotation on the
+chip rather than a change to the chip vocabulary itself**, given it only half-reproduces on an
+external composite — that keeps the information Ray was right about without spending the
+label-vocabulary change across every surface on a split the external evidence only partly
+supports.
