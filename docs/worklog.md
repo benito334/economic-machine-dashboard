@@ -3065,3 +3065,78 @@ just the path.
 convincing phantom failures — DuckDB is single-writer, and a concurrent run made 24 unrelated
 `test_charting.py` tests fail. Run alone, that file is 103 passed. Check `ps aux | grep pytest`
 before believing a surprising suite result.
+
+---
+
+## 2026-10-06 — Dash console errors, Regime History layout + crosshair, threshold-display bug, and a Ray consult on the growth-chip momentum gate
+
+**The ask (four things, in order).** (1) Fix the `ReferenceError: A nonexistent object was used in an 'Input' of a Dash callback` that every Monitors-group page logs on load — reported as being caused by `shared_components._ICON_SEQ`, the never-resetting info-icon counter. (2) Regime History: every chart on its own full-width row, with the shared crosshair the Signals force pages have. (3) Then, from a question the user raised reading the live page: the US growth charts and Regime Map both show growth above its threshold while the Growth chip still reads Transition — is that correct? (4) Take the answer to Digital Ray and decide it.
+
+### 1. The console errors were NOT the info-icon ids
+
+Captured the full error text (the browser console truncates it) by hooking `console.error` before an SPA navigation. The actual messages name **`rh-threshold-open`** and **`{"type":"regime-step-button","action":"prev"}`**. The `mon-info-N` ids that appear alongside them are the tail of the *"The string ids in the current layout are: [...]"* list Dash prints as context after the failing id — i.e. they were listed as PRESENT, not missing. Confirmed independently from the other direction: `dbc.Tooltip` in dash-bootstrap-components 2.0.4 is a pure React component with no Dash callback at all, so a tooltip target could never produce this error.
+
+**Real cause.** Two callbacks take exact `Input`s on components that exist only on `/regime-history` and `/regime-map`, while also taking the global `page-trigger` Input — so they resolve on every page and the renderer errors on the missing ids everywhere else. Fixed by making both ids pattern-matching (`{"type": "regime-step-button", "action": ALL}` and `{"type": "rh-threshold-open", "idx": ALL}`); a wildcard Input matching zero components is legal and silent, and `ctx.triggered_id` still carries the concrete dict so the action dispatch is unchanged. Scoped deliberately: `rh-threshold-apply`/`rh-threshold-reset` live in the global modal and were left as exact ids.
+
+**The info-icon ids were genuinely unstable anyway**, so they were fixed too — they were the reason the real error was unreadable. `_ICON_SEQ` was a module counter that never reset (only `fed_monitor.get_layout()` reset it), so every render minted fresh ids and left prior tooltip targets dangling. Now content-addressed: `mon-info-{sha1(scope + text)[:10]}`. Chose a content hash over the obvious per-`get_layout()` counter reset because `central_bank_monitor` builds its cards in a *callback* (`cbm-content`), not in `get_layout()` — a reset at the top of `get_layout()` could never have covered it. `_info_icon(text)` keeps its signature; `scope` is an optional second arg and `_chart_card` passes the card title, so two cards sharing info prose still get distinct ids. New test builds 8 real page layouts and asserts no duplicate `mon-info-*` ids (fed 25, validator 17, case-study 13, market-exp 10, ai-capex 8, bubble-gauge 3, central-bank 2 — all unique).
+
+**Verification.** Swept all 22 nav routes with a `console.error` hook installed: **zero** "nonexistent object" errors, where before there were two on nearly every page. Regression-checked what was rewired: the Regime Thresholds modal opens on click and closes on Apply, and Prev/Now/Next step Oct → Sep → Oct on both `/regime-history` and `/regime-map`.
+
+### 2. Regime History — one chart per row, crosshair across the whole stack
+
+`_section(..., columns=1)` so every chart is its own full-width row (the shape the Signals force pages already use for their composite cards) instead of a flex-wrap grid putting three narrow charts side by side. The six cards already carried `sync_hover=True`, but the regime band chart on top sat outside the group, so the crosshair stopped at the cards; it is now dressed as a chart card (same chrome, same header) and tagged `sync-hover-card`.
+
+**The part that actually made the crosshair readable was the gutter.** `_chart_card` let Plotly auto-size the left margin to each figure's own y tick labels, so `0.5`, `-2` and `Inflation` each started their plot area at a different pixel and the seven spike lines did not line up. New optional `_chart_card(margin_l=...)` pins it; Regime History passes `_RH_MARGIN_L = 55` (wide enough for the band chart's row labels) to all seven. Measured live: plot-area left **and** right edges identical to the pixel across all seven charts, and a real mouse hover puts a label + spike line on every one.
+
+Also found in the process: `_chart_card`'s `dcc.Graph` had no `responsive=True`, so a figure kept whatever width it was first drawn at and sat narrow inside a wide card once the column resized. Added; re-checked Fed Monitor live to confirm the multi-column pages are unaffected.
+
+### 3. The threshold readout was showing a number the classifier was not using
+
+Answering the user's question surfaced a real bug. With dynamic mode on (the default), the Regime History header read **"G·Z +0.50"** while the classifier was using **0.226** — the readout was wired to `regime-threshold-store` alone, which only ever holds the sliders' base values, sitting next to a lit DYNAMIC badge. Misleading in exactly the case that prompted the question: a reading of +0.374 looks nowhere near the band when it has in fact cleared it.
+
+Now takes the same selection inputs the regime info card does (step / windows / country / date range) and shows the selected month's effective values with the base in parentheses: **"G·Z +0.23 (0.50)"**. Parenthetical omitted when dynamic is off or when scaling did not move the value; tooltip on the DYNAMIC badge explains the two numbers. The per-row dynamic resolution was extracted out of `update_regime_info` into `_resolve_row_thresholds()` so the card that classifies and the header that reports read from one implementation — these two disagreeing *was* the bug. Momentum gates pass through unscaled (Ray's step 6), now pinned by a test. Kept the readout on its own callback rather than adding an output to `update_regime_info`: `regime-info-box` also lives on `/regime-map` where `rh-threshold-display` does not, and a multi-output callback with a missing output does not fire.
+
+### 4. The answer to the user's question, and the seam it exposed
+
+**The chip was correct.** `_classify_regime` requires three conditions for "Growth": Z > threshold, ΔZ > `gm` (0.05), and the Z leg sustained 2 months. On 2026-10 the US reads Z **+0.374** against a dynamic threshold of **0.226** (clears), sustained 2m (clears), ΔZ **+0.008** (fails). The Regime Map's "Expansion" backdrop uses `_season_label`, which checks only the two Z legs — so the two surfaces disagreeing is by design (Ray audit 2026-07-06, Q2: season names are map geography, chips are the decision rule).
+
+**But the chip means something narrower than it reads.** Since 2010 the ΔZ leg alone blocked the Growth label in **45 of the 76 months** where the Z leg passed. The composite has sat between +0.30 and +0.48 for six months — it arrived and plateaued, and the rule demands it still be *accelerating* at 0.05 Z/month every month. In practice the Growth chip has been reading "growth is accelerating", not "growth is strong".
+
+**Backtest of the alternatives** (US, 562 months 1980-01..2026-10, dynamic thresholds, scored against mean realized real GDP YoY over the FOLLOWING 12 months; unconditional +2.71%):
+
+| rule | Growth months | flip rate | fwd-12m GDP G / T / R | G−R spread |
+|---|---|---|---|---|
+| current, ΔZ > +0.05 | 78 (14%) | 33% | +3.74 / +2.77 / +0.73 | 3.01pp |
+| no momentum gate | 185 (33%) | 14% | +3.56 / +2.80 / +1.09 | 2.47pp |
+| ΔZ > −0.05 (not falling) | 123 (22%) | 32% | +3.65 / +2.75 / +0.94 | 2.71pp |
+| hysteresis (ΔZ to enter, level to hold) | 175 (31%) | 13% | +3.59 / +2.78 / +1.04 | 2.55pp |
+
+Two findings worth recording. The gate makes the label flicker **more**, not less (33% vs 13-14%). And the 2026-10-03 (10) calibration that set `gm`=0.05 only compared 0.0 / 0.05 / 0.1 — **removing the gate was never tested**. That same entry already recorded that the gate did nothing for growth (37.0%→37.0% flips) and only helped inflation; it was adopted globally anyway.
+
+### Ray consult + external validation
+
+Full detail in `docs/Guidance/ray_dalio_review_log.md`, session 2026-10-06 (thread `b9c48725-1c73-441b-abec-74e4b355548a`). Ray's ruling: **the level is the primary gate** (*"if the level is below the threshold, the regime is not Growth, regardless of momentum"*), a high-but-flat reading **is** a transition, but it deserves its own label rather than being collapsed into the same bucket as a weak reading. He also endorsed per-force momentum gates and committed to a concrete three-label rule.
+
+Operational note: digitalray.ai errors out on long prompts — the ~2,000-character brief failed repeatedly with "Something went wrong", including on Regenerate, while a ~450-character message worked first time. Run these consults as several short turns, which the documented process wanted anyway. Newlines in the input box submit the form, so compose without them.
+
+**Then validated the proposal against outside sources before touching code**, because the backtest above scored our composite against forward GDP — the quantity that composite is built to proxy, so both sides lean on our own basket. Used the two benchmarks `indicators/audit_benchmarks.py` already wires: **NBER recession dating** (genuinely independent of every series we ingest) and **CFNAI-MA3** (Chicago Fed — independent *weighting*, overlapping *data*: it also contains payrolls, IP, retail sales, capacity utilisation).
+
+| proposed label | n | median months to next NBER onset | within 12m | in recession |
+|---|---|---|---|---|
+| Growth (accelerating) | 105 | 51 | 2% | **0%** |
+| Growth (flat) | 39 | **77** | 3% | **0%** |
+| Growth (fading) | 65 | 41 | 0% | **0%** |
+| Transition | 208 | 52 | **23%** | 5% |
+| Retraction | 145 | 70 | 21% | 33% |
+
+**Survives:** the level gate (all three high sub-states contain **zero** NBER recession months against 33% for Retraction), and the core claim that collapsing high-but-flat into Transition is wrong — a flat month sits a median **77 months** from the next recession onset while the Transition bucket we dump it in is 23%-within-a-year of one.
+
+**Does not survive:** Ray's *causal story*. He justified the flat category as "the tail end of an unsustainable expansion"; in US data flat readings are the **furthest** of any growth state from the next recession and fading readings are **0%** within a year. Structure adopted, rationale rejected, wording kept out of the UI. And the three-way split only half-reproduces out of sample — rebuilding the identical rule on the Chicago Fed's composite gives **54%** sub-state agreement (3-way chance is 33%) and the accelerating−flat separation nearly halves, **+0.39pp → +0.21pp**.
+
+Also rejected on evidence: Ray's `level_thresh = 0.7` (he appears to have forgotten his own 2026-07-05 dynamic-threshold algorithm; our vol-scaled 0.226 is the equivalent), his volatility-scaled momentum gate `0.5 × σ(ΔZ)` (collapses the separation to **+0.01pp**), and a defect in his literal code snippet (the `else` inside the `z > level_thresh` branch labels high-but-*falling* months as `"Low/Retraction"` — those months average **+3.43%** forward GDP at a 69% hit-rate).
+
+**Separate calibration finding, logged not actioned.** Our growth level threshold is far less demanding than the Chicago Fed's published one: our growth family covers 37% of months, CFNAI-MA3 above +0.70 covers 3%, and below −0.70 is 93% in-recession. Different concepts — theirs is calibrated as a recession call, ours as a regime boundary — so CFNAI's thresholds cannot validate our `gz` directly.
+
+**Verification across the session.** Suite 714 → 720 passed, zero exclusions. Browser-verified each change on a worktree-built container on :8502 (the main-repo container was swapped out and restored; note the scheduler finds the charting container by compose *service label*, not name, so a differently-named container is still bounced correctly by the 03:00 import).
+
+**Next.** Implement the narrowed recommendation (below).
