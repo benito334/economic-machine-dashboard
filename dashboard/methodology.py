@@ -1043,19 +1043,42 @@ def get_layout() -> html.Div:
                         "regime label itself.",
 
                         "ROLE 2 — Regime chip classification (dashboard display): Growth and "
-                        "Inflation are classified independently using a dual-condition rule — BOTH "
-                        "the composite Z-score AND the month-over-month momentum delta must cross "
-                        "their respective thresholds for a named regime to fire. Otherwise the "
-                        "dimension lands in Transition. "
-                        "Growth: Growth (Z > +gz AND ΔMoM > gm), Retraction (Z < -gz AND ΔMoM < -gm), "
-                        "Transition (all other cases). "
-                        "Inflation: Inflation (Z > +iz AND ΔMoM > im), Disinflation (Z < -iz AND ΔMoM < -im), "
-                        "Transition (all other cases).",
+                        "Inflation are classified independently, and since 2026-10-06 the two "
+                        "chips use DIFFERENT rules. "
+                        "GROWTH is level-gated: Growth (Z > +gz), Retraction (Z < -gz), Transition "
+                        "otherwise — the month-over-month change does NOT gate the chip. "
+                        "INFLATION keeps the dual condition: Inflation (Z > +iz AND ΔMoM > im), "
+                        "Disinflation (Z < -iz AND ΔMoM < -im), Transition otherwise. "
+                        "Both chips additionally require the Z leg to have held for "
+                        "sustained_months consecutive periods (default 2).",
 
-                        "Default thresholds: gz = 0.5, iz = 0.5, gm = 0.0, im = 0.0. "
-                        "With gm = im = 0.0 the momentum gate reduces to 'any positive tick' — "
-                        "making the dual-condition effectively Z-score-only at defaults. Raise gm "
-                        "or im above 0 to require a meaningful sustained move before a regime fires. "
+                        "WHY THE TWO CHIPS DIFFER. The momentum gate measurably helps the "
+                        "inflation chip (label flips 33% of months with it vs 9% without) and did "
+                        "nothing for growth (37.0% -> 37.0% in the 2026-10-03 calibration, which "
+                        "only ever compared gm 0.0/0.05/0.1 and never tested removing it). "
+                        "Validated against NBER recession dating, which is independent of every "
+                        "series this dashboard ingests: of the 209 months whose growth Z sits "
+                        "above the level gate, ZERO fall inside an NBER recession — whether the "
+                        "score is still accelerating, flat, or fading. The old rule pushed "
+                        "high-but-flat months into Transition, a bucket that is 23%-within-a-year "
+                        "of a recession, so the label was actively misleading. Ray Dalio's own "
+                        "ruling on the same question: 'if the level is below the threshold, the "
+                        "regime is not Growth, regardless of momentum' — the level is the primary "
+                        "gate.",
+
+                        "GROWTH MOMENTUM SUB-STATE. Momentum was not discarded for growth, it "
+                        "moved. A Growth reading is annotated accelerating (ΔMoM > gm), flat "
+                        "(|ΔMoM| <= gm) or fading (ΔMoM < -gm). This is a secondary annotation, "
+                        "NOT part of the chip vocabulary: rebuilding the same three-way split on "
+                        "the Chicago Fed's independently-weighted CFNAI-MA3 reproduces it only "
+                        "weakly (54% sub-state agreement; the accelerating-vs-flat separation on "
+                        "forward realized GDP falls from +0.39pp to +0.21pp), so it informs rather "
+                        "than labels. It is deliberately growth-only — the equivalent split on the "
+                        "Retraction side does not separate at all (+1.42 / +1.01 / +1.43pp).",
+
+                        "Default thresholds: gz = 0.5, iz = 0.5, gm = 0.04, im = 0.05. "
+                        "Note gm and im now mean different things: im GATES the inflation chip, "
+                        "while gm only sets the accelerating/flat band inside a Growth reading. "
                         "Adjust via the 'Regime Thresholds' button on the Regime History page; "
                         "settings persist in browser localStorage.",
 
@@ -1105,18 +1128,22 @@ def get_layout() -> html.Div:
                             ["Stored quadrant", "Inflationary Boom",     "growth_score ≥ 0  AND  inflation_score < 0",  ""],
                             ["Stored quadrant", "Stagflation",           "growth_score < 0  AND  inflation_score ≥ 0",  ""],
                             ["Stored quadrant", "Disinflationary Slowdown","growth_score < 0 AND  inflation_score < 0", ""],
-                            ["Growth chip",     "Growth",      "Z > +gz  AND  ΔMoM > gm",   "Dashboard chips; dual-condition"],
-                            ["Growth chip",     "Transition",  "Neither threshold crossed",   ""],
-                            ["Growth chip",     "Retraction",  "Z < -gz  AND  ΔMoM < -gm",   ""],
+                            ["Growth chip",     "Growth",      "Z > +gz",                     "Level-gated since 2026-10-06; no momentum gate"],
+                            ["Growth chip",     "Transition",  "|Z| <= gz",                   ""],
+                            ["Growth chip",     "Retraction",  "Z < -gz",                     ""],
+                            ["— sub-state",     "accelerating","Growth  AND  ΔMoM > gm",      "Annotation on a Growth chip, not a label"],
+                            ["— sub-state",     "flat",        "Growth  AND  |ΔMoM| <= gm",   ""],
+                            ["— sub-state",     "fading",      "Growth  AND  ΔMoM < -gm",     ""],
                             ["Inflation chip",  "Inflation",   "Z > +iz  AND  ΔMoM > im",    ""],
                             ["Inflation chip",  "Transition",  "Neither threshold crossed",   ""],
                             ["Inflation chip",  "Disinflation","Z < -iz  AND  ΔMoM < -im",   ""],
                         ]
                     )],
                     notes=[
-                        "At default thresholds (gm = im = 0.0) the momentum gate is trivially "
-                        "satisfied by any positive monthly tick, so the chips behave like a "
-                        "pure Z-score rule. Set gm/im > 0 to require a meaningful upward move.",
+                        "The growth chip is level-gated and the inflation chip is not — see the "
+                        "narrative above for the evidence behind that asymmetry. gm no longer "
+                        "gates the growth chip; it sets the accelerating/flat band of the "
+                        "sub-state annotation.",
                         "Historical note: 2022 US shows Growth + Inflation (not Retraction) "
                         "because employment Z-scores were strongly positive. Retraction correctly "
                         "appears from March 2023 when growth Z-scores turned negative.",
@@ -1127,10 +1154,13 @@ def get_layout() -> html.Div:
                    "(see Section 6) — signals whose direction confirms the force get up to 1.5× "
                    "weight; conflicting signals are down-weighted.  This shapes the composite "
                    "Z-scores before any regime label is applied."),
-                _p("Second, the dashboard regime chips use a dual-condition rule: a named regime "
-                   "fires only when BOTH the composite Z-score AND the month-over-month momentum "
-                   "delta cross their respective thresholds.  Otherwise the dimension lands in "
-                   "Transition, preventing single-period spikes from triggering a regime change."),
+                _p("Second, the dashboard regime chips use momentum differently per chip "
+                   "(since 2026-10-06).  The INFLATION chip fires only when BOTH the composite "
+                   "Z-score AND the month-over-month delta cross their thresholds.  The GROWTH "
+                   "chip is gated on the level alone — momentum instead annotates a Growth "
+                   "reading as accelerating / flat / fading.  Both chips require the Z leg to "
+                   "have held for sustained_months consecutive periods, which is what prevents "
+                   "single-period spikes from triggering a regime change."),
                 _table(
                     ["Layer", "Label", "Condition", "Note"],
                     [
@@ -1138,18 +1168,17 @@ def get_layout() -> html.Div:
                         ["Stored quadrant", "Inflationary Boom",      "growth_score ≥ 0  AND  inflation_score < 0",  ""],
                         ["Stored quadrant", "Stagflation",            "growth_score < 0  AND  inflation_score ≥ 0",  ""],
                         ["Stored quadrant", "Disinflationary Slowdown","growth_score < 0  AND  inflation_score < 0", ""],
-                        ["Growth chip",     "Growth",       "Z > +gz  AND  ΔMoM > gm",  "Dashboard dual-condition"],
-                        ["Growth chip",     "Transition",   "Neither threshold crossed",  ""],
-                        ["Growth chip",     "Retraction",   "Z < −gz  AND  ΔMoM < −gm",  ""],
+                        ["Growth chip",     "Growth",       "Z > +gz",                   "Level-gated; momentum is a sub-state"],
+                        ["Growth chip",     "Transition",   "|Z| ≤ gz",                   ""],
+                        ["Growth chip",     "Retraction",   "Z < −gz",                   ""],
                         ["Inflation chip",  "Inflation",    "Z > +iz  AND  ΔMoM > im",   ""],
                         ["Inflation chip",  "Transition",   "Neither threshold crossed",  ""],
                         ["Inflation chip",  "Disinflation", "Z < −iz  AND  ΔMoM < −im",  ""],
                     ]
                 ),
-                _p("Default thresholds: gz = 0.5, iz = 0.5, gm = 0.0, im = 0.0.  "
-                   "With gm = im = 0.0 the momentum gate reduces to 'any positive tick', so at "
-                   "defaults the chips behave like a pure Z-score rule.  Raise gm or im above 0 "
-                   "to require a meaningful sustained move before a regime fires.  "
+                _p("Default thresholds: gz = 0.5, iz = 0.5, gm = 0.04, im = 0.05.  "
+                   "im gates the inflation chip; gm sets the accelerating/flat band of the growth "
+                   "sub-state and does not gate anything.  "
                    "Adjust via the 'Regime Thresholds' button on the Regime History page; "
                    "settings persist in localStorage.  Threshold lines are drawn on the scatter "
                    "chart and the Regime History Z-score panels."),
@@ -2086,6 +2115,7 @@ def get_layout() -> html.Div:
                     tables=[(
                         ["Date", "Change", "Sections affected"],
                         [
+                            ["2026-10-06", "Growth chip made level-gated; momentum demoted to a sub-state (Ray consult + external validation). The growth chip no longer requires ΔMoM > gm — Z beyond ±gz, sustained, is the whole rule. Validated against NBER recession dating (independent of every series ingested here): of 209 months above the growth level gate, ZERO are inside an NBER recession, while the Transition bucket the old rule pushed high-but-flat months into is 23%-within-a-year of one. Momentum moved to a secondary annotation (accelerating / flat / fading, band gm, default 0.05→0.04) shown beside the chip on Command Center and Regime History — kept as an annotation rather than a label because the split only half-reproduces on the Chicago Fed's independently-weighted CFNAI-MA3 (54% sub-state agreement; separation +0.39pp→+0.21pp). The INFLATION chip deliberately keeps its momentum gate (im, unchanged at 0.05): the gate cuts its flip rate 33%→9% and did nothing for growth. Rejected on evidence from the same consult: Ray's fixed level_thresh=0.7 (superseded by his own dynamic vol-scaled thresholds), his volatility-scaled momentum gate (collapses separation to +0.01pp), and his 'tail end of an unsustainable expansion' rationale (flat readings are the FURTHEST of any growth state from the next recession, 77 months median).", "8, 15"],
                             ["2026-08-19", "Ray Dalio consult (debt-growth-vs-income + productivity tactics): (1) new debt_income_spread feature — Spread = DebtGrowthRate − IncomeGrowthRate per sector (household/corporate/government), computed as YoY %-change of the existing debt/GDP ratio signals (no new sourcing needed); reserve-currency (US/EZ/JP) vs other-country tolerance tiers; warning/critical flags surfaced on Command Center, Debt Stress, and Relative Cycles alongside Sovereign Squeeze (kept as a distinct badge, not conflated). (2) ProdScore-vs-Growth-Z divergence read ('Early-stage competitive advantage' / 'Unsustainable-expansion watch') on the Productivity force-detail page and Command Center's Productivity Trend card, reusing the same gz threshold the Growth chip uses. (3) new growth.relative_ulc signal (OECD/IMF REER unit-labor-cost-based index via FRED, verified live for 10/14 countries; CN/IN/BR/ID documented as a gap) feeding a new Relative Cycles competitiveness ranking table.", "9, 7, — (new data lens)"],
                             ["2026-07-18", "Annual-signal carry math fixed (TFP/R&D showed BLANK with current data): per-frequency carry cap A 15→36mo and time-decay hard_drop_months 12→36 (annual obs are stamped at period START and the successor print lands ~26–34mo later — the caps blanked every annual signal for the back half of its natural cycle); new per-binding stale_after_days override for slow publishers (TFP 850d, WB R&D 1100d) so the is_stale flag matches each source's real cadence. Age-decay (grace + half-life) now does the honest down-weighting in between.", "7"],
                             ["2026-07-17", "US data audit: household/corporate debt-to-GDP moved off laggy BIS repackagings to derived Z.1 ratios (CMDEBT/GDP, BCNSDODNS/GDP — corporate concept narrows ~75%→~45%, equilibrium reset 70→43); TFP source Penn World Table→BLS MFPNFBS (2023→2025-current); weekly staleness window 12→18d; fed.custody_holdings (weekly, live) added as the foreign-demand pulse.", "2, 7, 9, 17"],

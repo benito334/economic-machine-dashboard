@@ -1630,13 +1630,15 @@ _THRESHOLD_MODAL = dbc.Modal(
                 style={"paddingBottom": "28px"},
             ),
 
-            html.Label("Growth Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
-            html.P("Δ MoM of the composite growth score. Default 0.05 (2026-10-03): a pure "
-                   "sign test (0) lets one noisy month flip the label; backtested against the "
-                   "US direction-validation scenarios with no accuracy cost.",
+            html.Label("Growth Momentum band  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
+            html.P("Δ MoM of the composite growth score. This does NOT gate the Growth chip "
+                   "(the level does, on its own) — it splits a Growth reading into "
+                   "accelerating / flat / fading. Default 0.04 (2026-10-06): validated against "
+                   "NBER recession dating, which puts every month above the level gate outside "
+                   "a recession whether or not it is still accelerating.",
                    style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
             html.Div(
-                dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.05,
+                dcc.Slider(id="rh-gm-slider", min=-0.1, max=0.1, step=0.005, value=0.04,
                            marks={-0.1: _modal_mark("-0.10"), -0.05: _modal_mark("-0.05"),
                                   0: _modal_mark("0"), 0.05: _modal_mark("0.05"), 0.1: _modal_mark("0.10")},
                            tooltip={"always_visible": False, "style": {"display": "none"}},
@@ -1646,9 +1648,11 @@ _THRESHOLD_MODAL = dbc.Modal(
             ),
 
             html.Label("Inflation Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
-            html.P("Δ MoM of the composite inflation score. Default 0.05 (2026-10-03): same "
-                   "false-positive reasoning as the growth gate — cut inflation-chip label "
-                   "flips from 38% to 23% of months over the full history with no accuracy cost.",
+            html.P("Δ MoM of the composite inflation score. Unlike the growth band above, this "
+                   "still GATES the Inflation chip: the gate measurably helps here (label flips "
+                   "33% of months with it vs 9% without) and did not help growth, so it was kept "
+                   "on this chip only (Ray, 2026-10-06: calibrate the gate per chip). "
+                   "Default 0.05 (2026-10-03).",
                    style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
             html.Div(
                 dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.05,
@@ -1761,12 +1765,15 @@ app.layout = html.Div([
     dcc.Store(id="country-store",        data="US", storage_type="local"),
     # Regime classification thresholds (persisted per browser)
     dcc.Store(id="regime-threshold-store",
-              # gm/im 0.0->0.05: must match _DEFAULT_THRESHOLDS above (same
-              # kind of default-sync issue as the "dynamic" default-ON
-              # change). Only affects browsers with no stored value yet --
-              # an existing localStorage value isn't retroactively migrated,
-              # same as every prior default change here.
-              data={"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True,
+              # MUST stay in sync with _DEFAULT_THRESHOLDS above -- this has
+              # drifted twice (the "dynamic" default-ON change, then gm/im
+              # 0.0->0.05), so it is now pinned by a test. Latest: gm->0.04
+              # (2026-10-06), where gm stopped gating the growth chip and
+              # became the accelerating/flat band instead. Only affects
+              # browsers with no stored value yet -- an existing localStorage
+              # value isn't retroactively migrated, same as every prior
+              # default change here.
+              data={"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": True,
                     "conc_adj": False},
               storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
@@ -2455,7 +2462,12 @@ _INFLATION_COLOR = "#E8734C"
 # flips were unaffected at 0.05, needing 0.1 to move -- 0.05 is the value
 # actually cited in the source note, so that's what shipped; 0.1 tested
 # cleanly too and is a candidate if 0.05 proves too weak in practice).
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True,
+# gm 0.05 -> 0.04 (2026-10-06): gm no longer GATES the growth chip, it is the
+# accelerating/flat boundary of _growth_momentum_state. 0.04 is the value Ray
+# specified and the one our own acceptance test clears (accelerating-vs-flat
+# separation +0.39pp on forward realized GDP, inside his stated 0.3-0.5pp band).
+# im stays 0.05: the gate still gates the inflation chip, where it earns its keep.
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": True,
                        "conc_adj": False}
 
 # Growth chip colors (positive = good)
@@ -2713,6 +2725,54 @@ def _holds_for(history: "pd.Series | None", threshold: float, above: bool,
     return bool((tail > threshold).all() if above else (tail < -abs(threshold)).all())
 
 
+# Growth-chip momentum sub-state. Momentum used to be a gate on the chip
+# itself; the 2026-10-06 external validation moved it here instead — see
+# _classify_regime's docstring for why. This is a SECONDARY annotation, not a
+# label: it says what is happening inside the regime, and it is deliberately
+# not part of the chip vocabulary.
+#
+# Deliberately growth-only, and deliberately not promoted to a headline label.
+# Against NBER dating the three growth sub-states separate (0% in recession
+# each, but ordered on forward GDP: accelerating +3.74%, fading +3.43%, flat
+# +3.35%), while the equivalent split on the RETRACTION side does not separate
+# at all (easing +1.42%, flat +1.01%, deepening +1.43% — no ordering), so there
+# is no evidence to carry it over there. And rebuilding the same split on the
+# Chicago Fed's independently-weighted CFNAI-MA3 reproduces only weakly (54%
+# sub-state agreement, separation falling +0.39pp -> +0.21pp), which is why it
+# annotates the chip rather than replacing it.
+_GROWTH_MOMENTUM_STATE = {
+    "accelerating": "building",
+    "flat":         "holding",
+    "fading":       "easing off",
+}
+
+
+def _growth_momentum_state(
+    g_regime: str, g_score: "float | None", g_delta: "float | None",
+    thresholds: "dict | None" = None,
+) -> "str | None":
+    """'accelerating' | 'flat' | 'fading' for a Growth chip, else None.
+
+    Returns None whenever the chip is not reading Growth — Transition has no
+    inside to describe, and the Retraction-side split is unsupported by the
+    evidence (see the comment above).
+    """
+    if g_regime != "Growth":
+        return None
+    if g_score is None or (isinstance(g_score, float) and pd.isna(g_score)):
+        return None
+    t = thresholds or _DEFAULT_THRESHOLDS
+    gm = float(t.get("gm", _DEFAULT_THRESHOLDS["gm"]))
+    gd = (float(g_delta)
+          if (g_delta is not None and not (isinstance(g_delta, float) and pd.isna(g_delta)))
+          else 0.0)
+    if gd > gm:
+        return "accelerating"
+    if gd >= -gm:
+        return "flat"
+    return "fading"
+
+
 def _classify_regime(
     g_score: "float | None",
     i_score: "float | None",
@@ -2722,7 +2782,32 @@ def _classify_regime(
     g_history: "pd.Series | None" = None,
     i_history: "pd.Series | None" = None,
 ) -> "tuple[str, str]":
-    """Return (growth_regime, inflation_regime) using dual Z + momentum conditions.
+    """Return (growth_regime, inflation_regime).
+
+    The GROWTH chip is level-gated: Z beyond ±gz, sustained for
+    `sustained_months`. It does NOT require the month-over-month change to
+    agree. The INFLATION chip keeps the dual Z + momentum condition.
+
+    That asymmetry is deliberate and evidence-backed (Ray consult + external
+    validation 2026-10-06, both logged in docs/Guidance/ray_dalio_review_log.md):
+
+      * Ray's ruling — "if the level is below the threshold, the regime is not
+        Growth, regardless of momentum"; the level is the primary gate and
+        momentum describes what is happening INSIDE the regime.
+      * Against NBER recession dating — genuinely independent of every series
+        we ingest — every month above the growth level gate is outside a
+        recession (0 of 209), whether accelerating, flat or fading, and a
+        high-but-flat month sits a median 77 months from the next recession
+        onset. The old rule pushed those months into Transition, a bucket that
+        is 23%-within-a-year of a recession. That was the defect.
+      * The momentum gate measurably helped the INFLATION chip (flip rate 33%
+        with it vs 9% without) and did nothing for growth (37.0% -> 37.0% in
+        the 2026-10-03 calibration, which only ever compared gm 0.0/0.05/0.1
+        and never tested removing it). So it stays on inflation and comes off
+        growth, per Ray's "calibrate the momentum threshold for each chip".
+
+    Momentum has NOT been discarded for growth — it moved to
+    `_growth_momentum_state()`, which sub-classifies within the regime.
 
     When `g_history` / `i_history` are supplied, the Z leg additionally has to
     have held for `sustained_months` consecutive periods (Ray ruling
@@ -2733,16 +2818,14 @@ def _classify_regime(
     _n = _sustained_months()
     gz  = float(t.get("gz", 0.5))
     iz  = float(t.get("iz", 0.5))
-    gm  = float(t.get("gm", 0.05))
     im  = float(t.get("im", 0.05))
 
-    # Growth regime
+    # Growth regime — level only (see docstring).
     if g_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
         gv = float(g_score)
-        gd = float(g_delta) if (g_delta is not None and not (isinstance(g_delta, float) and pd.isna(g_delta))) else 0.0
-        if gv > gz and gd > gm and _holds_for(g_history, gz, True, _n):
+        if gv > gz and _holds_for(g_history, gz, True, _n):
             g_regime = "Growth"
-        elif gv < -gz and gd < -gm and _holds_for(g_history, gz, False, _n):
+        elif gv < -gz and _holds_for(g_history, gz, False, _n):
             g_regime = "Retraction"
         else:
             g_regime = "Transition"
@@ -3112,6 +3195,8 @@ def _regime_info_children(
     cda_sub = " · ".join(_cda_bits) if _cda_bits else "vs chip headings"
     diseq_str = _fmt(diseq)
 
+    _g_mom_state = _growth_momentum_state(g_regime, g_score, _g_delta_active, _t)
+
     # Window label for the Force Z-Scores group header
     _gw = int(rolling.get("window", 0))
     _iw = int(rolling.get("inflation_window", 0))
@@ -3150,6 +3235,14 @@ def _regime_info_children(
                         },
                     ),
                 ], style={"display": "flex", "gap": "6px"}),
+                # Growth momentum sub-state — a note UNDER the chip, never part
+                # of it. The chip answers "is growth strong?" (level); this
+                # answers "and is it still building?" (2026-10-06).
+                *([html.Div(
+                    f"growth {_g_mom_state} ({_GROWTH_MOMENTUM_STATE[_g_mom_state]})",
+                    style={"fontSize": "0.66rem", "color": "var(--muted-color)",
+                           "marginTop": "4px", "letterSpacing": "0.02em"},
+                )] if _g_mom_state else []),
                 *([past_badge] if past_badge is not None else []),
                 date_block,
             ], style={"paddingRight": "20px", "width": "215px", "flexShrink": "0",

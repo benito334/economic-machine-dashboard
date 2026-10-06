@@ -1484,3 +1484,93 @@ def test_resolve_row_thresholds_survives_missing_columns_and_empty_input():
     bare = pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=3, freq="ME")})
     assert charting._resolve_row_thresholds(
         bare, 2, None, None, False, False, "US", base) == base
+
+
+# ── Growth chip: level-gated, with momentum as a sub-state ────────────────────
+# 2026-10-06. The growth chip used to require Z > gz AND dZ > gm; it now
+# requires the level alone, and momentum moved to _growth_momentum_state().
+# The inflation chip deliberately KEPT its momentum gate. Nothing pinned the
+# old growth behaviour, so the whole asymmetry is pinned here instead.
+
+_T = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": False}
+
+
+def test_growth_chip_reads_growth_when_level_clears_but_momentum_is_flat():
+    # The case that prompted the change: US 2026-10, Z well above threshold,
+    # month-over-month change essentially zero. Used to read Transition.
+    import dashboard.charting as charting
+    g, _ = charting._classify_regime(0.9, 0.0, 0.001, 0.0, _T)
+    assert g == "Growth"
+
+
+def test_growth_chip_reads_growth_even_while_the_level_is_fading():
+    # Still above the level gate but falling: NBER says these months are not
+    # recessionary (0 of 65), so they stay inside the growth family.
+    import dashboard.charting as charting
+    g, _ = charting._classify_regime(0.9, 0.0, -0.30, 0.0, _T)
+    assert g == "Growth"
+
+
+def test_growth_chip_still_requires_the_level():
+    import dashboard.charting as charting
+    # below the gate, rising hard -> not Growth; the level is the primary gate
+    assert charting._classify_regime(0.4, 0.0, 0.50, 0.0, _T)[0] == "Transition"
+    # symmetric on the downside
+    assert charting._classify_regime(-0.9, 0.0, 0.0, 0.0, _T)[0] == "Retraction"
+
+
+def test_inflation_chip_keeps_its_momentum_gate():
+    # The asymmetry is the point: the gate measurably helps inflation (33% ->
+    # 9% flip rate) and did nothing for growth, so it was kept on this chip only.
+    import dashboard.charting as charting
+    _, i = charting._classify_regime(0.0, 0.9, 0.0, 0.001, _T)
+    assert i == "Transition"                 # level clears, momentum does not
+    _, i = charting._classify_regime(0.0, 0.9, 0.0, 0.20, _T)
+    assert i == "Inflation"
+
+
+def test_growth_momentum_state_splits_a_growth_reading_three_ways():
+    import dashboard.charting as charting
+    assert charting._growth_momentum_state("Growth", 0.9,  0.20, _T) == "accelerating"
+    assert charting._growth_momentum_state("Growth", 0.9,  0.001, _T) == "flat"
+    assert charting._growth_momentum_state("Growth", 0.9, -0.001, _T) == "flat"
+    assert charting._growth_momentum_state("Growth", 0.9, -0.20, _T) == "fading"
+    # boundary sits at gm exactly: > gm accelerates, >= -gm is flat
+    assert charting._growth_momentum_state("Growth", 0.9, 0.04, _T) == "flat"
+    assert charting._growth_momentum_state("Growth", 0.9, 0.041, _T) == "accelerating"
+
+
+def test_growth_momentum_state_is_none_outside_the_growth_regime():
+    # Transition has no inside to describe, and the Retraction-side split does
+    # not separate on forward GDP (+1.42 / +1.01 / +1.43), so it is not carried over.
+    import dashboard.charting as charting
+    assert charting._growth_momentum_state("Transition", 0.2, 0.9, _T) is None
+    assert charting._growth_momentum_state("Retraction", -0.9, -0.9, _T) is None
+    assert charting._growth_momentum_state("Growth", None, 0.9, _T) is None
+
+
+def test_growth_momentum_state_has_a_plain_english_gloss_for_every_state():
+    import dashboard.charting as charting
+    for state in ("accelerating", "flat", "fading"):
+        assert state in charting._GROWTH_MOMENTUM_STATE
+        assert charting._GROWTH_MOMENTUM_STATE[state]
+
+
+def test_default_growth_band_is_004_and_inflation_gate_stays_005():
+    import dashboard.charting as charting
+    assert charting._DEFAULT_THRESHOLDS["gm"] == 0.04
+    assert charting._DEFAULT_THRESHOLDS["im"] == 0.05
+
+
+def test_threshold_store_initial_data_matches_the_module_defaults():
+    # This pair has drifted twice (the "dynamic" default-ON change, then
+    # gm/im 0.0->0.05). A mismatch silently gives every new browser different
+    # thresholds from the ones the code documents, so pin it.
+    import re, pathlib
+    import dashboard.charting as charting
+    src = pathlib.Path(charting.__file__).read_text()
+    m = re.search(r'dcc\.Store\(id="regime-threshold-store",.*?data=(\{.*?\}),',
+                  src, re.S)
+    assert m, "could not locate the regime-threshold-store initial data"
+    store = eval(m.group(1))          # literal dict in our own source
+    assert store == charting._DEFAULT_THRESHOLDS

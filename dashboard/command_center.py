@@ -259,7 +259,8 @@ def render_command_center(country_data, page_trigger, thresholds,
     # Lazy import — charting.py imports this module, so a top-level import
     # back into charting would be circular. Same pattern as indicators/backtest.
     from dashboard.charting import (
-        _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
+        _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _GROWTH_MOMENTUM_STATE,
+        _INFLAT_CHIP, _growth_momentum_state,
         _INFLATION_WINDOW_COL, _classify_regime, compute_dynamic_thresholds,
         compute_regime_confidence,
     )
@@ -322,6 +323,9 @@ def render_command_center(country_data, page_trigger, thresholds,
     # Z leg must have held for N consecutive months, not just this one.
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
                                       g_history=hist[g_col], i_history=hist[i_col])
+    # Momentum is no longer a gate on the growth chip (2026-10-06) — it
+    # describes what is happening inside the regime, shown beside the chip.
+    g_mom_state = _growth_momentum_state(g_chip, g, g_d, t)
 
     # Probabilistic regime confidence (coverage-audit Phase B, 2026-10-03):
     # empirical frequency that a reading like today's actually held into the
@@ -374,6 +378,16 @@ def render_command_center(country_data, page_trigger, thresholds,
         ]),
         html.Div([
             _chip_span(f"Growth · {g_chip}", _GROWTH_CHIP.get(g_chip, "#888")),
+            *([html.Span(
+                g_mom_state,
+                title=f"Growth momentum is {_GROWTH_MOMENTUM_STATE[g_mom_state]}. The chip "
+                      "itself is set by the LEVEL of the growth score; this says whether that "
+                      "level is still building. Validated against NBER recession dating "
+                      "(2026-10-06) — every month above the level gate sits outside a "
+                      "recession, accelerating or not.",
+                style={"fontSize": "0.68rem", "color": "var(--muted-color)",
+                       "marginRight": "10px", "cursor": "help"},
+            )] if g_mom_state else []),
             _anchor_chip(_anchor),
             _chip_span(f"vs own history · {i_chip}",
                        _INFLAT_CHIP.get(i_chip, "#888"), secondary=True),
