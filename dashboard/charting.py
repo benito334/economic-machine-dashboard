@@ -1706,15 +1706,28 @@ def _static_data_through() -> str:
 
 
 def _static_banner():
-    """Thin 'this is a static snapshot' bar — only on the public cloud deploy."""
+    """Thin provenance bar — public deploys only.
+
+    There are two public deploys and they are NOT the same thing, so the text
+    must not be: Cloud Run serves a FROZEN snapshot rebuilt from a GitHub
+    release, while the Oracle VM runs the live system with a nightly import.
+    Telling visitors of a live instance that they are looking at a static
+    snapshot "not live" is simply false, so the wording follows DEPLOY_KIND.
+
+    Defaults to "snapshot" so the existing Cloud Run deploy is unchanged if the
+    variable is unset.
+    """
     if not PUBLIC_MODE:
         return None
     through = _static_data_through()
     dated = f" · data through {through}" if through else ""
+    live = os.environ.get("DEPLOY_KIND", "snapshot").strip().lower() == "live"
+    label = (f"📊 Live instance{dated}, updated nightly — read-only. "
+             if live else
+             f"📊 Static demo snapshot{dated} — read-only, not live. ")
     return html.Div(
         [
-            html.Span(f"📊 Static demo snapshot{dated} — read-only, not live. ",
-                      style={"opacity": "0.9"}),
+            html.Span(label, style={"opacity": "0.9"}),
             html.A("View the source & run it yourself on GitHub →",
                    href=_REPO_URL, target="_blank",
                    style={"color": "inherit", "textDecoration": "underline",

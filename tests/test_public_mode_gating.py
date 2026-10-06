@@ -164,3 +164,38 @@ def test_scheduler_callbacks_are_not_registered_in_public_mode():
     assert len(after_guard) == 2, "the `if not PUBLIC_MODE:` registration guard vanished"
     assert "sched_cfg.save_schedule(" in after_guard[1]
     assert "sched_cfg.request_run_now()" in after_guard[1]
+
+
+# ── provenance banner must match the deployment it is running on ─────────────
+
+def test_banner_wording_follows_deploy_kind(monkeypatch):
+    """Two public deploys, two different truths: Cloud Run serves a frozen
+    snapshot, the Oracle VM runs the live system with a nightly import. The
+    banner shipped saying "static demo snapshot ... not live" on BOTH, which
+    was false on the live one and visible to every visitor."""
+    import importlib
+    import dashboard.charting as c
+
+    def banner_text(kind):
+        if kind is None:
+            monkeypatch.delenv("DEPLOY_KIND", raising=False)
+        else:
+            monkeypatch.setenv("DEPLOY_KIND", kind)
+        monkeypatch.setattr(c, "PUBLIC_MODE", True)
+        node = c._static_banner()
+        return " ".join(
+            ch.children if isinstance(getattr(ch, "children", None), str) else ""
+            for ch in node.children
+        )
+
+    assert "Live instance" in banner_text("live")
+    assert "not live" not in banner_text("live")
+    # Unset must keep the pre-existing Cloud Run wording.
+    assert "Static demo snapshot" in banner_text(None)
+    assert "Static demo snapshot" in banner_text("snapshot")
+
+
+def test_banner_absent_when_not_public(monkeypatch):
+    import dashboard.charting as c
+    monkeypatch.setattr(c, "PUBLIC_MODE", False)
+    assert c._static_banner() is None

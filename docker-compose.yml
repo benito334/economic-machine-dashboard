@@ -56,6 +56,10 @@ services:
       FEEDBACK_TOKEN: "${FEEDBACK_TOKEN:-}"
       # The image has no .git, so the feedback dialog reads the version here.
       APP_VERSION: "${APP_VERSION:-}"
+      # "snapshot" (default, Cloud Run's frozen release) or "live" (the Oracle
+      # VM, which runs the nightly import). Drives the provenance banner's
+      # wording — calling a live instance a static snapshot is just false.
+      DEPLOY_KIND: "${DEPLOY_KIND:-}"
     command: python -m dashboard.charting
     restart: always
 
