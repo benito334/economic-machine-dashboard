@@ -45,6 +45,13 @@ services:
       # at /traffic?key=<TRAFFIC_KEY>; leave empty on a local instance for an
       # open, sidebar-linked page.
       TRAFFIC_KEY: "${TRAFFIC_KEY:-}"
+      # Feedback dialog -> Google Apps Script -> Sheet. The browser POSTs
+      # directly; this deployment never writes feedback anywhere. Unset =
+      # the Feedback button is not rendered at all.
+      FEEDBACK_ENDPOINT: "${FEEDBACK_ENDPOINT:-}"
+      FEEDBACK_TOKEN: "${FEEDBACK_TOKEN:-}"
+      # The image has no .git, so the feedback dialog reads the version here.
+      APP_VERSION: "${APP_VERSION:-}"
     command: python -m dashboard.charting
     restart: always
 

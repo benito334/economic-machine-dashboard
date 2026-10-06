@@ -267,3 +267,42 @@ class TestUpsertSemantics:
                                                               stage="reflation")])
         assert conn.execute("SELECT as_of, stage FROM debt_cycle_stage_snapshots").fetchall() == [
             (date(2020, 3, 31), "reflation")]
+
+
+class TestUpsertRejectsDuplicateKeysInBatch:
+    """ON CONFLICT DO UPDATE silently keeps only the first row of a same-key group in the
+    source rowset — verified against this DuckDB build, no error raised. The old
+    DELETE-then-INSERT this replaced would have hit the PRIMARY KEY and failed loudly on
+    the same input, so _upsert_in_place must reject it instead of upserting one arbitrary
+    row and discarding the rest unnoticed."""
+
+    def test_signals_duplicate_id_and_as_of_raises(self, conn):
+        dup = [_signal(value=0.01), _signal(value=0.02)]
+        with pytest.raises(ValueError, match="duplicate-key"):
+            upsert_signals(conn, dup)
+        assert conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 0
+
+    def test_composites_duplicate_country_and_as_of_raises(self, conn):
+        dup = [
+            CompositeSnapshot(country="US", as_of=date(2020, 5, 28), growth_score=1.0),
+            CompositeSnapshot(country="US", as_of=date(2020, 5, 28), growth_score=2.0),
+        ]
+        with pytest.raises(ValueError, match="duplicate-key"):
+            upsert_composites(conn, dup)
+        assert conn.execute("SELECT COUNT(*) FROM composites").fetchone()[0] == 0
+
+    def test_validator_verdicts_duplicate_full_key_raises(self, conn):
+        dup = [
+            ValidatorVerdict(country="US", as_of=date(2026, 1, 1), axis="growth",
+                             validator_key="cfnai_ma3", verdict="AGREE"),
+            ValidatorVerdict(country="US", as_of=date(2026, 1, 1), axis="growth",
+                             validator_key="cfnai_ma3", verdict="CONTRADICT"),
+        ]
+        with pytest.raises(ValueError, match="duplicate-key"):
+            upsert_validator_verdicts(conn, dup)
+        assert conn.execute("SELECT COUNT(*) FROM validator_verdicts").fetchone()[0] == 0
+
+    def test_distinct_keys_in_same_batch_still_succeed(self, conn):
+        # Guard against a false positive: rows with different keys must upsert normally.
+        upsert_signals(conn, [_signal(as_of=date(2024, 1, 1)), _signal(as_of=date(2024, 2, 1))])
+        assert conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0] == 2

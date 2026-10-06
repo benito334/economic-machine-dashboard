@@ -3065,3 +3065,67 @@ just the path.
 convincing phantom failures — DuckDB is single-writer, and a concurrent run made 24 unrelated
 `test_charting.py` tests fail. Run alone, that file is 103 passed. Check `ps aux | grep pytest`
 before believing a surprising suite result.
+
+## 2026-10-05 (2) — Feedback dialog: browser → Apps Script → Google Sheet
+
+Owner's spec: no writes to the VM, populate a Google Sheet instead, optional email,
+one button in the side menu opening a simple dialog, no IP and no location.
+
+**Architecture.** The dialog is the one thing on a public dashboard that genuinely wants to
+be a write surface — exactly what `PUBLIC_MODE` exists to eliminate (see the gating audit
+earlier today). So the server is cut out entirely: `dashboard/feedback.py` renders the UI, and
+a **clientside** callback POSTs from the visitor's browser straight to a Google Apps Script web
+app, which appends a row to the Sheet. The deployment stores nothing. Receiver and deployment
+notes live in `deploy/feedback/` (`Code.gs`, plus `probe.sh` for one-line endpoint testing).
+
+Captured: message, optional email, and the context a bug report otherwise needs a back-and-forth
+to establish — page, country, the three look-back windows, theme, viewport, app version (git
+SHA), user agent. **Not** captured: IP, geolocation. The dialog discloses all of this in a
+"What gets sent with this" disclosure, and a test asserts that copy still exists.
+
+**Three non-obvious things this had to get right.**
+1. `Content-Type: text/plain;charset=utf-8`, not `application/json`. JSON triggers a CORS
+   preflight `OPTIONS`, which Apps Script web apps cannot answer, and the POST silently never
+   happens. Pinned by a test.
+2. `mode: 'no-cors'` — the response is opaque and unreadable. Accepted deliberately: reading it
+   needs CORS headers Apps Script doesn't reliably set, and showing an error when the write
+   actually succeeded is worse than optimistic confirmation.
+3. Apps Script answers a POST with a 302 to a result URL, which must be followed as a GET (the
+   `doPost` already ran). Browsers do this correctly on their own — but `curl -X POST` forces
+   POST through the redirect and fails with a Drive "Page Not Found". That cost a debugging
+   round against a deployment that was already working; `probe.sh` now carries the fix and a
+   comment.
+
+**Google-side deployment traps, all three hit, all now documented in `Code.gs`:**
+"Anyone with a Google account" sends anonymous visitors to a sign-in page (GET redirects to
+accounts.google.com, POST 401); clicking Deploy with the Version dropdown left on its current
+number re-ships the same snapshot while reporting "successfully updated"; and functions pasted
+*inside* the default `myFunction()` become nested, which Apps Script does not expose — the
+endpoint answers "Script function not found: doPost" even though the code is visibly there.
+A new deployment (rather than editing the existing one) also issues a NEW `/exec` URL.
+
+**A bug caught only by the live end-to-end run.** The first real submission landed a row with
+an empty App version column: the JS read `window.__EMD_VERSION__`, a global nothing ever set.
+Now resolved at import from the git SHA, with an `APP_VERSION` env fallback because the Docker
+image carries no `.git`, and threaded through the config store. Re-verified live: the second
+submission recorded `a1a50e3` and `page: /ai-capex-cycle` correctly.
+
+**Safety.** The Apps Script side prefixes any field starting with `= + - @` with an apostrophe —
+formula injection is the real attack on a write-to-a-spreadsheet design, and a message of
+`=HYPERLINK("http://evil.test","click me")` was verified to store as literal text rather than a
+live formula. Plus a 4000-char cap (both sides), a 12/hour per-session throttle, and a shared
+token that is abuse friction rather than access control — the `/exec` URL is necessarily public
+for a browser-side POST, so the token can't be secret and the code says so.
+
+**Gating.** The Feedback button is not rendered at all unless both `FEEDBACK_ENDPOINT` and
+`FEEDBACK_TOKEN` are set — a button that silently discards what someone typed is worse than no
+button. Both live in `.env` (gitignored); `.env.example` and `docker-compose.yml` carry empty
+placeholders.
+
+**Verification.** 17 new tests in `tests/test_feedback.py`, including one asserting the module
+never performs a write and one asserting the submit stays clientside. Confirmed live in a
+browser against the real endpoint: dialog opens from the sidebar, sends, closes on success, and
+the row lands in the Sheet with every field correct. Test rows cleaned up.
+
+Note: port 8502 was held by `imwt-charting-1` (the spun-off tooltip-fix task running in its own
+worktree), so verification ran on :8504 rather than disturbing it.
