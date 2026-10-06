@@ -27,7 +27,7 @@ Working agreement (2026-07-05):
 | Credit force | Punch list open | 2026-07-05 | Structurally sound; confirm it has both supply-side (bank lending standards) and demand-side (borrower willingness) signals, not just one side |
 | Volatility force | Reviewed – punch list open | 2026-07-05 | Categorically different from the other 4 forces — describes environment noise/risk, not the economic machine itself. Should NOT feed the regime label directly; use as a threshold-widening modifier or standalone risk-off overlay. Recommends realized volatility (from equity price series, works for any country) as the universal signal, VIX as a US-only supplement, plus bond-vol/credit-spread-vol for redundancy |
 | Long-Term Debt Stress composite | Reviewed – solid plan reached | 2026-07-05 | "The composite you've built is on solid footing." Minimum viable subset for sparse-data countries = debt-to-GDP + debt-service ratio + primary balance (size/pressure/direction). Recommends a dynamic stock/flow weighting formula (see punch list) and adding both debt-service-to-consumption and -to-investment ratios |
-| Regime Classification (quadrant thresholds) | Reviewed – solid plan reached, full algorithm specified | 2026-07-05 | Two independent Growth/Inflation chips are "fine" AS LONG AS credit+rate are understood as the *mechanism* linking them. Gave a complete, ordered 7-step algorithm with worked Python pseudocode (see punch list #23) — country-vol-scaled baseline → credit multiplier (inflation only) → volatility multiplier (both chips) → multiplicative combination → classify → divergence flag overlay (diagnostic only, no threshold impact). Design principle: "interest-rate (policy-rate) and credit conditions are the primary levers, volatility is a secondary confidence-shaper, different time-horizons need distinct signals" |
+| Regime Classification (quadrant thresholds) | Punch list open — momentum-gate rework proposed | 2026-10-06 | Two independent Growth/Inflation chips are "fine" AS LONG AS credit+rate are understood as the *mechanism* linking them. Gave a complete, ordered 7-step algorithm with worked Python pseudocode (see punch list #23) — country-vol-scaled baseline → credit multiplier (inflation only) → volatility multiplier (both chips) → multiplicative combination → classify → divergence flag overlay (diagnostic only, no threshold impact). Design principle: "interest-rate (policy-rate) and credit conditions are the primary levers, volatility is a secondary confidence-shaper, different time-horizons need distinct signals" |
 | Global Overview / Cycle Health Index | Reviewed – solid plan reached | 2026-07-05 | "Keep both" CHI and Debt Stress — CHI is a fast yes/no triage metric, Debt Stress is the deep structural analysis; scopes differ enough to coexist. Treats Growth/Rate/Inflation as "three pillars of the short-run economic machine," recommends context-dependent weight tilts (see punch list) over a flat 0.30/0.30/0.30. Nominal policy rate is intentional (speed, no estimation error, avoids double-counting since inflation is already a separate term) — recommends adding a configurable real-rate toggle rather than switching the default |
 | Data sourcing gaps (EZ current account, KR CPI, etc.) | Not reviewed | — | — |
 | Investment-layer gaps (market/asset pricing context) | Punch list open | 2026-07-05 | "The missing link to market data is the biggest hurdle for allocation" — dashboard has diagnosis but no bridge from regime to expected asset-class returns; gave a concrete 5-part roadmap (see punch list) |
@@ -484,3 +484,111 @@ specified). AI-capex term in the growth force → *needs owner decision*. ABS is
 productivity proxy → *acknowledged, no build* (Ray's own instruction). Credit-spread leg →
 *needs design pass* (Ray's proposed source does not exist as described; substitute proposed in
 the plan doc).
+
+### Session 2026-10-06 — Growth-chip momentum gate: level vs. acceleration
+
+Thread: digitalray.ai conversation `b9c48725-1c73-441b-abec-74e4b355548a` ("Growth chip momentum
+gate - level vs acceleration"). Standard site disclaimer applies — responses are an AI
+approximation of Dalio's framework, **not vetted by the real Ray**.
+
+**What prompted it.** The user noticed the Regime Map and the growth charts showed the US clearly
+above its growth threshold while the Growth chip still read Transition, and asked whether that was
+correct. It was — but for a reason worth examining. `_classify_regime` requires THREE conditions
+for "Growth": Z > threshold, ΔZ > `gm` (0.05), and the Z leg sustained 2 months. On 2026-10 the US
+reads Z +0.374 against a dynamic threshold of 0.226 (clears), sustained 2m (clears), ΔZ +0.008
+(fails). The composite has climbed and plateaued. **Since 2010 the ΔZ leg alone blocked the Growth
+label in 45 of the 76 months where the Z leg passed** — so in practice the chip has been reading
+"growth is accelerating", not "growth is strong".
+
+**Evidence taken to Ray** (US, 562 months 1980-01..2026-10, dynamic thresholds, scored against
+mean realized real GDP YoY over the FOLLOWING 12 months; unconditional mean +2.71%):
+
+| rule | Growth months | flip rate | fwd-12m GDP G / T / R | G−R spread |
+|---|---|---|---|---|
+| current, ΔZ > +0.05 | 78 (14%) | 33% | +3.74 / +2.77 / +0.73 | 3.01pp |
+| no momentum gate | 185 (33%) | 14% | +3.56 / +2.80 / +1.09 | 2.47pp |
+| ΔZ > −0.05 (not falling) | 123 (22%) | 32% | +3.65 / +2.75 / +0.94 | 2.71pp |
+| hysteresis (ΔZ to enter, level to hold) | 175 (31%) | 13% | +3.59 / +2.78 / +1.04 | 2.55pp |
+
+Two findings flagged to him honestly: the gate makes the label flicker **more**, not less (33% vs
+13-14%); and the 2026-10-03 calibration that set `gm`=0.05 only ever compared 0.0 / 0.05 / 0.1 —
+**removing the gate was never tested**, so the whole no-gate branch was untested territory. That
+same calibration already recorded that the gate did nothing for growth (37.0%→37.0% flips) and
+only helped inflation — it was adopted globally anyway.
+
+**Ray's ruling — the level is the primary gate; high-but-flat is a transition, but it deserves its
+own label.** Verbatim: *"Threshold on level — ... This is the primary gate; if the level is below
+the threshold, the regime is not Growth, regardless of momentum."* And: *"When the level is high
+but the momentum is flat or slightly negative, I typically label the regime as 'High-but-Flat
+Growth' and flag it as a transition rather than a pure Growth regime. This distinction matters
+because the risk profile changes: a flat high reading may be the tail end of an unsustainable
+expansion, while a rising high reading often precedes a more sustained expansion."* So our current
+OUTPUT is defensible — a plateau is not a Growth regime — but collapsing it into the same
+undifferentiated "Transition" bucket as a genuinely weak reading throws away the distinction he
+considers the point of the exercise.
+
+**On the coverage trade.** He did the expected-value arithmetic unprompted and came out against
+the gate as currently set: *"a 0.2pp improvement in mean realized growth is relatively small
+compared with the typical volatility of real GDP... you might want a larger separation — perhaps
+0.5pp or more — to justify the reduction in coverage."* His worked example: 0.14 × 3.74 ≈ 0.52
+expected value with the gate, 0.33 × 3.56 ≈ 1.17 without. Recommends softening the gate or a
+probabilistic layer rather than a hard binary cutoff.
+
+**On per-force gates — yes.** *"Yes, calibrate the momentum threshold for each chip based on its
+historical performance. For growth, you might lower the threshold ... whereas for inflation you
+can keep the current level because it already delivers a clear gain."* His reason: inflation is
+driven by policy/supply shocks/expectations and growth by the broader cycle, so the level-momentum
+relationship differs by force.
+
+**The rule he committed to** (growth chip; he chose the parameters himself):
+
+| Label | Condition |
+|---|---|
+| High-Accelerating Growth | Z > level_thresh **and** ΔZ > 0.04 |
+| High-but-Flat Growth | Z > level_thresh **and** −0.04 ≤ ΔZ ≤ 0.04 |
+| Low/Retraction | Z ≤ level_thresh (no momentum condition) |
+
+Plus an optional volatility-scaled gate, `0.5 × σ(ΔZ)` on a 12-month rolling window, instead of
+the fixed 0.04. His own acceptance test: separation between High-Accelerating and High-but-Flat of
+0.3-0.5pp and a hit-rate "comfortably above 60%".
+
+**We ran his acceptance test. His structure passes; two of his specifics do not.**
+
+| label (his structure, our dynamic threshold, gate 0.04) | months | fwd-12m GDP | hit-rate >2.71% |
+|---|---|---|---|
+| Growth (accelerating) | 102 (18%) | +3.74% | 82% |
+| Growth (flat) | 36 (6%) | +3.35% | 58% |
+| Growth (fading) | 64 (11%) | +3.43% | 69% |
+| Transition | 193 (34%) | +2.77% | 55% |
+| Retraction (easing / flat / deepening) | 38 / 15 / 84 | +1.42 / +1.01 / +1.43% | 16 / 13 / 23% |
+
+- **Separation accelerating − flat = +0.39pp**, inside his own 0.3-0.5pp band; accelerating
+  hit-rate 82%. His rule passes his own test on our data.
+- **Coarse-family flip rate falls 33% → 21%**, because momentum now sub-classifies *within* the
+  growth family instead of ejecting a reading from it.
+- **His `level_thresh = 0.7` must NOT be taken literally.** He appears to have forgotten his own
+  2026-07-05 dynamic-threshold algorithm; our vol-scaled threshold (0.226 for the US today) is the
+  equivalent of his fixed 0.7 and should stay. Structure adopted, constant rejected.
+- **His volatility-scaled gate fails outright here**: `0.5 × σ(ΔZ,12m)` collapses the separation to
+  **+0.01pp** — the accelerating and flat groups become statistically indistinguishable. Do not
+  adopt. The fixed 0.04 is the one that works.
+- **His literal code snippet has a real defect.** Inside the `z > level_thresh` branch, the `else`
+  assigns `"Low/Retraction"` — so a high-level-but-falling month is labelled as low growth. Those
+  months ("Growth (fading)" above) average **+3.43% forward GDP at a 69% hit-rate**; they are not
+  low-growth months by any reading. The high side needs its own third state, not a fall-through to
+  the bottom bucket.
+
+**Live result under the corrected rule:** the US reads **Growth (flat)** for 2026-10 — above the
+level threshold, not accelerating. That is the honest answer to the question that started this.
+
+**Punch-list triage.**
+- Three-state growth family (accelerating / flat / fading) replacing the single Transition
+  collapse, keeping the dynamic level threshold as the primary gate → **ready to implement, awaiting
+  owner approval**. Touches `_classify_regime`, the chip vocabulary on every surface that renders
+  it, and `_season_label`; not a parameter tweak.
+- Per-force momentum gates (`gm` lowered to 0.04 for growth, `im` held at 0.05 for inflation) →
+  **ready to implement**, same approval.
+- Ray's `level_thresh = 0.7` → **rejected**, superseded by his own dynamic-threshold algorithm.
+- Ray's volatility-scaled momentum gate → **rejected on evidence** (+0.01pp separation).
+- Probabilistic / soft-assignment regime weighting → **acknowledged, no build** for now; a
+  genuine alternative architecture, but a much larger change than the seam that prompted this.
