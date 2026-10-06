@@ -117,7 +117,8 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
                 df2: "pd.DataFrame | None" = None, color2: str = RED,
                 label: str | None = None, label2: str | None = None,
                 fmt_override: str | None = None,
-                vline_x=None, sync_hover: bool = False) -> html.Div:
+                vline_x=None, sync_hover: bool = False,
+                margin_l: int | None = None) -> html.Div:
     """Single-line by default. Pass df2 (+ optional label/label2) for a dual-line
     overlay card — e.g. Real Growth vs. Potential Growth, Short Rate vs. Long Rate.
     hline/hline2 draw one or two dashed reference lines (e.g. symmetric ± regime
@@ -128,7 +129,11 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
     for a stepped/selected date) — distinct from hline/hline2, which are
     horizontal. sync_hover=True joins the card to the page-wide shared crosshair
     (assets/hover_sync.js): hovering one such card shows the same date on all the
-    others, like the old stacked multi-panel figure did."""
+    others, like the old stacked multi-panel figure did. margin_l pins the plot
+    area's left gutter instead of letting Plotly size it to the y tick labels —
+    pass the same value to every card in a stacked column and their x-axes line
+    up to the pixel, so the shared crosshair reads as one continuous vertical
+    line down the page (Regime History does this)."""
     dual = df2 is not None and not df2.empty
     fig = go.Figure()
     if df is not None and not df.empty:
@@ -156,7 +161,7 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
     if vline_x is not None:
         fig.add_vline(x=vline_x, line=dict(color="rgba(255,255,255,0.35)", dash="dot", width=1.5))
     lay = figure_layout(DEFAULT_THEME)
-    lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18),
+    lay.update(height=180, margin=dict(l=6 if margin_l is None else margin_l, r=8, t=6, b=18),
                xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"))
     if sync_hover:
         lay.update(hovermode="x")
@@ -180,7 +185,12 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
         ]),
         html.Div(read, style={"fontSize": "0.66rem", "color": "var(--muted-color)",
                               "marginBottom": "2px", "minHeight": "1.6em"}),
-        dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "180px"}),
+        # responsive: the card is a flex/grid item whose width is only final
+        # after layout, and a full-width stacked column (Regime History) resizes
+        # it again — without this the figure keeps whatever width it was first
+        # drawn at and sits narrow inside a wide card.
+        dcc.Graph(figure=fig, responsive=True, config={"displayModeBar": False},
+                  style={"height": "180px"}),
     ], style={"background": "var(--card-bg)", "border": "1px solid var(--border-color)",
               "borderRadius": "8px", "padding": "10px 12px", "flex": "1 1 300px",
               "minWidth": "280px"},

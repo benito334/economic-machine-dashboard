@@ -1334,10 +1334,25 @@ def _page_regime_history() -> html.Div:
         # to the Signals force-detail pages.
         dbc.Row([
             dbc.Col(
-                dcc.Graph(id="regime-band-chart",
-                          responsive=True,
-                          config={"displayModeBar": False},
-                          style={"height": "140px"}),
+                # Dressed as a _chart_card (same chrome, same left gutter) and
+                # tagged sync-hover-card so it joins the page-wide shared
+                # crosshair (assets/hover_sync.js) the six cards below already
+                # use — hovering any chart in the stack marks the same month on
+                # all seven, the way the old single stacked figure did.
+                html.Div([
+                    html.Div(
+                        html.Span("Regime  (Growth · Inflation)",
+                                  style={"fontSize": "0.78rem", "fontWeight": "700",
+                                         "color": "var(--font-color)"}),
+                    ),
+                    dcc.Graph(id="regime-band-chart",
+                              responsive=True,
+                              config={"displayModeBar": False},
+                              style={"height": "140px"}),
+                ], className="sync-hover-card",
+                    style={"background": "var(--card-bg)",
+                           "border": "1px solid var(--border-color)",
+                           "borderRadius": "8px", "padding": "10px 12px"}),
                 width=12,
             ),
         ]),
@@ -3756,6 +3771,12 @@ def update_regime_info(
     )
 
 
+# Left gutter shared by every chart on the Regime History page. Wide enough for
+# the band chart's "Inflation"/"Growth" row labels; pinned (not auto-sized to
+# each figure's own tick labels) so all seven plot areas start at the same pixel.
+_RH_MARGIN_L = 55
+
+
 def _build_regime_band_chart(
     comp: pd.DataFrame, g_regimes: list, i_regimes: list,
     theme_name: str, sel_ts, sel_idx: int,
@@ -3793,12 +3814,17 @@ def _build_regime_band_chart(
             showlegend=False, hoverinfo="skip",
         ))
 
-    layout = figure_layout(theme_name, "Regime  (Growth · Inflation)")
-    layout.update(height=140, margin={"l": 55, "r": 20, "t": 28, "b": 22}, showlegend=False)
+    layout = figure_layout(theme_name)
+    # Same gutters and spike styling as the _chart_cards stacked below it
+    # (_RH_MARGIN_L on all seven), so the shared crosshair is one continuous
+    # vertical line down the page rather than seven lines a few pixels apart.
+    layout.update(height=140, margin={"l": _RH_MARGIN_L, "r": 8, "t": 6, "b": 18},
+                  showlegend=False, hovermode="x")
     fig.update_layout(**layout)
     fig.update_xaxes(
+        showgrid=False,
         showspikes=True, spikemode="across", spikesnap="cursor",
-        spikedash="dot", spikethickness=1, spikecolor="rgba(180,180,180,0.6)",
+        spikedash="dot", spikethickness=1, spikecolor="rgba(210,215,225,0.72)",
     )
     return fig
 
@@ -3948,34 +3974,43 @@ def update_regime_chart(
             f"Growth Force Z-Score (composite{win_label})", _series_df(g_col), g_cur, "z", "",
             zero_line=True, hline=_gz, hline_txt=f"+{_gz:.2f}", hline2=-_gz, hline2_txt=f"-{_gz:.2f}",
             color=_COLORS[0], fill=True, vline_x=sel_ts, sync_hover=True, fmt_override=g_fmt,
+            margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
             "Growth Momentum (fraction of signals growth-positive)", _series_df("growth_momentum"),
             gm_cur, "pct", "", hline=0.5, hline_txt="50%",
             color=_COLORS[0], vline_x=sel_ts, sync_hover=True, fmt_override=gm_fmt,
+            margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
             f"Inflation Force Z-Score (composite{win_label})", _series_df(i_col), i_cur, "z", "",
             zero_line=True, hline=_iz, hline_txt=f"+{_iz:.2f}", hline2=-_iz, hline2_txt=f"-{_iz:.2f}",
             color=_INFLATION_COLOR, fill=True, vline_x=sel_ts, sync_hover=True, fmt_override=i_fmt,
+            margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
             "Inflation Momentum (fraction of signals inflation-positive)", _series_df("inflation_momentum"),
             im_cur, "pct", "", hline=0.5, hline_txt="50%",
             color=_INFLATION_COLOR, vline_x=sel_ts, sync_hover=True, fmt_override=im_fmt,
+            margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
             "Direction Agreement (legacy)", _series_df("confidence"), conf_cur, "pct",
             "Stored series — legacy definition; live Chip Agreement is in the card above.",
-            hline=0.5, hline_txt="50%", color=_COLORS[4], vline_x=sel_ts, sync_hover=True, fmt_override=conf_fmt,
+            hline=0.5, hline_txt="50%", color=_COLORS[4], vline_x=sel_ts, sync_hover=True,
+            fmt_override=conf_fmt, margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
             f"Disequilibrium Score{diseq_label}", _series_df(d_col), d_cur, "", "",
             color=_COLORS[1], fill=True, vline_x=sel_ts, sync_hover=True, fmt_override=d_fmt,
+            margin_l=_RH_MARGIN_L,
         ),
     ]
 
-    return band_fig, _section("", "", cards)
+    # columns=1: one chart per row, full width, stacked — same shape as the
+    # Signals force pages' composite cards, so the shared crosshair reads as a
+    # single vertical line down the page instead of jumping between columns.
+    return band_fig, _section("", "", cards, columns=1)
 
 
 # ── Regime History help panel — callbacks ─────────────────────────────────────
