@@ -78,7 +78,55 @@ def get_layout(force: str) -> html.Div:
 
 # ── Banner builder ─────────────────────────────────────────────────────────────
 
-def _chip(label: str, value: str, color: str = "var(--font-color)") -> html.Div:
+# How far the dynamic value has to move off the slider's base before the base
+# is worth showing in parentheses. Same cut-off as the Regime History header
+# (`charting._threshold_display_chips`) so the two readouts agree.
+_THRESH_SHOW_BASE_EPS = 0.005
+
+
+def _threshold_text(effective: Optional[dict], base: Optional[dict],
+                    key: str) -> tuple[float, str, Optional[str], Optional[str]]:
+    """(value, "±0.23", "(±0.50)" or None, tooltip or None) for one threshold.
+
+    `effective` is what the classifier is actually using for the displayed
+    month — in dynamic mode (the default) the country-vol-scaled value, which
+    can be less than half the slider's base (US growth, Oct 2026: 0.226 vs
+    0.50). Showing the base here is the bug commit ee3d3ed fixed on the Regime
+    History header; this is the same readout on the force pages.
+    """
+    eff = effective or {}
+    b   = base or eff
+    val      = float(eff.get(key, 0.5))
+    base_val = float(b.get(key, 0.5))
+    if not bool(b.get("dynamic", True)) or abs(base_val - val) < _THRESH_SHOW_BASE_EPS:
+        return val, f"±{val:.2f}", None, None
+    return (
+        val,
+        f"±{val:.2f}",
+        f"(±{base_val:.2f})",
+        (f"Dynamic threshold in force for this month: ±{val:.2f} "
+         f"(country-vol-scaled, credit/volatility-adjusted). "
+         f"Slider base: ±{base_val:.2f}."),
+    )
+
+
+def _chip(label: str, value: str, color: str = "var(--font-color)",
+          sub: Optional[str] = None, title: Optional[str] = None) -> html.Div:
+    """One banner cell. `sub` is a dimmer parenthetical rendered beside the
+    value — used for the slider's base threshold when the dynamic value in
+    force differs from it, the same convention the Regime History header uses
+    (`charting._threshold_display_chips`)."""
+    value_parts = [
+        html.Span(value, style={
+            "fontSize": "0.92rem", "fontFamily": "monospace",
+            "fontWeight": "700", "color": color,
+        }),
+    ]
+    if sub:
+        value_parts.append(html.Span(sub, style={
+            "fontSize": "0.64rem", "fontFamily": "monospace",
+            "color": "var(--muted-color)", "marginLeft": "4px", "opacity": "0.75",
+        }))
     return html.Div(
         [
             html.Span(label, style={
@@ -86,11 +134,9 @@ def _chip(label: str, value: str, color: str = "var(--font-color)") -> html.Div:
                 "letterSpacing": "0.08em", "color": "var(--muted-color)",
                 "display": "block", "marginBottom": "2px",
             }),
-            html.Span(value, style={
-                "fontSize": "0.92rem", "fontFamily": "monospace",
-                "fontWeight": "700", "color": color,
-            }),
+            html.Span(value_parts),
         ],
+        title=title,
         style={
             "background": "rgba(0,0,0,0.20)", "border": "1px solid var(--border-color)",
             "borderRadius": "5px", "padding": "6px 14px", "textAlign": "center",
@@ -138,7 +184,12 @@ def _build_banner(
     thresholds: dict,
     lookback_label: str,
     divergence: Optional[dict] = None,
+    base_thresholds: Optional[dict] = None,
 ) -> html.Div:
+    """`thresholds` must be the thresholds ACTUALLY IN FORCE for the row the
+    banner describes (see `charting._resolve_row_thresholds`), not the raw
+    `regime-threshold-store` base — in dynamic mode those differ. Pass the
+    store's base as `base_thresholds` so it can be shown in parentheses."""
     fc = _FORCE_CFG[force]
     color = fc["color"]
     thresh_key = fc["thresh_key"]
@@ -149,10 +200,10 @@ def _build_banner(
     mom_color = _momentum_score_color(momentum, force)
 
     if thresh_key:
-        thresh_val = float((thresholds or {}).get(thresh_key, 0.5))
-        thresh_str = f"±{thresh_val:.2f}"
+        _, thresh_str, thresh_sub, thresh_title = _threshold_text(
+            thresholds, base_thresholds, thresh_key)
     else:
-        thresh_str = "N/A"
+        thresh_str, thresh_sub, thresh_title = "N/A", None, None
 
     title = html.Div(
         fc["label"].upper() + " FORCE",
@@ -169,7 +220,8 @@ def _build_banner(
             _chip("Momentum",     mom_str,                     mom_color),
             _chip("Active",       f"{n_active}/{n_total}",     "var(--font-color)"),
             _chip("In Agreement", f"{n_agreement}/{n_active}" if n_active else "—", "var(--font-color)"),
-            _chip("Threshold",    thresh_str,                  "#E8A317"),
+            _chip("Threshold",    thresh_str,                  "#E8A317",
+                  sub=thresh_sub, title=thresh_title),
             _chip("Lookback",     lookback_label,              "var(--muted-color)"),
         ],
         style={"display": "flex", "gap": "8px", "flexWrap": "wrap"},
@@ -218,7 +270,13 @@ def _build_force_cards(
     z_wide: pd.DataFrame,
     score_col: Optional[str] = None,
     thresholds: Optional[dict] = None,
+    base_thresholds: Optional[dict] = None,
 ) -> list[html.Div]:
+    """`thresholds` must be the thresholds ACTUALLY IN FORCE for the latest row
+    (see `charting._resolve_row_thresholds`) — the composite card's dashed
+    bands are the line the classifier compares the score against, so drawing
+    them at the slider's base in dynamic mode shows the score below a band it
+    has in fact cleared."""
     fc = _FORCE_CFG[force]
     color = fc["color"]
     score_col = score_col or fc["score_col"]
@@ -256,10 +314,17 @@ def _build_force_cards(
         thresh_key = fc["thresh_key"]
         hline = hline2 = None
         hline_txt = hline2_txt = ""
+        band_note = ""
         if thresh_key:
-            tv = float(thresholds.get(thresh_key, 0.5))
+            tv, tv_str, tv_sub, _ = _threshold_text(
+                thresholds, base_thresholds, thresh_key)
             hline,  hline_txt  = tv,  f"+{tv:.2f}"
             hline2, hline2_txt = -tv, f"-{tv:.2f}"
+            band_note = (
+                f" Dashed lines = {tv_str} dynamic regime threshold "
+                f"(slider base {tv_sub[1:-1]})."
+                if tv_sub else f" Dashed lines = {tv_str} regime threshold."
+            )
 
         df2 = label2 = None
         color2 = _GROWTH_COLOR
@@ -275,8 +340,7 @@ def _build_force_cards(
 
         composite_cards.append(_chart_card(
             f"{fc['label']} Composite Z-score", ser, cur, "z",
-            f"Weighted Z-score across the {fc['label'].lower()} basket."
-            + (f" Dashed lines = ±{hline:.2f} regime threshold." if hline is not None else ""),
+            f"Weighted Z-score across the {fc['label'].lower()} basket." + band_note,
             hline=hline, hline_txt=hline_txt, hline2=hline2, hline2_txt=hline2_txt,
             zero_line=True, color=color, fill=True,
             info="The composite score this force's chip/basket is built from.",
@@ -442,8 +506,13 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
         if (page_trigger or {}).get("page") != route:
             return no_update, no_update, no_update
 
+        # Lazy import: charting imports this module at load time, so a
+        # top-level import here would be circular (same pattern as
+        # command_center/relative_view).
+        from dashboard.charting import _DEFAULT_THRESHOLDS, _resolve_row_thresholds
+
         country      = str(country_data or "US").upper()
-        thresholds   = thresholds or {}
+        base_thresholds = dict(thresholds or _DEFAULT_THRESHOLDS)
         zscore_window    = int(zscore_window    or 0)
         inflation_window = int(inflation_window or 0)
 
@@ -459,6 +528,19 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
 
         # ── Composite history ─────────────────────────────────────────────────
         comp_hist = load_composite_history(country=country)
+
+        # ── Thresholds actually in force for the row this page describes ──────
+        # Everything on a force page reads the LATEST composite row, so that is
+        # the row whose thresholds the banner and the composite bands must
+        # show. With dynamic mode on (the default) those are the country-vol-
+        # scaled values, not the sliders' base — displaying the base is the bug
+        # commit ee3d3ed fixed on the Regime History header. Same helper, so
+        # the two surfaces cannot drift apart again.
+        thresholds = _resolve_row_thresholds(
+            comp_hist, len(comp_hist) - 1, g_sfx, i_sfx,
+            bool(zscore_window), bool(inflation_window),
+            country, base_thresholds,
+        )
 
         # ── Composite component status (for table + banner stats) ─────────────
         comp_df = load_composite_component_status(
@@ -537,7 +619,12 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             momentum = float(force_df["direction"].eq("rising").sum()) / max(1, n_active)
 
         # ── Table ─────────────────────────────────────────────────────────────
-        thresh_z = float(thresholds.get("gz", 0.5))
+        # Deliberately the slider BASE, not the dynamic value: this colours
+        # individual basket signals' own Z-scores, and the dynamic scaling is
+        # defined on the composite the chip is classified from, not on its
+        # members. The banner and the composite card above use the effective
+        # value because those are the composite-vs-threshold comparison.
+        thresh_z = float(base_thresholds.get("gz", 0.5))
         rows, active_cnt = _composite_rows(comp_df, force, fc["color"],
                                            audit_by_signal, thresh=thresh_z)
         table_section = _build_section(
@@ -571,14 +658,19 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             force, signal_ids, labels_map, units_map,
             comp_hist, raw_wide_df, z_wide_df,
             score_col=chart_score_col, thresholds=thresholds,
+            base_thresholds=base_thresholds,
         )
 
         divergence = None
         if force == "productivity" and not comp_hist.empty and "growth_score" in comp_hist.columns:
             g_latest = comp_hist["growth_score"].dropna()
             growth_z = float(g_latest.iloc[-1]) if not g_latest.empty else None
+            # Same `gz` the Growth chip uses, so "strong" means the same
+            # thing here as it does on the chip — which means the dynamic
+            # value, not the slider base.
             divergence = _productivity_divergence(comp_z, growth_z, float(thresholds.get("gz", 0.5)))
 
         banner = _build_banner(force, comp_z, momentum, n_active, n_total,
-                               n_agree, thresholds, lookback_label, divergence)
+                               n_agree, thresholds, lookback_label, divergence,
+                               base_thresholds=base_thresholds)
         return banner, table_section, chart_cards

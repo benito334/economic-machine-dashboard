@@ -4,6 +4,22 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-06 (2) — Signals force pages showed the BASE regime threshold, not the dynamic one in force
+
+**The ask.** Same bug class as the Regime History header fix earlier today (commit `ee3d3ed`), one surface further down: on `/signals/growth` the banner read `THRESHOLD ±0.50` and the composite Z-score card drew its dashed bands at ±0.50, while the classifier was using the dynamic vol-scaled `gz` of **0.226** for US growth. Growth Z sat at **+0.374** — above the band actually in force, drawn comfortably below the one on screen. Both readouts were wired to `regime-threshold-store`, which only ever holds the sliders' base values.
+
+**Shipped.** `dashboard/force_detail.py`'s `_render` now resolves the thresholds for the row the page describes (always the latest composite row) through `charting._resolve_row_thresholds()` — the same helper the regime info card classifies with, so the two cannot drift apart again. That resolved set feeds the banner's THRESHOLD cell, the composite card's `hline`/`hline2`, and the productivity page's `_productivity_divergence()` "soft vs. strong growth" cut (which explicitly borrows the Growth chip's own `gz`, so it has to borrow the effective one). New `_threshold_text()` renders the convention `_threshold_display_chips` established: effective value, slider base in parentheses, parenthetical dropped when dynamic is off or scaling did not move the value; `_chip()` gained `sub`/`title` to carry it, with a native tooltip spelling out both numbers. The composite card's caption says it too — "Dashed lines = ±0.23 dynamic regime threshold (slider base ±0.50)."
+
+**Deliberately NOT changed.** The signal table's per-signal Z colouring (`_composite_rows(..., thresh=)`) keeps the slider base, and the comment now says why: the dynamic algorithm scales the COMPOSITE the chip is classified from, not individual basket members. Same reasoning leaves `signals_page.py:519` alone. `/signals/{rate,credit,volatility}` have no `thresh_key` — still `N/A`, no bands, untouched. Command Center, Relative Cycles and User Guide already resolved the dynamic value; a sweep for `get("gz"/"iz")` found no other surface with the bug.
+
+**A verification trap worth recording.** `ee3d3ed` lives on branch `claude/adoring-chaum-6c0db5`, not on `main`, so this branch had to cherry-pick it to get the helper. More importantly: a parallel session was rebuilding and bouncing the SAME `indicators_machine` compose project from its own worktree. Mid-verification the live `:8502` flipped back to `±0.50` — not a regression in this fix but someone else's image serving the page (the container was later found SIGKILLed, exit 137). Re-verified on an isolated container on `:8512` built from this worktree, which is the right pattern when worktrees share a compose project name: `docker compose -p <shared>` targets the other session's stack.
+
+**Verification.** Live on the isolated instance, US, 48m/90m windows: banner `±0.23 (±0.50)`, composite bands at ±0.2256, caption naming both. Inflation page independently reads its own `iz` → `±0.15 (±0.50)`, bands ±0.15 (not growth's 0.226). Dynamic off → `±0.50`, bands ±0.50, no parenthetical — pre-existing behaviour intact. Credit/productivity still `N/A`. 10 new tests in `tests/test_force_detail.py` (banner value, inflation's own `iz`, dynamic-off, band positions, caption); suite **751 passed, zero exclusions** (741 before).
+
+**Next.** Nothing queued from this fix. `ee3d3ed` and this commit should land together — if `claude/adoring-chaum-6c0db5` merges first, the cherry-pick here dedupes.
+
+---
+
 ## 2026-10-03 (2) — Dashboard IA Phase 3 (shared chart-card promotion) + a scheduled-import rolling-composite gap found and fixed
 
 **The ask.** Finish Phase 3-5 of the Dashboard IA Blueprint (dropped mid-stream in an earlier session) before returning to the remaining coverage-audit items. Phase 3: promote Fed Monitor's chart-card primitives into `dashboard/shared_components.py` so every Monitors-group page draws from one shared component, rather than each page importing from `fed_monitor.py` as a stand-in shared module.
