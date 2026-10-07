@@ -3129,3 +3129,55 @@ the row lands in the Sheet with every field correct. Test rows cleaned up.
 
 Note: port 8502 was held by `imwt-charting-1` (the spun-off tooltip-fix task running in its own
 worktree), so verification ran on :8504 rather than disturbing it.
+
+## 2026-10-06 — Public cutover: dashboard.creovalabs.com live on the Oracle VM
+
+The VM is now the public site, behind Caddy with automatic TLS. Cloud Run is retired (see
+below). Full walkthrough and per-step verification in this session's transcript; the short
+version:
+
+**Architecture.** Caddy is the only public listener. The dashboard binds to `127.0.0.1:8502`
+via the new `CHARTING_BIND` variable (defaults to `0.0.0.0`, so the NAS is untouched), meaning
+a firewall misconfiguration still cannot expose the app directly. `PUBLIC_MODE=1`,
+`TRAFFIC_KEY` and `DEPLOY_KIND=live` set on the VM.
+
+**The operator/public split, forced by a real constraint.** The original plan — a public
+container and an operator container side by side on the VM — does not work. DuckDB takes an
+exclusive file lock; tested all three combinations on a copy of the live DB: rw+rw conflicts,
+**rw+ro also conflicts**, only ro+ro coexists. So the NAS stays the operator/dev instance and
+the VM serves only. That is also why the nightly import needs a maintenance page at all: the
+pipeline must take the write lock, so charting has to step aside.
+
+**Three bugs found by looking at the running system rather than the config:**
+1. **Full IPs were being logged.** `ip_mask` was applied to `request>remote_ip`, but Caddy
+   logs `client_ip` too and *that* carries the real address — the log held
+   `remote_ip: 99.40.36.0` next to `client_ip: 99.40.36.158`. The Caddyfile looked correct.
+   Both fields masked now; the log was truncated since it held unmasked addresses.
+2. **The provenance banner lied on this deploy.** It hardcoded "Static demo snapshot —
+   read-only, not live", which is true of Cloud Run's frozen release and false of a VM that
+   imports nightly. Now driven by `DEPLOY_KIND`, defaulting to `snapshot`.
+3. **Compose interpolates `$` in `env_file` as well as `environment`.** A bcrypt hash passed
+   either way arrived as `$2a$14` and /stats 401'd with correct credentials. My first fix
+   assumed `env_file` was passed through literally — it isn't, on this version. Caddy now
+   imports the auth block from a mounted file it reads itself, which is version-independent
+   unlike `$$` escaping.
+
+**Certificate note for next time.** After the ports opened, Caddy did not pick up the cert —
+it had already backed off to a 20-minute retry while they were shut, so the ACME log showed a
+stale "likely firewall problem" that looked current. Restarting Caddy forced an immediate
+retry and it issued in seconds from production Let's Encrypt (not staging), validated from
+three perspectives. **Check the log timestamp before believing an ACME error.**
+
+**Traffic metrics.** GoAccess reads Caddy's own access log, so unlike a JS beacon it isn't
+defeated by ad blockers and sees every request — assets, bots, 404s — not just the page views
+the in-app `/traffic` page records. The two complement rather than duplicate. Country geo uses
+DB-IP's free IP-to-Country Lite (MaxMind GeoLite2 needs an account and licence key — verified
+401 without one); country still resolves from the masked /24, which is the whole trade.
+Report served at `/stats` behind basic auth, since request paths, user agents and referrers
+are not public information.
+
+**Verified live:** production Let's Encrypt cert valid to 2027-01-04; HTTP→HTTPS 308;
+`/ai-capex-cycle` returns the operator-tool notice; Bubble Gauge / AI Capex / Weight Audit /
+Traffic all absent from the public nav; feedback button present; maintenance page renders
+"Updating — back in a few minutes" on a simulated outage; both log IP fields masked; `/stats`
+401 without credentials and 200 with.

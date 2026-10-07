@@ -1,3 +1,14 @@
+> **RETIRED 2026-10-06.** The public site is now the Oracle VM at
+> https://dashboard.creovalabs.com (see `deploy/oracle/`), which serves the
+> LIVE system behind Caddy with automatic TLS, rather than this frozen
+> snapshot. This document is kept for history and in case the snapshot deploy
+> is ever wanted again.
+>
+> To fully decommission: disable the Cloud Build trigger FIRST (otherwise the
+> next push to main recreates the service), then delete the Cloud Run service.
+> The `data-latest` GitHub release asset can also be deleted once the service
+> is gone.
+
 # Deploying the public dashboard to Google Cloud Run
 
 Cloud Run runs the dashboard as a container, **scales to zero when idle**, and
