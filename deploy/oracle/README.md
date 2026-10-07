@@ -22,6 +22,39 @@ Two pieces, both already in the repo:
 
 ---
 
+## The VM that is actually running (as of 2026-10-07)
+
+The sections below are the from-scratch build. The live instance predates
+some of them and differs in two ways that matter the moment you try to
+deploy — both verified against the running box, not assumed:
+
+| | Running VM | What sections 1-4 say |
+| :--- | :--- | :--- |
+| SSH user | `opc` | `ubuntu` (section 1 assumes an Ubuntu image) |
+| Repo path | `/home/opc/economic-machine-dashboard` | `/opt/economic-machine-dashboard` |
+
+Deploy (manual, by decision — see the note above):
+
+```bash
+ssh -i ~/.ssh/oracle_economic_machine opc@dashboard.creovalabs.com
+cd ~/economic-machine-dashboard
+git pull --ff-only origin main
+sudo docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml build charting pipeline scheduler
+sudo docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml up -d caddy charting scheduler goaccess
+```
+
+Both `-f` flags, every time: without the second file Caddy and GoAccess
+aren't in the project definition at all, and `up -d` would tear them down.
+Build all three services — they are separate image tags off the same
+Dockerfile, so building only `charting` leaves `pipeline`/`scheduler`
+running stale code at the next nightly import.
+
+`REPO_DIR` in `pull-and-deploy.sh` and `indicators-deploy.service` still
+defaults to `/opt/...`; if that automation is ever enabled on THIS box,
+override it to the real path first or the unit fails on its first `cd`.
+
+---
+
 ## 1. Provision the VM (Oracle Cloud console)
 
 - Create an Always Free **Ampere A1** instance (ARM, up to 4 OCPU / 24GB RAM
@@ -86,7 +119,13 @@ docker compose up -d --build
 
 First run imports all data from scratch — same as any fresh install.
 
-## 4. Install the auto-deploy timer
+## 4. Install the auto-deploy timer — SKIP on the public VM
+
+**Do not run this on the instance serving dashboard.creovalabs.com.** Deploys
+there are manual by decision (see the note at the top of this file): a timer
+would put any mistake on main in front of visitors within 15 minutes. These
+steps are kept for a staging/private instance, or for the day this is
+switched to trigger on a release tag instead of every commit.
 
 ```bash
 sudo cp deploy/oracle/indicators-deploy.service deploy/oracle/indicators-deploy.timer /etc/systemd/system/

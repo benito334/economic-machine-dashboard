@@ -25,6 +25,9 @@
 # error out, so a failed deploy is visible in `systemctl status` / journalctl.
 set -euo pipefail
 
+# NB: the live VM clones to /home/opc/economic-machine-dashboard, not here —
+# override REPO_DIR (or the Environment= line in indicators-deploy.service)
+# before enabling this anywhere, or the first `cd` fails.
 REPO_DIR="${REPO_DIR:-/opt/economic-machine-dashboard}"
 cd "$REPO_DIR"
 
