@@ -295,8 +295,8 @@ def get_layout() -> html.Div:
                             ["Force",          "One of the five fundamental economic forces: Growth, Inflation, Policy, Credit/Debt, External/Trade"],
                             ["Signal",         "A single normalised, time-stamped indicator observation for a given country and force"],
                             ["Composite",      "Weighted mean Z-score across the signals that belong to Growth or Inflation"],
-                            ["Growth Regime",  "Growth / Transition / Retraction — classified by configurable Z and momentum thresholds"],
-                            ["Inflation Regime","Inflation / Transition / Disinflation — classified independently using the same dual-condition logic"],
+                            ["Growth Regime",  "Growth / Transition / Retraction — classified by the composite Z level against a configurable threshold (see §8); momentum annotates a Growth reading rather than gating it"],
+                            ["Inflation Regime","Inflation / Transition / Disinflation — classified independently, and unlike growth it DOES require momentum to agree (§8)"],
                             ["Vintage",        "A point-in-time API snapshot (available for FRED series only)"],
                         ]
                     )],
@@ -319,8 +319,8 @@ def get_layout() -> html.Div:
                         ["Force",           "One of the five fundamental economic forces: Growth, Inflation, Policy, Credit/Debt, External/Trade"],
                         ["Signal",          "A single normalised, time-stamped indicator observation for a given country and force"],
                         ["Composite",       "Weighted mean Z-score across the signals that belong to Growth or Inflation"],
-                        ["Growth Regime",   "Growth / Transition / Retraction — classified by configurable Z and momentum thresholds"],
-                        ["Inflation Regime","Inflation / Transition / Disinflation — classified independently using the same dual-condition logic"],
+                        ["Growth Regime",   "Growth / Transition / Retraction — classified by the composite Z level against a configurable threshold (see §8); momentum annotates a Growth reading rather than gating it"],
+                        ["Inflation Regime","Inflation / Transition / Disinflation — classified independently, and unlike growth it DOES require momentum to agree (§8)"],
                         ["Vintage",         "A point-in-time API snapshot (available for FRED series only)"],
                     ]
                 ),
@@ -1082,7 +1082,7 @@ def get_layout() -> html.Div:
                         "Adjust via the 'Regime Thresholds' button on the Regime History page; "
                         "settings persist in browser localStorage.",
 
-                        "DYNAMIC THRESHOLDS (added 2026-07-05, opt-in): a 'Use dynamic thresholds "
+                        "DYNAMIC THRESHOLDS (added 2026-07-05, ON by default since 2026-07-09): a 'Use dynamic thresholds "
                         "(Ray Dalio algorithm)' checkbox in the same modal replaces the flat gz/iz "
                         "with values computed fresh for each period: (1) a country-specific baseline "
                         "= 0.6 × the 24-month rolling standard deviation of that force's own Z-score "
@@ -1135,7 +1135,7 @@ def get_layout() -> html.Div:
                             ["— sub-state",     "flat",        "Growth  AND  |ΔMoM| <= gm",   ""],
                             ["— sub-state",     "fading",      "Growth  AND  ΔMoM < -gm",     ""],
                             ["Inflation chip",  "Inflation",   "Z > +iz  AND  ΔMoM > im",    ""],
-                            ["Inflation chip",  "Transition",  "Neither threshold crossed",   ""],
+                            ["Inflation chip",  "Transition",  "|Z| <= iz  OR  momentum disagrees",   ""],
                             ["Inflation chip",  "Disinflation","Z < -iz  AND  ΔMoM < -im",   ""],
                         ]
                     )],
@@ -1171,8 +1171,11 @@ def get_layout() -> html.Div:
                         ["Growth chip",     "Growth",       "Z > +gz",                   "Level-gated; momentum is a sub-state"],
                         ["Growth chip",     "Transition",   "|Z| ≤ gz",                   ""],
                         ["Growth chip",     "Retraction",   "Z < −gz",                   ""],
+                        ["— sub-state",     "accelerating", "Growth  AND  ΔMoM > gm",    "Annotation on a Growth chip, not a label"],
+                        ["— sub-state",     "flat",         "Growth  AND  |ΔMoM| ≤ gm",  ""],
+                        ["— sub-state",     "fading",       "Growth  AND  ΔMoM < −gm",   ""],
                         ["Inflation chip",  "Inflation",    "Z > +iz  AND  ΔMoM > im",   ""],
-                        ["Inflation chip",  "Transition",   "Neither threshold crossed",  ""],
+                        ["Inflation chip",  "Transition",   "|Z| ≤ iz  OR  momentum disagrees",  ""],
                         ["Inflation chip",  "Disinflation", "Z < −iz  AND  ΔMoM < −im",  ""],
                     ]
                 ),
@@ -1182,7 +1185,7 @@ def get_layout() -> html.Div:
                    "Adjust via the 'Regime Thresholds' button on the Regime History page; "
                    "settings persist in localStorage.  Threshold lines are drawn on the scatter "
                    "chart and the Regime History Z-score panels."),
-                _sub("Dynamic thresholds (added 2026-07-05, opt-in)"),
+                _sub("Dynamic thresholds (added 2026-07-05, ON by default since 2026-07-09)"),
                 _p("The same modal has a 'Use dynamic thresholds (Ray Dalio algorithm)' checkbox, "
                    "off by default.  When enabled, gz/iz stop being flat constants and are instead "
                    "recomputed every period as: (1) a country-specific baseline — 0.6 × the "
@@ -1201,9 +1204,14 @@ def get_layout() -> html.Div:
                    "credit-cycle shift breaking the usual co-movement pattern. It is computed "
                    "(compute_dynamic_thresholds() in dashboard/charting.py) but not yet surfaced "
                    "as its own UI badge."),
-                _note("Dynamic thresholds are opt-in and off by default — existing dashboards see "
-                      "identical behavior unless a user explicitly enables the checkbox.  Full "
-                      "algorithm spec: docs/Guidance/ray_dalio_review_log.md, punch item #23."),
+                _note("Dynamic thresholds are ON by default (since 2026-07-09 — backtest G2 found "
+                      "dynamic >= fixed, so the default was flipped).  The checkbox in the Regime "
+                      "Thresholds modal turns them off; an explicitly stored 'off' is respected.  "
+                      "Note the consequence for reading the dashboard: the gz/iz values on the "
+                      "sliders are a BASE that gets scaled per month, so the threshold actually "
+                      "classifying a given month is usually not the slider value — the Regime "
+                      "History header shows the effective value with the base in parentheses.  "
+                      "Full algorithm spec: docs/Guidance/ray_dalio_review_log.md, punch item #23."),
                 _sub("What actually feeds the regime label"),
                 _p("A common question after the 2026-07 changes: with five forces now computed, "
                    "how many of them drive the regime category?  The answer is deliberately narrow, "

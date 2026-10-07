@@ -75,6 +75,52 @@ def _trap(title: str, body: str) -> html.Div:
               "maxWidth": "900px", "background": "rgba(232,163,23,0.06)"})
 
 
+def _chip_rule_table() -> html.Table:
+    """The two chips side by side, because their rules differ (2026-10-06).
+
+    The old version of this was a single 2x2 that applied to both chips. It
+    cannot be, now that the growth chip is level-gated and the inflation chip
+    is not — and the asymmetry is exactly what a learner needs to see, so it
+    gets its own column rather than a footnote.
+    """
+    def _h(txt):
+        return html.Th(txt, style={"fontSize": "0.72rem", "textAlign": "center",
+                                   "color": "var(--muted-color)", "padding": "5px 12px",
+                                   "fontWeight": "600"})
+
+    def _pill(label, color, note=""):
+        return html.Td([
+            html.Span(label, style={
+                "background": f"{color}22", "border": f"1px solid {color}", "color": color,
+                "borderRadius": "5px", "padding": "2px 9px", "fontSize": "0.74rem",
+                "fontWeight": "700", "whiteSpace": "nowrap"}),
+            *([html.Div(note, style={"fontSize": "0.68rem", "color": "var(--muted-color)",
+                                     "marginTop": "3px"})] if note else []),
+        ], style={"textAlign": "center", "padding": "7px 12px",
+                  "borderTop": "1px solid var(--border-color)"})
+
+    def _row_label(txt):
+        return html.Td(html.B(txt), style={"fontSize": "0.78rem", "padding": "7px 12px",
+                                           "borderTop": "1px solid var(--border-color)"})
+
+    grey, blue, orange = "#888888", "#4C9BE8", "#E8734C"
+    return html.Table([
+        html.Thead(html.Tr([_h(""), _h("level inside the band"),
+                            _h("level beyond, momentum agrees"),
+                            _h("level beyond, momentum opposes")])),
+        html.Tbody([
+            html.Tr([_row_label("Growth chip"),
+                     _pill("Transition", grey),
+                     _pill("Growth", blue, "note: accelerating"),
+                     _pill("Growth", blue, "note: fading")]),
+            html.Tr([_row_label("Inflation chip"),
+                     _pill("Transition", grey),
+                     _pill("Inflation", orange),
+                     _pill("Transition", grey, "momentum gate")]),
+        ]),
+    ], style={"borderCollapse": "collapse", "margin": "8px 0 14px"})
+
+
 def _live_box(children) -> html.Div:
     """'On your dashboard right now' callout — the live-data anchor per lesson."""
     return html.Div([
@@ -257,6 +303,7 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
     from dashboard.charting import (
         _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
         _INFLATION_WINDOW_COL, _classify_regime, _dyn_threshold_input,
+        _growth_momentum_state,
         _season_label, compute_dynamic_thresholds,
     )
 
@@ -301,6 +348,7 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
     chip_t = {**t, "gz": eff_gz, "iz": eff_iz}
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, chip_t,
                                       g_history=hist[g_col], i_history=hist[i_col])
+    g_mom_state = _growth_momentum_state(g_chip, g, g_d, chip_t)
     season_now = _season_label(g, i, chip_t)
     g_agree = chip_direction_agreement(latest_sig, "growth", g_d)
     i_agree = chip_direction_agreement(latest_sig, "inflation", i_d)
@@ -445,7 +493,9 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
            "Z-scores."),
         _p("Each dial also has a ", html.B("momentum"), " read — the month-over-month "
            "change. Level says where you are; momentum says which way you're heading. "
-           "The regime chips (next lesson) require BOTH."),
+           "The two chips use them differently, which is the subject of the next "
+           "lesson: the growth chip is set by the level alone, the inflation chip "
+           "needs both to agree."),
         _live_box([f"{cname} growth dial: {_fmt(g)} (Δ {_fmt(g_d, '+.3f')} this month) · "
                    f"inflation dial: {_fmt(i)} (Δ {_fmt(i_d, '+.3f')}). Reading: growth is "
                    + ("unusually strong" if (g or 0) > 0.5 else
@@ -459,41 +509,41 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
 
     # ══ L3 — Chips, thresholds, windows ═══════════════════════════════════════
     l3 = [
-        _p("A dial value alone is not a regime. The chip system requires two conditions "
-           "at once: the level must be beyond a threshold (±gz for growth, ±iz for "
-           "inflation) AND the momentum must agree. Miss either and the chip reads ",
-           html.B("Transition"), " — which is honesty, not indecision: the machine is "
-           "telling you the evidence is mixed."),
-        html.Table([
-            html.Thead(html.Tr([html.Th(h, style={"fontSize": "0.72rem", "textAlign": "center",
-                                                  "color": "var(--muted-color)", "padding": "4px 12px"})
-                                for h in ["", "momentum confirms", "momentum opposes"]])),
-            html.Tbody([
-                html.Tr([html.Td(html.B("level beyond threshold"), style={"fontSize": "0.78rem", "padding": "4px 12px"}),
-                         html.Td(chip_style("Growth / Inflation chip", "#5CBA8A"),
-                                 style={"textAlign": "center", "padding": "4px 12px",
-                                        "borderTop": "1px solid var(--border-color)"}),
-                         html.Td(chip_style("Transition", "#888888"),
-                                 style={"textAlign": "center", "padding": "4px 12px",
-                                        "borderTop": "1px solid var(--border-color)"})]),
-                html.Tr([html.Td(html.B("level inside the band"), style={"fontSize": "0.78rem", "padding": "4px 12px"}),
-                         html.Td(chip_style("Transition", "#888888"),
-                                 style={"textAlign": "center", "padding": "4px 12px",
-                                        "borderTop": "1px solid var(--border-color)"}),
-                         html.Td(chip_style("Transition", "#888888"),
-                                 style={"textAlign": "center", "padding": "4px 12px",
-                                        "borderTop": "1px solid var(--border-color)"})]),
-            ]),
-        ], style={"borderCollapse": "collapse", "margin": "8px 0 14px"}),
-        _trap("magnitude is not direction",
-              "A big Z-score with opposing momentum is NOT a regime call. Inflation at "
-              "Z = +1.8 but falling three months straight reads Transition — the level "
-              "says 'hot', the direction says 'cooling', and the honest summary is "
-              "'changing'. Most premature regime calls come from reading only the level."),
+        _p("A dial value alone is not a regime — it has to be far enough from this "
+           "country's own normal. Both chips need the level beyond a threshold (±gz for "
+           "growth, ±iz for inflation), held for two months running. Inside the band the "
+           "chip reads ", html.B("Transition"), " — which is honesty, not indecision: the "
+           "machine is telling you the evidence is mixed."),
+        _p("Beyond that the two chips differ, and the difference is deliberate. The ",
+           html.B("growth chip is set by the level alone"), ": once growth is clearly "
+           "above its own normal, it is a Growth regime whether or not it is still "
+           "climbing. The ", html.B("inflation chip also needs the momentum to agree"),
+           " — inflation that is high but falling reads Transition. The reason is "
+           "evidence, not symmetry: checked against NBER recession dating, every month "
+           "where growth sat above its level threshold fell outside a recession — "
+           "accelerating, flat or fading. Demanding acceleration as well pushed those "
+           "perfectly healthy months into the same bucket as genuinely weak ones. On "
+           "inflation the momentum requirement earns its place, cutting that chip's "
+           "month-to-month flipping from a third of all months to under one in ten."),
+        _p("Momentum did not vanish from the growth read, it moved one level down. A "
+           "Growth chip carries a small note — ", html.B("accelerating"), ", ",
+           html.B("flat"), " or ", html.B("fading"), " — telling you what is happening "
+           "inside the regime. Treat it as texture, not as the call: it is a weaker "
+           "signal than the level, and the dashboard shows it that way."),
+        _chip_rule_table(),
+        _trap("the two chips do not read momentum the same way",
+              "On INFLATION, magnitude is not direction: Z = +1.8 but falling three "
+              "months straight reads Transition — the level says 'hot', the direction "
+              "says 'cooling', and the honest summary is 'changing'. On GROWTH the "
+              "opposite mistake is the common one: waiting for acceleration before "
+              "calling it a Growth regime. A growth dial that climbed and then levelled "
+              "off at a high reading is still a Growth regime; it just says 'flat' "
+              "beside the chip. Expansions spend most of their life not accelerating."),
         _p(html.B("Windows — what counts as normal. "),
            "Every Z-score needs a baseline. The canonical defaults (Ray's ruling): growth "
-           "vs its last 48 months, inflation vs its last 96 (inflation regimes run "
-           "longer — a short window would forget the last inflation era too fast). The "
+           "vs its last 48 months, inflation vs its last 90 (inflation regimes run "
+           "longer — a short window would forget the last inflation era too fast; Ray "
+           "called for 96 and 90 is the nearest option on the slider). The "
            "sidebar sliders change these; the Command Center header always shows which "
            "window you're reading."),
         _p(html.B("Dynamic thresholds — how far from normal counts as a regime. "),
@@ -517,6 +567,9 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
               "the whole point of a multi-signal machine."),
         _live_box([f"{cname} right now: ",
                    chip_style(f"Growth · {g_chip}", _GROWTH_CHIP.get(g_chip, "#888")),
+                   *([html.Span(f"({g_mom_state}) ",
+                                style={"fontSize": "0.76rem", "color": "var(--muted-color)",
+                                       "marginRight": "4px"})] if g_mom_state else []),
                    chip_style(f"Inflation · {i_chip}", _INFLAT_CHIP.get(i_chip, "#888")),
                    f" with thresholds ±{eff_gz:.2f} / ±{eff_iz:.2f} "
                    f"({'dynamic' if dyn_on else 'static'} mode), windows "
@@ -672,8 +725,12 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
            "the move broad-based?, (2) the signal table — which inputs drove it, and are "
            "they revision-prone?, (3) the map — did the dot cross decisively or is it "
            "hugging the line? The backtest's lesson: with honest point-in-time data the "
-           "chips almost never point the wrong DIRECTION, but they flip to Transition "
-           "early and often. Transition is a posture (reduce conviction), not a signal."),
+           "chips almost never point the wrong DIRECTION. The inflation chip still flips "
+           "to Transition early and often by design — its momentum gate is what buys "
+           "that caution. The growth chip is steadier since it was put on the level "
+           "alone (2026-10-06), so a growth flip now means the LEVEL moved, which is a "
+           "bigger event than it used to be. Transition is a posture (reduce "
+           "conviction), not a signal."),
         _p(html.B("The boundary: "), "this is a diagnostic machine. It tells you what "
            "season it is and where the long cycle stands — it deliberately contains no "
            "position sizing, no asset selection, no risk parity. Keep the diagnosis and "

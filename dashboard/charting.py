@@ -1085,12 +1085,16 @@ def _page_regime_map() -> html.Div:
         ]),
         # Regime chips + Z-score/momentum breakdown — the SAME component (and
         # the same update_regime_info callback) as Regime History, reused here
-        # by id. Without this the map showed only the dot's Z-score POSITION
-        # against the threshold lines, with no visual sign that the chip also
-        # requires momentum to agree — a Z clearly past the line with flat
-        # momentum reads as "obviously Growth" on the map while the chip
-        # (correctly) says Transition. Found 2026-08-15: reported as a US
-        # growth-chip disagreement between Command Center and this page.
+        # by id, so the map can never show a different chip from the one the
+        # classifier produced. Added 2026-08-15 after a reported US growth-chip
+        # disagreement between Command Center and this page: the map showed
+        # only the dot's position against the threshold lines, with no chip
+        # beside it. The specific 2026-08 symptom (a Z past the line with flat
+        # momentum reading "obviously Growth" on the map while the chip said
+        # Transition) no longer arises — the growth chip is level-gated as of
+        # 2026-10-06, so position and chip now agree on the growth axis. The
+        # card stays: the inflation chip still has a momentum gate the map
+        # geometry cannot show, and _season_label still differs from the chips.
         dbc.Row([
             dbc.Col(
                 dbc.Card(dbc.CardBody(html.Div(id="regime-info-box"), style={"padding": "14px 16px"})),
@@ -1181,9 +1185,12 @@ def _build_rh_help_panel() -> html.Div:
 
         html.Div("Regime Chips  (the classification)", style=_H),
         *_row(None, ("Two independent chips — Growth (Growth / Transition / Retraction) and "
-                     "Inflation (Inflation / Transition / Disinflation). Each requires BOTH "
-                     "conditions: the force Z-score beyond its ±threshold AND the momentum "
-                     "agreeing. Miss either → Transition (honesty, not indecision).")),
+                     "Inflation (Inflation / Transition / Disinflation). Both need the force "
+                     "Z-score beyond its ±threshold, held two months. Beyond that they "
+                     "differ: GROWTH is set by that level alone, with momentum shown as a "
+                     "note (accelerating / flat / fading) under the chip; INFLATION also "
+                     "requires its momentum to agree. Inside the band → Transition "
+                     "(honesty, not indecision).")),
         *_row("Thresholds", ("±gz / ±iz — set in the Regime Thresholds modal. With dynamic mode "
                              "on (Ray's algorithm) they adapt per month: calm eras tighten the "
                              "band, chaotic eras widen it, tight credit raises the inflation bar.")),
@@ -1566,9 +1573,11 @@ _THRESHOLD_MODAL = dbc.Modal(
         dbc.ModalHeader(dbc.ModalTitle("Regime Thresholds", style={"fontSize": "1rem"})),
         dbc.ModalBody([
             html.P(
-                "A signal must cross both the Z-score threshold AND the momentum threshold "
-                "to be classified as Growth / Retraction or Inflation / Disinflation. "
-                "Otherwise it lands in Transition.",
+                "The two chips read momentum differently. The GROWTH chip needs only the "
+                "Z-score beyond its ±threshold (sustained two months) — the momentum band "
+                "below just annotates a Growth reading as accelerating / flat / fading. "
+                "The INFLATION chip needs BOTH its Z-score and its momentum threshold "
+                "crossed. Inside the band, either chip reads Transition.",
                 style={"fontSize": "0.78rem", "color": "var(--muted-color)", "marginBottom": "18px"},
             ),
             dcc.Checklist(

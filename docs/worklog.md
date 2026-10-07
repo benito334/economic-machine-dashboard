@@ -3168,3 +3168,30 @@ Also rejected on evidence: Ray's `level_thresh = 0.7` (he appears to have forgot
 **Flagged, not fixed (out of scope).** The Signals force pages (`/signals/{force}`) show the BASE threshold in their banner ("THRESHOLD ±0.50") and draw their composite chart bands there, while the classifier uses the dynamic 0.226 — the same bug class just fixed on the Regime History header. `_resolve_row_thresholds()` and `_threshold_display_chips()` are the ready-made fix. Spawned as a separate task rather than widening this change.
 
 **Next.** The Signals-page threshold display above. The calibration question logged in the review log is also still open and genuinely separate: our growth level threshold is far less demanding than the Chicago Fed's published one (our growth family covers 37% of months; CFNAI-MA3 above +0.70 covers 3%), which is a question about `gz` itself, not about momentum.
+
+---
+
+## 2026-10-06 (3) — Methodology + User Guide brought in line with the new chip rule (and two older staleness bugs found)
+
+**The ask.** Make sure the Methodology page and the User Guide are up to date after the growth-chip change.
+
+**User Guide — the chip lesson taught the old rule.** L3 ("Chips, thresholds, and windows — the decision rule") opened with "the chip system requires two conditions at once... AND the momentum must agree", and L2 ended with "the regime chips require BOTH". Both rewritten to teach the asymmetry — growth on the level, inflation on both — with the NBER evidence given in one sentence so a learner knows it is an evidence-based asymmetry rather than an inconsistency. Added a paragraph on the accelerating/flat/fading note and what weight to give it ("texture, not the call").
+
+The **2×2 table** in L3 encoded the old rule directly (level beyond threshold × momentum opposes → Transition) and could not be patched, since the whole point is that the answer now depends on which chip. Replaced with `_chip_rule_table()`, a module-level helper rendering the two chips as separate rows across three columns (inside the band / beyond with momentum agreeing / beyond with momentum opposing) — the asymmetry is now the first thing the table shows.
+
+The **newcomer trap** ("magnitude is not direction") was one of the three Ray front-loaded, and its claim — "a big Z-score with opposing momentum is NOT a regime call" — is now true for inflation and false for growth. Rewritten as "the two chips do not read momentum the same way", keeping the inflation example intact and naming the new opposite-direction mistake: waiting for acceleration before calling a Growth regime. Added the line that actually explains why this matters — *expansions spend most of their life not accelerating*.
+
+Also in the guide: L8's "the chips flip to Transition early and often" now qualified per chip (inflation still does by design, growth is steadier since it went level-only, so a growth flip is a bigger event than it was); L3's live box now shows the sub-state inline ("Growth · Growth (flat)"); and the canonical inflation window was documented as **96** when the implemented default is **90** — Ray called for 96 and 90 is the nearest slider option, which is now what it says.
+
+**Methodology — §8 plus two older bugs found while sweeping.** §8's narrative, both rule tables and the defaults line had already been updated in the implementation commit; this pass added the sub-state rows to the second (rendered) table, which only the copy-to-clipboard table had, and replaced the inflation "Neither threshold crossed" cell with the explicit condition now that the growth rows state theirs explicitly.
+
+Two **pre-existing** staleness bugs surfaced that have nothing to do with this change:
+
+1. **The glossary still described both chips as dual-condition** — "Inflation Regime ... classified independently using *the same* dual-condition logic" — in two separate copies (§1 and the duplicated glossary block). Both fixed.
+2. **The page claimed dynamic thresholds are "opt-in and off by default"** in three places. They have been ON by default since **2026-07-09** (backtest G2 found dynamic >= fixed), so the page has been wrong about the dashboard's actual default for three months. Fixed, and the note now also spells out the consequence a reader needs: the gz/iz values on the sliders are a BASE that gets scaled per month, so the threshold actually classifying a given month is usually not the slider value — which is exactly the confusion that started this whole session. The historical Revision Log entries that say "dynamic thresholds stay opt-in" were left alone: they are a record of what was true in July, not a claim about now.
+
+**In-app help text swept too** (not just the two docs pages): the Regime Thresholds modal intro, the Regime History help-panel chip row, and the stale code comment on the Regime Map info card explaining a 2026-08 symptom that the level-gated growth chip has since made impossible.
+
+**Verification.** Full suite **729 passed**, zero exclusions. Rebuilt and checked live: User Guide L3 renders the new two-chip table with the per-chip pills and the live box reads "Growth · Growth (flat)"; Methodology §8 renders the sub-state rows, "ON by default since 2026-07-09", and the effective-vs-base note; the Regime Thresholds modal reads correctly for both sliders ("Growth Momentum **band** … does NOT gate the Growth chip" / "Unlike the growth band above, this still GATES the Inflation chip").
+
+**Next.** Unchanged from the previous entry: the Signals-page threshold display (spawned as its own task) and the `gz` calibration question.
