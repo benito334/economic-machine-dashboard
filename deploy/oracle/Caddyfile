@@ -39,6 +39,15 @@ dashboard.creovalabs.com {
 					ipv4 24
 					ipv6 32
 				}
+				# client_ip MUST be masked too. Caddy logs BOTH fields, and
+				# client_ip carries the real address (remote_ip is the peer).
+				# Masking only remote_ip looks right in the config and still
+				# writes full addresses to disk — caught by reading the log,
+				# not by reading the Caddyfile.
+				request>client_ip ip_mask {
+					ipv4 24
+					ipv6 32
+				}
 				request>headers>Cookie delete
 				request>headers>Authorization delete
 			}
@@ -69,6 +78,17 @@ dashboard.creovalabs.com {
 			}
 		}
 		respond "{err.status_code} {err.status_text}"
+	}
+
+	# Traffic report (GoAccess). Behind basic auth — it exposes request paths,
+	# user agents and referrers, which is not public information. Credentials
+	# come from the environment so no hash is committed.
+	handle_path /stats* {
+		basic_auth {
+			{env.STATS_USER} {env.STATS_HASH}
+		}
+		root * /srv/stats
+		file_server
 	}
 
 	reverse_proxy charting:8502 {

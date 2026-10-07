@@ -24,10 +24,34 @@ services:
       - caddy_data:/data        # certificates — MUST persist, or Let's Encrypt
       - caddy_config:/config    # rate limits will bite on repeated reissues
       - caddy_logs:/var/log/caddy
+      - goaccess_out:/srv/stats:ro
     depends_on:
       - charting
+    environment:
+      # Credentials for the /stats page. Set in .env on the VM; the hash is
+      # produced by `docker run --rm caddy:2-alpine caddy hash-password`.
+      STATS_USER: "${STATS_USER:-}"
+      STATS_HASH: "${STATS_HASH:-}"
+
+  # Traffic metrics from Caddy's own access log — server-side, so unlike a JS
+  # beacon it is not defeated by ad blockers and it sees every request,
+  # including assets, bots and 404s. Regenerates a static report on a loop;
+  # no database, no daemon, no third party.
+  goaccess:
+    image: allinurl/goaccess:latest
+    restart: always
+    entrypoint: ["/bin/sh", "/run/report.sh"]
+    volumes:
+      - caddy_logs:/var/log/caddy:ro
+      - goaccess_out:/srv/stats
+      - goaccess_db:/geoip
+      - ./deploy/oracle/goaccess-report.sh:/run/report.sh:ro
+    depends_on:
+      - caddy
 
 volumes:
   caddy_data:
   caddy_config:
   caddy_logs:
+  goaccess_out:
+  goaccess_db:
