@@ -166,6 +166,55 @@ def test_scheduler_callbacks_are_not_registered_in_public_mode():
     assert "sched_cfg.request_run_now()" in after_guard[1]
 
 
+# ── the public nav must not advertise an operator route ──────────────────────
+
+def _walk(node):
+    """Recursively yield every Dash component in a layout tree."""
+    from dash.development.base_component import Component
+
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _walk(item)
+        return
+    if not isinstance(node, Component):
+        return
+    yield node
+    yield from _walk(getattr(node, "children", None))
+
+
+def test_public_nav_never_links_an_operator_route(monkeypatch):
+    """Route gating is the real defence (above), but a visible link to a page
+    that then refuses is a bug in its own right — it advertises the tool and
+    hands the visitor a dead end.
+
+    This is cheap insurance against a specific, repeatable mistake: the
+    operator-only entries are spread across nav groups behind per-group
+    `*([] if PUBLIC_MODE else [...])` splices, so ANY nav restructure can drop
+    one. The 2026-10-06 consolidation moved Valuations out of Reference/Admin
+    and merged it into the Monitors group's Bubble Gauge entry — exactly the
+    kind of move that silently loses a guard.
+    """
+    from dashboard import charting as c
+
+    monkeypatch.setattr(c, "PUBLIC_MODE", True)
+    hrefs = {h for h in (getattr(n, "href", None) for n in _walk(c._left_nav())) if h}
+    leaked = sorted(hrefs & set(c.OPERATOR_ONLY_ROUTES))
+    assert not leaked, f"public nav links operator-only route(s): {leaked}"
+
+
+def test_operator_nav_does_link_those_routes(monkeypatch):
+    """The converse — so the test above can't be satisfied by a nav that
+    renders nothing, or by quietly dropping the pages for the operator too."""
+    from dashboard import charting as c
+
+    monkeypatch.setattr(c, "PUBLIC_MODE", False)
+    hrefs = {h for h in (getattr(n, "href", None) for n in _walk(c._left_nav())) if h}
+    # /valuations is deliberately absent: it was merged into /bubble-gauge on
+    # 2026-10-06 and survives only as a route alias, not as its own nav entry.
+    for route in ("/weight-audit", "/weight-history", "/bubble-gauge"):
+        assert route in hrefs, f"{route} vanished from the operator nav"
+
+
 # ── provenance banner must match the deployment it is running on ─────────────
 
 def test_banner_wording_follows_deploy_kind(monkeypatch):
