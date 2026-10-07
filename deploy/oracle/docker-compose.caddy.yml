@@ -27,11 +27,14 @@ services:
       - goaccess_out:/srv/stats:ro
     depends_on:
       - charting
-    environment:
-      # Credentials for the /stats page. Set in .env on the VM; the hash is
-      # produced by `docker run --rm caddy:2-alpine caddy hash-password`.
-      STATS_USER: "${STATS_USER:-}"
-      STATS_HASH: "${STATS_HASH:-}"
+    # env_file, NOT `environment:` — a bcrypt hash contains `$` characters and
+    # Compose interpolates those in the YAML, silently truncating
+    # `$2a$14$CnZIp...` to `$2a$14`. env_file values are passed through
+    # literally. Create deploy/oracle/caddy.env on the VM (gitignored):
+    #     STATS_USER=stats
+    #     STATS_HASH=<output of `caddy hash-password`>
+    env_file:
+      - ./deploy/oracle/caddy.env
 
   # Traffic metrics from Caddy's own access log — server-side, so unlike a JS
   # beacon it is not defeated by ad blockers and it sees every request,
