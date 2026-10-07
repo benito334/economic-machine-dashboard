@@ -13,6 +13,12 @@ Two pieces, both already in the repo:
   in this folder — a timer that checks `origin/main` every 15 minutes and
   rebuilds/restarts only if it moved. No webhook, no exposed port for this —
   the VM reaches out to GitHub, nothing reaches in.
+  **These are NOT installed, by decision (2026-10-06).** Deploys are manual:
+  now that the VM serves the live public site, auto-deploying every commit to
+  main would put a mistake in front of visitors within 15 minutes. The script
+  itself is kept correct and current (it now uses both compose files) so it
+  works if ever enabled — prefer triggering on a release tag, not every commit.
+  Nightly DATA imports run regardless, inside the scheduler container.
 
 ---
 
