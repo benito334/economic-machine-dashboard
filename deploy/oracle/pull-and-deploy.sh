@@ -1,8 +1,24 @@
 #!/usr/bin/env bash
 # Polls the repo for new commits on main; if any landed, rebuilds and
-# restarts the compose stack. Run on a timer (see indicators-deploy.timer) —
-# never triggered by an inbound webhook, so nothing needs to be exposed to
-# the internet for this to work.
+# restarts the compose stack. Never triggered by an inbound webhook, so
+# nothing needs to be exposed to the internet for this to work.
+#
+# ── NOT INSTALLED, BY DECISION (2026-10-06) ──────────────────────────────────
+# The VM is deployed MANUALLY. indicators-deploy.timer is deliberately not
+# enabled: now that this VM serves the live public site, auto-deploying every
+# commit to main would put a mistake in front of visitors within 15 minutes.
+# That coupling was fine for Cloud Run's frozen snapshot; it is a different
+# risk here. If automation is ever wanted, prefer triggering on a release tag
+# rather than every commit.
+#
+# Nightly DATA imports are unaffected — the scheduler container handles those
+# independently, so data stays current whether or not code is deployed.
+#
+# Manual deploy (what is actually used), from the repo root on the VM:
+#   git pull --ff-only origin main
+#   sudo docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml build charting pipeline scheduler
+#   sudo docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml up -d caddy charting scheduler goaccess
+# ─────────────────────────────────────────────────────────────────────────────
 #
 # Exits 0 on "nothing to do" and on a successful deploy; exits non-zero (and
 # the systemd service unit below reports failure) if git or docker compose
@@ -22,6 +38,10 @@ fi
 
 echo "$(date -Is) deploying $LOCAL_SHA -> $REMOTE_SHA"
 git merge --ff-only origin/main
-docker compose build
-docker compose up -d
+
+# BOTH compose files. Without the second one Caddy and GoAccess are not in the
+# project definition at all — they were added after this script was written.
+COMPOSE="docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml"
+$COMPOSE build charting pipeline scheduler
+$COMPOSE up -d caddy charting scheduler goaccess
 echo "$(date -Is) deploy complete"

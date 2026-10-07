@@ -40,6 +40,29 @@
 
 ## Pending / Blockers
 
+### Public site LIVE on the Oracle VM (2026-10-06) — deploys are MANUAL by decision
+https://dashboard.creovalabs.com — Caddy + automatic Let's Encrypt TLS, `PUBLIC_MODE=1`,
+`DEPLOY_KIND=live`. Cloud Run retired (GCP trigger + service may still need deleting in the
+console — **disable the trigger FIRST** or the next push recreates the service).
+
+**Deploys are manual on purpose.** `indicators-deploy.timer` is deliberately NOT installed:
+auto-deploying every commit to main would put a mistake in front of visitors within 15
+minutes. Nightly data imports are unaffected (scheduler container). To deploy, from the repo
+root on the VM:
+```
+git pull --ff-only origin main
+sudo docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml build charting pipeline scheduler
+sudo docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml up -d caddy charting scheduler goaccess
+```
+**Always both `-f` files** — Caddy and GoAccess are only in the second one.
+
+**Hard constraint, do not re-propose:** DuckDB takes an exclusive file lock (tested: rw+rw
+conflicts, rw+ro ALSO conflicts, only ro+ro coexists). A public and an operator container
+cannot share `signals.duckdb`. The NAS stays the operator/dev instance; the VM only serves.
+
+Traffic report: `/stats`, basic auth, credentials in the VM's `deploy/oracle/stats-auth.conf`
+(gitignored). Feedback dialog posts to Apps Script → Google Sheet; the VM writes nothing.
+
 ### AI Capex Cycle Monitor — PHASE 1 SHIPPED (2026-10-04), Phases 2-3 open
 `/ai-capex-cycle` is live (Monitors, operator-gated) with all 8 Tier-1 trigger metrics;
 `conc_adj` adopted (off by default, growth chip only, Regime Thresholds modal); ICE BofA spread
