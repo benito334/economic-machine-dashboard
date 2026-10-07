@@ -61,6 +61,7 @@ from dashboard import market_expectations as _market_exp
 from dashboard import validator_monitor as _validator_monitor
 from dashboard import bubble_gauge_monitor as _bubble_gauge_monitor
 from dashboard import ai_capex_monitor as _ai_capex_monitor
+from dashboard import feedback as _feedback
 from dashboard import user_guide as _user_guide
 from dashboard import asset_environments as _asset_env
 from dashboard import traffic as _traffic
@@ -732,6 +733,7 @@ def _data_freshness_str() -> str:
 def _left_nav() -> html.Div:
     """Collapsible vertical nav sidebar."""
     _sync = _sync_banner()
+    _fb_btn = _feedback.nav_button()   # None when FEEDBACK_ENDPOINT is unset
 
     def _label(txt: str) -> html.Div:
         return html.Div(txt, className="sidebar-section-label", style={
@@ -968,6 +970,9 @@ def _left_nav() -> html.Div:
 
         html.Hr(style={"borderColor": "var(--border-color)", "margin": "6px 12px"}),
         *([_sync] if _sync else []),
+
+        # ── Feedback (hidden entirely when no endpoint is configured) ─────────
+        *([_fb_btn] if _fb_btn else []),
 
         # ── Settings ──────────────────────────────────────────────────────────
         html.Div(
@@ -1551,6 +1556,8 @@ _SETTINGS_MODAL = dbc.Modal([
     ),
 ], id="settings-modal", is_open=False, size="md")
 
+_FEEDBACK_MODAL = _feedback.modal()
+
 
 _SIGNAL_INFO_MODAL = dbc.Modal(
     id="signal-info-modal",
@@ -1728,15 +1735,28 @@ def _static_data_through() -> str:
 
 
 def _static_banner():
-    """Thin 'this is a static snapshot' bar — only on the public cloud deploy."""
+    """Thin provenance bar — public deploys only.
+
+    There are two public deploys and they are NOT the same thing, so the text
+    must not be: Cloud Run serves a FROZEN snapshot rebuilt from a GitHub
+    release, while the Oracle VM runs the live system with a nightly import.
+    Telling visitors of a live instance that they are looking at a static
+    snapshot "not live" is simply false, so the wording follows DEPLOY_KIND.
+
+    Defaults to "snapshot" so the existing Cloud Run deploy is unchanged if the
+    variable is unset.
+    """
     if not PUBLIC_MODE:
         return None
     through = _static_data_through()
     dated = f" · data through {through}" if through else ""
+    live = os.environ.get("DEPLOY_KIND", "snapshot").strip().lower() == "live"
+    label = (f"📊 Live instance{dated}, updated nightly — read-only. "
+             if live else
+             f"📊 Static demo snapshot{dated} — read-only, not live. ")
     return html.Div(
         [
-            html.Span(f"📊 Static demo snapshot{dated} — read-only, not live. ",
-                      style={"opacity": "0.9"}),
+            html.Span(label, style={"opacity": "0.9"}),
             html.A("View the source & run it yourself on GitHub →",
                    href=_REPO_URL, target="_blank",
                    style={"color": "inherit", "textDecoration": "underline",
@@ -1801,6 +1821,8 @@ app.layout = html.Div([
     html.Div(id="theme-dummy",           style={"display": "none"}),
 
     _SETTINGS_MODAL,
+    _FEEDBACK_MODAL,
+    *_feedback.stores(),
     _THRESHOLD_MODAL,
     _SIGNAL_DRILL_MODAL,
     _SIGNAL_INFO_MODAL,
@@ -4399,6 +4421,59 @@ def _apply_conc_toggle(conc_val: "list | None", current: "dict | None") -> dict:
         return no_update
     t["conc_adj"] = new_val
     return t
+
+
+# ── Feedback dialog ───────────────────────────────────────────────────────────
+# The SUBMIT is clientside on purpose: the POST must leave the visitor's
+# browser, never this server, so the deployment keeps writing nothing. Opening
+# and closing the modal is ordinary server-side state.
+if _feedback.enabled():
+
+    @callback(
+        Output("feedback-modal", "is_open"),
+        Output("feedback-message", "value"),
+        Output("feedback-email", "value"),
+        Output("feedback-status", "children", allow_duplicate=True),
+        [Input("feedback-btn", "n_clicks"),
+         Input("feedback-cancel", "n_clicks"),
+         Input("feedback-sent", "data")],
+        State("feedback-modal", "is_open"),
+        prevent_initial_call=True,
+    )
+    def _toggle_feedback(open_n, cancel_n, sent, is_open):
+        """Open on the sidebar button; clear and close on cancel or a send.
+
+        Clearing the fields on close matters: a stale draft reappearing the
+        next time someone opens the dialog reads as if it failed to send.
+        """
+        from dash import ctx
+        trig = ctx.triggered_id
+        if trig == "feedback-btn":
+            return True, "", "", ""
+        if trig == "feedback-cancel":
+            return False, "", "", ""
+        if trig == "feedback-sent" and sent:
+            return False, "", "", ""
+        return is_open, no_update, no_update, no_update
+
+    app.clientside_callback(
+        _feedback.SUBMIT_JS,
+        Output("feedback-status", "children"),
+        Output("feedback-status", "style"),
+        Output("feedback-sent", "data"),
+        Input("feedback-send", "n_clicks"),
+        [State("feedback-message", "value"),
+         State("feedback-email", "value"),
+         State("feedback-config", "data"),
+         State("url", "pathname"),
+         State("country-store", "data"),
+         State("zscore-window-store", "data"),
+         State("inflation-window-store", "data"),
+         State("diseq-window-store", "data"),
+         State("theme-store", "data"),
+         State("session-id", "data")],
+        prevent_initial_call=True,
+    )
 
 
 # ── Regime Map scatter — callbacks ────────────────────────────────────────────

@@ -28,7 +28,11 @@ services:
   charting:
     <<: *common
     ports:
-      - "8502:8502"
+      # CHARTING_BIND defaults to all interfaces, which is what a local/NAS
+      # instance wants. The public VM sets CHARTING_BIND=127.0.0.1 so the app
+      # is reachable ONLY through the reverse proxy — if the host firewall is
+      # ever misconfigured, the app still isn't directly exposed.
+      - "${CHARTING_BIND:-0.0.0.0}:8502:8502"
     environment:
       DATA_DIR: /data
       DB_PATH: /db/signals.duckdb
@@ -45,6 +49,17 @@ services:
       # at /traffic?key=<TRAFFIC_KEY>; leave empty on a local instance for an
       # open, sidebar-linked page.
       TRAFFIC_KEY: "${TRAFFIC_KEY:-}"
+      # Feedback dialog -> Google Apps Script -> Sheet. The browser POSTs
+      # directly; this deployment never writes feedback anywhere. Unset =
+      # the Feedback button is not rendered at all.
+      FEEDBACK_ENDPOINT: "${FEEDBACK_ENDPOINT:-}"
+      FEEDBACK_TOKEN: "${FEEDBACK_TOKEN:-}"
+      # The image has no .git, so the feedback dialog reads the version here.
+      APP_VERSION: "${APP_VERSION:-}"
+      # "snapshot" (default, Cloud Run's frozen release) or "live" (the Oracle
+      # VM, which runs the nightly import). Drives the provenance banner's
+      # wording — calling a live instance a static snapshot is just false.
+      DEPLOY_KIND: "${DEPLOY_KIND:-}"
     command: python -m dashboard.charting
     restart: always
 

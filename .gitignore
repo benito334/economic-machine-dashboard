@@ -45,3 +45,5 @@ Thumbs.db
 
 # Synology NAS metadata
 @eaDir/
+deploy/oracle/caddy.env
+deploy/oracle/stats-auth.conf

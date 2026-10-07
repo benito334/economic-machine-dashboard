@@ -3066,6 +3066,121 @@ convincing phantom failures — DuckDB is single-writer, and a concurrent run ma
 `test_charting.py` tests fail. Run alone, that file is 103 passed. Check `ps aux | grep pytest`
 before believing a surprising suite result.
 
+## 2026-10-05 (2) — Feedback dialog: browser → Apps Script → Google Sheet
+
+Owner's spec: no writes to the VM, populate a Google Sheet instead, optional email,
+one button in the side menu opening a simple dialog, no IP and no location.
+
+**Architecture.** The dialog is the one thing on a public dashboard that genuinely wants to
+be a write surface — exactly what `PUBLIC_MODE` exists to eliminate (see the gating audit
+earlier today). So the server is cut out entirely: `dashboard/feedback.py` renders the UI, and
+a **clientside** callback POSTs from the visitor's browser straight to a Google Apps Script web
+app, which appends a row to the Sheet. The deployment stores nothing. Receiver and deployment
+notes live in `deploy/feedback/` (`Code.gs`, plus `probe.sh` for one-line endpoint testing).
+
+Captured: message, optional email, and the context a bug report otherwise needs a back-and-forth
+to establish — page, country, the three look-back windows, theme, viewport, app version (git
+SHA), user agent. **Not** captured: IP, geolocation. The dialog discloses all of this in a
+"What gets sent with this" disclosure, and a test asserts that copy still exists.
+
+**Three non-obvious things this had to get right.**
+1. `Content-Type: text/plain;charset=utf-8`, not `application/json`. JSON triggers a CORS
+   preflight `OPTIONS`, which Apps Script web apps cannot answer, and the POST silently never
+   happens. Pinned by a test.
+2. `mode: 'no-cors'` — the response is opaque and unreadable. Accepted deliberately: reading it
+   needs CORS headers Apps Script doesn't reliably set, and showing an error when the write
+   actually succeeded is worse than optimistic confirmation.
+3. Apps Script answers a POST with a 302 to a result URL, which must be followed as a GET (the
+   `doPost` already ran). Browsers do this correctly on their own — but `curl -X POST` forces
+   POST through the redirect and fails with a Drive "Page Not Found". That cost a debugging
+   round against a deployment that was already working; `probe.sh` now carries the fix and a
+   comment.
+
+**Google-side deployment traps, all three hit, all now documented in `Code.gs`:**
+"Anyone with a Google account" sends anonymous visitors to a sign-in page (GET redirects to
+accounts.google.com, POST 401); clicking Deploy with the Version dropdown left on its current
+number re-ships the same snapshot while reporting "successfully updated"; and functions pasted
+*inside* the default `myFunction()` become nested, which Apps Script does not expose — the
+endpoint answers "Script function not found: doPost" even though the code is visibly there.
+A new deployment (rather than editing the existing one) also issues a NEW `/exec` URL.
+
+**A bug caught only by the live end-to-end run.** The first real submission landed a row with
+an empty App version column: the JS read `window.__EMD_VERSION__`, a global nothing ever set.
+Now resolved at import from the git SHA, with an `APP_VERSION` env fallback because the Docker
+image carries no `.git`, and threaded through the config store. Re-verified live: the second
+submission recorded `a1a50e3` and `page: /ai-capex-cycle` correctly.
+
+**Safety.** The Apps Script side prefixes any field starting with `= + - @` with an apostrophe —
+formula injection is the real attack on a write-to-a-spreadsheet design, and a message of
+`=HYPERLINK("http://evil.test","click me")` was verified to store as literal text rather than a
+live formula. Plus a 4000-char cap (both sides), a 12/hour per-session throttle, and a shared
+token that is abuse friction rather than access control — the `/exec` URL is necessarily public
+for a browser-side POST, so the token can't be secret and the code says so.
+
+**Gating.** The Feedback button is not rendered at all unless both `FEEDBACK_ENDPOINT` and
+`FEEDBACK_TOKEN` are set — a button that silently discards what someone typed is worse than no
+button. Both live in `.env` (gitignored); `.env.example` and `docker-compose.yml` carry empty
+placeholders.
+
+**Verification.** 17 new tests in `tests/test_feedback.py`, including one asserting the module
+never performs a write and one asserting the submit stays clientside. Confirmed live in a
+browser against the real endpoint: dialog opens from the sidebar, sends, closes on success, and
+the row lands in the Sheet with every field correct. Test rows cleaned up.
+
+Note: port 8502 was held by `imwt-charting-1` (the spun-off tooltip-fix task running in its own
+worktree), so verification ran on :8504 rather than disturbing it.
+
+## 2026-10-06 — Public cutover: dashboard.creovalabs.com live on the Oracle VM
+
+The VM is now the public site, behind Caddy with automatic TLS. Cloud Run is retired (see
+below). Full walkthrough and per-step verification in this session's transcript; the short
+version:
+
+**Architecture.** Caddy is the only public listener. The dashboard binds to `127.0.0.1:8502`
+via the new `CHARTING_BIND` variable (defaults to `0.0.0.0`, so the NAS is untouched), meaning
+a firewall misconfiguration still cannot expose the app directly. `PUBLIC_MODE=1`,
+`TRAFFIC_KEY` and `DEPLOY_KIND=live` set on the VM.
+
+**The operator/public split, forced by a real constraint.** The original plan — a public
+container and an operator container side by side on the VM — does not work. DuckDB takes an
+exclusive file lock; tested all three combinations on a copy of the live DB: rw+rw conflicts,
+**rw+ro also conflicts**, only ro+ro coexists. So the NAS stays the operator/dev instance and
+the VM serves only. That is also why the nightly import needs a maintenance page at all: the
+pipeline must take the write lock, so charting has to step aside.
+
+**Three bugs found by looking at the running system rather than the config:**
+1. **Full IPs were being logged.** `ip_mask` was applied to `request>remote_ip`, but Caddy
+   logs `client_ip` too and *that* carries the real address — the log held
+   `remote_ip: 99.40.36.0` next to `client_ip: 99.40.36.158`. The Caddyfile looked correct.
+   Both fields masked now; the log was truncated since it held unmasked addresses.
+2. **The provenance banner lied on this deploy.** It hardcoded "Static demo snapshot —
+   read-only, not live", which is true of Cloud Run's frozen release and false of a VM that
+   imports nightly. Now driven by `DEPLOY_KIND`, defaulting to `snapshot`.
+3. **Compose interpolates `$` in `env_file` as well as `environment`.** A bcrypt hash passed
+   either way arrived as `$2a$14` and /stats 401'd with correct credentials. My first fix
+   assumed `env_file` was passed through literally — it isn't, on this version. Caddy now
+   imports the auth block from a mounted file it reads itself, which is version-independent
+   unlike `$$` escaping.
+
+**Certificate note for next time.** After the ports opened, Caddy did not pick up the cert —
+it had already backed off to a 20-minute retry while they were shut, so the ACME log showed a
+stale "likely firewall problem" that looked current. Restarting Caddy forced an immediate
+retry and it issued in seconds from production Let's Encrypt (not staging), validated from
+three perspectives. **Check the log timestamp before believing an ACME error.**
+
+**Traffic metrics.** GoAccess reads Caddy's own access log, so unlike a JS beacon it isn't
+defeated by ad blockers and sees every request — assets, bots, 404s — not just the page views
+the in-app `/traffic` page records. The two complement rather than duplicate. Country geo uses
+DB-IP's free IP-to-Country Lite (MaxMind GeoLite2 needs an account and licence key — verified
+401 without one); country still resolves from the masked /24, which is the whole trade.
+Report served at `/stats` behind basic auth, since request paths, user agents and referrers
+are not public information.
+
+**Verified live:** production Let's Encrypt cert valid to 2027-01-04; HTTP→HTTPS 308;
+`/ai-capex-cycle` returns the operator-tool notice; Bubble Gauge / AI Capex / Weight Audit /
+Traffic all absent from the public nav; feedback button present; maintenance page renders
+"Updating — back in a few minutes" on a simulated outage; both log IP fields masked; `/stats`
+401 without credentials and 200 with.
 ---
 
 ## 2026-10-06 — Dash console errors, Regime History layout + crosshair, threshold-display bug, and a Ray consult on the growth-chip momentum gate

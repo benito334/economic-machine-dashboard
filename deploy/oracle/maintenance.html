@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Updating — Economic Machine Dashboard</title>
+<style>
+  :root {
+    --bg: #0E1116; --surface: #161B22; --rule: #262E39;
+    --ink: #E7EDF4; --muted: #8A97A8; --accent: #E8A317;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #F4F6F8; --surface: #FFFFFF; --rule: #D9E0E7;
+      --ink: #10151C; --muted: #66727F; --accent: #C77E05;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center;
+    justify-content: center; padding: 24px;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+  .card {
+    max-width: 520px; width: 100%;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 12px; padding: 36px 32px;
+  }
+  .mark {
+    font-size: 11px; font-weight: 600; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 18px;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 0 12px; letter-spacing: -.01em; }
+  p { margin: 0 0 14px; color: var(--muted); font-size: 15px; }
+  p:last-child { margin-bottom: 0; }
+  .detail {
+    margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--rule);
+    font-size: 13.5px;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .9em; color: var(--ink);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <p class="mark">Economic Machine Dashboard</p>
+    <h1>Updating — back in a few minutes</h1>
+    <p>
+      The dashboard is briefly offline while it pulls the latest macroeconomic
+      data. This happens once a day, early morning US Central time.
+    </p>
+    <p>
+      Nothing is wrong. Refresh in a few minutes and it'll be back, with fresher
+      numbers than before.
+    </p>
+    <div class="detail">
+      <p>
+        The underlying database allows a single writer at a time, so the site
+        steps aside while the data pipeline runs. It's a deliberate trade-off:
+        a short, predictable gap in exchange for a consistent dataset rather
+        than a half-updated one.
+      </p>
+    </div>
+  </div>
+</body>
+</html>

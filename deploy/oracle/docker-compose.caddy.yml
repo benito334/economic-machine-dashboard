@@ -1,0 +1,57 @@
+# Caddy reverse proxy — PUBLIC VM ONLY. Never used on the NAS.
+#
+# Usage on the VM (from the repo root):
+#   docker compose -f docker-compose.yml -f deploy/oracle/docker-compose.caddy.yml up -d caddy charting scheduler
+#
+# Keeping it in a separate file rather than a profile means the NAS's plain
+# `docker compose up -d` can never accidentally start a public listener.
+#
+# Caddy is the only service that publishes a port to the outside world. The
+# dashboard itself must be bound to 127.0.0.1 via CHARTING_BIND in .env; the
+# two together mean the app is unreachable except through this proxy.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"     # required for the ACME HTTP-01 challenge AND the HTTPS redirect
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./deploy/oracle/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/oracle/maintenance.html:/srv/maintenance.html:ro
+      # /stats credentials. Copy stats-auth.conf.example and fill it in;
+      # gitignored, and Caddy reads it directly so Compose never mangles
+      # the `$` characters in the bcrypt hash.
+      - ./deploy/oracle/stats-auth.conf:/etc/caddy/stats-auth.conf:ro
+      - caddy_data:/data        # certificates — MUST persist, or Let's Encrypt
+      - caddy_config:/config    # rate limits will bite on repeated reissues
+      - caddy_logs:/var/log/caddy
+      - goaccess_out:/srv/stats:ro
+    depends_on:
+      - charting
+
+
+  # Traffic metrics from Caddy's own access log — server-side, so unlike a JS
+  # beacon it is not defeated by ad blockers and it sees every request,
+  # including assets, bots and 404s. Regenerates a static report on a loop;
+  # no database, no daemon, no third party.
+  goaccess:
+    image: allinurl/goaccess:latest
+    restart: always
+    entrypoint: ["/bin/sh", "/run/report.sh"]
+    volumes:
+      - caddy_logs:/var/log/caddy:ro
+      - goaccess_out:/srv/stats
+      - goaccess_db:/geoip
+      - ./deploy/oracle/goaccess-report.sh:/run/report.sh:ro
+    depends_on:
+      - caddy
+
+volumes:
+  caddy_data:
+  caddy_config:
+  caddy_logs:
+  goaccess_out:
+  goaccess_db:

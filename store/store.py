@@ -214,12 +214,31 @@ def _upsert_in_place(
 
     Only the listed columns are SET, so columns owned by a later pass (e.g. composites'
     rolling-window columns) are left intact rather than blanked by the baseline write.
+
+    Guards against a silent data loss case verified against this DuckDB build: if the
+    staging batch itself contains two rows sharing the same conflict key, ON CONFLICT DO
+    UPDATE applies only the first and drops the rest with no error — whereas the old
+    DELETE-then-INSERT this replaced hit the table's PRIMARY KEY and raised loudly on the
+    same input. A duplicate key in one batch means a loader/transform bug produced two
+    observations for the same (id, as_of) (or equivalent); that must fail the pipeline
+    pass the same way CLAUDE.md requires other bad-ingestion cases to fail, not silently
+    keep an arbitrary one of the two values.
     """
+    key_cols = ", ".join(keys)
+    dupes = conn.execute(
+        f"SELECT {key_cols}, COUNT(*) FROM {staging} GROUP BY {key_cols} HAVING COUNT(*) > 1"
+    ).fetchall()
+    if dupes:
+        raise ValueError(
+            f"{table}: staging batch has {len(dupes)} duplicate-key row group(s) on "
+            f"({key_cols}) — refusing to upsert (ON CONFLICT would silently drop all but "
+            f"one row per group). First few: {dupes[:5]}"
+        )
     cols = ", ".join(columns)
     sets = ", ".join(f"{c} = excluded.{c}" for c in columns if c not in keys)
     conn.execute(
         f"INSERT INTO {table} ({cols}) SELECT {cols} FROM {staging} "
-        f"ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {sets}"
+        f"ON CONFLICT ({key_cols}) DO UPDATE SET {sets}"
     )
 
 
