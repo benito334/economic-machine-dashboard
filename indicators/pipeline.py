@@ -1194,6 +1194,54 @@ def run(force_refresh: bool = False, print_latest: bool = False) -> None:
             country_results["error"] += 1
         country_summaries.append((country_code.upper(), country_results))
 
+    # ── Pass 5b: Point-in-time composites (composites_pit) ────────────────
+    # The SECOND composite series, published alongside `composites`, not
+    # replacing it (design note 2026-10-07, Ray consult same date).
+    #
+    # `composites` is deliberately recomputed in full under the CURRENT rule on
+    # every run, so all of history is read through one consistent lens. That
+    # stays. What it cannot be is point-in-time: its Z-scores are measured
+    # against each series' FULL history, so a row dated 2010 is scored against a
+    # distribution running through today — a reading that could not have existed
+    # in 2010. Fine for reading the machine; look-ahead bias for anything FITTED
+    # across time, which is what the downstream beta work does.
+    #
+    # This pass re-derives the same baskets with expanding-window, shift(1)
+    # Z-scores (backtest.pit_zscore). Runs after the country loop because it
+    # reads every country's signals back out of the DB. Best-effort per country:
+    # a country that cannot produce PIT scores must not fail the run.
+    print("\n─── Pass 5b: Point-in-time composites ──────────────────────────────")
+    try:
+        from indicators.backtest import compute_pit_scores
+        from store.store import upsert_composites_pit
+
+        # us_composites.yaml lives under countries/ like every other country,
+        # so the glob alone is the complete list — prepending "US" double-counts.
+        _pit_countries = sorted({
+            y.stem.split("_")[0].upper()
+            for y in (_CONFIG_DIR / "countries").glob("*_composites.yaml")
+        })
+        _pit_ok, _pit_rows, _pit_skipped = 0, 0, []
+        for _cc in _pit_countries:
+            try:
+                # Production's own coverage rule, NOT the backtest's stricter
+                # default — otherwise sparse baskets silently blank out.
+                _min_sig = int(load_composites_config(_cc)
+                               .get("regime_confidence", {})
+                               .get("min_signals_required", 1))
+                _scores = compute_pit_scores(conn, _cc, min_signals=_min_sig)
+                _n = upsert_composites_pit(conn, _cc, _scores)
+                _pit_rows += _n
+                _pit_ok += 1
+            except Exception as exc:
+                _pit_skipped.append(f"{_cc} ({type(exc).__name__})")
+                logger.warning("[pit] %s skipped: %s", _cc, exc)
+        print(f"  {_pit_ok}/{len(_pit_countries)} countries — {_pit_rows} PIT rows written")
+        if _pit_skipped:
+            print(f"  Skipped: {', '.join(_pit_skipped)}")
+    except Exception as exc:
+        logger.warning("[WARN] Point-in-time composites pass: %s", exc)
+
     # ── Pass 6b: Long-Term Debt Stress — additional countries ─────────────
     # Coverage-audit rollout, 2026-10-03 (High item #3). Runs AFTER the
     # country loop above, same reasoning as Pass 7 below: newly-ingested

@@ -335,7 +335,7 @@ def test_volatility_score_computed_from_basket(mem_conn):
 
     assert latest.volatility_score is not None
     assert latest.volatility_score > 0  # both inputs positive Z, weighted mean must be positive
-    assert latest.volatility_momentum == pytest.approx(1.0)  # both signals rising
+    assert latest.volatility_breadth == pytest.approx(1.0)  # both signals rising
 
     audit = json.loads(latest.weight_audit)
     assert "volatility" in audit
@@ -367,7 +367,7 @@ def test_productivity_score_computed_from_basket(mem_conn):
 
     assert latest.productivity_score is not None
     assert latest.productivity_score > 0
-    assert latest.productivity_momentum == pytest.approx(1.0)
+    assert latest.productivity_breadth == pytest.approx(1.0)
     assert "productivity" in json.loads(latest.weight_audit)
 
 
@@ -375,7 +375,7 @@ def test_productivity_score_absent_when_not_configured(mem_conn):
     _seed_expansion(mem_conn)
     snapshots = compute_composite_history(mem_conn, "US", _minimal_config())
     assert snapshots[-1].productivity_score is None
-    assert snapshots[-1].productivity_momentum is None
+    assert snapshots[-1].productivity_breadth is None
 
 
 def test_volatility_score_absent_when_not_configured(mem_conn):
@@ -383,7 +383,7 @@ def test_volatility_score_absent_when_not_configured(mem_conn):
     _seed_expansion(mem_conn)
     snapshots = compute_composite_history(mem_conn, "US", _minimal_config())
     assert snapshots[-1].volatility_score is None
-    assert snapshots[-1].volatility_momentum is None
+    assert snapshots[-1].volatility_breadth is None
     assert "volatility" not in json.loads(snapshots[-1].weight_audit)
 
 

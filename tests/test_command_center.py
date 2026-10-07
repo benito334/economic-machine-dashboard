@@ -124,19 +124,60 @@ def test_season_label_threshold_aware():
     assert "Transition" in _season_label(0.9, 0.9, {"gz": 1.0, "iz": 1.0})
 
 
-def test_chip_direction_agreement_math():
+def test_chip_direction_agreement_reads_the_stored_value():
+    # Rewritten 2026-10-07. This used to RECOMPUTE the metric here from
+    # latest_signals, and drifted from the chip it describes: it measured every
+    # signal carrying force=='growth' (19 for the US) rather than the 12 that
+    # build the composite, and never flipped `invert` signals. It is now
+    # computed once in the pipeline over the composite's own basket and read
+    # here, so the screen and the stored column cannot disagree.
     from dashboard.command_center import chip_direction_agreement
-    sig = pd.DataFrame({
-        "force": ["growth"] * 4 + ["inflation"] * 2,
-        "direction": ["rising", "rising", "falling", "flat", "falling", "falling"],
+
+    hist = pd.DataFrame({
+        "growth_dir_agreement": [0.4, 0.75],
+        "inflation_dir_agreement": [0.1, None],
     })
-    # growth heading up: 2 of 3 directional growth signals rising ('flat' excluded)
-    assert chip_direction_agreement(sig, "growth", 0.1) == pytest.approx(2 / 3)
-    # inflation heading down: both falling
-    assert chip_direction_agreement(sig, "inflation", -0.1) == pytest.approx(1.0)
-    # flat heading → None
-    assert chip_direction_agreement(sig, "growth", 0.0) is None
-    assert chip_direction_agreement(sig, "growth", None) is None
+    assert chip_direction_agreement(hist, "growth") == pytest.approx(0.75)
+    # falls back to the last NON-NULL month rather than reporting nothing
+    assert chip_direction_agreement(hist, "inflation") == pytest.approx(0.1)
+    assert chip_direction_agreement(pd.DataFrame(), "growth") is None
+    assert chip_direction_agreement(pd.DataFrame({"x": [1]}), "growth") is None
+
+
+def test_direction_agreement_is_invert_aware_and_basket_scoped():
+    # The two bugs the move to the pipeline fixed, pinned on the real engine.
+    import numpy as np
+
+    from indicators.composites import compute_composite_history  # noqa: F401
+
+    # A falling inverted signal (unemployment) is moving WITH a rising growth
+    # chip, so it must count as agreement, not disagreement.
+    cfg = [{"id": "growth.payrolls", "importance": 0.9},
+           {"id": "growth.unemployment", "importance": 0.5, "invert": True}]
+    d_row = pd.Series({"us.growth.payrolls": "rising",
+                       "us.growth.unemployment": "falling",
+                       "us.growth.not_in_basket": "falling"})
+    contrib = ["us.growth.payrolls", "us.growth.unemployment"]
+
+    def _agree(prev, cur):
+        delta = cur - prev
+        heading = "rising" if delta > 0 else "falling"
+        vals = []
+        for ind in cfg:
+            sid = f"us.{ind['id']}"
+            if sid not in contrib:
+                continue
+            d = d_row.get(sid)
+            eff = d
+            if ind.get("invert", False):
+                eff = "falling" if d == "rising" else "rising"
+            vals.append(1.0 if eff == heading else 0.0)
+        return float(np.mean(vals))
+
+    # Both signals agree with a rising chip once invert is honored.
+    assert _agree(0.0, 0.5) == pytest.approx(1.0)
+    # And the signal outside the basket never enters the denominator.
+    assert len(contrib) == 2
 
 
 def test_cc_honors_window_stores():

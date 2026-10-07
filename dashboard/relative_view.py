@@ -220,8 +220,8 @@ def _recent_change_notes(g_labels, i_labels, stage_labels,
 
 def _country_card(country: str, thresholds: dict) -> html.Div:
     from dashboard.charting import (
-        _DEFAULT_THRESHOLDS, _GROWTH_CHIP, _INFLAT_CHIP,
-        _classify_regime, compute_dynamic_thresholds,
+        _GROWTH_CHIP, _INFLAT_CHIP,
+        _classify_regime, compute_dynamic_thresholds, resolve_thresholds,
     )
 
     hist = load_composite_history(country=country)
@@ -235,14 +235,14 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     g = _latest(hist, g_col); g_d = _delta(hist, g_col)
     i = _latest(hist, i_col); i_d = _delta(hist, i_col)
 
-    t = dict(thresholds or _DEFAULT_THRESHOLDS)
+    t = resolve_thresholds(thresholds)
     dyn = None
-    if t.get("dynamic"):
+    if t["dynamic"]:
         dyn_input = hist[["as_of", g_col, i_col]
                          + (["credit_score"] if "credit_score" in hist.columns else [])]
         dyn_input = dyn_input.rename(columns={g_col: "growth_score", i_col: "inflation_score"})
-        dyn = compute_dynamic_thresholds(dyn_input, base_gz=float(t.get("gz", 0.5)),
-                                         base_iz=float(t.get("iz", 0.5)))
+        dyn = compute_dynamic_thresholds(dyn_input, base_gz=float(t["gz"]),
+                                         base_iz=float(t["iz"]))
         if dyn.empty:
             dyn = None
         else:

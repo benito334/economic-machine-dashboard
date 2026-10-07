@@ -355,7 +355,7 @@ def chip_state(
     caller already holds one (e.g. the pipeline).
     """
     from dashboard.charting import (  # lazy: charting is a heavy Dash module
-        _DEFAULT_THRESHOLDS, _classify_regime, compute_dynamic_thresholds,
+        _classify_regime, compute_dynamic_thresholds, resolve_thresholds,
     )
 
     hist = load_composite_history(country, conn=conn)
@@ -380,13 +380,13 @@ def chip_state(
     g, i = _latest(g_col), _latest(i_col)
     g_d, i_d = _delta(g_col), _delta(i_col)
 
-    t = dict(thresholds or _DEFAULT_THRESHOLDS)
+    t = resolve_thresholds(thresholds)
     dyn_cols = ["as_of", g_col, i_col] + (["credit_score"] if "credit_score" in hist.columns else [])
     dyn_input = hist[dyn_cols].rename(columns={g_col: "growth_score", i_col: "inflation_score"})
     dyn_df = compute_dynamic_thresholds(
-        dyn_input, base_gz=float(t.get("gz", 0.5)), base_iz=float(t.get("iz", 0.5))
+        dyn_input, base_gz=float(t["gz"]), base_iz=float(t["iz"])
     )
-    dynamic_on = bool(t.get("dynamic", False))
+    dynamic_on = bool(t["dynamic"])
     if dynamic_on and not dyn_df.empty:
         t["gz"] = float(dyn_df["dyn_gz"].iloc[-1])
         t["iz"] = float(dyn_df["dyn_iz"].iloc[-1])
@@ -401,8 +401,8 @@ def chip_state(
         "inflation_score": i,
         "growth_delta": g_d,
         "inflation_delta": i_d,
-        "growth_momentum": _latest("growth_momentum") if "growth_momentum" in hist.columns else None,
-        "inflation_momentum": _latest("inflation_momentum") if "inflation_momentum" in hist.columns else None,
+        "growth_breadth": _latest("growth_breadth") if "growth_breadth" in hist.columns else None,
+        "inflation_breadth": _latest("inflation_breadth") if "inflation_breadth" in hist.columns else None,
         "score_columns": {"growth": g_col, "inflation": i_col},
         "windows": {"growth": growth_window, "inflation": inflation_window},
         "thresholds_in_force": {"gz": t.get("gz"), "iz": t.get("iz"),
@@ -712,9 +712,9 @@ def render_markdown(pack: dict) -> str:
         "## Dashboard read (reproduced with production code)",
         "",
         f"- Growth chip: **{c['growth_chip']}**  (score {c['growth_score']}, "
-        f"delta {c['growth_delta']}, momentum {c['growth_momentum']})",
+        f"delta {c['growth_delta']}, momentum {c['growth_breadth']})",
         f"- Inflation chip: **{c['inflation_chip']}**  (score {c['inflation_score']}, "
-        f"delta {c['inflation_delta']}, momentum {c['inflation_momentum']})",
+        f"delta {c['inflation_delta']}, momentum {c['inflation_breadth']})",
         f"- Score columns: {c['score_columns']}  (windows {c['windows']})",
         f"- Thresholds in force: gz={t['gz']}, iz={t['iz']}, gm={t['gm']}, "
         f"im={t['im']}, dynamic={t['dynamic']}",

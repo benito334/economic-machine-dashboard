@@ -362,7 +362,7 @@ def _build_section(
             html.Span(z_str, style={
                 "color": z_color, "fontFamily": "monospace", "fontWeight": "600",
             }),
-            html.Span("  ·  Mom ", style={"color": "var(--muted-color)"}),
+            html.Span("  ·  Breadth ", style={"color": "var(--muted-color)"}),
             html.Span(mom_str, style={
                 "color": mom_color, "fontFamily": "monospace", "fontWeight": "600",
             }),
@@ -463,27 +463,27 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
                 i_z = float(row[i_roll_col])
             else:
                 i_z = float(row["inflation_score"]) if pd.notna(row.get("inflation_score")) else None
-            g_mom = float(row["growth_momentum"])    if pd.notna(row.get("growth_momentum"))    else None
-            i_mom = float(row["inflation_momentum"]) if pd.notna(row.get("inflation_momentum")) else None
+            g_mom = float(row["growth_breadth"])    if pd.notna(row.get("growth_breadth"))    else None
+            i_mom = float(row["inflation_breadth"]) if pd.notna(row.get("inflation_breadth")) else None
             # Rate and credit composites — stored from pipeline Pass 5
             if "rate_score" in hist.columns and pd.notna(row.get("rate_score")):
                 rate_z_comp = float(row["rate_score"])
             if "credit_score" in hist.columns and pd.notna(row.get("credit_score")):
                 credit_z_comp = float(row["credit_score"])
-            if "rate_momentum" in hist.columns and pd.notna(row.get("rate_momentum")):
-                rate_mom_comp = float(row["rate_momentum"])
-            if "credit_momentum" in hist.columns and pd.notna(row.get("credit_momentum")):
-                credit_mom_comp = float(row["credit_momentum"])
+            if "rate_breadth" in hist.columns and pd.notna(row.get("rate_breadth")):
+                rate_mom_comp = float(row["rate_breadth"])
+            if "credit_breadth" in hist.columns and pd.notna(row.get("credit_breadth")):
+                credit_mom_comp = float(row["credit_breadth"])
             # Volatility composite — added 2026-07-05 (Ray Dalio review #13)
             if "volatility_score" in hist.columns and pd.notna(row.get("volatility_score")):
                 volatility_z_comp = float(row["volatility_score"])
-            if "volatility_momentum" in hist.columns and pd.notna(row.get("volatility_momentum")):
-                volatility_mom_comp = float(row["volatility_momentum"])
+            if "volatility_breadth" in hist.columns and pd.notna(row.get("volatility_breadth")):
+                volatility_mom_comp = float(row["volatility_breadth"])
             # Productivity trend composite — roadmap Phase B (2026-07-05)
             if "productivity_score" in hist.columns and pd.notna(row.get("productivity_score")):
                 productivity_z_comp = float(row["productivity_score"])
-            if "productivity_momentum" in hist.columns and pd.notna(row.get("productivity_momentum")):
-                productivity_mom_comp = float(row["productivity_momentum"])
+            if "productivity_breadth" in hist.columns and pd.notna(row.get("productivity_breadth")):
+                productivity_mom_comp = float(row["productivity_breadth"])
             wa_raw = row.get("weight_audit")
             if wa_raw:
                 raw = json.loads(wa_raw) if isinstance(wa_raw, str) else wa_raw
@@ -516,7 +516,8 @@ def render_signals(country_data, page_trigger, zscore_window=0, inflation_window
     prod_mom   = productivity_mom_comp
 
     # ── Build rows ────────────────────────────────────────────────────────────
-    _thresh_z = float((thresholds or {}).get("gz", 0.5))
+    from dashboard.charting import thr   # lazy: module-scope import is circular
+    _thresh_z = float(thr(thresholds, "gz"))
     g_rows,  g_active  = _composite_rows(comp_df, "growth",     _GROWTH_COLOR,     audit_by_signal, thresh=_thresh_z)
     i_rows,  i_active  = _composite_rows(comp_df, "inflation",  _INFLATION_COLOR,  audit_by_signal, thresh=_thresh_z)
     r_rows,  r_active  = _composite_rows(comp_df, "rate",       _RATE_COLOR,       audit_by_signal, thresh=_thresh_z)

@@ -219,24 +219,27 @@ def _chip_span(text: str, color: str, secondary: bool = False,
     return html.Span(text, style=style, **kw)
 
 
-def chip_direction_agreement(latest_sig: pd.DataFrame, force: str,
-                             delta: Optional[float]) -> Optional[float]:
-    """% of a force's signals whose direction matches the chip's heading.
+def chip_direction_agreement(hist: pd.DataFrame, force: str) -> Optional[float]:
+    """Chip Direction Agreement for the latest month — READ, not recomputed.
 
     Ray audit ruling 2026-07-06 (Q3): confidence is measured against the chips
-    themselves — the chip's heading is the sign of the composite's MoM delta.
-    Returns None when the heading is flat or no directional signals exist.
+    themselves — the heading is the sign of the composite's MoM delta, and the
+    metric is the share of the basket moving with it.
+
+    This used to recompute the number here from `latest_signals`, and drifted
+    from the chip it describes in two ways (found 2026-10-07): it measured every
+    signal carrying force=='growth' (19 for the US) rather than the 12 that
+    actually build the composite, and it never flipped `invert` signals, so a
+    FALLING unemployment rate counted as disagreeing with a RISING growth chip.
+    The value is now computed once in the pipeline over the same basket the
+    score uses (indicators/composites.py) and simply read here, so the screen
+    and the stored column cannot say different things.
     """
-    if latest_sig.empty or delta is None or (isinstance(delta, float) and pd.isna(delta)):
+    col = f"{force}_dir_agreement"
+    if hist is None or hist.empty or col not in hist.columns:
         return None
-    heading = "rising" if float(delta) > 0 else ("falling" if float(delta) < 0 else None)
-    if heading is None:
-        return None
-    sigs = latest_sig[(latest_sig["force"] == force)
-                      & (latest_sig["direction"].isin(["rising", "falling"]))]
-    if sigs.empty:
-        return None
-    return float((sigs["direction"] == heading).mean())
+    s = hist[col].dropna()
+    return float(s.iloc[-1]) if not s.empty else None
 
 
 @callback(
@@ -260,9 +263,9 @@ def render_command_center(country_data, page_trigger, thresholds,
     # back into charting would be circular. Same pattern as indicators/backtest.
     from dashboard.charting import (
         _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _GROWTH_MOMENTUM_STATE,
-        _INFLAT_CHIP, _growth_momentum_state,
+        _INFLAT_CHIP, _growth_breadth_state,
         _INFLATION_WINDOW_COL, _classify_regime, compute_dynamic_thresholds,
-        compute_regime_confidence,
+        compute_regime_confidence, resolve_thresholds, thr,
     )
 
     country = str(country_data or "US").upper()
@@ -302,20 +305,20 @@ def render_command_center(country_data, page_trigger, thresholds,
 
     g = _latest(hist, g_col);                 g_d = _delta(hist, g_col)
     i = _latest(hist, i_col);                 i_d = _delta(hist, i_col)
-    g_mom = _latest(hist, "growth_momentum"); i_mom = _latest(hist, "inflation_momentum")
+    g_mom = _latest(hist, "growth_breadth"); i_mom = _latest(hist, "inflation_breadth")
     diseq = _latest(hist, "disequilibrium_score")
 
     # Chip Direction Agreement (replaces the legacy quadrant-based confidence)
-    g_agree = chip_direction_agreement(latest_sig, "growth", g_d)
-    i_agree = chip_direction_agreement(latest_sig, "inflation", i_d)
+    g_agree = chip_direction_agreement(hist, "growth")
+    i_agree = chip_direction_agreement(hist, "inflation")
 
     # ── Thresholds (honoring dynamic mode) + chips + divergence flag ──────────
-    t = dict(thresholds or _DEFAULT_THRESHOLDS)
+    t = resolve_thresholds(thresholds)
     dyn_input = hist[["as_of", g_col, i_col] + (["credit_score"] if "credit_score" in hist.columns else [])]
     dyn_input = dyn_input.rename(columns={g_col: "growth_score", i_col: "inflation_score"})
-    dyn_df = compute_dynamic_thresholds(dyn_input, base_gz=float(t.get("gz", 0.5)),
-                                        base_iz=float(t.get("iz", 0.5)))
-    dynamic_on = bool(t.get("dynamic", False))
+    dyn_df = compute_dynamic_thresholds(dyn_input, base_gz=float(t["gz"]),
+                                        base_iz=float(t["iz"]))
+    dynamic_on = bool(t["dynamic"])
     if dynamic_on and not dyn_df.empty:
         t["gz"] = float(dyn_df["dyn_gz"].iloc[-1])
         t["iz"] = float(dyn_df["dyn_iz"].iloc[-1])
@@ -325,7 +328,7 @@ def render_command_center(country_data, page_trigger, thresholds,
                                       g_history=hist[g_col], i_history=hist[i_col])
     # Momentum is no longer a gate on the growth chip (2026-10-06) — it
     # describes what is happening inside the regime, shown beside the chip.
-    g_mom_state = _growth_momentum_state(g_chip, g, g_d, t)
+    g_mom_state = _growth_breadth_state(g_chip, g, g_d, t)
 
     # Probabilistic regime confidence (coverage-audit Phase B, 2026-10-03):
     # empirical frequency that a reading like today's actually held into the
@@ -683,8 +686,8 @@ def render_command_center(country_data, page_trigger, thresholds,
     # ── Trend + big cycle ─────────────────────────────────────────────────────
     from dashboard.force_detail import _productivity_divergence
     prod = _latest(hist, "productivity_score")
-    prod_mom = _latest(hist, "productivity_momentum")
-    divergence = _productivity_divergence(prod, g, float(t.get("gz", 0.5))) if prod is not None else None
+    prod_mom = _latest(hist, "productivity_breadth")
+    divergence = _productivity_divergence(prod, g, float(thr(t, "gz"))) if prod is not None else None
     if divergence:
         trend_sub = divergence["label"]
     elif prod is not None and g is not None:

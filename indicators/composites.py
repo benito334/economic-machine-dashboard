@@ -839,6 +839,11 @@ def compute_composite_history(
         fill_age_comp = fill_age_comp[fill_age_comp.index >= ts] if fill_age_comp is not None and not fill_age_comp.empty else fill_age_comp
 
     snapshots: list[CompositeSnapshot] = []
+    # Previous month's scores — the chip's HEADING is the sign of the composite's
+    # own MoM delta (Ray audit ruling 2026-07-06 Q3), so direction agreement
+    # needs the prior value. z_comp.index is chronological.
+    _prev_g_score: "float | None" = None
+    _prev_i_score: "float | None" = None
 
     for dt in z_comp.index:
         z_row = z_comp.loc[dt]
@@ -941,7 +946,9 @@ def compute_composite_history(
 
         # ── Regime Quadrant + Confidence ──────────────────────────────────────
         quadrant   = None
+        quadrant_confidence = None
         confidence = None
+        growth_dir_agreement = inflation_dir_agreement = None
 
         if (
             growth_score is not None
@@ -978,7 +985,59 @@ def compute_composite_history(
 
             g_frac = float(np.mean(g_agree)) if g_agree else 0.5
             i_frac = float(np.mean(i_agree)) if i_agree else 0.5
-            confidence = (g_frac + i_frac) / 2.0
+            quadrant_confidence = (g_frac + i_frac) / 2.0
+
+        # ── Chip Direction Agreement (replaces the quadrant-based confidence) ──
+        # Ray audit ruling 2026-07-06 (Q3): confidence is measured against the
+        # CHIPS, not the four-season quadrant. The heading is the sign of the
+        # composite's own MoM delta; the metric is the share of the basket
+        # moving with it.
+        #
+        # Computed here, in the pipeline, rather than live in the dashboard —
+        # which is where it used to live and where it drifted in two ways
+        # (found 2026-10-07): the dashboard measured every signal carrying
+        # force=='growth' (19 for the US) instead of the 12 that actually build
+        # the composite, and it never flipped `invert` signals, so a falling
+        # unemployment rate counted as DISAGREEING with a rising growth chip.
+        # One implementation, over the same basket the score itself uses.
+        def _dir_agreement(cfg: list[dict], ids_contrib, prev: "float | None",
+                           cur: "float | None") -> "float | None":
+            if cur is None or prev is None:
+                return None
+            delta = float(cur) - float(prev)
+            if delta == 0:
+                return None          # a flat heading has nothing to agree with
+            heading = "rising" if delta > 0 else "falling"
+            agree: list[float] = []
+            for ind in cfg:
+                sid = f"{country_prefix}.{ind['id']}"
+                if sid not in ids_contrib:
+                    continue
+                d = d_row.get(sid)
+                if not isinstance(d, str) or d not in ("rising", "falling"):
+                    continue
+                # An inverted signal moving DOWN is moving with a rising chip.
+                eff = d
+                if ind.get("invert", False):
+                    eff = "falling" if d == "rising" else "rising"
+                agree.append(1.0 if eff == heading else 0.0)
+            return float(np.mean(agree)) if agree else None
+
+        growth_dir_agreement = _dir_agreement(
+            growth_cfg, g_ids_contrib, _prev_g_score, growth_score)
+        inflation_dir_agreement = _dir_agreement(
+            inflation_cfg, i_ids_contrib, _prev_i_score, inflation_score)
+        _prev_g_score, _prev_i_score = growth_score, inflation_score
+
+        # `confidence` keeps its column but carries the live metric: the mean of
+        # whichever per-force agreements exist. Redefined 2026-10-07 — it used to
+        # be quadrant agreement, computed off a raw `score >= 0` sign split that
+        # ignored thresholds entirely and fed the four-season labels the project
+        # retired as display-only in July. `quadrant_confidence` above is kept as
+        # the fallback for months where no heading exists.
+        _agrees = [a for a in (growth_dir_agreement, inflation_dir_agreement)
+                   if a is not None]
+        confidence = float(np.mean(_agrees)) if _agrees else quadrant_confidence
 
         # ── Disequilibrium Score ──────────────────────────────────────────────
         force_scores: list[float] = []
@@ -1007,7 +1066,7 @@ def compute_composite_history(
             if d == positive_dir:
                 g_mom_pos += 1
             g_mom_total += 1
-        growth_momentum = g_mom_pos / g_mom_total if g_mom_total > 0 else None
+        growth_breadth = g_mom_pos / g_mom_total if g_mom_total > 0 else None
 
         i_mom_pos = i_mom_total = 0
         for ind in inflation_cfg:
@@ -1020,7 +1079,7 @@ def compute_composite_history(
             if d == "rising":
                 i_mom_pos += 1
             i_mom_total += 1
-        inflation_momentum = i_mom_pos / i_mom_total if i_mom_total > 0 else None
+        inflation_breadth = i_mom_pos / i_mom_total if i_mom_total > 0 else None
 
         def _momentum_fraction(cfg: list[dict], ids_contrib: list[str]) -> Optional[float]:
             """Fraction of contributing signals moving in their positive direction."""
@@ -1038,12 +1097,12 @@ def compute_composite_history(
                 total += 1
             return pos / total if total > 0 else None
 
-        rate_momentum   = _momentum_fraction(rate_cfg,   r_ids_contrib) if rate_cfg   else None
-        credit_momentum = _momentum_fraction(credit_cfg, c_ids_contrib) if credit_cfg else None
-        volatility_momentum = (
+        rate_breadth   = _momentum_fraction(rate_cfg,   r_ids_contrib) if rate_cfg   else None
+        credit_breadth = _momentum_fraction(credit_cfg, c_ids_contrib) if credit_cfg else None
+        volatility_breadth = (
             _momentum_fraction(volatility_cfg, v_ids_contrib) if volatility_cfg else None
         )
-        productivity_momentum = (
+        productivity_breadth = (
             _momentum_fraction(productivity_cfg, p_ids_contrib) if productivity_cfg else None
         )
 
@@ -1068,22 +1127,24 @@ def compute_composite_history(
                 inflation_score =round(inflation_score, 4) if inflation_score is not None else None,
                 quadrant=quadrant,
                 confidence      =round(confidence,  4) if confidence  is not None else None,
+                growth_dir_agreement   =round(growth_dir_agreement, 4) if growth_dir_agreement is not None else None,
+                inflation_dir_agreement=round(inflation_dir_agreement, 4) if inflation_dir_agreement is not None else None,
                 disequilibrium_score=round(diseq_score, 4) if diseq_score is not None else None,
                 n_growth_signals  =n_growth,
                 n_inflation_signals=n_inflation,
                 n_forces=n_forces,
                 low_coverage=low_cov,
                 stale_signals=stale_signals,
-                growth_momentum   =round(growth_momentum,    4) if growth_momentum    is not None else None,
-                inflation_momentum=round(inflation_momentum, 4) if inflation_momentum is not None else None,
+                growth_breadth   =round(growth_breadth,    4) if growth_breadth    is not None else None,
+                inflation_breadth=round(inflation_breadth, 4) if inflation_breadth is not None else None,
                 rate_score   =round(rate_score_val,   4) if rate_score_val   is not None else None,
                 credit_score =round(credit_score_val, 4) if credit_score_val is not None else None,
-                rate_momentum  =round(rate_momentum,   4) if rate_momentum   is not None else None,
-                credit_momentum=round(credit_momentum, 4) if credit_momentum is not None else None,
+                rate_breadth  =round(rate_breadth,   4) if rate_breadth   is not None else None,
+                credit_breadth=round(credit_breadth, 4) if credit_breadth is not None else None,
                 volatility_score=round(volatility_score_val, 4) if volatility_score_val is not None else None,
-                volatility_momentum=round(volatility_momentum, 4) if volatility_momentum is not None else None,
+                volatility_breadth=round(volatility_breadth, 4) if volatility_breadth is not None else None,
                 productivity_score=round(productivity_score_val, 4) if productivity_score_val is not None else None,
-                productivity_momentum=round(productivity_momentum, 4) if productivity_momentum is not None else None,
+                productivity_breadth=round(productivity_breadth, 4) if productivity_breadth is not None else None,
                 weight_audit=json.dumps(
                     {
                         "growth": growth_audit, "inflation": inflation_audit,

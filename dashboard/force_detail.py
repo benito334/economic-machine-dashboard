@@ -1,11 +1,11 @@
 """Force detail sub-pages — /signals/{force}.
 
 Layout per page:
-  1. Banner strip  — Force Z, Momentum, Active signals, In agreement, Threshold, Lookback
+  1. Banner strip  — Force Z, Breadth, Active signals, In agreement, Threshold, Lookback
   2. Collapsible 8-column signal table  (same as /signals, one force only)
   3. Chart cards — the shared Monitor-card style (`dashboard.shared_components.
      _chart_card`/`_section`, 2026-10 IA cleanup Phase 4): a Composite Z card
-     (+ Momentum card where the force has one), then one raw-value + one
+     (+ Breadth card where the force has one), then one raw-value + one
      Z-score card per basket signal. Replaces the previous single stacked
      make_subplots mega-chart with per-card hover, consistent with every
      other chart surface on the dashboard.
@@ -50,12 +50,12 @@ from indicators.composites import load_composites_config
 _FORCES = ["growth", "inflation", "rate", "credit", "volatility", "productivity"]
 
 _FORCE_CFG: dict[str, dict] = {
-    "growth":    {"label": "Growth",       "color": _GROWTH_COLOR,     "score_col": "growth_score",    "mom_col": "growth_momentum",    "thresh_key": "gz", "is_composite": True},
-    "inflation": {"label": "Inflation",    "color": _INFLATION_COLOR,  "score_col": "inflation_score", "mom_col": "inflation_momentum", "thresh_key": "iz", "is_composite": True},
-    "rate":      {"label": "Interest Rate","color": _RATE_COLOR,       "score_col": "rate_score",      "mom_col": "rate_momentum",      "thresh_key": None, "is_composite": True},
-    "credit":    {"label": "Credit",       "color": _CREDIT_COLOR,     "score_col": "credit_score",    "mom_col": "credit_momentum",    "thresh_key": None, "is_composite": True},
-    "volatility":{"label": "Volatility",   "color": _VOLATILITY_COLOR, "score_col": "volatility_score", "mom_col": "volatility_momentum", "thresh_key": None, "is_composite": True},
-    "productivity":{"label": "Productivity Trend", "color": _PRODUCTIVITY_COLOR, "score_col": "productivity_score", "mom_col": "productivity_momentum", "thresh_key": None, "is_composite": True},
+    "growth":    {"label": "Growth",       "color": _GROWTH_COLOR,     "score_col": "growth_score",    "mom_col": "growth_breadth",    "thresh_key": "gz", "is_composite": True},
+    "inflation": {"label": "Inflation",    "color": _INFLATION_COLOR,  "score_col": "inflation_score", "mom_col": "inflation_breadth", "thresh_key": "iz", "is_composite": True},
+    "rate":      {"label": "Interest Rate","color": _RATE_COLOR,       "score_col": "rate_score",      "mom_col": "rate_breadth",      "thresh_key": None, "is_composite": True},
+    "credit":    {"label": "Credit",       "color": _CREDIT_COLOR,     "score_col": "credit_score",    "mom_col": "credit_breadth",    "thresh_key": None, "is_composite": True},
+    "volatility":{"label": "Volatility",   "color": _VOLATILITY_COLOR, "score_col": "volatility_score", "mom_col": "volatility_breadth", "thresh_key": None, "is_composite": True},
+    "productivity":{"label": "Productivity Trend", "color": _PRODUCTIVITY_COLOR, "score_col": "productivity_score", "mom_col": "productivity_breadth", "thresh_key": None, "is_composite": True},
 }
 
 _GROWTH_WINDOW_COL   = {36: "36m", 48: "48m", 60: "60m"}
@@ -94,11 +94,13 @@ def _threshold_text(effective: Optional[dict], base: Optional[dict],
     0.50). Showing the base here is the bug commit ee3d3ed fixed on the Regime
     History header; this is the same readout on the force pages.
     """
+    from dashboard.charting import thr   # lazy: module-scope import is circular
+
     eff = effective or {}
     b   = base or eff
-    val      = float(eff.get(key, 0.5))
-    base_val = float(b.get(key, 0.5))
-    if not bool(b.get("dynamic", True)) or abs(base_val - val) < _THRESH_SHOW_BASE_EPS:
+    val      = float(thr(eff, key)) if key in eff else float(thr(b, key))
+    base_val = float(thr(b, key))
+    if not bool(thr(b, "dynamic")) or abs(base_val - val) < _THRESH_SHOW_BASE_EPS:
         return val, f"±{val:.2f}", None, None
     return (
         val,
@@ -217,7 +219,7 @@ def _build_banner(
     chips = html.Div(
         [
             _chip("Force Z",      z_str,                       z_color),
-            _chip("Momentum",     mom_str,                     mom_color),
+            _chip("Breadth",      mom_str,                     mom_color),
             _chip("Active",       f"{n_active}/{n_total}",     "var(--font-color)"),
             _chip("In Agreement", f"{n_agreement}/{n_active}" if n_active else "—", "var(--font-color)"),
             _chip("Threshold",    thresh_str,                  "#E8A317",
@@ -355,12 +357,13 @@ def _build_force_cards(
         mom_ser["as_of"] = pd.to_datetime(mom_ser["as_of"]).dt.to_period("M").dt.to_timestamp()
         mcur = float(mom_ser["value"].iloc[-1]) if not mom_ser.empty else None
         composite_cards.append(_chart_card(
-            f"{fc['label']} Momentum", mom_ser, mcur, "pct",
+            f"{fc['label']} Breadth", mom_ser, mcur, "pct",
             "Share of basket signals moving in their 'good' direction. "
-            "50% = no net agreement either way.",
+            "50% = no net agreement either way. NOT a rate of change — for "
+            "that, see the composite Z card's month-over-month move.",
             hline=0.5, hline_txt="50%",
             color="#E8A317",
-            info="Momentum agreement fraction feeding this force's composite.",
+            info="Direction-agreement breadth feeding this force's composite. Renamed from 'Momentum' 2026-10-07: it counts how MANY signals agree, not how FAST the force is moving.",
             fmt_override=f"{mcur:.0%}" if mcur is not None else None,
             sync_hover=True,
         ))
@@ -388,7 +391,7 @@ def _build_force_cards(
             sync_hover=True,
         ))
 
-    # Composite Z/Momentum run full-width, one per row; basket signal cards
+    # Composite Z/Breadth run full-width, one per row; basket signal cards
     # (raw + Z pairs) sit two per row.
     comp_cols, sig_cols = 1, 2
     sections: list[html.Div] = []
@@ -509,10 +512,11 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
         # Lazy import: charting imports this module at load time, so a
         # top-level import here would be circular (same pattern as
         # command_center/relative_view).
-        from dashboard.charting import _DEFAULT_THRESHOLDS, _resolve_row_thresholds
+        from dashboard.charting import (_resolve_row_thresholds,
+                                        resolve_thresholds, thr)
 
         country      = str(country_data or "US").upper()
-        base_thresholds = dict(thresholds or _DEFAULT_THRESHOLDS)
+        base_thresholds = resolve_thresholds(thresholds)
         zscore_window    = int(zscore_window    or 0)
         inflation_window = int(inflation_window or 0)
 
@@ -624,7 +628,7 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
         # defined on the composite the chip is classified from, not on its
         # members. The banner and the composite card above use the effective
         # value because those are the composite-vs-threshold comparison.
-        thresh_z = float(base_thresholds.get("gz", 0.5))
+        thresh_z = float(base_thresholds["gz"])
         rows, active_cnt = _composite_rows(comp_df, force, fc["color"],
                                            audit_by_signal, thresh=thresh_z)
         table_section = _build_section(
@@ -668,7 +672,7 @@ def register_callbacks(app, force: str) -> None:  # noqa: C901
             # Same `gz` the Growth chip uses, so "strong" means the same
             # thing here as it does on the chip — which means the dynamic
             # value, not the slider base.
-            divergence = _productivity_divergence(comp_z, growth_z, float(thresholds.get("gz", 0.5)))
+            divergence = _productivity_divergence(comp_z, growth_z, float(thr(thresholds, "gz")))
 
         banner = _build_banner(force, comp_z, momentum, n_active, n_total,
                                n_agree, thresholds, lookback_label, divergence,
