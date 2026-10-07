@@ -1,0 +1,10 @@
+# Basic-auth credentials for the /stats traffic report.
+#
+# Copy to stats-auth.conf (gitignored) and replace the hash:
+#     docker run --rm caddy:2-alpine caddy hash-password --plaintext 'your-password'
+#
+# Kept in its own file because Compose interpolates `$` in both `environment:`
+# and `env_file:`, which truncates a bcrypt hash. Caddy reads this file itself.
+basic_auth {
+	stats REPLACE_WITH_BCRYPT_HASH
+}

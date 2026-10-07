@@ -21,20 +21,17 @@ services:
     volumes:
       - ./deploy/oracle/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/oracle/maintenance.html:/srv/maintenance.html:ro
+      # /stats credentials. Copy stats-auth.conf.example and fill it in;
+      # gitignored, and Caddy reads it directly so Compose never mangles
+      # the `$` characters in the bcrypt hash.
+      - ./deploy/oracle/stats-auth.conf:/etc/caddy/stats-auth.conf:ro
       - caddy_data:/data        # certificates — MUST persist, or Let's Encrypt
       - caddy_config:/config    # rate limits will bite on repeated reissues
       - caddy_logs:/var/log/caddy
       - goaccess_out:/srv/stats:ro
     depends_on:
       - charting
-    # env_file, NOT `environment:` — a bcrypt hash contains `$` characters and
-    # Compose interpolates those in the YAML, silently truncating
-    # `$2a$14$CnZIp...` to `$2a$14`. env_file values are passed through
-    # literally. Create deploy/oracle/caddy.env on the VM (gitignored):
-    #     STATS_USER=stats
-    #     STATS_HASH=<output of `caddy hash-password`>
-    env_file:
-      - ./deploy/oracle/caddy.env
+
 
   # Traffic metrics from Caddy's own access log — server-side, so unlike a JS
   # beacon it is not defeated by ad blockers and it sees every request,

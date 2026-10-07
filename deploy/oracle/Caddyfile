@@ -84,9 +84,13 @@ dashboard.creovalabs.com {
 	# user agents and referrers, which is not public information. Credentials
 	# come from the environment so no hash is committed.
 	handle_path /stats* {
-		basic_auth {
-			{env.STATS_USER} {env.STATS_HASH}
-		}
+		# Imported rather than passed through the environment: a bcrypt hash
+		# contains `$`, and Compose interpolates that in BOTH `environment:`
+		# and `env_file:` (verified on this version — the container received
+		# `$2a$14` instead of the full hash, and /stats 401'd with correct
+		# credentials). Caddy reads this file itself, so Compose never touches
+		# the value. Create it from stats-auth.conf.example; it is gitignored.
+		import /etc/caddy/stats-auth.conf
 		root * /srv/stats
 		file_server
 	}
