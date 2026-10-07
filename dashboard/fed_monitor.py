@@ -1,35 +1,61 @@
 """Fed Monitor — a US Federal Reserve dashboard (Digital Ray consult 2026-07-10).
 
-Five sections, in Ray's Economic-Machine framing:
-  1. Short-term cycle       — where the Fed is in / headed for the business cycle
-  2. Rates vs inflation      — is money easy/tight, is the Fed behind/ahead
-  3. Balance sheet & liquidity — QE/QT, reserves, ON RRP
-  4. Turning points          — inversion, real-rate zero cross, reserve scarcity
-  5. Late-cycle monetization — MP1->MP2->MP3 (the "How Countries Go Broke" panel)
+Sections, in Ray's Economic-Machine framing:
+  1. Yield curve             — the term structure and the inversion read
+  2. Short-term cycle        — where the Fed is in / headed for the business cycle
+  3. Rates vs inflation      — is money easy/tight, is the Fed behind/ahead
+  4. Balance sheet & liquidity — QE/QT, reserves, ON RRP
+  5. Turning points          — inversion, real-rate zero cross, reserve scarcity
+  6. Late-cycle monetization — MP1->MP2->MP3 (the "How Countries Go Broke" panel)
+  7. Central bank balance sheet — the one cross-country section (US/EZ/JP)
 
 Each chart is a time series with the current value and, where relevant, the
 threshold Ray named. Curated from signals we already ingest plus seven new
 `fed.*` monitoring series. Read-only against the signals DB.
+
+Two pages were folded in here during the 2026-10-06 UI consolidation:
+
+  * The standalone **Yield Curve** page — its term-structure chart is now
+    section ①'s first card (latest observation only; the page's two date
+    pickers and the compare-curve feature were dropped on instruction, so
+    this is a glanceable read rather than an explorer). Its second chart,
+    the historical 10y-2y spread, already existed here as a `_chart_card`,
+    so it was moved up into ① rather than duplicated.
+
+  * The standalone **Central Bank Monitor** — section ⑦. That page's whole
+    point was being cross-country (US/EZ/JP) while this one is hardcoded
+    US-only (`_CC = "us"` is a module constant, not threaded from the
+    country selector), so rather than lose the Euro Area and Japan reads,
+    ⑦ alone is country-reactive: it is rendered by a callback on
+    `country-store`, exactly as central_bank_monitor.py was. Every other
+    section on this page remains United States.
 """
 from __future__ import annotations
 
-import dash_bootstrap_components as dbc
-import duckdb
 import pandas as pd
 import plotly.graph_objects as go
-from dash import dcc, html
+from dash import Input, Output, callback, dcc, html, no_update
 
-from dashboard.charting_data import DB_PATH, load_signal_history
+from dashboard.charting_data import (
+    load_signal_history,
+    load_yield_curve_term_structure,
+)
 from dashboard.shared_components import AMBER as _AMBER
 from dashboard.shared_components import BLUE as _BLUE
 from dashboard.shared_components import GREEN as _GREEN
 from dashboard.shared_components import GREY as _GREY
 from dashboard.shared_components import RED as _RED
-from dashboard.shared_components import _chart_card, _chip, _fmt, _info_icon, _section
+from dashboard.shared_components import (
+    _chart_card,
+    _chip,
+    _info_icon,
+    _section,
+)
 from dashboard.themes import DEFAULT_THEME, figure_layout
 
 _CC = "us"
 _START = "2006-01-01"          # a useful window that spans the GFC, COVID, QT
+_COLUMNS = 2                   # every section is two cards wide (2026-10-06 UI pass)
 
 # colours
 # Canonical semantic palette — sourced from shared_components (see the
@@ -119,7 +145,87 @@ def _fed_interest_to_revenue() -> pd.DataFrame:
     return _ratio(interest, receipts)
 
 
-# ── chart card ───────────────────────────────────────────────────────────────
+# ── Treasury term structure (folded in from the retired Yield Curve page) ────
+# Not a `_chart_card`: its x-axis is MATURITY, not time, so the shared card's
+# date hovertemplate and time-series trace don't apply. The chrome below is a
+# deliberate copy of `_chart_card`'s so the two cards in section ① read as a
+# matched pair — if that card's styling changes, this needs the same change.
+
+# Short labels for the catalog's "3-Month"/"30-Year" names.
+_TERM_TICK_LABEL = {"3-Month": "3M", "6-Month": "6M", "1-Year": "1Y", "2-Year": "2Y",
+                    "3-Year": "3Y", "5-Year": "5Y", "7-Year": "7Y", "10-Year": "10Y",
+                    "20-Year": "20Y", "30-Year": "30Y"}
+
+
+def _term_structure_card() -> html.Div:
+    """Latest US Treasury term structure, in the shared Monitor-card chrome."""
+    title = "Treasury term structure (latest)"
+    info = ("The yield on US Treasury debt at every maturity from 3 months to 30 years, "
+            "plotted left to right — the 'shape' of the curve. Normally it slopes upward: "
+            "lending for longer costs more. A flat or downward (inverted) shape means the "
+            "market expects rate cuts, i.e. a slowing economy. This is the whole curve at "
+            "one moment; the card beside it tracks the single most-watched slice of it "
+            "(10y minus 2y) through time.")
+
+    df = load_yield_curve_term_structure(pd.Timestamp.today().strftime("%Y-%m-%d"))
+    fig = go.Figure()
+    cur_txt = "—"
+    read = "US Treasury yields by maturity — upward slope is normal, inverted is not."
+    if not df.empty:
+        df = df.sort_values("maturity_years")
+        ticks = [_TERM_TICK_LABEL.get(lbl, lbl) for lbl in df["label"]]
+        # Evenly spaced (categorical) maturities, not linear years: on a true
+        # 0.25-to-30 numeric axis the entire short end — where inversions
+        # actually show up — collapses into the leftmost few pixels with its
+        # tick labels overlapping. Even spacing is also how a yield curve is
+        # conventionally drawn.
+        fig.add_trace(go.Scatter(
+            x=ticks, y=df["yield_pct"],
+            mode="lines+markers", name=title,
+            line=dict(color=_BLUE, width=1.7, shape="spline", smoothing=0.5),
+            marker=dict(size=6),
+            customdata=df["label"],
+            hovertemplate="<b>%{customdata}</b>: %{y:.2f}%<extra></extra>"))
+        # Header value = the 10-year, the number people quote for "the" yield.
+        tens = df[df["maturity_years"] == 10]
+        anchor = tens if not tens.empty else df.tail(1)
+        cur_txt = f"{float(anchor['yield_pct'].iloc[0]):.2f}%"
+        short = float(df["yield_pct"].iloc[0])
+        long = float(df["yield_pct"].iloc[-1])
+        shape = ("inverted — short rates above long"
+                 if long - short < -0.1 else
+                 "flat — little term compensation"
+                 if long - short < 0.25 else
+                 "upward-sloping — the normal shape")
+        read = f"{ticks[0]}→{ticks[-1]}: {shape}."
+
+    lay = figure_layout(DEFAULT_THEME)
+    # No `fill="tozeroy"` here, unlike the stock-level cards: anchoring to zero
+    # squashes a 3.8-5.3% curve into a flat band at the top of the panel and
+    # hides the shape, which is the only thing this chart is for.
+    lay.update(height=180, margin=dict(l=6, r=8, t=6, b=18), showlegend=False,
+               xaxis=dict(showgrid=False, type="category"),
+               yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)",
+                          ticksuffix="%"))
+    fig.update_layout(**lay)
+
+    return html.Div([
+        html.Div([
+            html.Span(title, style={"fontSize": "0.78rem", "fontWeight": "700",
+                                    "color": "var(--font-color)"}),
+            _info_icon(info, scope=title),
+            html.Span(cur_txt, style={"fontSize": "0.95rem", "fontWeight": "700",
+                                      "fontFamily": "monospace", "color": _BLUE,
+                                      "float": "right"}),
+        ]),
+        html.Div(read, style={"fontSize": "0.66rem", "color": "var(--muted-color)",
+                              "marginBottom": "2px", "minHeight": "1.6em"}),
+        dcc.Graph(figure=fig, responsive=True, config={"displayModeBar": False},
+                  style={"height": "180px"}),
+    ], style={"background": "var(--card-bg)", "border": "1px solid var(--border-color)",
+              "borderRadius": "8px", "padding": "10px 12px", "flex": "1 1 300px",
+              "minWidth": "280px"})
+
 
 # ── header read ──────────────────────────────────────────────────────────────
 
@@ -174,9 +280,24 @@ def get_layout() -> html.Div:
         v, _ = _latest(c)
         return v
 
-    # 1) short-term cycle
+    # 1) yield curve — the two charts from the retired standalone page
+    s0 = _section(
+        "① Yield curve — term structure and the inversion read",
+        "The whole curve right now, and the 10y−2y slice through time.",
+        [
+            _term_structure_card(),
+            _chart_card("Yield curve (10y − 2y)", _hist("premium.yield_curve_10y2y"),
+                        cur("premium.yield_curve_10y2y"), "%", "Inversion (<0) historically leads recession.",
+                        zero_line=True, color=_GREEN,
+                        info="The 10-year Treasury yield minus the 2-year. Normally positive — longer "
+                             "money costs more. When it inverts (goes negative) the market is betting on "
+                             "rate cuts ahead, i.e. a slowing economy. Inversion has preceded every US "
+                             "recession of the last ~50 years, typically by 6–18 months."),
+        ], columns=_COLUMNS)
+
+    # 2) short-term cycle
     s1 = _section(
-        "① Short-term cycle — where the Fed is headed",
+        "② Short-term cycle — where the Fed is headed",
         "The policy stance and the levers that steer the 5–8yr business cycle.",
         [
             _chart_card("Effective Fed Funds", _hist("policy.fed_funds"), cur("policy.fed_funds"),
@@ -200,13 +321,9 @@ def get_layout() -> html.Div:
                              "embeds the market's average expected policy rate over the next two years, "
                              "so the gap reveals what traders think the Fed will do next. Positive = "
                              "hikes are priced in; negative = the market expects cuts."),
-            _chart_card("Yield curve (10y − 2y)", _hist("premium.yield_curve_10y2y"),
-                        cur("premium.yield_curve_10y2y"), "%", "Inversion (<0) historically leads recession.",
-                        zero_line=True, color=_GREEN,
-                        info="The 10-year Treasury yield minus the 2-year. Normally positive — longer "
-                             "money costs more. When it inverts (goes negative) the market is betting on "
-                             "rate cuts ahead, i.e. a slowing economy. Inversion has preceded every US "
-                             "recession of the last ~50 years, typically by 6–18 months."),
+            # The 10y−2y card that used to sit here moved up into section ①
+            # alongside the term structure — it is the same chart, and two
+            # adjacent sections showing it would read as a bug.
             _chart_card("Bank lending standards (SLOOS)", _hist("credit.lending_standards"),
                         cur("credit.lending_standards"), "%", "Net % tightening C&I standards; high = credit squeeze.",
                         color=_RED,
@@ -221,11 +338,11 @@ def get_layout() -> html.Div:
                              "Widening spreads mean investors demand more compensation for risk, i.e. "
                              "financial conditions are tightening and stress is building, often before "
                              "it shows up in the real economy."),
-        ])
+        ], columns=_COLUMNS)
 
     # 2) rates vs inflation
     s2 = _section(
-        "② Rates vs inflation — easy or tight, behind or ahead",
+        "③ Rates vs inflation — easy or tight, behind or ahead",
         "Frame policy against inflation and expectations.",
         [
             _chart_card("Real policy rate", _hist("policy.real_fed_funds"), cur("policy.real_fed_funds"),
@@ -255,11 +372,11 @@ def get_layout() -> html.Div:
                              "nominal Treasury yields and inflation-protected (TIPS) yields — i.e. the "
                              "inflation the bond market is actually pricing in. A market-based inflation "
                              "forecast; rising breakevens mean the market expects more inflation ahead."),
-        ])
+        ], columns=_COLUMNS)
 
     # 3) balance sheet & liquidity
     s3 = _section(
-        "③ Balance sheet & liquidity — QE / QT",
+        "④ Balance sheet & liquidity — QE / QT",
         "The scale of the Fed's footprint and the liquidity in the system.",
         [
             _chart_card("Fed balance sheet (YoY)", _hist_pct("policy.fed_balance_sheet"),
@@ -292,14 +409,14 @@ def get_layout() -> html.Div:
                              "during QT this drains first. Once it nears zero, further tightening starts "
                              "pulling down bank reserves directly, the point where liquidity stress can "
                              "begin."),
-        ])
+        ], columns=_COLUMNS)
 
     # 4) turning points
     resv = _to_bn("fed.bank_reserves", "b")
     gdp = _hist("master.gdp_level_bn")
     resv_gdp = _ratio(resv, gdp)
     s4 = _section(
-        "④ Turning points — regime shift / forced pivot",
+        "⑤ Turning points — regime shift / forced pivot",
         "Signals that flag the Fed being forced to change course.",
         [
             _chart_card("2y/10y inversion", _hist("premium.yield_curve_10y2y"),
@@ -343,7 +460,7 @@ def get_layout() -> html.Div:
                              "spreads while the Fed is hiking signal investor complacency about risk; a "
                              "sudden blowout signals credit stress and is often the trigger that forces "
                              "the Fed to ease."),
-        ])
+        ], columns=_COLUMNS)
 
     # 5) monetization (the How Countries Go Broke panel)
     th = _to_bn("fed.treasury_holdings", "m")
@@ -352,7 +469,7 @@ def get_layout() -> html.Div:
     fh = _to_bn("fed.foreign_holdings", "b")
     foreign_share = _ratio(fh, md)
     s5 = _section(
-        "⑤ Late-cycle monetization — MP1 → MP2 → MP3  (How Countries Go Broke)",
+        "⑥ Late-cycle monetization — MP1 → MP2 → MP3  (How Countries Go Broke)",
         "Is the Fed being forced to fund the government and debase the currency?",
         [
             _chart_card("Fed share of marketable debt", fed_share,
@@ -410,7 +527,7 @@ def get_layout() -> html.Div:
                              "dollar the Treasury borrowed, how much the Fed itself bought. Above "
                              "~30–40% means the central bank is directly financing the deficit rather "
                              "than the market absorbing it: the practical definition of monetization."),
-        ])
+        ], columns=_COLUMNS)
 
     note = html.Div(
         "Framework from a Digital Ray consult (2026-07-10) — an AI approximation of Ray Dalio's "
@@ -420,10 +537,216 @@ def get_layout() -> html.Div:
         style={"fontSize": "0.68rem", "color": "var(--muted-color)", "marginTop": "24px",
                "opacity": "0.75"})
 
-    return html.Div([_header(), s1, s2, s3, s4, s5, note],
+    # 7) central-bank balance sheet — the one country-reactive section, filled
+    #    by render_fed_central_bank_section() below.
+    s6 = html.Div(id="fed-cb-section")
+
+    return html.Div([_header(), s0, s1, s2, s3, s4, s5, s6, note],
                     className="p-3", style={"maxWidth": "1500px"})
 
 
 def _pct(v):
     """Composite/derived signals are stored as decimals; show as %."""
     return None if v is None else v * 100.0
+
+
+# ── ⑦ Central bank balance sheet — folded in from central_bank_monitor.py ────
+# Verbatim in substance from that page (coverage-audit High item #5,
+# 2026-10-03); see this module's docstring for why it is the only
+# country-reactive section here. Its reasoning, which the merge must not
+# lose:
+#
+#   * Concept ids are deliberately NOT unified across countries. EZ already
+#     had `policy.central_bank_assets` bound (ECBASSETSW, already feeding
+#     EZ's rate_score composite at CONTEXT weight) from an earlier phase —
+#     reused as-is rather than creating a near-duplicate binding, which the
+#     first version of that page did by mistake before it was caught. JP had
+#     no prior binding, so `policy.central_bank_balance_sheet` is new.
+#
+#   * GB is NOT covered. Checked live 2026-10-03: every Bank-of-England
+#     balance-sheet series on FRED is discontinued or years stale (the most
+#     recent is annual, last real observation 2016). A genuine data gap, not
+#     an oversight — shown as an explicit message rather than silently
+#     omitted from the country list.
+#
+#   * The MP read here is deliberately simpler than _header()'s US-specific
+#     one above, which leans on foreign-holder share and Fed remittances —
+#     neither has a cross-country equivalent. The same YoY-growth-only rule
+#     is applied uniformly to all three so they are genuinely comparable.
+#
+# For the US this section's YoY card overlaps section ④'s "Fed balance sheet
+# (YoY)" (that one is the bound `policy.fed_balance_sheet` YoY signal; this
+# one is computed from the `fed.balance_sheet` level). Kept rather than
+# special-cased away: dropping it for the US alone would make the section
+# stop being the like-for-like three-country comparison that is its reason
+# to exist.
+
+# country -> (balance-sheet concept id, divisor to display-unit trillions,
+#             currency symbol, central bank name)
+_CB_COVERAGE: dict[str, tuple[str, float, str, str]] = {
+    "US": ("fed.balance_sheet", 1e6, "$", "Federal Reserve"),
+    "EZ": ("policy.central_bank_assets", 1e6, "€", "European Central Bank"),
+    "JP": ("policy.central_bank_balance_sheet", 1e4, "¥", "Bank of Japan"),
+}
+# Full 14-country map, not just the three covered ones: the "no live source
+# for X yet" message is shown for every OTHER country, and the version
+# inherited from central_bank_monitor.py only knew US/EZ/JP — so picking the
+# UK printed "No live central-bank balance-sheet source for GB yet".
+_CB_NAMES = {"US": "United States", "EZ": "Euro Area", "GB": "United Kingdom",
+             "JP": "Japan", "KR": "South Korea", "CN": "China",
+             "IN": "India", "DE": "Germany", "LU": "Luxembourg",
+             "BR": "Brazil", "CA": "Canada", "AU": "Australia",
+             "MX": "Mexico", "ID": "Indonesia"}
+
+# Room-to-ease gauge: distance of the policy rate from the zero/effective
+# lower bound — "how much conventional ammunition is left before this bank is
+# forced into QE (MP2)." US/EZ only: no free BOJ policy-rate series exists on
+# FRED (checked live) — JP has only the 10y JGB yield bound, not a short-rate
+# equivalent, consistent with its other gap here.
+_CB_RATE_COVERAGE: dict[str, str] = {
+    "US": "policy.fed_funds_target",
+    "EZ": "policy.fed_funds_target",
+}
+_CB_ELB = 0.0   # effective lower bound — a plain round-number floor, not a
+                # model of each bank's own historical negative-rate episodes
+
+
+def _cb_hist(cc: str, concept: str, start: str | None = _START) -> pd.DataFrame:
+    return load_signal_history(f"{cc.lower()}.{concept}", start_date=start)
+
+
+def _cb_latest(cc: str, concept: str):
+    df = load_signal_history(f"{cc.lower()}.{concept}")
+    if df.empty:
+        return None, None
+    return float(df["value"].iloc[-1]), pd.to_datetime(df["as_of"].iloc[-1])
+
+
+def _cb_to_trillions(df: pd.DataFrame, divisor: float) -> pd.DataFrame:
+    if df.empty:
+        return df
+    df = df.copy()
+    df["value"] = df["value"] / divisor
+    return df
+
+
+def _cb_yoy_pct(df: pd.DataFrame) -> pd.DataFrame:
+    """YoY % growth, resampled to monthly first so a weekly (EZ/US) and a
+    monthly (JP) native series both produce a literal 'vs ~12 months ago'
+    comparison rather than mismatched period counts."""
+    if df.empty:
+        return df
+    s = df.set_index("as_of")["value"].sort_index().resample("ME").last()
+    yoy = (s / s.shift(12) - 1.0) * 100.0
+    out = yoy.dropna().reset_index()
+    out.columns = ["as_of", "value"]
+    return out
+
+
+def _cb_mp_read(yoy_latest: float | None) -> tuple[str, str]:
+    if yoy_latest is None:
+        return "—", _GREY
+    if yoy_latest > 5.0:
+        return "MP2 (balance sheet expanding — QE underway)", _AMBER
+    if yoy_latest < -5.0:
+        return "MP1 / QT (balance sheet contracting)", _BLUE
+    return "MP1 (roughly stable)", _GREEN
+
+
+def _central_bank_section(cc: str) -> html.Div:
+    """Section ⑦ for one country — cards + the chips that read them."""
+    heading = "⑦ Central bank balance sheet — MP1 → MP2 → MP3, cross-country"
+
+    if cc not in _CB_COVERAGE:
+        gap = (
+            "Checked live 2026-10-03: every Bank of England series on FRED is either "
+            "discontinued or years stale (most recent is annual, last real observation "
+            "2016) — a genuine gap, not an oversight. US/EZ/JP are covered."
+            if cc == "GB" else
+            f"{_CB_NAMES.get(cc, cc)} isn't one of the three covered central banks "
+            "(US/EZ/JP) yet."
+        )
+        return _section(heading, "The one section on this page that follows the country selector.", [
+            html.Div([
+                html.Div(f"No live central-bank balance-sheet source for {_CB_NAMES.get(cc, cc)} yet.",
+                         style={"color": "var(--muted-color)", "fontSize": "0.85rem",
+                                "paddingBottom": "6px"}),
+                html.Div(gap, style={"color": "var(--muted-color)", "fontSize": "0.78rem",
+                                     "opacity": "0.85"}),
+            ], style={"background": "var(--card-bg)", "border": "1px solid var(--border-color)",
+                      "borderRadius": "8px", "padding": "16px 18px"}),
+        ])
+
+    concept, divisor, sym, bank_name = _CB_COVERAGE[cc]
+    raw = _cb_hist(cc, concept)
+    level = _cb_to_trillions(raw, divisor)
+    yoy = _cb_yoy_pct(raw)
+    cur_level, _ = _cb_latest(cc, concept)
+    cur_yoy = float(yoy["value"].iloc[-1]) if not yoy.empty else None
+    mp_label, mp_color = _cb_mp_read(cur_yoy)
+
+    chips = [
+        _chip(f"{bank_name} · {_CB_NAMES.get(cc, cc)}", _GREY),
+        _chip(f"Balance sheet {sym}{(cur_level or 0) / divisor:.2f}T"
+              if cur_level is not None else "level —", _BLUE),
+        _chip(f"YoY {cur_yoy:+.1f}%" if cur_yoy is not None else "YoY —",
+              _RED if (cur_yoy or 0) > 5 else _GREEN if (cur_yoy or 0) < -5 else _AMBER),
+        _chip(mp_label, mp_color),
+    ]
+    rate_concept = _CB_RATE_COVERAGE.get(cc)
+    if rate_concept:
+        cur_rate, _ = _cb_latest(cc, rate_concept)
+        if cur_rate is not None:
+            room = cur_rate - _CB_ELB
+            chips.append(_chip(
+                f"Room to ease {room:+.2f}pp",
+                _RED if room < 1.0 else _AMBER if room < 2.5 else _GREEN))
+
+    cards = [
+        _chart_card(
+            f"Balance sheet level ({sym}T)", level,
+            cur_level / divisor if cur_level is not None else None, "", "",
+            color=_BLUE, fill=True,
+            fmt_override=(f"{sym}{cur_level / divisor:.2f}T" if cur_level is not None else None),
+            info="Total balance-sheet assets — the size of the QE stockpile. Raw level, not yet "
+                 "GDP-normalized (the three countries' GDP signals are all USD-converted via "
+                 "different providers, which would need an FX leg to pair cleanly against a "
+                 "locally-denominated balance sheet — skipped rather than risking a "
+                 "unit-mismatched ratio).",
+        ),
+        _chart_card(
+            "Balance sheet YoY growth", yoy, cur_yoy, "pp",
+            "> +5% = MP2 (QE underway); < −5% = unwinding.",
+            color=_AMBER, zero_line=True,
+            # `_fmt` has no "pp" case, so it would print a bare "2.04".
+            fmt_override=(f"{cur_yoy:+.1f}%" if cur_yoy is not None else None),
+            info="Year-over-year % change — unlike the raw level, this needs no currency "
+                 "conversion at all, so it's the directly comparable read across the three "
+                 "countries. >+5% = MP2 (QE underway); <-5% = unwinding; in between = "
+                 "roughly stable.",
+        ),
+    ]
+
+    # Chips lead the section, matching the page header's own chips-then-charts
+    # order — underneath the cards they read as an orphaned footnote.
+    return _section(
+        heading,
+        "The one section on this page that follows the country selector "
+        "(US / Euro Area / Japan — the central banks with a live free source).",
+        cards, columns=_COLUMNS,
+        lead=html.Div(chips, style={"display": "flex", "gap": "10px",
+                                    "flexWrap": "wrap", "marginBottom": "12px"}),
+    )
+
+
+@callback(
+    Output("fed-cb-section", "children"),
+    [Input("page-trigger", "data"),
+     Input("country-store", "data")],
+    prevent_initial_call=False,
+)
+def render_fed_central_bank_section(page_trigger, country):
+    page = (page_trigger or {}).get("page", "")
+    if page and page != "/fed":
+        return no_update
+    return _central_bank_section((country or "US").upper())

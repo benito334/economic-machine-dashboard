@@ -197,17 +197,32 @@ def _chart_card(title: str, df: pd.DataFrame, cur: float | None, unit: str, read
         className="sync-hover-card" if sync_hover else None)
 
 
-def _section(title: str, subtitle: str, cards: list, *, columns: int | None = None) -> html.Div:
+def _section(title: str, subtitle: str, cards: list, *, columns: int | None = None,
+             lead: "Any | None" = None) -> html.Div:
+    """A titled block of cards. `columns` fixes the grid width (2 is the house
+    default for Monitor pages); omit it for the older auto-wrapping flex row.
+    `lead` renders between the subtitle and the cards — for a chip row or an
+    embedded panel that belongs to the section but isn't one of its cards.
+
+    The `mon-grid` class carries the responsive half of the fixed-column
+    layout (theme.css): it zeroes the cards' own inline `minWidth` so a column
+    can actually shrink to its share, and collapses to one column on narrow
+    viewports — without it a 2-up grid forces horizontal scroll on a phone,
+    since `_chart_card` pins each card at 280px.
+    """
     return html.Div([
         html.Div(title, style={"fontSize": "0.72rem", "fontWeight": "800",
                                "textTransform": "uppercase", "letterSpacing": "0.06em",
                                "color": "var(--muted-color)", "marginTop": "22px"}),
         html.Div(subtitle, style={"fontSize": "0.72rem", "color": "var(--muted-color)",
                                   "opacity": "0.8", "marginBottom": "10px"}),
-        html.Div(cards, style=(
-            {"display": "grid", "gap": "8px",
-             "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))"} if columns
-            else {"display": "flex", "flexWrap": "wrap", "gap": "12px"})),
+        *([lead] if lead is not None else []),
+        html.Div(cards,
+                 className="mon-grid" if columns else None,
+                 style=(
+                     {"display": "grid", "gap": "10px",
+                      "gridTemplateColumns": f"repeat({columns}, minmax(0, 1fr))"} if columns
+                     else {"display": "flex", "flexWrap": "wrap", "gap": "12px"})),
     ])
 
 

@@ -1,4 +1,10 @@
-"""Buffett valuation feed + operator-only /valuations page wiring."""
+"""Buffett valuation feed + operator-only /valuations page wiring.
+
+The standalone /valuations page was merged into the Bubble Gauge page on
+2026-10-06 (valuations iframe on top, the three bubble dimensions below).
+/valuations is kept as a gated alias, and the gated Flask routes that serve
+the embedded app are unchanged — which is what most of this file covers.
+"""
 import json
 
 from dashboard import charting as c
@@ -6,16 +12,51 @@ from dashboard.app_mode import OPERATOR_ONLY_ROUTES
 from indicators import valuations as val
 
 
+def _walk(node):
+    """Recursively yield every Dash component in a layout tree."""
+    from dash.development.base_component import Component
+
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _walk(item)
+        return
+    if not isinstance(node, Component):
+        return
+    yield node
+    yield from _walk(getattr(node, "children", None))
+
+
 def test_operator_route_is_gated():
     assert "/valuations" in OPERATOR_ONLY_ROUTES
     assert "/valuations" in c._PAGE_MAP
 
 
-def test_page_is_an_embedded_iframe():
-    lay = c._page_valuations()
-    assert type(lay).__name__ == "Div"
-    assert type(lay.children).__name__ == "Iframe"
-    assert lay.children.src.startswith("/valuations/app")
+def test_valuations_route_resolves_to_the_merged_page():
+    assert c._PAGE_MAP["/valuations"] is c._page_bubble_gauge
+    assert c._PAGE_MAP["/bubble-gauge"] is c._page_bubble_gauge
+
+
+def test_merged_page_still_embeds_the_valuations_iframe():
+    """The iframe moved from charting._page_valuations into
+    bubble_gauge_monitor._valuations_section. Its `valuations-frame` id is
+    load-bearing: the theme-sync clientside callback targets it by id."""
+    from dashboard.bubble_gauge_monitor import _valuations_section
+
+    frames = [n for n in _walk(_valuations_section())
+              if type(n).__name__ == "Iframe"]
+    assert len(frames) == 1
+    assert frames[0].id == "valuations-frame"
+    assert frames[0].src.startswith("/valuations/app")
+
+
+def test_theme_sync_callback_still_targets_the_iframe():
+    """Guards the one coupling the merge could silently break."""
+    targets = [
+        o.component_id
+        for cb in c.app.callback_map.values()
+        for o in (cb["output"] if isinstance(cb["output"], list) else [cb["output"]])
+    ]
+    assert "valuations-frame" in targets
 
 
 def test_flask_routes_serve_for_operator():

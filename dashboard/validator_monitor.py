@@ -1,4 +1,4 @@
-"""Validator Audit Monitor — independent FRED-benchmark cross-check of the
+"""Regime Validator — independent FRED-benchmark cross-check of the
 Growth/Inflation chips (docs/external_validators_plan.md, 2026-10-03).
 
 Promotes `indicators/audit_benchmarks.py`'s one-off CLI audit into a live
@@ -15,6 +15,11 @@ reading the persisted `validator_verdicts` snapshot table, so the charts are
 always current, not whatever the last pipeline run cached — the persisted
 table exists for the lightweight Command Center badge and the CreovaOne
 cross-project read, not this detail page.
+
+Renamed "Validator Audit" -> "Regime Validator" on the user-facing surfaces
+2026-10-06. The module name, the `/validator-audit` route and the
+`navlnk-validator-audit` id are deliberately unchanged, so existing links
+and the `validator_verdicts` table's vocabulary still line up.
 
 Feeds no composite; isolated force, same convention as fed.*/market.*/order.*.
 Visual pattern is the shared Monitor-card style (`dashboard.shared_components.
@@ -206,7 +211,7 @@ def get_layout() -> html.Div:
     header = html.Div([
         html.Div([
             html.Span("\U0001f9ea ", style={"fontSize": "1.3rem"}),
-            html.Span("Validator Audit Monitor", style={"fontSize": "1.15rem", "fontWeight": "700",
+            html.Span("Regime Validator", style={"fontSize": "1.15rem", "fontWeight": "700",
                                                          "color": "var(--font-color)"}),
             html.Span(" · United States", style={"fontSize": "0.8rem",
                                                        "color": "var(--muted-color)"}),

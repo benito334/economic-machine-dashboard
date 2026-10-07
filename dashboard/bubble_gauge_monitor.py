@@ -20,6 +20,13 @@ dimension reuses) — hidden in PUBLIC_MODE.
 Feeds no composite; isolated force, same convention as fed.*/market.*/order.*.
 Visual pattern is the shared Monitor-card style (`dashboard.shared_components.
 _chart_card`/`_section`/`_chip`), same as every other Monitors-group page.
+
+Merged with the Valuations page on 2026-10-06: the two were always one
+subject seen at two depths — Valuations is the full interactive Buffett
+Indicator app, and this page's valuation dimension is a single Z-score card
+distilled from the SAME data. They now share one route and one nav entry,
+the interactive app on top and the three dimension cards beneath it.
+`/valuations` is kept as an alias so existing links still land here.
 """
 from __future__ import annotations
 
@@ -31,6 +38,14 @@ from dash import html
 from dashboard.shared_components import (
     AMBER, FORCE_COLOR, GREY, RED, VERDICT_COLOR, _chart_card, _chip, _section,
 )
+
+_COLUMNS = 2   # two cards wide, house default for Monitor pages (2026-10-06)
+
+# The embedded Buffett app is a full dashboard in its own right, so it wants
+# real height — but NOT the viewport-filling `calc(100vh - 12px)` it used as a
+# standalone page, which would push the bubble cards below it entirely out of
+# sight and make the merge look like two stacked pages.
+_VALUATIONS_FRAME_HEIGHT = "860px"
 
 _LABEL_COLOR = {"Extreme": RED, "Elevated": AMBER, "Normal": VERDICT_COLOR["AGREE"], "—": GREY}
 
@@ -60,22 +75,41 @@ def _dimension_card(key: str, d: dict, color: str) -> html.Div:
     )
 
 
+def _valuations_section() -> html.Div:
+    """The former /valuations page, embedded as this page's first section.
+
+    Served by the gated Flask routes in charting.py (/valuations/app +
+    /valuations/buffett_data.json) — the same self-contained artifact as
+    standalone/buffett_valuations_dashboard.html. The `valuations-frame` id is
+    load-bearing: a clientside callback in charting.py re-points its `src` on
+    theme changes, so renaming it silently breaks theme sync.
+    """
+    # `lead` rather than a card: the embedded app is one full-width panel, not
+    # a member of a card grid, but it still wants the section's own heading.
+    return _section(
+        "① Valuations — the Buffett Indicator, in full",
+        "Total market capitalization vs. GDP, with its own history and drill-downs. "
+        "The valuation card in section ② is this same data reduced to one Z-score.",
+        [],
+        lead=html.Iframe(
+            id="valuations-frame",
+            src="/valuations/app?theme=carbon",   # theme synced by clientside callback
+            style={"width": "100%", "height": _VALUATIONS_FRAME_HEIGHT, "border": "0",
+                   "display": "block", "borderRadius": "8px",
+                   "background": "var(--card-bg)"},
+        ),
+    )
+
+
 def get_layout() -> html.Div:
     from indicators.bubble_gauge import compute_bubble_gauge
 
-    try:
-        dims = compute_bubble_gauge()
-    except Exception as exc:
-        return html.Div(
-            f"Bubble gauge unavailable: {exc}",
-            style={"color": "var(--muted-color)", "padding": "20px"},
-        )
-
     header = html.Div([
         html.Div([
-            html.Span("\U0001fac7 ", style={"fontSize": "1.3rem"}),
-            html.Span("Late-Stage Bubble Gauge", style={"fontSize": "1.15rem", "fontWeight": "700",
-                                                        "color": "var(--font-color)"}),
+            html.Span("\U0001fae7 ", style={"fontSize": "1.3rem"}),
+            html.Span("Valuations & Late-Stage Bubble Gauge",
+                      style={"fontSize": "1.15rem", "fontWeight": "700",
+                             "color": "var(--font-color)"}),
             html.Span(" · United States", style={"fontSize": "0.8rem",
                                                        "color": "var(--muted-color)"}),
         ]),
@@ -100,24 +134,42 @@ def get_layout() -> html.Div:
     }
     order = ["valuation", "leverage", "positioning"]
 
-    cards = []
-    chips = []
-    for key in order:
-        d = dims.get(key)
-        if d is None:
-            cards.append(html.Div(
-                f"{key.title()} dimension unavailable — see server log.",
-                style={"color": "var(--muted-color)", "fontSize": "0.8rem",
-                       "padding": "20px", "flex": "1 1 300px"},
-            ))
-            continue
-        cards.append(_dimension_card(key, d, colors[key]))
-        chips.append(_chip(f"{d['label'].split('—')[-1].strip()}: {d['z_label']}",
-                           _LABEL_COLOR.get(d['z_label'], GREY)))
+    # The gauge's own data sources (FINRA xlsx, CFTC Socrata) are fetched at
+    # render time, so a failure here must not take the embedded Valuations app
+    # down with it — before the merge this returned early and showed nothing.
+    try:
+        dims = compute_bubble_gauge()
+    except Exception as exc:
+        dims = None
+        gauge_body = [html.Div(
+            f"Bubble gauge unavailable: {exc}",
+            style={"color": "var(--muted-color)", "padding": "20px"},
+        )]
 
-    return html.Div([
-        header,
-        html.Div(chips, style={"display": "flex", "gap": "8px", "flexWrap": "wrap",
-                               "marginTop": "10px", "marginBottom": "4px"}),
-        _section("", "", cards),
-    ], className="p-3", style={"maxWidth": "1500px"})
+    if dims is not None:
+        cards = []
+        chips = []
+        for key in order:
+            d = dims.get(key)
+            if d is None:
+                cards.append(html.Div(
+                    f"{key.title()} dimension unavailable — see server log.",
+                    style={"color": "var(--muted-color)", "fontSize": "0.8rem",
+                           "padding": "20px", "flex": "1 1 300px"},
+                ))
+                continue
+            cards.append(_dimension_card(key, d, colors[key]))
+            chips.append(_chip(f"{d['label'].split('—')[-1].strip()}: {d['z_label']}",
+                               _LABEL_COLOR.get(d['z_label'], GREY)))
+        gauge_body = [
+            _section("② Late-stage bubble dimensions — three independent reads",
+                     "Each is a full-history Z-score of its own series; deliberately never "
+                     "averaged into one bubble score.",
+                     cards, columns=_COLUMNS),
+            html.Div(chips, style={"display": "flex", "gap": "8px", "flexWrap": "wrap",
+                                   "marginTop": "10px"}),
+        ]
+
+    return html.Div(
+        [header, _valuations_section(), *gauge_body],
+        className="p-3", style={"maxWidth": "1500px"})

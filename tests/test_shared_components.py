@@ -70,7 +70,12 @@ def test_monitor_page_layouts_have_no_duplicate_info_icon_ids():
         ("dashboard.bubble_gauge_monitor", "get_layout", ()),
         ("dashboard.ai_capex_monitor", "get_layout", ()),
         ("dashboard.validator_monitor", "get_layout", ()),
-        ("dashboard.central_bank_monitor", "_country_block", ("US",)),
+        # Formerly dashboard.central_bank_monitor._country_block — that page
+        # was folded into Fed Monitor's §⑦ on 2026-10-06. Still listed
+        # separately from fed_monitor.get_layout because this is the
+        # callback-built branch (cards made outside get_layout), which is
+        # exactly the case the content-addressed icon ids exist for.
+        ("dashboard.fed_monitor", "_central_bank_section", ("US",)),
         ("dashboard.force_detail", "get_layout", ("growth",)),
         ("dashboard.force_detail", "get_layout", ("inflation",)),
     ):

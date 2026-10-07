@@ -6,6 +6,13 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "dashboard.charting"],
       "port": 8502
+    },
+    {
+      "_comment": "Review a branch's UI without disturbing the operator instance on :8502. Sources .env so endpoint-gated controls (the Feedback button) actually render, and runs on 8512 so both can be up at once -- the dashboard opens DuckDB read-only, so a second reader is safe.",
+      "name": "dashboard-dev",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "set -a; . ./.env; set +a; CHARTING_PORT=8512 exec python3 -m dashboard.charting"],
+      "port": 8512
     }
   ]
 }

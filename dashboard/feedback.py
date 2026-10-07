@@ -70,23 +70,36 @@ def enabled() -> bool:
 
 
 def nav_button() -> "html.Div | None":
-    """Sidebar entry. Styled to match the Settings button above it."""
+    """Sidebar entry — a solid amber button.
+
+    Deliberately NOT styled like the Settings link beneath it (2026-10-06):
+    as a muted `color="link"` row it read as one more nav destination and
+    went unnoticed. Feedback is the one thing on this sidebar we actively
+    want a visitor to click, so it is the only solid button here. `warning`
+    is Bootstrap's amber, which is already this app's accent
+    (`--slider-accent`) and the Send button's color inside the dialog.
+    """
     if not enabled():
         return None
     return html.Div(
         dbc.Button(
             [html.Span("💬", className="nav-icon",
                        style={"minWidth": "22px", "display": "inline-block",
-                              "textAlign": "center", "fontSize": "1.1em"}),
+                              "textAlign": "center", "fontSize": "1.15em"}),
              html.Span(" Feedback", className="sidebar-text")],
             id="feedback-btn",
-            color="link",
-            size="sm",
-            className="sidebar-nav-link",
-            style={"color": "var(--muted-color)", "fontSize": "0.875rem",
-                   "padding": "4px 12px", "width": "100%", "textAlign": "left",
-                   "display": "flex", "alignItems": "center"},
+            color="warning",
+            # Not size="sm" — this one is meant to be bigger than its neighbours.
+            className="sidebar-nav-link fw-bold",
+            style={"fontSize": "0.95rem", "padding": "9px 12px", "width": "100%",
+                   "textAlign": "left", "display": "flex", "alignItems": "center",
+                   "justifyContent": "flex-start"},
         ),
+        # The gutter lives on the wrapper, not the button, because the
+        # collapsed/icon-rail rules zero the nav-link's own padding —
+        # theme.css shrinks this wrapper's padding to match.
+        className="sidebar-feedback",
+        style={"padding": "4px 12px 6px 12px"},
     )
 
 

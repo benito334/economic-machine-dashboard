@@ -206,20 +206,27 @@ hr {
     display: flex !important;
     align-items: center !important;
 }
-
-/* Force detail sub-nav — indented, smaller text */
-.sidebar-subnav {
-    font-size: 0.78rem !important;
-    opacity: 0.80;
-    padding-top: 1px !important;
-    padding-bottom: 1px !important;
-}
-.sidebar-subnav.active,
-.sidebar-subnav:hover {
-    opacity: 1.0;
+/* The label is a flex item, so without this it shrinks to min-content and
+   wraps onto a second line mid-phrase ("Debt Cycle / Monitor") even when the
+   rail has room — widening the sidebar does nothing, because the wrap is
+   flex-shrink, not width. Longer labels arrived with the 2026-10-06 renames
+   and page merges, which is what made the existing behaviour visible. */
+.sidebar-nav-link .sidebar-text {
+    white-space: nowrap;
 }
 
 /* ── Collapsible nav groups (click to roll/unroll — native <details>) ─────── */
+/* Every sidebar group is one of these as of 2026-10-06 (Overviews, Regime &
+   Cycles and Monitors used to be fixed `.sidebar-section-label` headings).
+   Deliberately larger and higher-contrast than the old labels: the group
+   header is the thing you click, so it has to read as a control rather than
+   as a whispered caption. */
+.nav-group {
+    border-top: 1px solid var(--border-color);
+}
+.nav-group:first-of-type {
+    border-top: none;
+}
 .nav-group-header {
     list-style: none;
     cursor: pointer;
@@ -227,21 +234,24 @@ hr {
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-size: 0.64rem;
+    font-size: 0.80rem;
     text-transform: uppercase;
-    letter-spacing: 0.09em;
-    color: var(--muted-color);
-    font-weight: 700;
-    padding: 11px 12px 5px 12px;
+    letter-spacing: 0.055em;
+    color: var(--font-color);
+    font-weight: 800;
+    padding: 12px 12px 8px 12px;
     user-select: none;
-    transition: color 0.15s ease;
+    transition: color 0.15s ease, background 0.15s ease;
 }
 .nav-group-header::-webkit-details-marker { display: none; }
 .nav-group-header::marker { content: ""; }
-.nav-group-header:hover { color: var(--font-color); }
+.nav-group-header:hover {
+    color: var(--slider-accent, #E8A317);
+    background: rgba(255, 255, 255, 0.03);
+}
 .nav-group-chev {
-    font-size: 0.6rem;
-    opacity: 0.5;
+    font-size: 0.72rem;
+    opacity: 0.65;
     transition: transform 0.18s ease, opacity 0.15s ease;
 }
 .nav-group[open] > .nav-group-header .nav-group-chev {
@@ -254,6 +264,43 @@ hr {
    so all pages stay reachable regardless of the open/closed state. */
 #sidebar-container.sidebar-collapsed .nav-group-body { display: block !important; }
 #sidebar-container.sidebar-collapsed .nav-group-header { display: none !important; }
+#sidebar-container.sidebar-collapsed .nav-group { border-top: none; }
+
+/* ── Fixed-column card grids (`_section(..., columns=N)`) ─────────────────── */
+/* `_chart_card` pins each card at `min-width: 280px` inline, which is right
+   for the auto-wrapping flex layout but fights a fixed-column grid: two
+   columns of 280px plus the page gutters overflow a phone and force the body
+   to scroll sideways. Zeroing it lets a column shrink to its 1fr share, and
+   below 900px the grid drops to one column so the charts stay legible rather
+   than merely fitting. */
+.mon-grid > * {
+    min-width: 0 !important;
+}
+
+/* ── Feedback button ─────────────────────────────────────────────────────── */
+/* The one solid button in the sidebar (see feedback.nav_button). Its gutter is
+   on the wrapper, so the icon-rail has to collapse the wrapper, not the
+   button, or the amber block would be wider than the 46-48px rail. */
+#sidebar-container.sidebar-collapsed .sidebar-feedback {
+    padding: 4px 3px 6px 3px !important;
+}
+.sidebar-feedback .btn-warning {
+    border: none;
+    /* DARKLY paints btn-warning's label white, which on its own amber is
+       about 2:1 contrast. Bootstrap's default dark label is ~9:1 — the whole
+       point of the button is that it's noticeable and readable. */
+    color: #1b1b1b !important;
+}
+.sidebar-feedback .btn-warning:hover,
+.sidebar-feedback .btn-warning:focus {
+    filter: brightness(1.08);
+    color: #1b1b1b !important;
+}
+@media (max-width: 900px) {
+    .mon-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
 
 /* ── Bootstrap modals — dark theme ──────────────────────────────────────── */
 .modal-content {
@@ -709,6 +756,17 @@ hr {
         padding-left: 0 !important;
         padding-right: 0 !important;
     }
+    /* Same icon-rail treatment the desktop `.sidebar-collapsed` state gets:
+       reveal every group's links and hide the group headers, so a page in a
+       closed group is still one tap away rather than two. Without this,
+       collapsing the sidebar by hand and shrinking the window produced two
+       different rails — and after 2026-10-06, when Overviews / Regime &
+       Cycles / Monitors also became collapsible, a closed group could hide
+       the landing page itself. */
+    #sidebar-container .nav-group-body { display: block !important; }
+    #sidebar-container .nav-group-header { display: none !important; }
+    #sidebar-container .nav-group { border-top: none; }
+    #sidebar-container .sidebar-feedback { padding: 4px 3px 6px 3px !important; }
     /* Tighter gutters + never let a page force horizontal scroll on the body */
     #page-content {
         padding: 0 8px !important;

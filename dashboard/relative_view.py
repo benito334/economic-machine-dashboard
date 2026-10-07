@@ -34,6 +34,10 @@ from dashboard.charting_data import (
 from dashboard.command_center import STAGE_COLORS
 from dashboard.shared_components import AMBER, BLUE, FORCE_COLOR, GREEN, RED, _hex_to_rgba
 
+# The warning glyph on the stage chip is painted in this regardless of the
+# stage's own taxonomy color — see _chip()'s docstring for why.
+HAZARD = RED
+
 COUNTRIES = ["US", "EZ", "GB", "JP", "KR", "CN", "IN", "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
 _NAMES = {"US": "🇺🇸 United States", "EZ": "🇪🇺 Euro Area", "GB": "🇬🇧 United Kingdom",
           "JP": "🇯🇵 Japan", "KR": "🇰🇷 South Korea", "CN": "🇨🇳 China",
@@ -56,11 +60,20 @@ def _canon_col(hist: pd.DataFrame, canon: str, base: str) -> str:
     """Canonical rolling column when populated, else the full-history base."""
     return canon if canon in hist.columns and hist[canon].notna().any() else base
 
+# Two across (2026-10-06): these were `flex: 1 1 280px` in a flex-wrap row,
+# which packed four per row at the page width and squeezed each card's chip
+# block into four or five wrapped lines. They are grid items now (see the
+# `.mon-grid` class and _GRID_2 below), so `minWidth: 0` lets a column take
+# its half-share rather than forcing its own floor.
 _CARD = {
     "background": "var(--card-bg)", "border": "1px solid var(--border-color)",
-    "borderRadius": "8px", "padding": "14px 16px", "flex": "1 1 280px",
-    "minWidth": "260px",
+    "borderRadius": "8px", "padding": "14px 16px", "minWidth": "0",
 }
+
+# Shared two-column grid. `.mon-grid` (theme.css) collapses it to one column
+# under 900px so a phone doesn't scroll sideways.
+_GRID_2 = {"display": "grid", "gap": "12px",
+           "gridTemplateColumns": "repeat(2, minmax(0, 1fr))"}
 _LABEL = {"fontSize": "0.62rem", "textTransform": "uppercase",
           "letterSpacing": "0.08em", "color": "var(--muted-color)"}
 _H = {"fontSize": "0.72rem", "textTransform": "uppercase", "letterSpacing": "0.10em",
@@ -71,12 +84,28 @@ def get_layout() -> html.Div:
     return html.Div(
         html.Div(id="relative-content"),
         className="pe-2 pt-2",
-        style={"maxWidth": "1250px", "margin": "0 auto"},
+        style={"maxWidth": "1500px", "margin": "0 auto"},
     )
 
 
-def _chip(text: str, color: str) -> html.Span:
-    return html.Span(text, style={
+def _chip(text: str, color: str, *, hazard: str = "") -> html.Span:
+    """A small labelled chip. `hazard` appends a glyph (e.g. the Sovereign
+    Squeeze ⚠) in the hazard color rather than the chip's own color.
+
+    The stage chip is the reason this exists: it is painted in the
+    debt-cycle STAGE's color, which is a neutral taxonomy color — green for
+    a benign stage included. Rendering the ⚠ in that same color made a
+    live sovereign-squeeze warning disappear into its own chip. The glyph
+    now always reads as a warning regardless of which stage carries it.
+    """
+    body: list = [text]
+    if hazard:
+        body.append(html.Span(
+            f" {hazard}",
+            style={"color": HAZARD, "fontWeight": "800", "fontSize": "0.84rem",
+                   "textShadow": "0 0 3px rgba(0,0,0,0.6)"},
+        ))
+    return html.Span(body, style={
         "background": f"{color}26", "border": f"1px solid {color}", "color": color,
         "borderRadius": "4px", "padding": "2px 8px", "fontSize": "0.72rem",
         "fontWeight": "600", "marginRight": "6px", "whiteSpace": "nowrap",
@@ -279,8 +308,8 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         _chip(f"Inflation · {i_chip}", _INFLAT_CHIP.get(i_chip, "#888")),
     ]
     if stage:
-        label = f"Stage · {stage}" + (" ⚠" if squeeze_flag else "")
-        chips.append(_chip(label, STAGE_COLORS.get(stage, "#888")))
+        chips.append(_chip(f"Stage · {stage}", STAGE_COLORS.get(stage, "#888"),
+                           hazard="⚠" if squeeze_flag else ""))
     if spread_flag in ("warning", "critical"):
         chips.append(_chip(f"Debt/Income spread · {spread_flag}",
                            AMBER if spread_flag == "warning" else RED))
@@ -381,6 +410,17 @@ def compute_score_correlations(
     return out
 
 
+# A 14x14 matrix of signed 2-decimal numbers needs real pixels. These used to
+# be 260px tall, two to a row inside a 1250px page — roughly 44x18px per cell,
+# which cut the axis labels off and rendered the numbers unreadably small
+# (2026-10-06: the whole reason this was resized). Now one per row across the
+# full page width, sized from the matrix itself so adding a country grows the
+# chart instead of shrinking its cells.
+_CORR_CELL_PX = 34          # TUNABLE — vertical pixels per country row
+_CORR_CHROME_PX = 86        # title + axis labels + margins
+_CORR_MIN_HEIGHT = 380
+
+
 def _corr_heatmap(corr: pd.DataFrame, title: str, theme_name: str) -> dcc.Graph:
     from dashboard.themes import figure_layout
     fig = go.Figure(go.Heatmap(
@@ -393,14 +433,17 @@ def _corr_heatmap(corr: pd.DataFrame, title: str, theme_name: str) -> dcc.Graph:
         textfont={"size": 13, "family": "monospace"},
         hovertemplate="%{y} × %{x}: %{z:+.2f}<extra></extra>",
         showscale=False,
+        xgap=1, ygap=1,
     ))
+    height = max(_CORR_MIN_HEIGHT, len(corr.index) * _CORR_CELL_PX + _CORR_CHROME_PX)
     layout = figure_layout(theme_name, title)
-    layout["margin"] = {"l": 50, "r": 20, "t": 40, "b": 30}
-    layout["height"] = 260
+    layout["margin"] = {"l": 56, "r": 24, "t": 46, "b": 42}
+    layout["height"] = height
     fig.update_layout(**layout)
-    fig.update_yaxes(autorange="reversed")
+    fig.update_xaxes(side="top", tickfont={"size": 12})
+    fig.update_yaxes(autorange="reversed", tickfont={"size": 12})
     return dcc.Graph(figure=fig, config={"displayModeBar": False},
-                     style={"flex": "1 1 300px", "minWidth": "280px"})
+                     style={"width": "100%", "marginBottom": "14px"})
 
 
 # Countries with a live OECD/IMF REER unit-labor-cost-based series on FRED
@@ -523,7 +566,7 @@ def render_relative_view(page_trigger, theme_name, thresholds):
 
     return html.Div([
         html.Div("Where each economy sits — three clocks side by side", style=_H),
-        html.Div(cards, style={"display": "flex", "gap": "12px", "flexWrap": "wrap"}),
+        html.Div(cards, className="mon-grid", style=_GRID_2),
 
         html.Div("Relative competitiveness — unit labor cost vs. trading partners", style=_H),
         html.Div("Ray Dalio's competitiveness gauge (2026-08-19 consult): the OECD/IMF REER "
@@ -545,8 +588,9 @@ def render_relative_view(page_trigger, theme_name, thresholds):
                  "for forward-looking allocation questions.",
                  style={"fontSize": "0.75rem", "color": "var(--muted-color)",
                         "marginBottom": "8px", "maxWidth": "820px"}),
-        html.Div(heatmaps_full, style={"display": "flex", "gap": "12px", "flexWrap": "wrap"}),
-        html.Div(heatmaps_recent, style={"display": "flex", "gap": "12px", "flexWrap": "wrap"}),
+        # One matrix per row — see _corr_heatmap() on why these are no longer
+        # paired two-up.
+        html.Div(heatmaps_full + heatmaps_recent),
         html.Div("Interpretation note: composite scores are Z-scores vs each country's own "
                  "history, so correlation here measures cycle synchronization, not return "
                  "co-movement. Allocation decisions belong to the separate Allocation Layer.",

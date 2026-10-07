@@ -29,7 +29,6 @@ from dash.exceptions import PreventUpdate
 from plotly.subplots import make_subplots
 
 from dashboard.charting_data import (
-    available_dates_for_yield_curve,
     load_all_signal_histories,
     load_change_feed,
     load_composite_component_status,
@@ -40,8 +39,6 @@ from dashboard.charting_data import (
     load_debt_stress_history,
     load_latest_signals,
     load_series_catalog,
-    load_signal_history,
-    load_yield_curve_term_structure,
 )
 from dashboard.themes import DEFAULT_THEME, THEME_CSS_VARS, THEMES, figure_layout
 from dashboard import data_dashboard as _data_dashboard
@@ -56,7 +53,6 @@ from dashboard import relative_view as _relative_view
 from dashboard import workbench as _workbench
 from dashboard import fed_monitor as _fed_monitor
 from dashboard import case_study_monitor as _case_study_monitor
-from dashboard import central_bank_monitor as _central_bank_monitor
 from dashboard import market_expectations as _market_exp
 from dashboard import validator_monitor as _validator_monitor
 from dashboard import bubble_gauge_monitor as _bubble_gauge_monitor
@@ -735,13 +731,6 @@ def _left_nav() -> html.Div:
     _sync = _sync_banner()
     _fb_btn = _feedback.nav_button()   # None when FEEDBACK_ENDPOINT is unset
 
-    def _label(txt: str) -> html.Div:
-        return html.Div(txt, className="sidebar-section-label", style={
-            "fontSize": "0.62rem", "textTransform": "uppercase", "letterSpacing": "0.1em",
-            "color": "var(--muted-color)", "fontWeight": "700",
-            "padding": "14px 12px 4px 12px",
-        })
-
     def _nl(icon: str, text: str, href: str, disabled: bool = False,
             nav_id: str | None = None) -> dbc.NavLink:
         return dbc.NavLink(
@@ -780,11 +769,6 @@ def _left_nav() -> html.Div:
             html.Div(dbc.Nav(links, vertical=True, pills=True),
                      className="nav-group-body"),
         ], open=open_default, className="nav-group mb-1")
-
-    def _sub(text: str, href: str) -> dbc.NavLink:
-        return dbc.NavLink(html.Span(f"↳ {text}", className="sidebar-text"),
-                           href=href, active="exact",
-                           className="py-0 px-4 small sidebar-nav-link sidebar-subnav")
 
     def _sm(v: int, lbl: str) -> dict:
         return {"label": lbl, "style": {"color": "var(--font-color)", "fontSize": "0.62rem"}}
@@ -852,49 +836,64 @@ def _left_nav() -> html.Div:
         ], id="data-freshness-block", className="sidebar-text",
            style={"padding": "7px 12px 8px 12px"}),
 
-        # ── Overviews (placeholder — Phase 2+) ───────────────────────────────
-        _label("Overviews"),
-        dbc.Nav([
+        # ── Nav groups ────────────────────────────────────────────────────────
+        # Every group is a click-to-roll `_group()` as of 2026-10-06. Three of
+        # them (Overviews / Regime & Cycles / Monitors) used to be fixed
+        # `_label()` headings with an always-open dbc.Nav under them, which
+        # made the sidebar read as two different kinds of section. Group
+        # placement rules: docs/Guidance/dashboard_ia_framework.md.
+        #
+        # Overviews and Monitors open by default — the landing page and the
+        # most-visited curated reads live there.
+        _group("Overviews", [
             _nl("🎛", "Command Center", "/country", nav_id="navlnk-command-center"),
             _nl("🌐", "Overview", "/overview", nav_id="navlnk-overview"),
             _nl("🌍", "Relative Cycles", "/relative", nav_id="navlnk-relative"),
-        ], vertical=True, pills=True, className="mb-1"),
+        ], icon="🧭", open_default=True),
 
         # ── Regime & Cycles — the regime engine's own output ──────────────────
-        _label("Regime & Cycles"),
-        dbc.Nav([
-            _nl("〰", "Yield Curve",    "/yield-curve",    nav_id="navlnk-yield-curve"),
+        # Yield Curve left this group on 2026-10-06: its two charts are now
+        # Fed Monitor's section ①.
+        _group("Regime & Cycles", [
             _nl("📍", "Regime Map",     "/regime-map",     nav_id="navlnk-regime-map"),
             _nl("📈", "Regime History", "/regime-history", nav_id="navlnk-regime-history"),
             _nl("⚖️", "Debt Stress",    "/debt-stress",    nav_id="navlnk-debt-stress"),
-        ], vertical=True, pills=True, className="mb-1"),
+        ], icon="🔄", open_default=True),
 
         # ── Monitors — curated, single-topic pages that feed no composite ─────
-        _label("Monitors"),
-        dbc.Nav([
+        _group("Monitors", [
             _nl("🏛", "Fed Monitor",    "/fed",            nav_id="navlnk-fed"),
-            _nl("🗂", "Case Study Monitor", "/case-study", nav_id="navlnk-case-study"),
+            _nl("🗂", "Debt Cycle Monitor", "/case-study", nav_id="navlnk-case-study"),
             _nl("📐", "Market Expectations", "/market-expectations", nav_id="navlnk-market-exp"),
-            _nl("🏦", "Central Bank Monitor", "/central-bank", nav_id="navlnk-central-bank"),
-            _nl("🧪", "Validator Audit", "/validator-audit", nav_id="navlnk-validator-audit"),
-            # Operator-only — reuses the gated Buffett Indicator (/valuations).
+            _nl("🧪", "Regime Validator", "/validator-audit", nav_id="navlnk-validator-audit"),
+            # Operator-only. Valuations + Bubble Gauge are one page as of
+            # 2026-10-06 — the Buffett app on top, the three bubble
+            # dimensions below it — so this is also the old /valuations entry.
             *([] if PUBLIC_MODE else [
-                _nl("\U0001fac7", "Bubble Gauge", "/bubble-gauge", nav_id="navlnk-bubble-gauge"),
+                _nl("\U0001fae7", "Valuations & Bubbles", "/bubble-gauge",
+                    nav_id="navlnk-bubble-gauge"),
                 _nl("⚡", "AI Capex Cycle", "/ai-capex-cycle", nav_id="navlnk-ai-capex"),
             ]),
-        ], vertical=True, pills=True, className="mb-1"),
+        ], icon="🖥", open_default=True),
 
-        # ── Signals — click to roll/unroll the force sub-pages ────────────────
+        # ── Signals — the per-force drill-down pages ──────────────────────────
+        # These were `_sub()` links ("↳ Growth", no icon, 0.78rem) until
+        # 2026-10-06; they are plain `_nl()` entries now so a row under
+        # Signals looks exactly like a row under any other group.
         _group("Signals", [
-            dbc.NavLink(html.Span("↳ All signals", className="sidebar-text"),
-                        href="/signals", active="exact", id="navlnk-signals",
-                        className="py-0 px-4 small sidebar-nav-link sidebar-subnav"),
-            _sub("Growth",        "/signals/growth"),
-            _sub("Inflation",     "/signals/inflation"),
-            _sub("Interest Rate", "/signals/rate"),
-            _sub("Credit",        "/signals/credit"),
-            _sub("Volatility",    "/signals/volatility"),
-            _sub("Productivity",  "/signals/productivity"),
+            _nl("📡", "All signals",    "/signals",             nav_id="navlnk-signals"),
+            _nl("🌱", "Growth",        "/signals/growth",
+                nav_id="navlnk-signals-growth"),
+            _nl("🔥", "Inflation",     "/signals/inflation",
+                nav_id="navlnk-signals-inflation"),
+            _nl("💵", "Interest Rate", "/signals/rate",
+                nav_id="navlnk-signals-rate"),
+            _nl("🏧", "Credit",        "/signals/credit",
+                nav_id="navlnk-signals-credit"),
+            _nl("⚡", "Volatility",    "/signals/volatility",
+                nav_id="navlnk-signals-volatility"),
+            _nl("🔧", "Productivity",  "/signals/productivity",
+                nav_id="navlnk-signals-productivity"),
         ], icon="📡"),
 
         # ── Tools — power-user exploration + model-calibration surfaces ───────
@@ -914,10 +913,6 @@ def _left_nav() -> html.Div:
             _nl("🧭", "Assets by Environment", "/asset-environments", nav_id="navlnk-asset-env"),
             _nl("📖", "Methodology",    "/methodology",    nav_id="navlnk-methodology"),
             _nl("📋", "Data Dashboard", "/data-dashboard", nav_id="navlnk-data-dashboard"),
-            # Buffett valuation page — operator-only, hidden on the public deploy.
-            *([] if PUBLIC_MODE else [
-                _nl("🫧", "Valuations",     "/valuations",     nav_id="navlnk-valuations"),
-            ]),
             # Traffic metrics — linked only where openly viewable (local/no key).
             *([_nl("📊", "Traffic", "/traffic", nav_id="navlnk-traffic")]
               if _traffic.nav_visible() else []),
@@ -1047,24 +1042,6 @@ def _page_signals() -> html.Div:
 
 def _page_force(force: str) -> html.Div:
     return _force_detail.get_layout(force)
-
-
-def _page_yield_curve() -> html.Div:
-    return html.Div([
-        dbc.Row([
-            dbc.Col([
-                html.Label("Date", className="small text-muted mb-1"),
-                dcc.Dropdown(id="yc-date-picker", options=[], placeholder="Select a date…",
-                             clearable=False, style={"color": "#000"}),
-            ], width=3),
-            dbc.Col([
-                html.Label("Compare date (optional)", className="small text-muted mb-1"),
-                dcc.Dropdown(id="yc-date-compare", options=[], placeholder="None",
-                             clearable=True, style={"color": "#000"}),
-            ], width=3),
-        ], className="mb-3 pt-2"),
-        dcc.Graph(id="yield-curve-chart", config={"displayModeBar": True}, style={"height": "72vh"}),
-    ], className="pe-2", style={"maxWidth": "1600px", "margin": "0 auto"})
 
 
 def _page_regime_map() -> html.Div:
@@ -1384,10 +1361,6 @@ def _page_case_study_monitor() -> html.Div:
     return _case_study_monitor.get_layout()
 
 
-def _page_central_bank_monitor() -> html.Div:
-    return _central_bank_monitor.get_layout()
-
-
 def _page_market_expectations() -> html.Div:
     return _market_exp.get_layout()
 
@@ -1397,9 +1370,11 @@ def _page_validator_audit() -> html.Div:
 
 
 def _page_bubble_gauge() -> html.Div:
-    # Operator-only (same gating as /valuations, whose Buffett Indicator
-    # feeds this page's valuation dimension). PUBLIC_MODE is intercepted
-    # earlier in route_page, so this only runs for the operator.
+    # Operator-only. Since 2026-10-06 this is the merged Valuations + Bubble
+    # Gauge page: it embeds the Buffett Indicator app (the gated Flask route
+    # below) above its own three dimension cards, which is why /valuations
+    # now resolves here too. PUBLIC_MODE is intercepted earlier in
+    # route_page, so this only runs for the operator.
     return _bubble_gauge_monitor.get_layout()
 
 
@@ -1412,21 +1387,6 @@ def _page_ai_capex() -> html.Div:
 
 def _page_asset_environments() -> html.Div:
     return _asset_env.get_layout()
-
-
-def _page_valuations() -> html.Div:
-    # Operator-only. Embeds the self-contained Buffett Indicator app (gated Flask
-    # route). PUBLIC_MODE is intercepted earlier in route_page, so this only runs
-    # for the operator.
-    return html.Div(
-        html.Iframe(
-            id="valuations-frame",
-            src="/valuations/app?theme=carbon",   # theme synced by clientside callback below
-            style={"width": "100%", "height": "calc(100vh - 12px)", "border": "0",
-                   "display": "block"},
-        ),
-        style={"padding": "0", "margin": "0"},
-    )
 
 
 def _page_debt_stress() -> html.Div:
@@ -2204,12 +2164,17 @@ _PAGE_MAP = {
     "/relative":      _page_relative_view,
     "/fed":           _page_fed_monitor,
     "/case-study":    _page_case_study_monitor,
-    "/central-bank":  _page_central_bank_monitor,
+    # Retired 2026-10-06 — folded into Fed Monitor (§⑦ central bank balance
+    # sheet, §① yield curve). Kept as aliases so existing links/bookmarks land
+    # on the charts rather than a "not found".
+    "/central-bank":  _page_fed_monitor,
     "/market-expectations": _page_market_expectations,
     "/validator-audit": _page_validator_audit,
     "/bubble-gauge": _page_bubble_gauge,
     "/ai-capex-cycle": _page_ai_capex,
-    "/valuations":    _page_valuations,
+    # Merged into the Bubble Gauge page 2026-10-06 (valuations on top, the
+    # three bubble dimensions below) — kept as an alias for existing links.
+    "/valuations":    _page_bubble_gauge,
     "/guide":         _page_user_guide,
     "/asset-environments": _page_asset_environments,
     "/workbench":     _page_workbench,
@@ -2218,7 +2183,7 @@ _PAGE_MAP = {
     "/data-dashboard":_page_data_dashboard,
     "/explorer":      _page_workbench,   # legacy route
     "/methodology":   _page_methodology,
-    "/yield-curve":   _page_yield_curve,
+    "/yield-curve":   _page_fed_monitor,
     "/regime-map":    _page_regime_map,
     "/regime-history":_page_regime_history,
     "/debt-stress":   _page_debt_stress,
@@ -2331,146 +2296,6 @@ def _refresh_data_stamp(_trigger: Any) -> str:
     return _data_freshness_str()
 
 # ── Callbacks — aggregate selected series ─────────────────────────────────────
-
-# ── Callbacks — yield curve ───────────────────────────────────────────────────
-
-@callback(
-    [Output("yc-date-picker", "options"),
-     Output("yc-date-picker", "value"),
-     Output("yc-date-compare", "options")],
-    Input("page-trigger", "data"),
-    prevent_initial_call=False,
-)
-def populate_yc_dates(_trigger: Any) -> tuple[list[dict], str, list[dict]]:
-    dates = available_dates_for_yield_curve()
-    if not dates:
-        return [], "", []
-    # Downsample to month-end dates for the picker (fewer options)
-    monthly = sorted({d[:7] for d in dates})
-    # Map month string → last available daily date in that month
-    month_to_date: dict[str, str] = {}
-    for d in dates:
-        m = d[:7]
-        if m in monthly:
-            month_to_date[m] = d  # last one wins (dates are sorted)
-    options = [{"label": m, "value": month_to_date[m]} for m in monthly]
-    latest = options[-1]["value"] if options else ""
-    return options, latest, options
-
-
-@callback(
-    Output("yield-curve-chart", "figure"),
-    [Input("yc-date-picker", "value"),
-     Input("yc-date-compare", "value"),
-     Input("theme-store", "data"),
-     Input("country-store", "data")],
-    prevent_initial_call=False,
-)
-def update_yield_curve(
-    date_primary: str,
-    date_compare: str,
-    theme_name: str = DEFAULT_THEME,
-    country: str = "US",
-) -> go.Figure:
-    country = (country or "US").upper()
-    if country != "US":
-        fig = go.Figure()
-        fig.update_layout(**figure_layout(
-            theme_name,
-            f"Yield Curve — US Treasury data only  ·  {country} term structure not yet available",
-        ))
-        return fig
-    if not date_primary:
-        fig = go.Figure()
-        fig.update_layout(**figure_layout(theme_name, "Select a date"))
-        return fig
-
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=False,
-        vertical_spacing=0.12,
-        subplot_titles=["Term Structure", "Historical 10Y-2Y Spread"],
-        row_heights=[0.6, 0.4],
-    )
-
-    # Primary curve
-    df_primary = load_yield_curve_term_structure(date_primary)
-    if not df_primary.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=df_primary["maturity_years"],
-                y=df_primary["yield_pct"],
-                mode="lines+markers",
-                name=date_primary,
-                line={"color": _COLORS[0], "width": 2},
-                marker={"size": 7},
-                hovertemplate="<b>%{customdata}</b><br>Yield: %{y:.2f}%<extra></extra>",
-                customdata=df_primary["label"],
-            ),
-            row=1, col=1,
-        )
-
-    # Comparison curve
-    if date_compare:
-        df_compare = load_yield_curve_term_structure(date_compare)
-        if not df_compare.empty:
-            fig.add_trace(
-                go.Scatter(
-                    x=df_compare["maturity_years"],
-                    y=df_compare["yield_pct"],
-                    mode="lines+markers",
-                    name=date_compare,
-                    line={"color": _COLORS[1], "width": 2, "dash": "dash"},
-                    marker={"size": 7},
-                    hovertemplate="<b>%{customdata}</b><br>Yield: %{y:.2f}%<extra></extra>",
-                    customdata=df_compare["label"],
-                ),
-                row=1, col=1,
-            )
-
-    # Historical 10Y-2Y spread
-    spread_df = load_signal_history("us.premium.yield_curve_10y2y")
-    if not spread_df.empty:
-        colors = [_COLORS[0] if v >= 0 else _COLORS[2] for v in spread_df["value"]]
-        fig.add_trace(
-            go.Bar(
-                x=spread_df["as_of"],
-                y=spread_df["value"],
-                name="10Y-2Y Spread",
-                marker_color=colors,
-                hovertemplate="%{x|%Y-%m-%d}<br>Spread: %{y:.2f}%<extra></extra>",
-                showlegend=False,
-            ),
-            row=2, col=1,
-        )
-        # Mark the selected date
-        if date_primary:
-            selected_ts = pd.Timestamp(date_primary)
-            nearby = spread_df[spread_df["as_of"] <= selected_ts]
-            if not nearby.empty:
-                fig.add_vline(
-                    x=selected_ts,
-                    line_dash="dot",
-                    line_color=_COLORS[0],
-                    row=2, col=1,
-                )
-
-    # X-axis: maturity labels
-    maturity_ticks = [0.25, 1, 2, 5, 10, 30]
-    maturity_labels = ["3M", "1Y", "2Y", "5Y", "10Y", "30Y"]
-    fig.update_xaxes(
-        tickvals=maturity_ticks,
-        ticktext=maturity_labels,
-        title_text="Maturity",
-        row=1, col=1,
-    )
-    fig.update_yaxes(title_text="Yield (%)", row=1, col=1)
-    fig.update_yaxes(title_text="Spread (%)", row=2, col=1)
-    fig.add_hline(y=0, line_dash="dot", line_color="#555", row=2, col=1)
-
-    fig.update_layout(**figure_layout(theme_name), height=650, uirevision="yield-curve")
-    return fig
-
 
 # ── Regime History — helpers + callbacks ─────────────────────────────────────
 

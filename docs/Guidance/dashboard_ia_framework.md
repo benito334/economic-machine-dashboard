@@ -13,11 +13,19 @@
 | Group | Role | Current pages |
 | :--- | :--- | :--- |
 | **Overviews** | Entry points; the first thing someone looks at | Command Center, Overview, Relative Cycles |
-| **Regime & Cycles** | The regime engine's own output — feeds or reads the Growth/Inflation chips or the debt-cycle stage classifier | Yield Curve, Regime Map, Regime History, Debt Stress |
-| **Monitors** | Curated, single-topic narratives that deliberately feed **no** composite (the `fed.*`/`market.*`/`order.*` "isolated force" convention) | Fed Monitor, Case Study Monitor, Market Expectations |
+| **Regime & Cycles** | The regime engine's own output — feeds or reads the Growth/Inflation chips or the debt-cycle stage classifier | Regime Map, Regime History, Debt Stress |
+| **Monitors** | Curated, single-topic narratives that deliberately feed **no** composite (the `fed.*`/`market.*`/`order.*` "isolated force" convention) | Fed Monitor, Debt Cycle Monitor, Market Expectations, Regime Validator, Valuations & Bubbles, AI Capex Cycle |
 | **Signals** | Per-force signal drill-down — the raw inputs, one page per force | All Signals index + Growth/Inflation/Rate/Credit/Volatility/Productivity |
 | **Tools** | Power-user exploration or model-calibration surfaces, not glanceable reads | Workbench, Weight Audit, Weight History |
-| **Reference / Admin** | Documentation, plus operator-only/admin tooling | User Guide, Methodology, Assets by Environment, Data Dashboard, Valuations, Traffic |
+| **Reference / Admin** | Documentation, plus operator-only/admin tooling | User Guide, Methodology, Assets by Environment, Data Dashboard, Traffic |
+
+Every group is a click-to-roll `<details>` (`_group()` in `dashboard/charting.py`).
+There is no second kind of nav section — if you are adding a group, it rolls up
+like the rest, and its rows are `_nl()` rows with an icon. Routes for pages
+that have been merged away are kept in `_PAGE_MAP` as aliases pointing at
+their new home, so old links don't 404: `/yield-curve` and `/central-bank`
+→ Fed Monitor, `/valuations` → the Bubble Gauge page. When you rename a page,
+rename the **label** and leave the module, route and `navlnk-*` id alone.
 
 **Regime & Cycles vs. Monitors is the one distinction worth protecting.** Both
 render charts and both sit in the main nav, but they answer opposite
@@ -73,6 +81,14 @@ rather than hand-building a `go.Figure` — this is what Phase 4 (Signals
 force-detail pages) and Phase 5 (Regime History) each retrofitted an old
 stacked `make_subplots` mega-chart into.
 
+Pass `columns=2` for a Monitor page's card grid — that is the house default
+since 2026-10-06, and it is what the `mon-grid` class (theme.css) is sized
+around: it zeroes each card's inline `min-width: 280px` so a column can take
+its share, and collapses to one column under 900px. A fixed-column grid
+WITHOUT that class forces sideways scroll on a phone. `_section()` also takes
+`lead=` for content that belongs to the section but isn't one of its cards
+(a chip row, an embedded panel).
+
 Exception: **Tools** pages (Workbench, Weight Audit) are built for dense
 interactive exploration — multi-series overlays, draggable zoom, correlation
 heatmaps — and are reasonably exempt from the card treatment. The same
@@ -110,6 +126,13 @@ rather than redefined per page.
 accent, add it to `FORCE_COLOR` rather than inventing a local constant.
 
 ---
+
+A follow-up UI pass on 2026-10-06 consolidated the nav further (every group
+a rollup; Yield Curve folded into Fed Monitor §①, Central Bank Monitor into
+its §⑦, Valuations into the Bubble Gauge page; Case Study → Debt Cycle
+Monitor, Validator Audit → Regime Validator) and made 2-wide the default
+card grid. See `docs/worklog.md` 2026-10-06 (3) for the per-decision
+reasoning, including why the term-structure chart is not a `_chart_card`.
 
 *Full audit and rollout plan: see the 2026-10 "Dashboard IA Blueprint"
 session — all 5 phases complete as of 2026-10-04 (nav regroup, color

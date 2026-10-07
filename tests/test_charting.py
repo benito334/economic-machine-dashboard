@@ -621,14 +621,58 @@ def test_composite_history_has_disequilibrium():
     assert "n_inflation_signals" in df.columns
 
 
+def _walk(node):
+    """Recursively yield every Dash component in a layout tree.
+
+    Leaf components such as dcc.Graph declare no `children` prop, so the
+    recursion is gated on Component-ness rather than on having children.
+    """
+    from dash.development.base_component import Component
+
+    if isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _walk(item)
+        return
+    if not isinstance(node, Component):
+        return
+    yield node
+    yield from _walk(getattr(node, "children", None))
+
+
 @pytest.mark.integration
-def test_yield_curve_chart_callback():
-    import plotly.graph_objects as go
-    from dashboard.charting import update_yield_curve
-    fig = update_yield_curve("2024-06-28", None)
-    assert isinstance(fig, go.Figure)
-    # Should have at least a term structure trace and the spread bar chart
-    assert len(fig.data) >= 2
+def test_term_structure_card_renders_the_curve():
+    """The standalone Yield Curve page was retired 2026-10-06; its term-structure
+    chart is now Fed Monitor's section-① card (latest observation, no date
+    pickers). Guards the data path, which is what the old
+    test_yield_curve_chart_callback actually covered."""
+    from dashboard.fed_monitor import _term_structure_card
+
+    card = _term_structure_card()
+    graphs = [n for n in _walk(card) if type(n).__name__ == "Graph"]
+    assert len(graphs) == 1
+    fig = graphs[0].figure
+    assert len(fig.data) == 1, "one trace: the maturity curve"
+    # x is maturity, not a date — the whole reason this isn't a plain
+    # _chart_card. Categorical (evenly spaced) so the short end, where
+    # inversions show, isn't crushed into the left edge.
+    assert fig.layout.xaxis.type == "category"
+    xs = list(fig.data[0].x)
+    assert xs[0].endswith("M") or xs[0].endswith("Y")
+    assert xs[-1] == "30Y"
+    assert len(xs) >= 4, "the curve needs enough points to have a shape"
+    # A zero-anchored fill would flatten a 4-5% curve into a band — see the
+    # comment in _term_structure_card.
+    assert not fig.data[0].fill
+
+
+@pytest.mark.integration
+def test_retired_pages_still_route_to_fed_monitor():
+    """/yield-curve and /central-bank were folded into Fed Monitor; both stay
+    routed so existing links/bookmarks don't 404."""
+    from dashboard.charting import _PAGE_MAP, _page_fed_monitor
+
+    assert _PAGE_MAP["/yield-curve"] is _page_fed_monitor
+    assert _PAGE_MAP["/central-bank"] is _page_fed_monitor
 
 
 # ── L4: Stale-lag badges in Regime History component table ───────────────────

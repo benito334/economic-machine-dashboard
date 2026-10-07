@@ -1,4 +1,4 @@
-"""Case Study Monitor — the charts Dalio's own EMP course uses to position a
+"""Debt Cycle Monitor — the charts Dalio's own EMP course uses to position a
 country in its case studies (e.g. "Case: United States 2003-2018"), audited
 directly against that course's interactive chart panel and built where a free
 source existed. Visual pattern is the shared Monitor-card style
@@ -16,6 +16,12 @@ Three sections:
 
 All ten signals feed no composite and don't touch the regime engine — purely
 additive reference signals, same convention as fed.*/market.*/order.*.
+
+Renamed "Case Study Monitor" -> "Debt Cycle Monitor" on the user-facing
+surfaces 2026-10-06. The module name, the `/case-study` route and the
+`navlnk-case-study` id are deliberately unchanged: renaming them would
+invalidate existing links for a label change, and the course's own framing
+("Case: United States 2003-2018") is still what the page is built from.
 """
 from __future__ import annotations
 
@@ -27,6 +33,9 @@ from dashboard.fed_monitor import (
     _BLUE, _AMBER, _RED, _GREEN, _GREY,
 )
 from dashboard.shared_components import _chart_card, _chip, _section
+
+
+_COLUMNS = 2   # two cards wide, house default for Monitor pages (2026-10-06)
 
 
 def _cur(concept: str):
@@ -89,7 +98,7 @@ def _header() -> html.Div:
     return html.Div([
         html.Div([
             html.Span("🗂 ", style={"fontSize": "1.3rem"}),
-            html.Span("Case Study Monitor", style={"fontSize": "1.15rem", "fontWeight": "700",
+            html.Span("Debt Cycle Monitor", style={"fontSize": "1.15rem", "fontWeight": "700",
                                                     "color": "var(--font-color)"}),
             html.Span(" · United States", style={"fontSize": "0.8rem",
                                                  "color": "var(--muted-color)"}),
@@ -141,7 +150,7 @@ def get_layout() -> html.Div:
                              "wealth effects flow directly into consumption and credit creation (home "
                              "equity borrowing); a home-price bust is a recurring trigger across Dalio's "
                              "own debt-cycle case studies, including the US 2008 case."),
-        ])
+        ], columns=_COLUMNS)
 
     # 2) Output gap & rate backdrop
     s2 = _section(
@@ -187,7 +196,7 @@ def get_layout() -> html.Div:
                         info="The percent of industrial capacity actually in use. A second, "
                              "industry-level read on the same question the output gap asks economy-wide: "
                              "how much spare capacity is left before growth itself becomes inflationary."),
-        ])
+        ], columns=_COLUMNS)
 
     # 3) Credit creation — is the stimulus flowing
     s3 = _section(
@@ -229,7 +238,7 @@ def get_layout() -> html.Div:
                              "smoothed over a 4-quarter (12-month) moving average — the EMP course's own "
                              "'Net Domestic Debt' chart. The single-number economy-wide leverage level "
                              "that the long-term debt cycle ultimately has to deleverage."),
-        ])
+        ], columns=_COLUMNS)
 
     s4 = _section(
         "④ Currency",
@@ -244,7 +253,7 @@ def get_layout() -> html.Div:
                              "this is the nominal gauge the EMP course's own indexed-currency chart uses. "
                              "Dollar strength tightens financial conditions globally, especially for "
                              "dollar-debtor economies."),
-        ])
+        ], columns=_COLUMNS)
 
     note = html.Div(
         "Built from a direct chart-by-chart audit of the Dalio EMP course's own interactive case-study "
