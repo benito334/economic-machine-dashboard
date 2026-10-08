@@ -289,7 +289,7 @@ no monthly expectations for any non-US country.
 - `docs/consumer_contract.md` — the standing contract: which table for which job,
   deprecated columns, join hazards. Read before relying on a column's meaning.
 - `docs/Guidance/ray_dalio_review_log.md` session 2026-10-07 — the full consult.
-- `docs/worklog.md` 2026-10-07 (2) — what shipped and why.
+- `docs/worklog.md` 2026-10-07 (3) — what shipped and why.
 
 Open the DB **read-only**; it is single-writer and a second writer blocks the
 pipeline.

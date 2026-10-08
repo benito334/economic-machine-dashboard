@@ -37,6 +37,7 @@ import plotly.graph_objects as go
 from dash import Input, Output, callback, dcc, html, no_update
 
 from dashboard.charting_data import (
+    align_as_of,
     load_signal_history,
     load_yield_curve_term_structure,
 )
@@ -104,8 +105,12 @@ def _ratio(num: pd.DataFrame, den: pd.DataFrame) -> pd.DataFrame:
     """
     if num.empty or den.empty:
         return pd.DataFrame(columns=["as_of", "value"])
-    n = num.rename(columns={"value": "n"}).sort_values("as_of")
-    d = den.rename(columns={"value": "d"}).sort_values("as_of")
+    # align_as_of on both sides: every caller currently feeds it DuckDB-sourced
+    # frames (uniformly datetime64[us]), so the pair matches today — but a
+    # parquet/FRED-cached series (ns) on either side would make merge_asof
+    # raise, as it did on /debt-stress (worklog 2026-10-07). Cheap insurance.
+    n = align_as_of(num.rename(columns={"value": "n"})).sort_values("as_of")
+    d = align_as_of(den.rename(columns={"value": "d"})).sort_values("as_of")
     if len(d) >= len(n):                       # den is denser → base on it
         m = pd.merge_asof(d, n, on="as_of")
     else:

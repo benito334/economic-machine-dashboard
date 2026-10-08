@@ -1801,3 +1801,99 @@ def test_thr_falls_back_to_the_module_default_never_a_literal():
         assert charting.thr({key: None}, key) == default
     # and a per-month dynamic override passes straight through
     assert charting.thr({"gz": 0.226}, "gz") == 0.226
+
+# ── merge_asof datetime-precision regression (2026-10-07) ─────────────────────
+#
+# `update_chi_stress_scatter` raised `MergeError: incompatible merge keys` on
+# every render for all 13 countries that have a debt-stress model: chi_hist is
+# built on a pd.date_range (datetime64[ns]) while stress_hist comes straight
+# from DuckDB (datetime64[us]), and pandas will not merge_asof across the two.
+# EZ was the only country that passed, purely because it has no model and
+# returns before the merge — which is why the original coverage missed this.
+
+def test_align_as_of_normalises_duckdb_microsecond_dates():
+    from dashboard.charting_data import align_as_of
+    df = pd.DataFrame({
+        "as_of": pd.to_datetime(["2020-01-01", "2020-02-01"]).astype("datetime64[us]"),
+        "value": [1.0, 2.0],
+    })
+    assert df["as_of"].dtype == np.dtype("<M8[us]")
+    assert align_as_of(df)["as_of"].dtype == np.dtype("<M8[ns]")
+
+
+def test_align_as_of_leaves_nanosecond_dates_alone():
+    from dashboard.charting_data import align_as_of
+    df = pd.DataFrame({"as_of": pd.date_range("2020-01-01", periods=3, freq="MS")})
+    assert align_as_of(df)["as_of"].dtype == np.dtype("<M8[ns]")
+
+
+def test_align_as_of_handles_empty_and_missing_column():
+    from dashboard.charting_data import align_as_of
+    empty = pd.DataFrame(columns=["as_of", "value"])
+    assert align_as_of(empty).empty
+    other = pd.DataFrame({"raw_date": pd.date_range("2020-01-01", periods=2)})
+    # no "as_of" column → handed back untouched rather than raising
+    assert "raw_date" in align_as_of(other).columns
+
+
+def test_align_as_of_makes_mixed_precision_frames_mergeable():
+    """The exact ns-vs-us pairing that broke the chart, at the merge_asof level."""
+    from dashboard.charting_data import align_as_of
+    ns = pd.DataFrame({
+        "as_of": pd.date_range("2020-01-01", periods=4, freq="MS"),
+        "chi_z": [0.1, 0.2, 0.3, 0.4],
+    })
+    us = pd.DataFrame({
+        "as_of": pd.to_datetime(["2020-01-01", "2020-03-01"]).astype("datetime64[us]"),
+        "stress_score": [1.0, 2.0],
+    })
+    with pytest.raises(pd.errors.MergeError):
+        pd.merge_asof(ns, us, on="as_of", direction="backward")
+    merged = pd.merge_asof(align_as_of(ns), align_as_of(us),
+                           on="as_of", direction="backward")
+    assert len(merged) == 4
+    assert merged["stress_score"].notna().all()
+
+
+@pytest.mark.integration
+def test_chi_stress_scatter_renders_for_country_with_a_model():
+    """US HAS a debt-stress model, so this exercises the merge the old tests skipped."""
+    from dashboard.charting import update_chi_stress_scatter
+    fig, info = update_chi_stress_scatter({"start": None, "end": None}, "carbon", "US")
+    # two traces: the 36-month trail and the latest marker
+    assert len(fig.data) == 2
+    assert len(fig.data[0].x) > 1
+    assert len(fig.data[1].x) == 1
+    # a real quadrant read, not the "—" placeholder
+    assert "As of" in str(info[0].children)
+
+
+@pytest.mark.integration
+def test_chi_stress_scatter_renders_for_every_modelled_country():
+    """Pins the whole set: the bug hit all 13 countries that have a model."""
+    from dashboard.charting import update_chi_stress_scatter
+    from dashboard.relative_view import COUNTRIES
+    rendered = 0
+    for cc in COUNTRIES:
+        fig, _ = update_chi_stress_scatter({"start": None, "end": None}, "carbon", cc)
+        if len(fig.data) == 2:
+            rendered += 1
+    # EZ has no debt-stress model and returns early; every other country must plot
+    assert rendered == len(COUNTRIES) - 1
+
+
+@pytest.mark.integration
+def test_fed_monitor_ratio_survives_mixed_precision_inputs():
+    """_ratio is DuckDB-on-both-sides today; pin that a parquet-sourced (ns) side works."""
+    from dashboard.fed_monitor import _ratio
+    num = pd.DataFrame({
+        "as_of": pd.date_range("2020-01-01", periods=6, freq="MS"),
+        "value": [10.0] * 6,
+    })
+    den = pd.DataFrame({
+        "as_of": pd.to_datetime(["2020-01-01", "2020-04-01"]).astype("datetime64[us]"),
+        "value": [100.0, 200.0],
+    })
+    out = _ratio(num, den)
+    assert not out.empty
+    assert set(out.columns) == {"as_of", "value"}
