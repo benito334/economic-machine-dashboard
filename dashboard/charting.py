@@ -2947,8 +2947,17 @@ def _regime_info_children(
     weight_audit: "dict | None" = None,
     rolling: "dict | None" = None,
     thresholds: "dict | None" = None,
+    g_history: "pd.Series | None" = None,
+    i_history: "pd.Series | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table.
+
+    g_history / i_history: the ACTIVE (windowed or full) composite score series
+    up to and INCLUDING the selected row, so the chip honors the sustained-Z
+    filter. Without them _classify_regime falls back to its single-month rule
+    and this card contradicts Command Center for 13-26% of months — the
+    defect found 2026-10-08 (JP/GB/ID disagreed live). Every other call site
+    in the app passes history; these two were the only ones that did not.
 
     rolling (optional): {
         "window": int,          # months in rolling window (0 = full history)
@@ -2976,7 +2985,8 @@ def _regime_info_children(
 
     # Classify regimes using configurable thresholds
     _t = resolve_thresholds(thresholds)
-    g_regime, i_regime = _classify_regime(g_score, i_score, _g_delta_active, _i_delta_active, _t)
+    g_regime, i_regime = _classify_regime(g_score, i_score, _g_delta_active, _i_delta_active, _t,
+                                          g_history=g_history, i_history=i_history)
 
     # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
     # Q2) — used for the color accent only; the chips are the decision rule.
@@ -3722,6 +3732,19 @@ def update_regime_info(
         and pd.Timestamp(selected["as_of"]) == pd.Timestamp(all_comp.iloc[-1]["as_of"])
     )
 
+    # Position of the selected month inside FULL history. Both the dynamic
+    # threshold (a 24-mo rolling sigma) and the sustained-Z filter have to read
+    # real preceding data, not data the viewer's date-range preset happens to
+    # include — otherwise a 1Y range silently truncates the lookback and this
+    # card drifts from the scatter, which computes on full history (the frame
+    # mismatch found 2026-10-08: JP gz 0.169 full vs 0.152 at the 1Y preset).
+    idx_all = idx
+    if not all_comp.empty:
+        _sel_ts = pd.Timestamp(selected["as_of"])
+        _match = all_comp.index[pd.to_datetime(all_comp["as_of"]) == _sel_ts]
+        if len(_match):
+            idx_all = int(all_comp.index.get_loc(_match[0]))
+
     date_str = comp.iloc[idx]["as_of"].strftime("%b %Y")
     # Country is spelled out in the strip — this page had NO country label, so a
     # selector/store desync (or a mis-click on the adjacent dropdown entry)
@@ -3812,11 +3835,27 @@ def update_regime_info(
     except (TypeError, json.JSONDecodeError):
         weight_audit = {}
 
+    _dyn_frame = all_comp if not all_comp.empty else comp
+    _dyn_idx   = idx_all  if not all_comp.empty else idx
     thresholds_for_row = _resolve_row_thresholds(
-        comp, idx, g_sfx, i_sfx,
+        _dyn_frame, _dyn_idx, g_sfx, i_sfx,
         bool(rolling.get("window")), bool(rolling.get("inflation_window")),
         country, thresholds,
     )
+
+    # Sustained-Z history on the SAME columns the card classifies with, sliced
+    # to end at the selected month so stepping back in time never reads a
+    # month that had not happened yet.
+    def _hist(sfx: "str | None", use_rolling: bool, base_col: str) -> "pd.Series | None":
+        if _dyn_frame.empty:
+            return None
+        col = f"{base_col}_{sfx}" if (sfx and use_rolling) else base_col
+        if col not in _dyn_frame.columns:
+            return None
+        return _dyn_frame[col].iloc[:_dyn_idx + 1]
+
+    g_history = _hist(g_sfx, bool(rolling.get("window")),           "growth_score")
+    i_history = _hist(i_sfx, bool(rolling.get("inflation_window")), "inflation_score")
 
     return (
         _regime_info_children(
@@ -3830,6 +3869,8 @@ def update_regime_info(
             weight_audit,
             rolling,
             thresholds=thresholds_for_row,
+            g_history=g_history,
+            i_history=i_history,
         ),
         date_display,
     )
@@ -4026,26 +4067,49 @@ def update_regime_chart(
     # computed from each country's own rolling volatility + credit tightness,
     # rather than one flat value for the whole history. Computed on the
     # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
+    # Both the rolling-sigma threshold and the sustained-Z filter must read
+    # real preceding months, so they are computed on FULL history and then
+    # looked up by date for the rows this (possibly date-filtered) view shows.
+    # Computing either on the filtered frame truncates the lookback and makes
+    # this chart disagree with its own regime info card.
+    _full = comp
+    try:
+        _cand = load_composite_history(country=country)
+        if (not _cand.empty and g_col in _cand.columns and i_col in _cand.columns):
+            _full = _cand
+    except Exception:
+        pass
+    _full_pos = {pd.Timestamp(d): p for p, d in enumerate(_full["as_of"])}
+
     _dynamic = bool(thr(_t, "dynamic"))
     _dyn_df = compute_dynamic_thresholds(
-        _dyn_threshold_input(comp, g_col, i_col), base_gz=_gz, base_iz=_iz,
+        _dyn_threshold_input(_full, g_col, i_col), base_gz=_gz, base_iz=_iz,
         conc_share=_conc_share_for(country, _t),
     ) if _dynamic else None
     if _dynamic and not _dyn_df.empty:
-        # Use the latest row's dynamic threshold as the reference hline —
-        # a single static line can't represent a time-varying threshold.
-        _gz = float(_dyn_df["dyn_gz"].iloc[-1])
-        _iz = float(_dyn_df["dyn_iz"].iloc[-1])
+        # Use the latest VISIBLE row's dynamic threshold as the reference hline
+        # — a single static line can't represent a time-varying threshold.
+        # Indexed into full history (where _dyn_df now lives), but still the
+        # last month this view shows, not the last month that exists.
+        _ref = _full_pos.get(pd.Timestamp(comp.iloc[-1]["as_of"]), len(_dyn_df) - 1)
+        _gz = float(_dyn_df["dyn_gz"].iloc[_ref])
+        _iz = float(_dyn_df["dyn_iz"].iloc[_ref])
 
-    g_delta_s = comp[g_col].diff()
-    i_delta_s = comp[i_col].diff()
+    # Deltas off full history too: on the filtered frame the first visible row
+    # has a NaN delta, which _classify_regime reads as 0.0 and so fails the
+    # inflation momentum gate for a month that may well have cleared it.
+    _full_g = _full[g_col]
+    _full_i = _full[i_col]
+    g_delta_s = _full_g.diff()
+    i_delta_s = _full_i.diff()
     g_regimes, i_regimes = [], []
     for pos in range(len(comp)):
         row_s = comp.iloc[pos]
-        if _dynamic and _dyn_df is not None:
+        _fp = _full_pos.get(pd.Timestamp(row_s["as_of"]))
+        if _dynamic and _dyn_df is not None and not _dyn_df.empty and _fp is not None:
             row_t = {
-                "gz": float(_dyn_df["dyn_gz"].iloc[pos]),
-                "iz": float(_dyn_df["dyn_iz"].iloc[pos]),
+                "gz": float(_dyn_df["dyn_gz"].iloc[_fp]),
+                "iz": float(_dyn_df["dyn_iz"].iloc[_fp]),
                 "gm": thr(_t, "gm"),
                 "im": thr(_t, "im"),
             }
@@ -4053,8 +4117,11 @@ def update_regime_chart(
             row_t = _t
         gr, ir = _classify_regime(
             row_s.get(g_col), row_s.get(i_col),
-            g_delta_s.iloc[pos], i_delta_s.iloc[pos],
+            None if _fp is None else g_delta_s.iloc[_fp],
+            None if _fp is None else i_delta_s.iloc[_fp],
             row_t,
+            g_history=None if _fp is None else _full_g.iloc[:_fp + 1],
+            i_history=None if _fp is None else _full_i.iloc[:_fp + 1],
         )
         g_regimes.append(gr)
         i_regimes.append(ir)
@@ -4230,6 +4297,19 @@ def _update_threshold_display(
     if comp.empty:
         return _threshold_display_chips(base)
     idx = max(0, min(len(comp) - 1 - int(step or 0), len(comp) - 1))
+    # The date range picks WHICH month is selected; the dynamic threshold for
+    # that month is then computed on FULL history, the same frame the scatter
+    # and the regime info card use. Resolving it on the filtered frame made
+    # this readout disagree with both whenever a short preset was active.
+    _sel_ts = pd.Timestamp(comp.iloc[idx]["as_of"])
+    try:
+        _all = load_composite_history(country=country)
+    except Exception:
+        _all = comp
+    if not _all.empty:
+        _m = _all.index[pd.to_datetime(_all["as_of"]) == _sel_ts]
+        if len(_m):
+            comp, idx = _all, int(_all.index.get_loc(_m[0]))
     g_sfx = _FORCE_WINDOW_COL.get(int(zscore_window or 0))
     i_sfx = _INFLATION_WINDOW_COL.get(int(inflation_window or 0))
 

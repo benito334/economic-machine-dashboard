@@ -7,6 +7,7 @@ Integration tests (marked): real DuckDB at DB_PATH.
 from __future__ import annotations
 
 import os
+import pathlib
 import re
 import pytest
 import numpy as np
@@ -1897,3 +1898,117 @@ def test_fed_monitor_ratio_survives_mixed_precision_inputs():
     out = _ratio(num, den)
     assert not out.empty
     assert set(out.columns) == {"as_of", "value"}
+
+
+# ── 2026-10-08: the regime info card must honor the sustained-Z filter ────────
+# The card is shared by Regime Map and Regime History. It was the only
+# _classify_regime call site in the app that did not pass score history, so it
+# silently ran the single-month rule and contradicted Command Center for
+# 13-26% of months per country (GB/JP/ID disagreed live when this was found).
+
+def _card_chips(children) -> list[str]:
+    """The two chip labels, in order, out of a rendered regime info card."""
+    out = []
+    for t in _collect_texts(children):
+        s = t.strip()
+        if s in ("Growth", "Retraction", "Transition", "Inflation", "Disinflation"):
+            out.append(s)
+    return out[:2]
+
+
+def _sustained_row() -> dict:
+    return {
+        "quadrant": "Expansion", "growth_score": 0.90, "inflation_score": 0.0,
+        "confidence": 0.6, "disequilibrium_score": 0.4,
+        "n_growth_signals": 1, "n_inflation_signals": 1,
+        "as_of": pd.Timestamp("2026-10-31"),
+    }
+
+
+def test_regime_card_chip_blocks_growth_when_z_has_not_held():
+    """Level clears the gate this month but not last month -> Transition."""
+    from dashboard.charting import _regime_info_children
+    thresholds = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": False}
+    children = _regime_info_children(
+        _sustained_row(), True, None, None, 0.9, 0.0,
+        thresholds=thresholds,
+        g_history=pd.Series([0.10, 0.90]),   # last month was INSIDE the band
+        i_history=pd.Series([0.00, 0.00]),
+    )
+    assert _card_chips(children)[0] == "Transition"
+
+
+def test_regime_card_chip_allows_growth_when_z_has_held():
+    from dashboard.charting import _regime_info_children
+    thresholds = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": False}
+    children = _regime_info_children(
+        _sustained_row(), True, None, None, 0.9, 0.0,
+        thresholds=thresholds,
+        g_history=pd.Series([0.80, 0.90]),   # held two consecutive months
+        i_history=pd.Series([0.00, 0.00]),
+    )
+    assert _card_chips(children)[0] == "Growth"
+
+
+def test_classify_regime_call_sites_in_charting_pass_history():
+    """Guard: no _classify_regime call in charting.py may omit score history.
+
+    compute_regime_confidence is the one documented exception — it runs a
+    simplified replay on purpose and says so in its own docstring.
+    """
+    import re
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "dashboard" / "charting.py").read_text()
+    # Drop the one sanctioned exception's body before scanning.
+    src = re.sub(r"def compute_regime_confidence.*?\ndef ", "\ndef ", src, flags=re.S)
+    calls = re.findall(r"_classify_regime\((?:[^()]|\([^()]*\))*\)", src)
+    calls = [c for c in calls if not c.startswith("_classify_regime(\n    g_score")]
+    offenders = [c for c in calls if "g_history" not in c]
+    assert not offenders, (
+        "_classify_regime called without history in charting.py:\n"
+        + "\n---\n".join(offenders)
+    )
+
+
+@pytest.mark.integration
+def test_regime_card_chip_matches_command_center_for_every_country():
+    """The headline chip must not depend on which page you are looking at.
+
+    This is the exact defect found 2026-10-08: same month, same country, same
+    thresholds, two different chips. Runs every modelled country, because the
+    US happened to agree while GB/JP/ID did not.
+    """
+    from dashboard.charting import (_classify_regime, compute_dynamic_thresholds,
+                                    _dyn_threshold_input, resolve_thresholds,
+                                    _conc_share_for, update_regime_info)
+    from dashboard.charting_data import load_composite_history
+
+    countries = ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
+                 "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
+    t0 = resolve_thresholds(None)
+    mismatches = []
+    for cc in countries:
+        hist = load_composite_history(country=cc)
+        if hist.empty:
+            continue
+        # Command Center's read (its own code path: full history, dynamic
+        # threshold at the latest row, history passed).
+        dyn = compute_dynamic_thresholds(
+            _dyn_threshold_input(hist, "growth_score", "inflation_score"),
+            base_gz=float(t0["gz"]), base_iz=float(t0["iz"]),
+            conc_share=_conc_share_for(cc, t0),
+        )
+        t = dict(t0)
+        if bool(t0["dynamic"]) and not dyn.empty:
+            t["gz"] = float(dyn["dyn_gz"].iloc[-1])
+            t["iz"] = float(dyn["dyn_iz"].iloc[-1])
+        expected = _classify_regime(
+            hist["growth_score"].iloc[-1], hist["inflation_score"].iloc[-1],
+            hist["growth_score"].diff().iloc[-1], hist["inflation_score"].diff().iloc[-1],
+            t, g_history=hist["growth_score"], i_history=hist["inflation_score"],
+        )
+        card, _ = update_regime_info(0, {}, 0, 0, 0, cc, None, None, False)
+        got = tuple(_card_chips(card))
+        if got != expected:
+            mismatches.append(f"{cc}: card={got} command_center={expected}")
+    assert not mismatches, "regime chip differs by page:\n" + "\n".join(mismatches)
