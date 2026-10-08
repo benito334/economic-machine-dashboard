@@ -4,6 +4,27 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-08 — Branch sweep: everything merged to main, one branch retired on evidence
+
+Housekeeping pass across several parallel sessions. Starting state: 9 local branches, 2 worktrees, 1 open PR, and — the only genuinely at-risk thing — **6 uncommitted files in another session's worktree**.
+
+**Committed and merged.** The uncommitted work turned out to be a real, finished fix with its own worklog entry and 7 tests: the CHI × Debt-Stress `merge_asof` precision bug (now the `2026-10-07` entry below). Committed on its branch, rebased onto the merged PR #3, and merged. The two rebase conflicts were both "both sides added here": the branch carried a **superseded copy** of the threshold-store test that PR #3 had rewritten (kept PR #3's version, dropped the stale one), and three same-day worklog entries needed ordering — renumbered so the sequence matches the actual order of the day, with cross-references in CLAUDE.md and the CreovaOne handoff fixed to match.
+
+**`claude/serene-clarke-3321dd` deleted as SUPERSEDED, not merged.** It carried `4c2026a` (2026-10-01), "auto-compact signals.duckdb after every import" — a mitigation whose own commit message states the premise: *"every `upsert_*` in store.py is DELETE-then-INSERT and DuckDB never reclaims that space"*. That premise stopped being true on 2026-10-04, when `ad77ae0` replaced those with in-place `ON CONFLICT` upserts and fixed the leak at source. Checked rather than assumed before deleting:
+
+| | 2026-10-01 incident | today |
+| :--- | ---: | ---: |
+| `signals.duckdb` on disk | 9.4 GB | **156 MB** |
+| live rows | ~365K | 368,263 |
+
+— and that is *after* many full pipeline runs, including ~6 complete composite rewrites in the 2026-10-07 session. Its other two pieces were also already covered: `scripts/compact_db.py` remains in main for manual recovery, and the `test_explorer` signal-count fix (91 → 95) is already there. Merging it would have added a full schema-preserving rebuild + atomic swap to every nightly import, for a problem that no longer occurs. **If the bloat ever recurs, this is the commit to resurrect** — but the root cause, not the symptom, is what to check first.
+
+**Branches deleted** (all fully merged, verified by content rather than by subject line — `git cherry` mis-reports after a rebase): `claude/dazzling-bun-e550e8` was a stale duplicate of main's `d6fae01`/`ee3d3ed` (`force_detail.py` differed from main by **0 lines**; the `charting.py` difference was main being *ahead*), plus `claude/hungry-lichterman-7d60a2`, `codex/code-review-fixes`, `codex/code-review-remediation`.
+
+End state: everything in `main`, nothing unmerged, working tree clean.
+
+---
+
 ## 2026-10-07 (3) — Point-in-time composites + methodology stamp (the downstream-feed fix)
 
 **Where this came from.** A downstream project (CreovaOne) fits asset betas to `composites.growth_score` / `inflation_score` and asked five questions about the feed. Four were answerable from this codebase. The fifth — is a past `composites` row stable? — turned out to be the important one, and the answer is no, for three independent reasons that had been running together in my own head and in the explanation I first gave the user. Separating them is what made the fix obvious:
