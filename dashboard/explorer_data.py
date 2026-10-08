@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from dashboard.charting_data import align_as_of
 from indicators.composites import load_composites_config
 
 DB_PATH = Path(os.environ.get("DB_PATH", "/mnt/data/db/finance/indicators_machine/signals.duckdb"))
@@ -284,8 +285,8 @@ def compare_raw_vs_processed(signal_id: str, source: str, n_recent: int = 36) ->
 
     # DuckDB returns datetime64[us]; parquet indexes are datetime64[ns] —
     # merge_asof requires identical dtypes on the join keys.
-    detail_reset["as_of"] = pd.to_datetime(detail_reset["as_of"]).astype("datetime64[ns]")
-    raw_df["raw_date"] = pd.to_datetime(raw_df["raw_date"]).astype("datetime64[ns]")
+    detail_reset = align_as_of(detail_reset, "as_of")
+    raw_df = align_as_of(raw_df, "raw_date")
 
     merged = pd.merge_asof(
         detail_reset,

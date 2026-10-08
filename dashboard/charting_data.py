@@ -41,6 +41,27 @@ def load_yield_curve_maturities() -> list[dict]:
     return load_catalog()[1]
 
 
+# ── Date-precision alignment ──────────────────────────────────────────────────
+
+def align_as_of(df: pd.DataFrame, col: str = "as_of") -> pd.DataFrame:
+    """Coerce a date column to datetime64[ns] so frames from different sources can merge.
+
+    DuckDB hands back ``datetime64[us]`` (its native precision), while parquet /
+    FRED caches and anything built from ``pd.date_range()`` produce
+    ``datetime64[ns]``. pandas refuses to ``merge_asof`` across the two with
+    "incompatible merge keys ... must be the same type".
+
+    Put **both** sides of such a merge through this first — normalising only one
+    side leaves the same mismatch, just in the other direction. Returns a copy;
+    a frame that lacks the column, or is empty, is handed back untouched.
+    """
+    if df.empty or col not in df.columns:
+        return df
+    out = df.copy()
+    out[col] = pd.to_datetime(out[col]).astype("datetime64[ns]")
+    return out
+
+
 # ── Signal history ────────────────────────────────────────────────────────────
 
 def load_signal_history(

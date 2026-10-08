@@ -29,6 +29,7 @@ from dash.exceptions import PreventUpdate
 from plotly.subplots import make_subplots
 
 from dashboard.charting_data import (
+    align_as_of,
     load_all_signal_histories,
     load_change_feed,
     load_composite_component_status,
@@ -5422,7 +5423,11 @@ def update_chi_stress_scatter(
     chi_hist["chi_z"] = chi_hist["chi_adjusted"] / sigma
     stress_hist = stress_hist.sort_values("as_of")[["as_of", "stress_score"]]
 
-    merged = pd.merge_asof(chi_hist[["as_of", "chi_z"]], stress_hist,
+    # Both sides must carry the same datetime precision: chi_hist is built on a
+    # pd.date_range (ns) while stress_hist comes straight from DuckDB (us), and
+    # merge_asof rejects the pair outright. See charting_data.align_as_of.
+    merged = pd.merge_asof(align_as_of(chi_hist[["as_of", "chi_z"]]),
+                            align_as_of(stress_hist),
                             on="as_of", direction="backward")
     merged = merged.dropna(subset=["chi_z", "stress_score"])
     start = (date_range or {}).get("start")

@@ -4,7 +4,7 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
-## 2026-10-07 (2) — Point-in-time composites + methodology stamp (the downstream-feed fix)
+## 2026-10-07 (3) — Point-in-time composites + methodology stamp (the downstream-feed fix)
 
 **Where this came from.** A downstream project (CreovaOne) fits asset betas to `composites.growth_score` / `inflation_score` and asked five questions about the feed. Four were answerable from this codebase. The fifth — is a past `composites` row stable? — turned out to be the important one, and the answer is no, for three independent reasons that had been running together in my own head and in the explanation I first gave the user. Separating them is what made the fix obvious:
 
@@ -65,7 +65,7 @@ All 14 countries recomputed and upserted. `METHODOLOGY_VERSION` bumped to **2026
 
 ---
 
-## 2026-10-07 — Regime-threshold persistence: returning browsers were running retired classifier rules
+## 2026-10-07 (2) — Regime-threshold persistence: returning browsers were running retired classifier rules
 
 **How it surfaced.** A question about the chips, not a bug report. The user asked why the US inflation chip read **Transition** when the inflation Z had been below the −0.15 effective threshold for months. That part was correct and explainable: the inflation chip is dual-condition, the Z leg passes (−0.332 vs −0.150) but the momentum leg does not (Δ −0.002 vs a −0.05 gate), so "low but no longer falling" → Transition. The chip had in fact printed Disinflation in July (Δ −0.184) and reverted when the decline stalled. Then they refreshed the page and **the same chip said Disinflation** — same data, same page.
 
@@ -109,6 +109,30 @@ A store written before 2026-07-09 has no `dynamic` key, so **one browser rendere
 **Open / next.** Two things worth noting, neither started:
 1. The inflation chip now carries the **mirror** of the defect the growth chip was fixed for on 2026-10-06: a genuinely settled low-inflation regime — level clearly past the gate, simply not falling further — reads Transition indefinitely. The momentum gate was validated on flip-rate reduction (33%→9%), never against an independent inflation-outcome benchmark the way the growth change was tested against NBER dating. A `/dalio-audit` candidate, not a hunch to act on.
 2. The Regime Map's dot and season label are **level-only geometry** and cannot express the inflation momentum gate, so the dot can sit in the green "Expansion" corner while the chip above it reads Transition. The chip card is already embedded on that page (same component, after an August report of the same confusion), but nothing marks the disagreement. Two cheap options: outline the dot when chip and geometry disagree, or caption the season label with the live chip pair.
+## 2026-10-07 — Fix: CHI × Debt-Stress chart blank on /debt-stress (merge_asof datetime-precision)
+
+**The bug.** `update_chi_stress_scatter` in `dashboard/charting.py` raised on *every* render, so the "Short-Term Health × Long-Term Stress" combined-quadrant chart at the top of `/debt-stress` showed nothing and the browser logged a 500:
+
+```
+pandas.errors.MergeError: incompatible merge keys [0]
+  dtype('<M8[ns]') and dtype('<M8[us]'), must be the same type
+```
+
+`chi_hist` is built on a `pd.date_range` (`datetime64[ns]`); `stress_hist` comes straight from DuckDB, whose native precision is microseconds (`datetime64[us]`). pandas refuses to `merge_asof` across the two. **Pre-existing, not a regression** — it reproduces identically on `main`. The feature shipped 2026-10-03 and presumably worked then, so a pandas version bump (now 2.3.3) most likely made `merge_asof` strict about precision.
+
+**Why no test caught it.** It failed for all 13 countries that *have* a debt-stress model. EZ was the only country that passed — and only because it has no model and returns early, before the merge. The existing coverage only ever exercised that early-return path.
+
+**The fix.** New `charting_data.align_as_of(df, col="as_of")` coerces a date column to `datetime64[ns]` and returns a copy (empty frames and frames lacking the column pass through untouched). **Both** sides of the merge go through it — normalising only one side leaves the same mismatch, just pointing the other way. That helper is now the single place this lesson lives; `explorer_data.py`, which had solved the same problem inline in 2026-07-06, was folded onto it.
+
+**The grep follow-up.** The other `merge_asof` site is `fed_monitor._ratio()`. Checked its provenance rather than assuming: every caller feeds it `_hist`/`_to_bn` → `load_signal_history` → DuckDB, so both sides are uniformly `[us]` today and it is **latent, not broken**. Hardened anyway inside the helper itself (one line, both sides), because it is a *generic* two-frame helper and a parquet/FRED-cached series on either side — exactly what `load_yield_curve_term_structure` already returns elsewhere in that module — would trip it.
+
+**Tests** (+7, `tests/test_charting.py`). Four unit tests on `align_as_of`, including one that asserts the raw ns/us pairing *does* raise `MergeError` before pinning that the aligned pair merges — so the test documents the bug class, not just the fix. Three integration tests: the US callback (a country that HAS a model, which is the coverage that was missing), a sweep asserting 13 of 14 countries plot two traces while EZ early-returns, and `_ratio()` against a deliberately mixed-precision pair. Verified the new tests **fail with the original `MergeError` when the fix is reverted**, then pass with it restored.
+
+**Verified live** on the `dashboard-dev` preview (:8512, which exists so a branch's UI can be reviewed without disturbing the operator instance on :8502): the chart renders 2 traces / 37 points (36-month trail + latest marker) with a real quadrant read for both UK and US, no 500s on `_dash-update-component`, no app console errors. Fed Monitor re-checked after the `_ratio` change — all 28 plots render with traces, none empty.
+
+Suite **798 passed, zero exclusions** (791 before, +7 here).
+
+**Next / open.** Nothing queued from this. Worth knowing for future work: any new `merge_asof` that joins a DuckDB-sourced frame to a parquet-, FRED-cache- or `date_range`-sourced one must put both sides through `align_as_of` first.
 
 ---
 
