@@ -155,8 +155,17 @@ regressing one asset on other asset prices.
    fine for reading the machine; it is partly circular for regressing asset returns.
 5. **The basis question is still open.** Ray's 2026-10-07 ruling was "condition on the
    surprise"; `signals.surprise` remains 0 non-null of 368,225 rows, and the three available
-   bases are all proxies for it. `discounted_surprise` gave by far the strongest LT-bond fit
-   (`t = −9.82`), which is worth following up.
+   bases are all proxies for it.
+
+   > **Corrected 2026-10-08, same day.** An earlier version of this line proposed promoting
+   > `discounted_surprise` over `change` because it gave by far the strongest LT-bond fit
+   > (`t = −9.82`, R² 0.261). **Withdrawn — that number is substantially mechanical.** The
+   > bond return proxy is `−7.5·Δ(nominal 10y)` and breakeven = nominal − TIPS, so the two
+   > share the `Δ(nominal 10y)` term; `corr(Δ nominal 10y, Δ breakeven) = 0.507`. On gold,
+   > which has no such overlap, `discounted` (R² 0.018) does **not** beat `change`
+   > (R² 0.022). There is no evidence here for changing the basis. The real upgrade is
+   > building genuine realized-minus-consensus surprise — see
+   > `regime_state_vs_environment_2026-10-08.md`.
 
 **None of these are regime-classification problems.** The classification feeding the betas is
 the continuous PIT composite, and it is doing its job; the chip and its Transition band are not

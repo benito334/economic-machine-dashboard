@@ -12,7 +12,55 @@
 
 ---
 
-## Open items (updated 2026-10-06)
+## Open items (updated 2026-10-08)
+
+### From the 2026-10-08 regime/beta session — ordered, nothing implemented yet
+
+Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
+`regime_state_vs_environment_2026-10-08.md` (the definitions — read first),
+`ray_consult_regime_frequency_2026-10-08.md` (the measurements),
+`beta_classification_audit_2026-10-08.md` (the downstream consequence).
+
+1. **Wire Ray's 2026-10-03 Rulings 1 + 2 into `_classify_regime`, and take the
+   growth-derived 0.15 sigma floor OFF the inflation threshold.** `indicators/
+   inflation_anchor.py` is complete and reaches only a Command Center display
+   card. This is the single highest-value item: inflation goes 18% -> 75%
+   decisive, joint four-season 8% -> 31%.
+   **SEQUENCING WARNING — re-anchoring moves the continuous composite, and
+   therefore every beta CreovaOne has fitted. This must land BEFORE any beta
+   recalibration, never after.** Bump `METHODOLOGY_VERSION`; it is a
+   consumer-contract event.
+2. **Tell CreovaOne about the half-life.** Their `ewma_shrinkage` default of a
+   12-month half-life gives an effective sample of 34.6 months against 428
+   available, on a relationship with R^2 ~ 0.02. Gold's inflation beta at that
+   setting is +0.0000 (t = 0.00) and its box is assigned off noise. Not our
+   repo, but it is our composites being misused — raise it.
+3. **Rename in code/docs/UI: the chip reports a STATE, the box reports an
+   ENVIRONMENT.** Never "regime" for both. One word caused a multi-hour
+   confusion and will cause it again.
+4. **Build genuine surprise.** `signals.surprise` is still 0 non-null of
+   368,225. SPF is already ingested for the validator badges. This is what
+   moves the beta input from proxy to correct (Ray 2026-10-07 Ruling 1).
+5. **Count independent episodes per chip per country** and publish it. Do not
+   let anything downstream tilt on a chip with fewer than ~10.
+6. **Move backtest validation off `FORWARD_MONTHS = 3`** in `backtest_g3.py` to
+   12-24m. Effect sizes are larger at the longer horizons in every test run.
+7. **Decide what BR / MX / AU should show.** Their inflation composites are
+   near-constant (BR sd 0.003 over 10y, MX 0.042, AU 62% of months with an
+   exactly-zero MoM delta). No threshold rule rescues a constant series.
+8. **Regime Map geometry redesign — SHELVED, do not start.** The 3x3
+   chip-grid/rim-pushed-boundary design is proved exact (0 disagreements in
+   2,801 country-months) and mocked up at
+   https://claude.ai/code/artifact/18cb5011-905f-4e86-ad9c-a48ece84b967 — but it
+   would faithfully render an instrument whose inflation axis is a non-answer
+   82% of the time. Revisit only after item 1.
+9. **Pool the 14-country panel for statistical power.** 43 years of monthly US
+   data gives 21 independent 24-month observations; nothing survives
+   independent sampling on one country.
+
+---
+
+## Open items (carried from 2026-10-06)
 
 - **Signals force pages show the BASE regime threshold, not the dynamic one.**
   `/signals/{force}` banner reads "THRESHOLD ±0.50" and its composite chart draws
