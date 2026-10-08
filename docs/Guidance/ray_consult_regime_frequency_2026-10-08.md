@@ -1,7 +1,8 @@
 # Ray consult brief — does the four-season object support allocation at all?
 
 **Date:** 2026-10-08
-**Status:** evidence pack, not yet taken to digitalray.ai
+**Status:** CONSULT RUN 2026-10-08 — see `ray_dalio_review_log.md` Session 2026-10-08 for
+the four rulings, his proposed pipeline, and an independent verification table
 **Prompted by:** a user question during the regime-map UI work — *"if our ultimate goal is
 to allocate risk to four regimes but those four regimes only happen less than half the time,
 what is the purpose of this? Why not target transitions instead?"*
