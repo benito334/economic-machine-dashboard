@@ -184,6 +184,26 @@ def init_schema(conn: duckdb.DuckDBPyConnection) -> None:
         "productivity_score", "productivity_momentum",
     ):
         conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_col} DOUBLE")
+    # *_momentum -> *_breadth rename (2026-10-07). The old columns stay and are
+    # still written, as a DEPRECATED mirror: CreovaOne reads this table and must
+    # not break on a pipeline run. Backfilled once from the old values so the new
+    # name is populated for all history immediately, not just from the next run.
+    # Chip Direction Agreement per force (2026-10-07). No backfill: this is a
+    # NEW definition, not a rename — the old `confidence` was quadrant agreement
+    # off a raw sign split. Populated on the next pipeline run.
+    for _f in ("growth", "inflation"):
+        conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_f}_dir_agreement DOUBLE")
+    for _f in ("growth", "inflation", "rate", "credit", "volatility", "productivity"):
+        conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_f}_breadth DOUBLE")
+        conn.execute(
+            f"UPDATE composites SET {_f}_breadth = {_f}_momentum "
+            f"WHERE {_f}_breadth IS NULL AND {_f}_momentum IS NOT NULL"
+        )
+    # Methodology stamp (2026-10-07). History is deliberately recomputed under
+    # the current rule on every run; these say WHICH rule, so a consumer that
+    # refits each month can tell a changed world from a changed methodology.
+    for _col in ("methodology_version", "config_hash"):
+        conn.execute(f"ALTER TABLE composites ADD COLUMN IF NOT EXISTS {_col} VARCHAR")
 
 
 def delete_future_signals(conn: duckdb.DuckDBPyConnection) -> int:
@@ -312,14 +332,18 @@ CREATE TABLE IF NOT EXISTS composites (
     inflation_score      DOUBLE,
     quadrant             VARCHAR,
     confidence           DOUBLE,
+    growth_dir_agreement    DOUBLE,
+    inflation_dir_agreement DOUBLE,
     disequilibrium_score DOUBLE,
     n_growth_signals     INTEGER   DEFAULT 0,
     n_inflation_signals  INTEGER   DEFAULT 0,
     n_forces             INTEGER   DEFAULT 0,
     low_coverage         BOOLEAN   DEFAULT FALSE,
     stale_signals        VARCHAR   DEFAULT '',
-    growth_momentum      DOUBLE,
-    inflation_momentum   DOUBLE,
+    growth_breadth       DOUBLE,
+    inflation_breadth    DOUBLE,
+    growth_momentum      DOUBLE,   -- DEPRECATED mirror of *_breadth (2026-10-07)
+    inflation_momentum   DOUBLE,   -- DEPRECATED mirror of *_breadth (2026-10-07)
     weight_audit         VARCHAR   DEFAULT '',
     growth_score_36m     DOUBLE,
     growth_score_48m     DOUBLE,
@@ -334,12 +358,16 @@ CREATE TABLE IF NOT EXISTS composites (
     disequilibrium_24m   DOUBLE,
     rate_score           DOUBLE,
     credit_score         DOUBLE,
-    rate_momentum        DOUBLE,
-    credit_momentum      DOUBLE,
+    rate_breadth         DOUBLE,
+    credit_breadth       DOUBLE,
+    rate_momentum        DOUBLE,   -- DEPRECATED mirror
+    credit_momentum      DOUBLE,   -- DEPRECATED mirror
     volatility_score     DOUBLE,
-    volatility_momentum  DOUBLE,
+    volatility_breadth  DOUBLE,
+    volatility_momentum  DOUBLE,   -- DEPRECATED mirror
     productivity_score   DOUBLE,
-    productivity_momentum DOUBLE,
+    productivity_breadth DOUBLE,
+    productivity_momentum DOUBLE,   -- DEPRECATED mirror
     created_at           TIMESTAMP NOT NULL,
     PRIMARY KEY (country, as_of)
 )
@@ -347,13 +375,17 @@ CREATE TABLE IF NOT EXISTS composites (
 
 _COMPOSITE_COLUMNS = [
     "country", "as_of", "growth_score", "inflation_score", "quadrant",
-    "confidence", "disequilibrium_score", "n_growth_signals",
+    "confidence", "growth_dir_agreement", "inflation_dir_agreement",
+    "disequilibrium_score", "n_growth_signals",
     "n_inflation_signals", "n_forces", "low_coverage", "stale_signals",
+    "growth_breadth", "inflation_breadth",
     "growth_momentum", "inflation_momentum",
-    "rate_score", "credit_score", "rate_momentum", "credit_momentum",
-    "volatility_score", "volatility_momentum",
-    "productivity_score", "productivity_momentum",
+    "rate_score", "credit_score", "rate_breadth", "credit_breadth",
+    "rate_momentum", "credit_momentum",
+    "volatility_score", "volatility_breadth", "volatility_momentum",
+    "productivity_score", "productivity_breadth", "productivity_momentum",
     "weight_audit",
+    "methodology_version", "config_hash",
     "created_at",
 ]
 # Rolling composite columns are written by update_rolling_composites() after the baseline insert.
@@ -372,14 +404,28 @@ def upsert_composites(conn: duckdb.DuckDBPyConnection, snapshots: list) -> int:
     if not snapshots:
         return 0
 
+    from indicators.methodology_version import methodology_stamp
+
     now = datetime.now(timezone.utc)
     rows = []
+    # Stamped per RUN, not per snapshot: the methodology is a property of the
+    # computation, and every row in this batch came out of the same one. Looked
+    # up once per country rather than per row (562+ rows for the US).
+    _stamps: dict = {}
     for s in snapshots:
         row = s.model_dump()
         if row["as_of"] > date.today():
             continue
         row["as_of"] = row["as_of"].isoformat()
         row["created_at"] = now
+        # Deprecated mirror: the model now carries *_breadth only, but the old
+        # column keeps receiving the identical value until consumers migrate.
+        for _f in ("growth", "inflation", "rate", "credit", "volatility", "productivity"):
+            row[f"{_f}_momentum"] = row.get(f"{_f}_breadth")
+        _cc = str(row.get("country") or "US")
+        if _cc not in _stamps:
+            _stamps[_cc] = methodology_stamp(_cc)
+        row.update(_stamps[_cc])
         rows.append(row)
 
     if not rows:
@@ -518,6 +564,113 @@ def query_composite_history(
         ).df()
     return conn.execute(
         "SELECT * FROM composites WHERE country = ? ORDER BY as_of", [country]
+    ).df()
+
+
+# ── Point-in-time composites (2026-10-07) ────────────────────────────────────
+# The SECOND series, published alongside `composites` rather than replacing it.
+#
+# `composites` answers "what does history look like through today's lens" —
+# full-history Z-scores, recomputed under the current rule on every run. That is
+# the right answer for the dashboard and is unchanged.
+#
+# This table answers the different question "what would this have said AT THE
+# TIME": expanding-window Z-scores using only observations strictly before each
+# month (indicators/backtest.py::pit_zscore, shift(1)). The gap is not small —
+# measured 2026-10-07 for the US, the two disagree on the SIGN of the inflation
+# composite in 24.5% of months (level correlation 0.654; growth 0.942 / 14.6%).
+#
+# Use this one for any model fitted across time, where a regressor at month t
+# containing data from t+1 is look-ahead bias. Use `composites` for reading the
+# machine. Still NOT vintage-corrected: these are final-revised observations
+# scored point-in-time. Data-revision replay is backtest_g3's ALFRED path, which
+# covers 16/19 US growth and 6/9 inflation signals.
+_CREATE_COMPOSITES_PIT = """
+CREATE TABLE IF NOT EXISTS composites_pit (
+    country              VARCHAR   NOT NULL,
+    as_of                DATE      NOT NULL,
+    growth_score         DOUBLE,
+    inflation_score      DOUBLE,
+    credit_score         DOUBLE,
+    methodology_version  VARCHAR,
+    config_hash          VARCHAR,
+    created_at           TIMESTAMP NOT NULL,
+    PRIMARY KEY (country, as_of)
+)
+"""
+
+_COMPOSITES_PIT_COLUMNS = [
+    "country", "as_of", "growth_score", "inflation_score", "credit_score",
+    "methodology_version", "config_hash", "created_at",
+]
+
+
+def init_composites_pit_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(_CREATE_COMPOSITES_PIT)
+
+
+def upsert_composites_pit(
+    conn: duckdb.DuckDBPyConnection, country: str, scores: pd.DataFrame,
+) -> int:
+    """Upsert one country's point-in-time composite history.
+
+    `scores` is compute_pit_scores()'s frame: a DatetimeIndex of month-ends and
+    any of growth_score / inflation_score / credit_score.
+    """
+    from indicators.methodology_version import methodology_stamp
+
+    init_composites_pit_schema(conn)
+    if scores is None or scores.empty:
+        return 0
+
+    df = scores.copy()
+    df.index = pd.to_datetime(df.index)
+    df = df[df.index <= pd.Timestamp(date.today())]
+    if df.empty:
+        return 0
+
+    out = pd.DataFrame({"country": str(country).upper(),
+                        "as_of": df.index.date})
+    for col in ("growth_score", "inflation_score", "credit_score"):
+        out[col] = (df[col].astype(float).values if col in df.columns
+                    else pd.Series([None] * len(df), dtype="object").values)
+    out = out.assign(**methodology_stamp(country),
+                     created_at=datetime.now(timezone.utc))
+    # A row that is all-NaN carries nothing; the expanding window needs
+    # PIT_MIN_PERIODS observations before it produces anything, so the first
+    # few years of every country are legitimately empty.
+    out = out.dropna(subset=["growth_score", "inflation_score", "credit_score"], how="all")
+    if out.empty:
+        return 0
+
+    conn.register("_composites_pit_staging", out)
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        _upsert_in_place(conn, "composites_pit", "_composites_pit_staging",
+                         _COMPOSITES_PIT_COLUMNS, ["country", "as_of"])
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+    finally:
+        conn.unregister("_composites_pit_staging")
+    return len(out)
+
+
+def query_composites_pit(
+    conn: duckdb.DuckDBPyConnection,
+    country: str,
+    start: str | None = None,
+) -> pd.DataFrame:
+    """Point-in-time composite history — the as-known-at-the-time series."""
+    init_composites_pit_schema(conn)
+    if start:
+        return conn.execute(
+            "SELECT * FROM composites_pit WHERE country = ? AND as_of >= ? ORDER BY as_of",
+            [country, start],
+        ).df()
+    return conn.execute(
+        "SELECT * FROM composites_pit WHERE country = ? ORDER BY as_of", [country]
     ).df()
 
 

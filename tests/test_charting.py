@@ -777,7 +777,7 @@ class TestRegimeMomentumDisplay:
             "growth_score": -0.05, "inflation_score": 0.43,
             "confidence": 0.36, "disequilibrium_score": 0.70,
             "n_growth_signals": 9, "n_inflation_signals": 8,
-            "growth_momentum": 0.4444, "inflation_momentum": 0.5,
+            "growth_breadth": 0.4444, "inflation_breadth": 0.5,
         }
 
     def _make_comp_df(self):
@@ -830,12 +830,12 @@ class TestRegimeMomentumDisplay:
     def test_composite_history_has_momentum_columns(self):
         from dashboard.charting_data import load_composite_history
         df = load_composite_history(start_date="2020-01-01")
-        assert "growth_momentum" in df.columns
-        assert "inflation_momentum" in df.columns
-        recent = df.dropna(subset=["growth_momentum", "inflation_momentum"])
+        assert "growth_breadth" in df.columns
+        assert "inflation_breadth" in df.columns
+        recent = df.dropna(subset=["growth_breadth", "inflation_breadth"])
         assert len(recent) > 0
-        assert (recent["growth_momentum"].between(0, 1)).all()
-        assert (recent["inflation_momentum"].between(0, 1)).all()
+        assert (recent["growth_breadth"].between(0, 1)).all()
+        assert (recent["inflation_breadth"].between(0, 1)).all()
 
     @pytest.mark.integration
     def test_regime_chart_returns_band_figure_and_six_cards(self):
@@ -1339,13 +1339,24 @@ class TestComputeDynamicThresholds:
         assert (result["credit_adj"] - 1.0).abs().max() < 1e-6
 
 
+def _stamped(**overrides) -> dict:
+    """A store value as a real browser holds one: complete and version-stamped.
+
+    Unstamped partial dicts are deliberately MIGRATED to the defaults now
+    (resolve_thresholds), so a fixture that omits the stamp silently tests
+    migration instead of whatever it meant to test.
+    """
+    import dashboard.charting as charting
+    return {**charting._DEFAULT_THRESHOLDS, **overrides}
+
+
 class TestDynamicToggleImmediateApply:
     """The dynamic-thresholds checkbox applies on click, not via the Apply button."""
 
     def test_toggle_on_writes_dynamic_true(self):
         from dashboard.charting import _apply_dynamic_toggle
 
-        result = _apply_dynamic_toggle(["dynamic"], {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": False})
+        result = _apply_dynamic_toggle(["dynamic"], _stamped(gz=0.5, iz=0.5, dynamic=False))
         assert result["dynamic"] is True
         # other threshold values are preserved
         assert result["gz"] == 0.5 and result["iz"] == 0.5
@@ -1353,7 +1364,7 @@ class TestDynamicToggleImmediateApply:
     def test_toggle_off_writes_dynamic_false(self):
         from dashboard.charting import _apply_dynamic_toggle
 
-        result = _apply_dynamic_toggle([], {"gz": 0.4, "iz": 0.4, "gm": 0.0, "im": 0.0, "dynamic": True})
+        result = _apply_dynamic_toggle([], _stamped(gz=0.4, iz=0.4, dynamic=True))
         assert result["dynamic"] is False
         assert result["gz"] == 0.4  # preserved
 
@@ -1363,8 +1374,18 @@ class TestDynamicToggleImmediateApply:
 
         # This is what fires when the modal-open sync sets the checkbox to match
         # the store — must not rewrite the store (would cause a needless re-render).
-        assert _apply_dynamic_toggle([], {"dynamic": False}) is no_update
-        assert _apply_dynamic_toggle(["dynamic"], {"dynamic": True}) is no_update
+        assert _apply_dynamic_toggle([], _stamped(dynamic=False)) is no_update
+        assert _apply_dynamic_toggle(["dynamic"], _stamped(dynamic=True)) is no_update
+
+    def test_toggling_an_unversioned_store_still_lands_on_current_defaults(self):
+        # A returning browser's first click must not carry a retired rule
+        # forward into the dict it writes back.
+        from dashboard.charting import _apply_dynamic_toggle, _DEFAULT_THRESHOLDS
+
+        result = _apply_dynamic_toggle([], {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0})
+        assert result["dynamic"] is False            # the click is honored
+        assert result["im"] == _DEFAULT_THRESHOLDS["im"]   # the stale gate is not
+        assert result["v"] == _DEFAULT_THRESHOLDS["v"]
 
 
 # ── compute_regime_confidence (coverage-audit Phase B, 2026-10-03) ────────────
@@ -1504,7 +1525,7 @@ def test_resolve_row_thresholds_passes_momentum_gates_through_unscaled():
         "growth_score": np.linspace(-1.0, 1.0, 60),
         "inflation_score": np.linspace(1.0, -1.0, 60),
     })
-    base = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
+    base = _stamped(gz=0.5, iz=0.5, gm=0.05, im=0.05, dynamic=True)
     out = charting._resolve_row_thresholds(comp, 59, None, None, False, False, "US", base)
     assert out["gm"] == 0.05 and out["im"] == 0.05
 
@@ -1516,13 +1537,13 @@ def test_resolve_row_thresholds_is_a_noop_when_dynamic_is_off():
         "growth_score": np.linspace(-1.0, 1.0, 60),
         "inflation_score": np.linspace(1.0, -1.0, 60),
     })
-    base = {"gz": 0.42, "iz": 0.37, "gm": 0.05, "im": 0.05, "dynamic": False}
+    base = _stamped(gz=0.42, iz=0.37, gm=0.05, im=0.05, dynamic=False)
     assert charting._resolve_row_thresholds(comp, 59, None, None, False, False, "US", base) == base
 
 
 def test_resolve_row_thresholds_survives_missing_columns_and_empty_input():
     import dashboard.charting as charting
-    base = {"gz": 0.5, "iz": 0.5, "gm": 0.05, "im": 0.05, "dynamic": True}
+    base = _stamped(gz=0.5, iz=0.5, gm=0.05, im=0.05, dynamic=True)
     assert charting._resolve_row_thresholds(
         pd.DataFrame(), 0, None, None, False, False, "US", base) == base
     bare = pd.DataFrame({"as_of": pd.date_range("2020-01-31", periods=3, freq="ME")})
@@ -1532,7 +1553,7 @@ def test_resolve_row_thresholds_survives_missing_columns_and_empty_input():
 
 # ── Growth chip: level-gated, with momentum as a sub-state ────────────────────
 # 2026-10-06. The growth chip used to require Z > gz AND dZ > gm; it now
-# requires the level alone, and momentum moved to _growth_momentum_state().
+# requires the level alone, and momentum moved to _growth_breadth_state().
 # The inflation chip deliberately KEPT its momentum gate. Nothing pinned the
 # old growth behaviour, so the whole asymmetry is pinned here instead.
 
@@ -1573,27 +1594,27 @@ def test_inflation_chip_keeps_its_momentum_gate():
     assert i == "Inflation"
 
 
-def test_growth_momentum_state_splits_a_growth_reading_three_ways():
+def test_growth_breadth_state_splits_a_growth_reading_three_ways():
     import dashboard.charting as charting
-    assert charting._growth_momentum_state("Growth", 0.9,  0.20, _T) == "accelerating"
-    assert charting._growth_momentum_state("Growth", 0.9,  0.001, _T) == "flat"
-    assert charting._growth_momentum_state("Growth", 0.9, -0.001, _T) == "flat"
-    assert charting._growth_momentum_state("Growth", 0.9, -0.20, _T) == "fading"
+    assert charting._growth_breadth_state("Growth", 0.9,  0.20, _T) == "accelerating"
+    assert charting._growth_breadth_state("Growth", 0.9,  0.001, _T) == "flat"
+    assert charting._growth_breadth_state("Growth", 0.9, -0.001, _T) == "flat"
+    assert charting._growth_breadth_state("Growth", 0.9, -0.20, _T) == "fading"
     # boundary sits at gm exactly: > gm accelerates, >= -gm is flat
-    assert charting._growth_momentum_state("Growth", 0.9, 0.04, _T) == "flat"
-    assert charting._growth_momentum_state("Growth", 0.9, 0.041, _T) == "accelerating"
+    assert charting._growth_breadth_state("Growth", 0.9, 0.04, _T) == "flat"
+    assert charting._growth_breadth_state("Growth", 0.9, 0.041, _T) == "accelerating"
 
 
-def test_growth_momentum_state_is_none_outside_the_growth_regime():
+def test_growth_breadth_state_is_none_outside_the_growth_regime():
     # Transition has no inside to describe, and the Retraction-side split does
     # not separate on forward GDP (+1.42 / +1.01 / +1.43), so it is not carried over.
     import dashboard.charting as charting
-    assert charting._growth_momentum_state("Transition", 0.2, 0.9, _T) is None
-    assert charting._growth_momentum_state("Retraction", -0.9, -0.9, _T) is None
-    assert charting._growth_momentum_state("Growth", None, 0.9, _T) is None
+    assert charting._growth_breadth_state("Transition", 0.2, 0.9, _T) is None
+    assert charting._growth_breadth_state("Retraction", -0.9, -0.9, _T) is None
+    assert charting._growth_breadth_state("Growth", None, 0.9, _T) is None
 
 
-def test_growth_momentum_state_has_a_plain_english_gloss_for_every_state():
+def test_growth_breadth_state_has_a_plain_english_gloss_for_every_state():
     import dashboard.charting as charting
     for state in ("accelerating", "flat", "fading"):
         assert state in charting._GROWTH_MOMENTUM_STATE
@@ -1606,15 +1627,177 @@ def test_default_growth_band_is_004_and_inflation_gate_stays_005():
     assert charting._DEFAULT_THRESHOLDS["im"] == 0.05
 
 
-def test_threshold_store_initial_data_matches_the_module_defaults():
-    # This pair has drifted twice (the "dynamic" default-ON change, then
-    # gm/im 0.0->0.05). A mismatch silently gives every new browser different
-    # thresholds from the ones the code documents, so pin it.
+def test_threshold_store_initial_data_references_the_module_defaults():
+    # This pair drifted twice as two hand-maintained literals (the "dynamic"
+    # default-ON change, then gm/im 0.0->0.05), silently giving new browsers
+    # different thresholds from the ones the code documents. The Store now
+    # REFERENCES the constant instead of restating it, so drift is impossible
+    # -- pin that structure rather than comparing two literals.
     import re, pathlib
     import dashboard.charting as charting
     src = pathlib.Path(charting.__file__).read_text()
-    m = re.search(r'dcc\.Store\(id="regime-threshold-store",.*?data=(\{.*?\}),',
+    m = re.search(r'dcc\.Store\(id="regime-threshold-store",.*?data=([^,\n]+),',
                   src, re.S)
     assert m, "could not locate the regime-threshold-store initial data"
-    store = eval(m.group(1))          # literal dict in our own source
-    assert store == charting._DEFAULT_THRESHOLDS
+    assert m.group(1).strip() == "dict(_DEFAULT_THRESHOLDS)", (
+        "the threshold store must reference _DEFAULT_THRESHOLDS, not restate it")
+
+
+# ── Threshold store: resolution + stale-value migration ──────────────────────
+# Regression suite for 2026-10-07. Two persisted-state defects were in
+# production: a pre-2026-10-03 store carries im=0.0 and degenerates the
+# inflation chip's momentum gate into a sign test (US 2026-10 read Disinflation
+# off a -0.0023 drift), and a pre-2026-07-09 store has no "dynamic" key while
+# five files each guessed a different fallback for it. The store's initial data
+# was already pinned by the test above -- which could not see either bug,
+# because neither lives in the initial data. These do.
+
+def _V():
+    import dashboard.charting as charting
+    return charting._THRESHOLD_STORE_VERSION
+
+
+def test_resolve_thresholds_returns_defaults_for_a_fresh_browser():
+    import dashboard.charting as charting
+    assert charting.resolve_thresholds(None) == charting._DEFAULT_THRESHOLDS
+
+
+@pytest.mark.parametrize("stale", [
+    {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0},                    # pre-2026-07-09
+    {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": True},   # pre-2026-10-03
+    {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0, "dynamic": False},
+    {"gz": 0.5, "iz": 0.5, "v": 1},                                  # an older stamp
+])
+def test_stale_stores_are_migrated_to_current_defaults(stale):
+    # The whole point: a browser cannot keep running a retired rule.
+    import dashboard.charting as charting
+    assert charting.resolve_thresholds(stale) == charting._DEFAULT_THRESHOLDS
+
+
+@pytest.mark.parametrize("junk", ["not-a-dict", 42, [], {"v": "nonsense"}])
+def test_resolve_thresholds_survives_junk(junk):
+    import dashboard.charting as charting
+    assert charting.resolve_thresholds(junk) == charting._DEFAULT_THRESHOLDS
+
+
+def test_a_deliberate_current_version_choice_is_respected_exactly():
+    # The flip side of migration: a choice made under TODAY's rules must stand,
+    # including one that equals an old default (im=0.0 is a legal slider stop).
+    import dashboard.charting as charting
+    chosen = {**charting._DEFAULT_THRESHOLDS, "im": 0.0, "dynamic": False, "gz": 1.25}
+    got = charting.resolve_thresholds(chosen)
+    assert got["im"] == 0.0 and got["dynamic"] is False and got["gz"] == 1.25
+
+
+def test_resolve_thresholds_fills_missing_keys_and_drops_nulls():
+    # Callers read t["dynamic"] / t["gz"] directly, so the result must be
+    # complete AND non-null: bool(None) is a silent False ("static"), and
+    # float(None) raises.
+    import dashboard.charting as charting
+    got = charting.resolve_thresholds({"gz": None, "dynamic": None, "v": _V()})
+    assert set(got) == set(charting._DEFAULT_THRESHOLDS)
+    assert all(v is not None for v in got.values())
+    assert got["dynamic"] is True
+
+
+def test_dynamic_defaults_on_for_every_kind_of_absent_choice():
+    # The user-facing contract: dynamic is ON until somebody turns it off here
+    # and now.
+    import dashboard.charting as charting
+    for stored in (None, {}, {"gz": 0.5}, {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0}):
+        assert charting.resolve_thresholds(stored)["dynamic"] is True
+
+
+def test_no_module_reimplements_a_threshold_default():
+    # The root cause was five files each hand-typing its own fallback, so
+    # `dynamic` resolved True on the Regime Map and False on Command Center
+    # from ONE stored value. Defaults live in _DEFAULT_THRESHOLDS; reads go
+    # through resolve_thresholds()/thr(). Keep it that way.
+    import pathlib, re
+    root = pathlib.Path(__file__).resolve().parent.parent
+    pattern = re.compile(r'\.get\(\s*"(gz|iz|gm|im|dynamic|conc_adj)"\s*,')
+    offenders = []
+    for path in sorted((root / "dashboard").glob("*.py")) + \
+                sorted((root / "indicators").glob("*.py")):
+        for n, line in enumerate(path.read_text().split("\n"), 1):
+            if pattern.search(line) and "_DEFAULT_THRESHOLDS[" not in line:
+                offenders.append(f"{path.name}:{n}: {line.strip()}")
+    assert not offenders, (
+        "hand-typed threshold fallback(s) -- use thr(t, key) instead:\n"
+        + "\n".join(offenders))
+
+
+def test_version_bump_is_required_when_a_default_changes():
+    # A default change without a version bump leaves every returning browser on
+    # the old rule -- exactly the 2026-10-03 gm/im regression. This fingerprint
+    # fails loudly on the next default change; bump _THRESHOLD_STORE_VERSION
+    # and update the expected values together.
+    import dashboard.charting as charting
+    assert charting._THRESHOLD_STORE_VERSION == 2
+    assert {k: v for k, v in charting._DEFAULT_THRESHOLDS.items() if k != "v"} == {
+        "gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05,
+        "dynamic": True, "conc_adj": False,
+    }
+
+
+def test_apply_stamps_the_version_so_a_choice_survives_the_next_bump():
+    import dashboard.charting as charting
+    from unittest.mock import patch
+    with patch("dashboard.charting.ctx") as _c:
+        pass
+    # _save_thresholds reads dash.ctx, so exercise it through the registered
+    # callback's python function with a patched ctx.triggered_id.
+    import dash
+    with patch.object(dash, "ctx") as mock_ctx:
+        mock_ctx.triggered_id = "rh-threshold-apply"
+        out = charting._save_thresholds(1, 0, 0.6, 0.7, 0.03, 0.02, ["dynamic"], None)
+    assert out["v"] == charting._THRESHOLD_STORE_VERSION
+    assert (out["gz"], out["iz"], out["gm"], out["im"]) == (0.6, 0.7, 0.03, 0.02)
+    assert out["dynamic"] is True
+    # And it must round-trip unchanged through the resolver.
+    assert charting.resolve_thresholds(out) == {**charting._DEFAULT_THRESHOLDS, **out}
+
+
+def test_apply_keeps_a_deliberate_zero_on_the_momentum_sliders():
+    # `float(gm or 0.0)` would rewrite a deliberate 0.0; both sliders have a
+    # 0.0 stop, so 0.0 has to survive Apply.
+    import dashboard.charting as charting
+    import dash
+    from unittest.mock import patch
+    with patch.object(dash, "ctx") as mock_ctx:
+        mock_ctx.triggered_id = "rh-threshold-apply"
+        out = charting._save_thresholds(1, 0, 0.5, 0.5, 0.0, 0.0, [], None)
+    assert out["gm"] == 0.0 and out["im"] == 0.0 and out["dynamic"] is False
+
+
+def test_reset_writes_a_stamped_default_dict():
+    import dashboard.charting as charting
+    import dash
+    from unittest.mock import patch
+    with patch.object(dash, "ctx") as mock_ctx:
+        mock_ctx.triggered_id = "rh-threshold-reset"
+        out = charting._save_thresholds(0, 1, 0.5, 0.5, 0.0, 0.0, [], None)
+    assert out == charting._DEFAULT_THRESHOLDS
+    assert charting.resolve_thresholds(out) == charting._DEFAULT_THRESHOLDS
+
+
+def test_dynamic_toggle_initial_value_matches_the_default():
+    # An unchecked box next to a default-ON store misreports the live rule for
+    # the instant before the modal syncs from the store.
+    import re, pathlib
+    import dashboard.charting as charting
+    src = pathlib.Path(charting.__file__).read_text()
+    m = re.search(r'id="rh-dynamic-toggle".*?value=(\[[^\]]*\])', src, re.S)
+    assert m, "could not locate the rh-dynamic-toggle initial value"
+    checked = "dynamic" in m.group(1)
+    assert checked is bool(charting._DEFAULT_THRESHOLDS["dynamic"])
+
+
+def test_thr_falls_back_to_the_module_default_never_a_literal():
+    import dashboard.charting as charting
+    for key, default in charting._DEFAULT_THRESHOLDS.items():
+        assert charting.thr(None, key) == default
+        assert charting.thr({}, key) == default
+        assert charting.thr({key: None}, key) == default
+    # and a per-month dynamic override passes straight through
+    assert charting.thr({"gz": 0.226}, "gz") == 0.226

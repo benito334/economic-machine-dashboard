@@ -184,8 +184,20 @@ def pit_composite(
     return score
 
 
-def compute_pit_scores(conn, country: str = "US") -> pd.DataFrame:
-    """Monthly point-in-time growth/inflation/credit composite scores."""
+def compute_pit_scores(conn, country: str = "US",
+                       min_signals: "int | None" = None) -> pd.DataFrame:
+    """Monthly point-in-time growth/inflation/credit composite scores.
+
+    `min_signals` defaults to PIT_MIN_SIGNALS (3), the value the published
+    backtest reports were run at — do not change that default, it would move
+    results already written up in docs/backtests/.
+
+    The composites_pit pipeline pass passes production's own
+    `min_signals_required` instead (2026-10-07). The two must agree or the
+    published PIT series gets coverage holes the main series does not have:
+    at the backtest's 3, Luxembourg (2 growth signals, 1 inflation) produced
+    ZERO rows, and every sparse basket would have been silently blanked.
+    """
     cfg = load_composites_config(country)
     prefix = country.lower()
     baskets = {
@@ -209,9 +221,10 @@ def compute_pit_scores(conn, country: str = "US") -> pd.DataFrame:
     z_wide = values.apply(pit_zscore)
 
     out = pd.DataFrame(index=values.index)
+    _min = PIT_MIN_SIGNALS if min_signals is None else int(min_signals)
     for name, inds in baskets.items():
         if inds:
-            out[name] = pit_composite(z_wide, inds, prefix)
+            out[name] = pit_composite(z_wide, inds, prefix, min_signals=_min)
     return out
 
 

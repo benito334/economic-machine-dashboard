@@ -4,6 +4,114 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-07 (2) — Point-in-time composites + methodology stamp (the downstream-feed fix)
+
+**Where this came from.** A downstream project (CreovaOne) fits asset betas to `composites.growth_score` / `inflation_score` and asked five questions about the feed. Four were answerable from this codebase. The fifth — is a past `composites` row stable? — turned out to be the important one, and the answer is no, for three independent reasons that had been running together in my own head and in the explanation I first gave the user. Separating them is what made the fix obvious:
+
+| mechanism | verdict |
+| :--- | :--- |
+| Methodology / threshold / weight changes rewriting history | **Correct. Keep.** One consistent lens beats a patchwork of retired rules. |
+| Full-history Z-scores | Statistical look-ahead — a 2010 row is scored against a distribution running through today. Needs a parallel series. |
+| Data revisions (BEA/BLS restatements) | Separate again; handled by `backtest_g3`'s ALFRED path and `history.duckdb`. |
+
+The user pushed back on the first row and was right to — recomputing history under the current rule is the whole point of a diagnostic. The flaw was mine in presenting all three as one problem. **So the fix is additive: nothing about the existing behaviour changes.**
+
+**Shipped 1 — `composites_pit`.** A SECOND composite series published alongside `composites`, not replacing it. Same baskets, same weights, but expanding-window `shift(1)` Z-scores (`backtest.pit_zscore`), so a month is scored only against observations strictly before it. New pipeline **Pass 5b**, after the country loop (it reads every country's signals back out of the DB), best-effort per country so one bad country cannot fail a run. **7,764 rows across all 14 countries.** Table carries `credit_score` too, since `compute_pit_scores` already produces it.
+
+How far apart the two series actually are, US, measured not asserted:
+
+| | correlation | sign disagreement |
+| :--- | ---: | ---: |
+| growth level | 0.942 | 14.6% of months |
+| inflation level | **0.654** | **24.5% of months** |
+
+**Shipped 2 — methodology stamp.** New `indicators/methodology_version.py`; `methodology_version` + `config_hash` columns on both composite tables. The manual version is date-keyed to the Methodology §15 revision log. The hash is a digest of `composites_policy.yaml` + the country's `_composites.yaml`, and exists because a manual version will never catch a weight edited through the importance editor or a GDP-regression recalibration — `weight_change_log` already holds 10 such US changes since 2026-07-05. Stamped once per country per run, not per row. Now a consumer whose refit moves can tell "the world changed" from "the Indicators Machine changed its mind", **without anything being frozen**.
+
+**Shipped 3 — `docs/consumer_contract.md`.** CreovaOne had reverse-engineered our weighting from a live `weight_audit` row because nothing documented it. One page: which table to read for which job, the three deprecated/trap columns, and the join hazards.
+
+**Two real bugs, both found by running all 14 countries rather than inspecting the code.**
+1. **Luxembourg produced ZERO PIT rows.** `backtest.PIT_MIN_SIGNALS = 3` is a backtest constant; production's `min_signals_required` is **1**. LU has 2 growth signals and 1 inflation signal, so every month blanked — and every sparse basket would have, silently, with `composites_pit` carrying coverage holes `composites` does not have. Fixed by threading `min_signals` through `compute_pit_scores` and having the pipeline pass production's own value. The backtest default is deliberately **unchanged**: `docs/backtests/*.md` reports numbers computed at 3, and moving the default would silently rewrite published results.
+2. **US was processed twice.** `us_composites.yaml` lives under `config/countries/` like every other country, so `["US"] + glob(...)` double-counted it. The glob alone is the complete list.
+
+**Trap avoided:** the stamp goes in via `_upsert_in_place`, which SETs only the listed columns — verified after the write that `growth_score_48m` / `inflation_score_90m` (owned by a later pass) survived intact. That is the exact failure mode of the 03:00 auto-import that blanked every rolling column in October.
+
+**Tests: 828 passed, zero exclusions.** 17 new in `tests/test_composites_pit.py`. The headline one does not test an implementation detail — it pins the property a consumer actually depends on: **appending future observations must not change a past PIT score**, with the full-history score shown failing the same check. Two others are regression guards for the bugs above. Note for the next person writing a `pit_zscore` test: a perfectly flat fixture has std 0 and correctly yields NaN, and the function clips at ±4σ — both bit me before the test was right.
+
+**Then shipped on the same day, on the user's instruction: the `*_momentum` -> `*_breadth` rename.** All six forces (growth / inflation / rate / credit / volatility / productivity). These columns are the SHARE of contributing signals moving in the force's positive direction — they were never a rate of change, and the model's own field comments already said "fraction of ... direction signals (0-1)". The name was the only thing wrong, and it collided with a genuine momentum this project publishes in the same UI (the MoM delta of the score, labelled "Momentum (Δ MoM)" on the regime card) — which is exactly how a downstream consumer nearly fitted betas to it.
+
+Done as an **additive rename with a written mirror**, because this is a published column with a live consumer:
+* `*_breadth` is canonical — Pydantic model field, DB column, every internal read site.
+* `*_momentum` columns are KEPT and still written with the identical value each run, and were **backfilled from the old values at migration** (8,306 rows), so both names are populated for all history. Nothing breaks on the next pipeline run, and there is no transition gap. The mirror gets dropped when CreovaOne confirms migration — not on a timer.
+* **UI labels follow the data**: the Signals page section headers and the force-detail banner chip + chart card now read "Breadth". Verified live in the browser after rebuild — `GROWTH FORCE · Z +0.37 · BREADTH 17%`.
+* **What deliberately did NOT change**: the per-signal "Momentum" table column (that is a genuine 3-month direction arrow) and the "Momentum Z (12mo)" / "Momentum Δ MoM" readouts (genuine first differences). Renaming those would have been the actual error.
+
+A guard test greps `dashboard/` and fails on any remaining read of the deprecated mirror — internally there must be exactly one name, or the next rename has to be done twice.
+
+**Then, also same-day: `confidence` redefined — and it was worse than "legacy naming".**
+
+Investigating before changing it showed the stored `confidence` was not merely an old label. It measured agreement with the four-season **quadrant**, with the expected per-signal direction taken from `_EXPECTED_DIR[(growth_score >= 0, inflation_score >= 0)]` — a **raw sign split that ignores the regime thresholds entirely**, feeding the seasons that were demoted to display-only map geography on 2026-07-06. The column was answering a question the project stopped asking in July.
+
+It now carries **Chip Direction Agreement**: heading = sign of the composite's own MoM delta, metric = share of the basket moving with it. New per-force `growth_dir_agreement` / `inflation_dir_agreement` columns; `confidence` is their mean (verified 539/539 US rows).
+
+**Moving the computation into the engine fixed two drifts in the dashboard's own version** — so "make the column match the screen" would have meant matching a wrong number:
+1. It measured **every signal carrying `force=='growth'` (19 for the US)** rather than the **12** that actually build the composite. Different population from the chip it claimed to describe.
+2. It **never flipped `invert` signals**, so a FALLING unemployment rate counted as *disagreeing* with a RISING growth chip. `unemployment` is `invert: true` in the US growth basket.
+
+`chip_direction_agreement()` is now a reader of the stored column rather than a second implementation — the same "one definition, read everywhere" shape as the threshold resolver earlier today. Live US values moved from the old 50%/50% to G 28.6% / I 33.3%, which is the point: the old number was computed over the wrong set.
+
+All 14 countries recomputed and upserted. `METHODOLOGY_VERSION` bumped to **2026.10.07** — a definition change that moves historical values must move the stamp, or the stamp is worthless. A test pins that.
+
+**What is NOT fixed:** `signals.surprise` is still a declared column with 0 non-null rows out of 368,225 — documented in the consumer contract. Filling it needs the signal-level surprise build that Ray's own decision test (worklog 2026-10-07, Ray session) says to run the incremental-R² check on first, so it stays deliberately unbuilt.
+
+---
+
+## 2026-10-07 — Regime-threshold persistence: returning browsers were running retired classifier rules
+
+**How it surfaced.** A question about the chips, not a bug report. The user asked why the US inflation chip read **Transition** when the inflation Z had been below the −0.15 effective threshold for months. That part was correct and explainable: the inflation chip is dual-condition, the Z leg passes (−0.332 vs −0.150) but the momentum leg does not (Δ −0.002 vs a −0.05 gate), so "low but no longer falling" → Transition. The chip had in fact printed Disinflation in July (Δ −0.184) and reverted when the decline stalled. Then they refreshed the page and **the same chip said Disinflation** — same data, same page.
+
+**Root cause.** The DB had not been written since 03:06 that morning, so the input that changed had to be the persisted threshold store. Replaying the real chip card across every window/threshold combination showed exactly one input that produces Disinflation on today's numbers: **`im = 0.0`**, where the momentum gate degenerates into a bare sign test and a −0.0023 drift counts as "falling".
+
+`im`/`gm` shipped 2026-06-25 defaulting to **0.0** and were raised to 0.05 on 2026-10-03. The thresholds live in a localStorage `dcc.Store`, and every read site did:
+
+```python
+t = stored or _DEFAULT_THRESHOLDS     # whole-dict SWAP, not a merge
+im = float(t.get("im", 0.05))         # key EXISTS as 0.0 -> fallback never fires
+```
+
+So any browser that pressed Apply between those dates has been running the pre-2026-10-03 inflation rule ever since. And because `regime-threshold-store` is an `Input` with `prevent_initial_call=False`, the card renders once against the component's declared defaults and again when localStorage hydrates — **two different answers per page load, order depending on timing.** That is the refresh flip.
+
+**A second, worse instance of the same bug.** `dynamic` has no single fallback either — five files each guessed:
+
+| fallback when the key is absent | files |
+| :--- | :--- |
+| `True` | `charting.py` (7 sites), `force_detail.py` |
+| `False` | `command_center.py`, `user_guide.py`, `indicators/audit_benchmarks.py` |
+| `False` (no default at all — `t.get("dynamic")` → `None`) | `relative_view.py` |
+
+A store written before 2026-07-09 has no `dynamic` key, so **one browser rendered the Regime Map dynamic and Command Center static off one dataset.** Quantified over the full US history: the flag alone changes a chip in **132 of 538 months (25%)**, and today it decides the growth headline (`Growth [flat]` at gz 0.226 vs `Transition` at 0.500). `audit_benchmarks.py` is pipeline Pass 10, so stale-static thresholds could also be **written into `validator_verdicts`**.
+
+**Shipped.** One resolver, one accessor, no per-file defaults anywhere:
+
+* **`resolve_thresholds(stored)`** — the single boundary. Non-dict or wrong-version → current defaults; current version → defaults with stored values overlaid, **nulls dropped** (callers read `t["dynamic"]` directly, where `None` is a silent `False` and `float(None)` raises).
+* **`thr(t, key)`** — every downstream read. Downstream dicts carry per-month dynamic `gz`/`iz` overrides and are often partial, so they must *not* be re-resolved; what they must not do is re-type a default. Rule for new code: **resolve once at the boundary, `thr()` everywhere after.**
+* **`_THRESHOLD_STORE_VERSION`** (now 2), stamped into `_DEFAULT_THRESHOLDS` and written by Apply/Reset/both toggles. An unstamped or older-stamped store is treated as "never an explicit choice under the current rules" and migrates to the defaults — which is what makes **dynamic ON the default for everyone who has not deliberately turned it off since this version**, the user's stated requirement. A choice made under today's rules is honored exactly, `im=0.0` and dynamic-off included.
+* `_DEFAULT_THRESHOLDS` **moved above the layout** so the Store's initial data is `dict(_DEFAULT_THRESHOLDS)` rather than a hand-retyped literal — the "must stay in sync" comment it carried is now structurally unnecessary.
+* Fixed in passing: `_sync_threshold_sliders` defaulted `gm` to the retired `0.05` (the modal misreported the band to anyone without a stored `gm`); `_save_thresholds` used `float(gm or 0.0)`, which cannot distinguish a deliberate 0.0 slider stop from absent, and wrote no version stamp; the `rh-dynamic-toggle` checkbox was statically `value=[]` beside a default-ON store.
+
+**Migration is read-only** — the stale localStorage value is left untouched until the user next hits Apply/Reset or a toggle. Deliberate, in preference to silently rewriting a visitor's stored data.
+
+**Verified in the browser, not just in tests.** Planted the exact stale store (`{gm:0, im:0, dynamic:true}`) in localStorage, reloaded, and confirmed: Regime History reads `G · Growth / growth flat` + `I · Transition` with the readout showing the **migrated** gates (G·Δ 0.040 / I·Δ 0.050) while the stale value still sat in localStorage; Command Center agreed exactly (previously it would have gone static); the modal showed gm **0.04**, im 0.05, dynamic checked. Then unchecked dynamic → store rewritten stamped `v:2` → reload → choice held (no DYNAMIC badge, ±0.50, Transition/Transition). Reset → back to defaults. All three images (`charting`/`pipeline`/`scheduler`) rebuilt, per the standing separate-image-tags lesson, since `audit_benchmarks.py` is pipeline code.
+
+**Tests: 811 passed, zero exclusions.** 21 new in `tests/test_charting.py` covering migration, junk input, null-dropping, deliberate-choice survival, Apply/Reset version stamping, the deliberate-zero case, and the toggle's initial value. Two are guards rather than unit tests: **`test_no_module_reimplements_a_threshold_default`** greps `dashboard/` and `indicators/` for any hand-typed `.get("gz"|"iz"|"gm"|"im"|"dynamic"|"conc_adj", <literal>)` and fails with file:line — this is the test the codebase lacked, since the existing store-pinning test could not see either bug (neither lives in the initial data) — and **`test_version_bump_is_required_when_a_default_changes`**, a fingerprint of the default values that fails loudly on the next change so the version bump cannot be forgotten. 6 pre-existing tests were **rewritten, not deleted**: they passed unversioned partial dicts and asserted the output equalled them, which now (correctly) tests migration instead of the momentum-pass-through and no-op-guard behaviour they were written for; a `_stamped()` fixture helper makes the distinction explicit.
+
+**No formula, weight or threshold VALUE changed.** This is purely about which values a given browser was using. Methodology §15 revision log updated.
+
+**Open / next.** Two things worth noting, neither started:
+1. The inflation chip now carries the **mirror** of the defect the growth chip was fixed for on 2026-10-06: a genuinely settled low-inflation regime — level clearly past the gate, simply not falling further — reads Transition indefinitely. The momentum gate was validated on flip-rate reduction (33%→9%), never against an independent inflation-outcome benchmark the way the growth change was tested against NBER dating. A `/dalio-audit` candidate, not a hunch to act on.
+2. The Regime Map's dot and season label are **level-only geometry** and cannot express the inflation momentum gate, so the dot can sit in the green "Expansion" corner while the chip above it reads Transition. The chip card is already embedded on that page (same component, after an August report of the same confusion), but nothing marks the disagreement. Two cheap options: outline the dot when chip and geometry disagree, or caption the season label with the live chip pair.
+
+---
+
 ## 2026-10-06 (3) — Dashboard UI consolidation: nav rollup, two page merges, two renames, 2-wide card grids
 
 **The ask.** A batch of UI edits from the user, verbatim scope: Relative Cycles (hazard-colour the stage warning icon, 2-wide country boxes instead of 4, make the cycle-correlation heatmaps readable); Fed Monitor (absorb the Yield Curve page's two graphs as its first two, in the shared card style, then delete that page; 2-wide everywhere); fold Central Bank Monitor into Fed Monitor and remove it; rename Case Study Monitor → **Debt Cycle Monitor** and make it 2-wide; combine Bubble Gauge and Valuations; rename Validator Audit → **Regime Validator**; make every sidebar nav group a rollup, larger and more obvious, with the Signals sub-pages' icons and sizes matched to the rest; fix the broken Bubble Gauge icon; enlarge the Feedback button and make it a plain yellow button rather than a link.

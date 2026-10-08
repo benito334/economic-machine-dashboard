@@ -87,20 +87,32 @@ class CompositeSnapshot(BaseModel):
     confidence: Optional[float] = None   # 0–1: fraction of signals whose direction agrees with quadrant
     disequilibrium_score: Optional[float] = None
     n_growth_signals: int = 0
+    # Chip Direction Agreement, per force (2026-10-07). Share of the basket
+    # moving with the chip's heading (= sign of the composite's MoM delta),
+    # invert-aware. `confidence` is the mean of whichever of these exist.
+    growth_dir_agreement: Optional[float] = None
+    inflation_dir_agreement: Optional[float] = None
     n_inflation_signals: int = 0
     n_forces: int = 0
     low_coverage: bool = False
     stale_signals: Optional[str] = None  # L3: "signal_id:fill_months,..." for signals with fill_age > 0
-    growth_momentum: Optional[float] = None    # fraction of growth-positive direction signals (0–1)
-    inflation_momentum: Optional[float] = None # fraction of inflation-positive direction signals (0–1)
+    # BREADTH, not momentum — the share of contributing signals moving in the
+    # force's positive direction (0–1). Renamed 2026-10-07: "momentum" read as
+    # a rate of change, which is a DIFFERENT quantity this project also
+    # publishes (the MoM delta of the score, shown on the regime card as
+    # "Momentum (Δ MoM)"). A downstream consumer nearly fitted betas to this
+    # thinking it was the first difference. The `*_momentum` DB columns are
+    # still written as a deprecated mirror — see docs/consumer_contract.md.
+    growth_breadth: Optional[float] = None    # fraction of growth-positive direction signals (0–1)
+    inflation_breadth: Optional[float] = None # fraction of inflation-positive direction signals (0–1)
     rate_score: Optional[float] = None        # financial accommodation composite (positive = loose)
     credit_score: Optional[float] = None      # credit health composite (positive = healthy)
-    rate_momentum: Optional[float] = None     # fraction of accommodation-positive direction signals (0–1)
-    credit_momentum: Optional[float] = None   # fraction of credit-health-positive direction signals (0–1)
+    rate_breadth: Optional[float] = None     # fraction of accommodation-positive direction signals (0–1)
+    credit_breadth: Optional[float] = None   # fraction of credit-health-positive direction signals (0–1)
     volatility_score: Optional[float] = None     # market volatility composite (positive = higher vol / risk-off)
-    volatility_momentum: Optional[float] = None  # fraction of vol-rising direction signals (0–1)
+    volatility_breadth: Optional[float] = None  # fraction of vol-rising direction signals (0–1)
     productivity_score: Optional[float] = None    # long-run productivity trend composite (Ray's third big force)
-    productivity_momentum: Optional[float] = None # fraction of productivity-rising direction signals (0–1)
+    productivity_breadth: Optional[float] = None # fraction of productivity-rising direction signals (0–1)
     weight_audit: Optional[str] = None  # JSON: point-in-time nominal/dynamic/decay weights by signal
 
 

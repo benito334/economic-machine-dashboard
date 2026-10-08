@@ -130,15 +130,16 @@ def load_composite_history(
         where = "WHERE " + " AND ".join(clauses)
         df = con.execute(
             f"SELECT as_of, growth_score, inflation_score, quadrant, confidence, "
+            f"growth_dir_agreement, inflation_dir_agreement, "
             f"disequilibrium_score, n_growth_signals, n_inflation_signals, n_forces, stale_signals, "
-            f"growth_momentum, inflation_momentum, weight_audit, "
+            f"growth_breadth, inflation_breadth, weight_audit, "
             f"growth_score_36m, growth_score_48m, growth_score_60m, "
             f"inflation_score_36m, inflation_score_48m, inflation_score_60m, "
             f"inflation_score_90m, inflation_score_120m, "
             f"disequilibrium_12m, disequilibrium_18m, disequilibrium_24m, "
-            f"rate_score, credit_score, rate_momentum, credit_momentum, "
-            f"volatility_score, volatility_momentum, "
-            f"productivity_score, productivity_momentum "
+            f"rate_score, credit_score, rate_breadth, credit_breadth, "
+            f"volatility_score, volatility_breadth, "
+            f"productivity_score, productivity_breadth "
             f"FROM composites {where} ORDER BY as_of",
             params,
         ).df()

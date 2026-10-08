@@ -143,7 +143,7 @@ def _comp_hist() -> pd.DataFrame:
     return pd.DataFrame({
         "as_of": dates,
         "growth_score": [0.30] * 24,
-        "growth_momentum": [0.6] * 24,
+        "growth_breadth": [0.6] * 24,
     })
 
 

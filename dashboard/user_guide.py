@@ -301,10 +301,11 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
         return no_update
     import dash_bootstrap_components as dbc
     from dashboard.charting import (
-        _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
+        _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
         _INFLATION_WINDOW_COL, _classify_regime, _dyn_threshold_input,
-        _growth_momentum_state,
+        _growth_breadth_state,
         _season_label, compute_dynamic_thresholds,
+        resolve_thresholds,
     )
 
     theme = theme_name or DEFAULT_THEME
@@ -337,21 +338,21 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
 
     g, i = _last(g_col), _last(i_col)
     g_d, i_d = _dlt(g_col), _dlt(i_col)
-    t = dict(thresholds or _DEFAULT_THRESHOLDS)
-    dyn_on = bool(t.get("dynamic", False))
+    t = resolve_thresholds(thresholds)
+    dyn_on = bool(t["dynamic"])
     dyn_df = (compute_dynamic_thresholds(_dyn_threshold_input(hist, g_col, i_col),
-                                         base_gz=float(t.get("gz", 0.5)),
-                                         base_iz=float(t.get("iz", 0.5)))
+                                         base_gz=float(t["gz"]),
+                                         base_iz=float(t["iz"]))
               if not hist.empty else pd.DataFrame())
-    eff_gz = float(dyn_df["dyn_gz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t.get("gz", 0.5))
-    eff_iz = float(dyn_df["dyn_iz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t.get("iz", 0.5))
+    eff_gz = float(dyn_df["dyn_gz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t["gz"])
+    eff_iz = float(dyn_df["dyn_iz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t["iz"])
     chip_t = {**t, "gz": eff_gz, "iz": eff_iz}
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, chip_t,
                                       g_history=hist[g_col], i_history=hist[i_col])
-    g_mom_state = _growth_momentum_state(g_chip, g, g_d, chip_t)
+    g_mom_state = _growth_breadth_state(g_chip, g, g_d, chip_t)
     season_now = _season_label(g, i, chip_t)
-    g_agree = chip_direction_agreement(latest_sig, "growth", g_d)
-    i_agree = chip_direction_agreement(latest_sig, "inflation", i_d)
+    g_agree = chip_direction_agreement(hist, "growth")
+    i_agree = chip_direction_agreement(hist, "inflation")
 
     try:
         stage_hist = load_debt_cycle_stage_history(country=country)

@@ -640,6 +640,114 @@ for _entry in _CATALOG:
 # signal_id → entry lookup
 _BY_ID: dict[str, dict] = {e["signal_id"]: e for e in _CATALOG}
 
+# ── Regime classification thresholds ─────────────────────────────────────────
+# Defined ABOVE the layout on purpose: the regime-threshold-store's initial
+# data is `dict(_DEFAULT_THRESHOLDS)`, so the two cannot drift apart. They used
+# to be a hand-retyped literal and a constant, which drifted twice.
+# Ray's dynamic thresholds are ON by default (his 7-step algorithm; backtest
+# G2 found dynamic ≥ fixed). Users can still turn them off in the Regime
+# Thresholds modal; an explicit choice (stored) is respected.
+#
+# gm/im raised 0.0 -> 0.05 (coverage-audit follow-up, 2026-10-03): a pure
+# sign test on momentum lets a single noisy one-month wiggle flip the
+# Growth/Retraction (or Inflation/Disinflation) label -- exactly the
+# false-positive mode flagged in the user's own notes. Backtested against
+# the US direction-validation scenarios (indicators/backtest.py,
+# US_SCENARIOS) before changing: wrong-direction rate was IDENTICAL at
+# 0.9% (1/115 months) for gm=im in {0.0, 0.05, 0.1} -- raising the gate
+# costs nothing on known episodes. Label-flip frequency over the full PIT
+# history dropped from 37.9%->22.6% of months for inflation at 0.05 (growth
+# flips were unaffected at 0.05, needing 0.1 to move -- 0.05 is the value
+# actually cited in the source note, so that's what shipped; 0.1 tested
+# cleanly too and is a candidate if 0.05 proves too weak in practice).
+# gm 0.05 -> 0.04 (2026-10-06): gm no longer GATES the growth chip, it is the
+# accelerating/flat boundary of _growth_breadth_state. 0.04 is the value Ray
+# specified and the one our own acceptance test clears (accelerating-vs-flat
+# separation +0.39pp on forward realized GDP, inside his stated 0.3-0.5pp band).
+# im stays 0.05: the gate still gates the inflation chip, where it earns its keep.
+#
+# THRESHOLD_STORE_VERSION — bump this whenever a DEFAULT above changes.
+#
+# The thresholds live in a localStorage dcc.Store, so a browser keeps whatever
+# it last persisted forever. Before 2026-10-07 every read site did
+# `stored or _DEFAULT_THRESHOLDS` (a whole-dict swap) and then `.get(key,
+# <literal>)`, which meant a key PRESENT in an old stored dict beat the new
+# default outright -- the fallback literal never fired. Two concrete
+# regressions came out of that:
+#   * a store written between 2026-06-25 and 2026-10-03 carries im=0.0, which
+#     degenerates the inflation chip's momentum gate into a bare sign test (US
+#     2026-10 read Disinflation off a -0.0023 drift instead of Transition);
+#   * a store written before 2026-07-09 has no "dynamic" key at all, and the
+#     per-file fallback literals disagreed -- charting.py said True while
+#     command_center/user_guide/audit_benchmarks said False and relative_view
+#     said None -- so one browser rendered dynamic and static chips side by
+#     side off one dataset (the flag alone changes a US chip in 25% of months).
+# Both are fixed by routing EVERY read through resolve_thresholds() below and
+# deleting the per-file fallbacks. A stored dict stamped with an older version
+# is treated as "never an explicit choice under the current rules" and resets
+# to the defaults, which is what keeps dynamic mode on by default for everyone
+# who has not deliberately turned it off SINCE this version.
+_THRESHOLD_STORE_VERSION = 2
+
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": True,
+                       "conc_adj": False, "v": _THRESHOLD_STORE_VERSION}
+
+
+def resolve_thresholds(stored: "dict | None") -> dict:
+    """The thresholds actually in force, from a persisted store value.
+
+    THE one place that answers "what are the thresholds". Never read a
+    threshold key off a raw store value with its own `.get(key, literal)`
+    fallback -- that is the drift this function exists to end. Callers get a
+    complete dict, so `t["dynamic"]` is always safe.
+
+    Rules:
+      * not a dict, or stamped with a different version -> the current
+        defaults. An old store is NOT a deliberate choice under today's rules,
+        and silently honoring half of it is how a browser ends up running a
+        retired classifier (see the comment above).
+      * current version -> defaults with the stored values overlaid, so a
+        deliberate choice (im=0.0 included) is respected exactly.
+    """
+    if not isinstance(stored, dict):
+        return dict(_DEFAULT_THRESHOLDS)
+    try:
+        version = int(stored.get("v", 0) or 0)
+    except (TypeError, ValueError):
+        return dict(_DEFAULT_THRESHOLDS)
+    if version != _THRESHOLD_STORE_VERSION:
+        return dict(_DEFAULT_THRESHOLDS)
+    # Drop nulls before overlaying. A stored explicit null is not a choice, and
+    # letting it through would break this function's whole contract: callers
+    # read t["dynamic"] / t["gz"] directly, where None silently means "static"
+    # (bool(None) is False) or raises in float(). Nulls do reach here -- a
+    # Dash clientside write, or a hand-edited localStorage value.
+    return {**_DEFAULT_THRESHOLDS,
+            **{k: v for k, v in stored.items() if v is not None}}
+
+
+def thr(t: "dict | None", key: str):
+    """One threshold value out of an ALREADY-RESOLVED dict.
+
+    The division of labour, and the rule for any new code that touches
+    thresholds:
+      * resolve_thresholds() exactly once, at the boundary where a raw
+        localStorage value enters (a callback argument, a function's public
+        `thresholds=` parameter);
+      * thr() everywhere downstream.
+
+    Downstream dicts legitimately carry per-month dynamic gz/iz overrides and
+    are often partial (internal callers and tests pass {"gz": .., "iz": ..}),
+    so they must NOT be re-resolved -- that would throw the dynamic value away.
+    What they must not do is re-type a default: a hand-typed `0.5` fallback is
+    a second, invisible home for a value that is supposed to live in exactly
+    one place, and that is how gm/im/dynamic drifted. A None value (an old
+    store with an explicit null) also falls back, not propagates.
+    """
+    val = (t or {}).get(key, _DEFAULT_THRESHOLDS[key])
+    return _DEFAULT_THRESHOLDS[key] if val is None else val
+
+
 # ── Layout ────────────────────────────────────────────────────────────────────
 
 def _time_controls() -> html.Div:
@@ -1553,7 +1661,11 @@ _THRESHOLD_MODAL = dbc.Modal(
                     "label": " Use dynamic thresholds (Ray Dalio algorithm)",
                     "value": "dynamic",
                 }],
-                value=[],
+                # Matches the default-ON store. _sync_threshold_sliders
+                # overwrites this from the store when the modal opens; the
+                # static value only ever shows for the instant before that, and
+                # an unchecked box there misreported the live default.
+                value=["dynamic"],
                 style={"fontSize": "0.85rem", "color": "var(--font-color)", "marginBottom": "6px"},
             ),
             html.P(
@@ -1758,12 +1870,14 @@ app.layout = html.Div([
               # drifted twice (the "dynamic" default-ON change, then gm/im
               # 0.0->0.05), so it is now pinned by a test. Latest: gm->0.04
               # (2026-10-06), where gm stopped gating the growth chip and
-              # became the accelerating/flat band instead. Only affects
-              # browsers with no stored value yet -- an existing localStorage
-              # value isn't retroactively migrated, same as every prior
-              # default change here.
-              data={"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": True,
-                    "conc_adj": False},
+              # became the accelerating/flat band instead.
+              #
+              # Stale localStorage values ARE now migrated: the "v" stamp means
+              # resolve_thresholds() resets any store written against older
+              # defaults, so a returning browser can no longer keep running a
+              # retired rule. Bump _THRESHOLD_STORE_VERSION on every default
+              # change here.
+              data=dict(_DEFAULT_THRESHOLDS),
               storage_type="local"),
     # Sidebar collapsed state — persisted in localStorage
     dcc.Store(id="sidebar-collapsed",    data=False, storage_type="local"),
@@ -2302,30 +2416,6 @@ def _refresh_data_stamp(_trigger: Any) -> str:
 _GROWTH_COLOR    = "#4C9BE8"
 _INFLATION_COLOR = "#E8734C"
 
-# Ray's dynamic thresholds are ON by default (his 7-step algorithm; backtest
-# G2 found dynamic ≥ fixed). Users can still turn them off in the Regime
-# Thresholds modal; an explicit choice (stored) is respected.
-#
-# gm/im raised 0.0 -> 0.05 (coverage-audit follow-up, 2026-10-03): a pure
-# sign test on momentum lets a single noisy one-month wiggle flip the
-# Growth/Retraction (or Inflation/Disinflation) label -- exactly the
-# false-positive mode flagged in the user's own notes. Backtested against
-# the US direction-validation scenarios (indicators/backtest.py,
-# US_SCENARIOS) before changing: wrong-direction rate was IDENTICAL at
-# 0.9% (1/115 months) for gm=im in {0.0, 0.05, 0.1} -- raising the gate
-# costs nothing on known episodes. Label-flip frequency over the full PIT
-# history dropped from 37.9%->22.6% of months for inflation at 0.05 (growth
-# flips were unaffected at 0.05, needing 0.1 to move -- 0.05 is the value
-# actually cited in the source note, so that's what shipped; 0.1 tested
-# cleanly too and is a candidate if 0.05 proves too weak in practice).
-# gm 0.05 -> 0.04 (2026-10-06): gm no longer GATES the growth chip, it is the
-# accelerating/flat boundary of _growth_momentum_state. 0.04 is the value Ray
-# specified and the one our own acceptance test clears (accelerating-vs-flat
-# separation +0.39pp on forward realized GDP, inside his stated 0.3-0.5pp band).
-# im stays 0.05: the gate still gates the inflation chip, where it earns its keep.
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": True,
-                       "conc_adj": False}
-
 # Growth chip colors (positive = good)
 _GROWTH_CHIP  = {"Growth": "#4C9BE8", "Transition": "#888888", "Retraction": "#E8734C"}
 # Inflation chip colors (inflation = bad for macro, disinflation = good)
@@ -2402,7 +2492,7 @@ def _it_concentration_series() -> "pd.Series | None":
 def _conc_share_for(country: str, thresholds: "dict | None") -> "pd.Series | None":
     """The conc_share argument for compute_dynamic_thresholds, or None when the
     multiplier is switched off or the country isn't covered."""
-    if not bool((thresholds or {}).get("conc_adj", False)):
+    if not bool(thr(thresholds, "conc_adj")):
         return None
     if (country or "US").upper() != "US":
         return None
@@ -2603,7 +2693,7 @@ _GROWTH_MOMENTUM_STATE = {
 }
 
 
-def _growth_momentum_state(
+def _growth_breadth_state(
     g_regime: str, g_score: "float | None", g_delta: "float | None",
     thresholds: "dict | None" = None,
 ) -> "str | None":
@@ -2618,7 +2708,7 @@ def _growth_momentum_state(
     if g_score is None or (isinstance(g_score, float) and pd.isna(g_score)):
         return None
     t = thresholds or _DEFAULT_THRESHOLDS
-    gm = float(t.get("gm", _DEFAULT_THRESHOLDS["gm"]))
+    gm = float(thr(t, "gm"))
     gd = (float(g_delta)
           if (g_delta is not None and not (isinstance(g_delta, float) and pd.isna(g_delta)))
           else 0.0)
@@ -2663,7 +2753,7 @@ def _classify_regime(
         growth, per Ray's "calibrate the momentum threshold for each chip".
 
     Momentum has NOT been discarded for growth — it moved to
-    `_growth_momentum_state()`, which sub-classifies within the regime.
+    `_growth_breadth_state()`, which sub-classifies within the regime.
 
     When `g_history` / `i_history` are supplied, the Z leg additionally has to
     have held for `sustained_months` consecutive periods (Ray ruling
@@ -2672,9 +2762,9 @@ def _classify_regime(
     """
     t = thresholds or _DEFAULT_THRESHOLDS
     _n = _sustained_months()
-    gz  = float(t.get("gz", 0.5))
-    iz  = float(t.get("iz", 0.5))
-    im  = float(t.get("im", 0.05))
+    gz  = float(thr(t, "gz"))
+    iz  = float(thr(t, "iz"))
+    im  = float(thr(t, "im"))
 
     # Growth regime — level only (see docstring).
     if g_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
@@ -2806,8 +2896,8 @@ def _resolve_row_thresholds(
     (which classifies with it) and the header's threshold readout (which has to
     show the reader the same number the classifier used).
     """
-    t = base or _DEFAULT_THRESHOLDS
-    if comp is None or comp.empty or not bool(t.get("dynamic", True)):
+    t = resolve_thresholds(base)
+    if comp is None or comp.empty or not bool(t["dynamic"]):
         return dict(t)
     eff_g = f"growth_score_{g_sfx}" if (g_sfx and use_g_rolling) else "growth_score"
     eff_i = f"inflation_score_{i_sfx}" if (i_sfx and use_i_rolling) else "inflation_score"
@@ -2815,7 +2905,7 @@ def _resolve_row_thresholds(
         return dict(t)
     dyn = compute_dynamic_thresholds(
         _dyn_threshold_input(comp, eff_g, eff_i),
-        base_gz=float(t.get("gz", 0.5)), base_iz=float(t.get("iz", 0.5)),
+        base_gz=float(t["gz"]), base_iz=float(t["iz"]),
         conc_share=_conc_share_for(country, t),
     )
     if dyn.empty:
@@ -2832,7 +2922,7 @@ def _season_label(g_score, i_score, thresholds: "dict | None" = None) -> str:
     map geography / display shorthand; the chips are the decision rule.
     """
     t = thresholds or _DEFAULT_THRESHOLDS
-    gz, iz = float(t.get("gz", 0.5)), float(t.get("iz", 0.5))
+    gz, iz = float(thr(t, "gz")), float(thr(t, "iz"))
     if (g_score is None or i_score is None
             or (isinstance(g_score, float) and pd.isna(g_score))
             or (isinstance(i_score, float) and pd.isna(i_score))):
@@ -2884,7 +2974,7 @@ def _regime_info_children(
     _i_delta_active = rolling.get("i_delta", i_delta) if i_use_rolling else i_delta
 
     # Classify regimes using configurable thresholds
-    _t = thresholds or _DEFAULT_THRESHOLDS
+    _t = resolve_thresholds(thresholds)
     g_regime, i_regime = _classify_regime(g_score, i_score, _g_delta_active, _i_delta_active, _t)
 
     # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
@@ -3051,7 +3141,7 @@ def _regime_info_children(
     cda_sub = " · ".join(_cda_bits) if _cda_bits else "vs chip headings"
     diseq_str = _fmt(diseq)
 
-    _g_mom_state = _growth_momentum_state(g_regime, g_score, _g_delta_active, _t)
+    _g_mom_state = _growth_breadth_state(g_regime, g_score, _g_delta_active, _t)
 
     # Window label for the Force Z-Scores group header
     _gw = int(rolling.get("window", 0))
@@ -3162,7 +3252,7 @@ def _regime_info_children(
             if isinstance(force_audit, dict):
                 _audit_by_signal.update(force_audit)
 
-        _thresh_z = float((_t or {}).get("gz", 0.5))
+        _thresh_z = float(thr(_t, "gz"))
 
         def _sem_z_color(z_val, f: str, inv: bool = False) -> str:
             """Green = economically good for the force, red = bad, grey = neutral zone."""
@@ -3610,6 +3700,7 @@ def update_regime_info(
     thresholds: "dict | None" = None,
     components_open: bool = False,
 ) -> tuple:
+    thresholds = resolve_thresholds(thresholds)
     step = step or 0
     zscore_window = int(zscore_window or 0)
     diseq_window = int(diseq_window or 0)
@@ -3756,10 +3847,10 @@ def _threshold_display_chips(effective: "dict | None",
     """
     t = effective or _DEFAULT_THRESHOLDS
     b = base or t
-    dynamic = bool(b.get("dynamic", True))
-    gz, iz = float(t.get("gz", 0.5)), float(t.get("iz", 0.5))
-    gm, im = float(t.get("gm", 0.05)), float(t.get("im", 0.05))
-    base_gz, base_iz = float(b.get("gz", 0.5)), float(b.get("iz", 0.5))
+    dynamic = bool(thr(b, "dynamic"))
+    gz, iz = float(thr(t, "gz")), float(thr(t, "iz"))
+    gm, im = float(thr(t, "gm")), float(thr(t, "im"))
+    base_gz, base_iz = float(thr(b, "gz")), float(thr(b, "iz"))
 
     def _chip(label: str, val: float, prec: int = 2,
               base_val: "float | None" = None) -> html.Span:
@@ -3885,6 +3976,7 @@ def update_regime_chart(
     _trigger: Any = None,
     thresholds: "dict | None" = None,
 ) -> go.Figure:
+    thresholds = resolve_thresholds(thresholds)
     start = (date_range or {}).get("start")
     end = (date_range or {}).get("end")
     zscore_window = int(zscore_window or 0)
@@ -3924,16 +4016,16 @@ def update_regime_chart(
     diseq_label = f" · rolling {diseq_window}mo" if (diseq_sfx and d_col != "disequilibrium_score") else ""
 
     # ── Per-row regime classification using configurable thresholds ────────────
-    _t = thresholds or _DEFAULT_THRESHOLDS
-    _gz = float(_t.get("gz", 0.5))
-    _iz = float(_t.get("iz", 0.5))
+    _t = thresholds
+    _gz = float(thr(_t, "gz"))
+    _iz = float(thr(_t, "iz"))
     _th_line = dict(color="rgba(232,163,23,0.40)", width=1, dash="dash")
 
     # Dynamic thresholds (Ray Dalio review 2026-07-05, #23) — per-row gz/iz
     # computed from each country's own rolling volatility + credit tightness,
     # rather than one flat value for the whole history. Computed on the
     # ACTIVE (windowed or full) score columns per the 2026-07-06 audit.
-    _dynamic = bool(_t.get("dynamic", True))
+    _dynamic = bool(thr(_t, "dynamic"))
     _dyn_df = compute_dynamic_thresholds(
         _dyn_threshold_input(comp, g_col, i_col), base_gz=_gz, base_iz=_iz,
         conc_share=_conc_share_for(country, _t),
@@ -3953,8 +4045,8 @@ def update_regime_chart(
             row_t = {
                 "gz": float(_dyn_df["dyn_gz"].iloc[pos]),
                 "iz": float(_dyn_df["dyn_iz"].iloc[pos]),
-                "gm": _t.get("gm", 0.05),
-                "im": _t.get("im", 0.05),
+                "gm": thr(_t, "gm"),
+                "im": thr(_t, "im"),
             }
         else:
             row_t = _t
@@ -3994,9 +4086,9 @@ def update_regime_chart(
         return v, format(v, fmt)
 
     g_cur, g_fmt = _cur(g_col, "+.2f")
-    gm_cur, gm_fmt = _cur("growth_momentum", ".0%")
+    gm_cur, gm_fmt = _cur("growth_breadth", ".0%")
     i_cur, i_fmt = _cur(i_col, "+.2f")
-    im_cur, im_fmt = _cur("inflation_momentum", ".0%")
+    im_cur, im_fmt = _cur("inflation_breadth", ".0%")
     conf_cur, conf_fmt = _cur("confidence", ".0%")
     d_cur, d_fmt = _cur(d_col, ".3f")
 
@@ -4008,7 +4100,7 @@ def update_regime_chart(
             margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
-            "Growth Momentum (fraction of signals growth-positive)", _series_df("growth_momentum"),
+            "Growth Momentum (fraction of signals growth-positive)", _series_df("growth_breadth"),
             gm_cur, "pct", "", hline=0.5, hline_txt="50%",
             color=_COLORS[0], vline_x=sel_ts, sync_hover=True, fmt_override=gm_fmt,
             margin_l=_RH_MARGIN_L,
@@ -4020,7 +4112,7 @@ def update_regime_chart(
             margin_l=_RH_MARGIN_L,
         ),
         _chart_card(
-            "Inflation Momentum (fraction of signals inflation-positive)", _series_df("inflation_momentum"),
+            "Inflation Momentum (fraction of signals inflation-positive)", _series_df("inflation_breadth"),
             im_cur, "pct", "", hline=0.5, hline_txt="50%",
             color=_INFLATION_COLOR, vline_x=sel_ts, sync_hover=True, fmt_override=im_fmt,
             margin_l=_RH_MARGIN_L,
@@ -4123,8 +4215,8 @@ def _update_threshold_display(
     0.226 (US, Oct 2026).
     """
     country = str(country or "US")
-    base = thresholds or _DEFAULT_THRESHOLDS
-    if not bool(base.get("dynamic", True)):
+    base = resolve_thresholds(thresholds)
+    if not bool(base["dynamic"]):
         return _threshold_display_chips(base)
     try:
         comp = load_composite_history(
@@ -4168,14 +4260,14 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
     if not is_open:
         from dash import no_update
         return (no_update,) * 6
-    t = stored or _DEFAULT_THRESHOLDS
+    t = resolve_thresholds(stored)
     return (
-        float(t.get("gz", 0.5)),
-        float(t.get("iz", 0.5)),
-        float(t.get("gm", 0.05)),
-        float(t.get("im", 0.05)),
-        ["dynamic"] if bool(t.get("dynamic", True)) else [],
-        ["conc_adj"] if bool(t.get("conc_adj", False)) else [],
+        float(t["gz"]),
+        float(t["iz"]),
+        float(t["gm"]),
+        float(t["im"]),
+        ["dynamic"] if bool(t["dynamic"]) else [],
+        ["conc_adj"] if bool(t["conc_adj"]) else [],
     )
 
 
@@ -4201,10 +4293,21 @@ def _save_thresholds(
     if ctx.triggered_id == "rh-threshold-reset":
         return dict(_DEFAULT_THRESHOLDS)
     if ctx.triggered_id == "rh-threshold-apply":
-        return {"gz": float(gz or 0.5), "iz": float(iz or 0.5),
-                "gm": float(gm or 0.0), "im": float(im or 0.0),
+        # Stamp the version: this IS a deliberate choice, so it must survive
+        # future default changes -- and an unstamped write would be reset by
+        # resolve_thresholds() on the very next page load.
+        #
+        # `x if x is not None else default` rather than `x or default`: a
+        # slider legitimately sits at 0.0 (gm/im both have a 0.0 stop), and
+        # `or` would silently rewrite a deliberate zero.
+        _cur = resolve_thresholds(current)
+        def _val(v, key):
+            return float(v) if v is not None else float(_cur[key])
+        return {"gz": _val(gz, "gz"), "iz": _val(iz, "iz"),
+                "gm": _val(gm, "gm"), "im": _val(im, "im"),
                 "dynamic": bool(dynamic_val),
-                "conc_adj": bool((current or {}).get("conc_adj", False))}
+                "conc_adj": bool(_cur["conc_adj"]),
+                "v": _THRESHOLD_STORE_VERSION}
     return no_update
 
 
@@ -4220,9 +4323,9 @@ def _apply_dynamic_toggle(dynamic_val: "list | None", current: "dict | None") ->
     users don't expect to press for a checkbox).  Slider values still require Apply.
     """
     from dash import no_update
-    t = dict(current or _DEFAULT_THRESHOLDS)
+    t = resolve_thresholds(current)
     new_val = bool(dynamic_val)
-    if bool(t.get("dynamic", True)) == new_val:
+    if bool(t["dynamic"]) == new_val:
         # No real change (e.g. this fired because the modal-open sync callback
         # set the checkbox to match the store) — don't rewrite the store.
         return no_update
@@ -4240,9 +4343,9 @@ def _apply_conc_toggle(conc_val: "list | None", current: "dict | None") -> dict:
     """Same mode-switch treatment as the dynamic toggle — apply on change, not
     on Apply."""
     from dash import no_update
-    t = dict(current or _DEFAULT_THRESHOLDS)
+    t = resolve_thresholds(current)
     new_val = bool(conc_val)
-    if bool(t.get("conc_adj", False)) == new_val:
+    if bool(t["conc_adj"]) == new_val:
         return no_update
     t["conc_adj"] = new_val
     return t
@@ -4450,19 +4553,19 @@ def update_scatter_chart(
     # dynamic thresholds (computed on the ACTIVE score columns) — walking back
     # in time moves the band to what the classifier used that month, matching
     # the regime info card's per-row values.
-    _bg_th = dict(thresholds or _DEFAULT_THRESHOLDS)
+    _bg_th = resolve_thresholds(thresholds)
     _dyn_bg = None
-    if bool(_bg_th.get("dynamic", True)):
+    if bool(_bg_th["dynamic"]):
         _dyn_bg = compute_dynamic_thresholds(
             _dyn_threshold_input(comp_all, g_col, i_col),
-            base_gz=float(_bg_th.get("gz", 0.5)), base_iz=float(_bg_th.get("iz", 0.5)),
+            base_gz=float(_bg_th["gz"]), base_iz=float(_bg_th["iz"]),
             conc_share=_conc_share_for(country, _bg_th),
         )
         if not _dyn_bg.empty:
             _bg_th["gz"] = float(_dyn_bg["dyn_gz"].iloc[sel_idx_all])
             _bg_th["iz"] = float(_dyn_bg["dyn_iz"].iloc[sel_idx_all])
-    _bgz = float(_bg_th.get("gz", 0.5))
-    _biz = float(_bg_th.get("iz", 0.5))
+    _bgz = float(thr(_bg_th, "gz"))
+    _biz = float(thr(_bg_th, "iz"))
     quad_bg = [
         (_bgz,  100,  _biz,  100, "Inflationary Boom",        "#F4C842"),
         (_bgz,  100,  -100, -_biz, "Expansion",                "#5CBA8A"),
