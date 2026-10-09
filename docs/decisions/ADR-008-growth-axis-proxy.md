@@ -1,8 +1,27 @@
-# ADR-008: What should measure "growth" when we sort assets into boxes
+# ADR-008: Publish a growth-surprise series, and validate it against recessions
 
 **Date:** 2026-10-09
-**Status:** Accepted 2026-10-09 — evidence gathered, recommendation stands. CreovaOne-side refit still required before its backfill runs.
+**Status:** Accepted 2026-10-09 — scope is THIS repo only (see Scope note)
 **Serves:** `docs/NORTH_STAR.md`
+
+---
+
+## Scope — rewritten 2026-10-09
+
+This ADR was first drafted as a recommendation about how **CreovaOne** should
+measure growth. That was over-reach: it is their codebase, their call, and
+their own sessions had already diagnosed the problem and paused rather than
+shipping it. Rescoped to what is actually ours to decide.
+
+**Ours:** do we publish a growth-surprise series, and is it any good? Decided
+here, with evidence.
+
+**Theirs:** whether to adopt it. Passed to them as a single finding in
+`docs/creovaone_note_2026-10-09.md`, with the trade-off and the test we would
+run first. No recommendation attached beyond the evidence.
+
+The dividing line going forward: **we build and validate the measurement; they
+decide what to do with it.**
 
 ---
 
@@ -23,11 +42,11 @@ That mislabelling just moved **21 of 55 holdings** — almost the whole equity
 bucket — from one box to the opposite one. The backfill that would stamp this
 across all stored history is correctly paused.
 
-**My recommendation: measure growth with the growth surprise we started
-publishing yesterday — what actually happened minus what professional
-forecasters predicted — rather than with an interest rate.** It measures growth
-rather than the price of money, and it is still expectation-relative, which is
-what the four-box framework requires.
+**What we decided here: publish a growth-surprise measure — what actually
+happened minus what professional forecasters predicted — and test it properly
+before claiming anything for it.** It measures growth rather than the price of
+money, and it is still expectation-relative, which is what the four-box
+framework needs. Whether a downstream consumer adopts it is their decision.
 
 ---
 
@@ -65,14 +84,13 @@ reached the same conclusion and paused rather than backfilling.
 
 ## Decision
 
-**Proposed:** replace the growth axis of the `discounted_surprise` basis with the
-**growth-surprise composite** — the weighted average of per-signal surprises
-(realized minus the Philadelphia Fed Survey of Professional Forecasters
-consensus) for `growth.unemployment`, `growth.payrolls` and
-`growth.industrial_prod`.
+**Publish** a growth-surprise measure built from per-signal surprises (realized
+minus Philadelphia Fed SPF consensus) for `growth.unemployment`,
+`growth.payrolls` and `growth.industrial_prod`, weighted by basket importance,
+invert-aware — and **validate it against an external benchmark before claiming
+it measures growth.**
 
-Keep the inflation axis as the breakeven rate. Breakeven is a genuine
-market-implied inflation expectation and does not suffer the same confound.
+Done. The validation is below and it is the substance of this ADR.
 
 ## Evidence
 
