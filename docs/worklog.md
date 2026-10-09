@@ -4,6 +4,88 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-09 — Worked the 2026-10-08 checklist to zero; the statistical thread closes negative
+
+Nine open items plus two Ray rulings, all closed. Commits `8c07787` → `54b63b5`.
+Suite 846 → **883 passed, zero exclusions**. Two full pipeline runs (the documented
+stop-charting → rebuild-all-three → run → restart), both clean, DB flat at 149.7 MB.
+
+**The inflation chip is target-anchored** (`a47ccaf`). Ray's 2026-10-03 Ruling 1,
+built a year ago and wired only to a Command Center display card. The gate is now
+distance from the central bank's target, sustained; the `im` momentum gate is
+retired, not re-tuned, because it only ever stood in for a level gate that did not
+work. Inflation goes 18% → 67% of months decisive, median episode 1.3 → 9.8 months.
+US now reads **Inflation** (core PCE 3.0% vs a 2% target) where it read Transition —
+the exact out-of-sync case Ray diagnosed — and BR and MX fire for the first time in a
+decade. `METHODOLOGY_VERSION` 2026.10.08; composite VALUES unchanged, verified against
+the pre-run numbers, so nothing downstream moved. A caller supplying no gap gets
+Transition, never a fallback to the retired rule, and a source guard enforces it.
+
+**That immediately reintroduced the session's own bug on one axis** (`439584a`) — the
+map still plotted inflation Z while the chip was gated on the gap. Fixed by moving the
+axis to distance-from-target and splitting the season label in two: `_season_label` is
+now a pure function of the two chips, `_season_from_levels` is the positional terrain
+read. The new all-country test caught GB reading "Inflationary Boom" against chips of
+Transition/Inflation — the growth-axis version of the same defect, which had been
+latent all along. A chip-derived season covers 32% of months now against 7% before, so
+the shelved geometry item closed with it.
+
+**Ruling 2 completed** (`88df35c`) and the taxonomy had holes: `cpi_imf_annual` and
+`hicp_food` were in neither sub-index, leaving 11 of 14 baskets unreadable. With that
+fixed the real finding appears — **only US/EZ/GB/KR have a sticky inflation leg at
+all** (persistence share 0.80/0.68/0.61/0.61); the other ten are flexible-price only,
+which by Ray's own framing makes their composite a LEADING index rather than a
+current-state gauge. Now said on screen instead of silently showing nothing.
+
+**`signals.surprise` populated** (`b25f3d1`, `da556a2`), 0 → 345k of 368k rows — but
+only after running the gate Ray set rather than building on his say-so. His punch list
+said run the incremental-R² test first; it had been blocked on asset returns, which
+the beta audit had since supplied. On non-overlapping monthly returns: bonds 0.019
+(F 5.05, p 0.007), equity 0.082 (F 5.35, p 0.006), gold 0.005 (p 0.34). Two of three
+cleared, so built. Then **real SPF forecasts** wired — and the obvious targets were the
+wrong ones. GDP growth reaches nothing (`master.gdp_real` is in no basket) and SPF's
+CPI is annualized-QoQ against our YoY signal. The variables that actually map are
+UNEMP, EMP and INDPROD, 33% of the US growth basket, and the loader carried 2 of the 5
+published files. One trap recorded: `Median_EMPL_Level.xlsx` returns HTTP 200 with an
+HTML error page, so magic bytes are the only usable existence check against that host.
+
+**Smaller items.** Per-chip independent-episode counts published on the Regime Validator
+page against Ray's bar of 10 — growth passes everywhere, inflation is below bar on
+EZ (7), BR (8), MX (9), and the anchor fix is what took US inflation from essentially 1
+episode to 14. Backtest horizon 3 → 12 months with a 3/12/24 sweep, after re-checking
+that the A1 rate_expectations decision survives (incremental IC 0.148 → 0.257, so it is
+kept more firmly). Five countries running the chip on a ~9-month-old annual IMF bridge
+are now labelled rather than muted. `composite_variance_flags` warns that BR/MX/ID/CN
+inflation composites (sd 0.016–0.177) are too flat to fit a beta to — the chip for those
+is fine, which is exactly the wrong inference to let a reader make.
+
+**Item 9 answered negative, and it closes the thread** (`54b63b5`). Pooling was supposed
+to rescue the power problem. New `indicators/panel.py` builds an 11-country bond-return
+panel, and the countries co-move: mean pairwise ρ +0.42, so eleven are worth **2.1**.
+Pooled naive t −2.83 growth / −4.11 inflation; **adjusted −1.24 / −1.80**. 4,191
+country-months are worth 800 — 1.4× the US alone, not 7.5×. Neither clears 2. So:
+one country overlapping looked significant and was an artifact; independent sampling
+killed it; pooled naive looks significant; pooled corrected still is not. **A
+regime→bond-return relationship cannot be demonstrated at conventional significance on
+this data.** Effect sizes are correctly signed and stable; the evidence is not there.
+That bound is now in CLAUDE.md.
+
+**Decisions worth keeping.** Build only after passing the stated gate, not before.
+Label stale sources rather than muting five countries. Scope the state/environment
+rename to the boundary with CreovaOne rather than renaming ~100 internal call sites for
+no clarity gain. And do NOT reweight `inflation_score` to 70/30 — it would move every
+beta fitted downstream, which is the sequencing warning this session spent two days
+writing.
+
+**Next.** `inflation.cpi_headline` needs annualized-QoQ → YoY price chaining before SPF
+CPI can be used, so no inflation signal carries a real forecast yet. The 70/30 composite
+reweight is designed and deliberately unshipped. And
+`docs/creovaone_handoff_2026-10-08.md` **still needs a human to deliver it** — their
+12-month EWMA half-life is assigning All-Weather boxes off coefficients that are not
+distinguishable from zero, and that one is live against real allocation decisions.
+
+---
+
 ## 2026-10-08 (2) — Regime chip consistency fix, then the question underneath it: what IS a regime?
 
 Started as a UI complaint ("the chips don't match the regime map"), ended four layers down at
