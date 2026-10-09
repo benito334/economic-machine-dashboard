@@ -159,8 +159,19 @@ standard deviation shifted one period so a month is never scaled by a spread
 that had not happened yet. Null for the first 24 observations of a series by
 design, rather than scaled off three data points.
 
-⚠ **The expectation is a random walk for almost every signal, so on those this
-is a standardised CHANGE, not a surprise against what the market discounted.**
+**Three US signals now carry a REAL forecast (2026-10-09):**
+`growth.unemployment`, `growth.payrolls` and `growth.industrial_prod` use the
+Philadelphia Fed SPF one-quarter-ahead median, converted into each signal's own
+units — 33% of the US growth basket by weight. For those three the column is a
+genuine surprise against a published consensus, and it differs materially from
+the random-walk version (correlation 0.59 / 0.62 / −0.01 respectively).
+
+SPF's real-GDP-growth forecast is deliberately NOT wired: `master.gdp_real` is
+in no basket, so it would reach nothing.
+
+⚠ **For every OTHER signal the expectation is still a random walk, so on those
+this is a standardised CHANGE, not a surprise against what the market
+discounted.**
 Ray conceded the point directly when pressed (2026-10-07 Ruling 4): *"In the
 absence of true forecasts, the label is technically a misnomer. It is still a
 change measure."* What it genuinely buys over differencing the composite

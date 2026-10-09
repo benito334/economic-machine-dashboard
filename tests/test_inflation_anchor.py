@@ -442,3 +442,90 @@ def test_impulse_only_countries_are_identified_not_hidden():
     for cc in impulse_only:
         assert comps[cc]["members"]["persistence"] == []
         assert comps[cc]["impulse_weight"] > 0
+
+
+# ── SPF expectations feeding signals.surprise (Ruling 3 slot, 2026-10-09) ────
+
+def test_spf_expectation_is_none_for_an_unmapped_signal():
+    """None is the signal to fall back to the random walk, not an error."""
+    import pandas as pd
+    from indicators.spf_loader import spf_expectation
+    idx = pd.date_range("2015-01-31", periods=24, freq="ME")
+    assert spf_expectation("growth.retail_sales", idx) is None
+    assert spf_expectation("not.a.signal", idx) is None
+
+
+def test_spf_expectation_arrives_in_the_signal_s_own_units():
+    """The whole reason `conversion` exists.
+
+    Subtracting an SPF LEVEL from a YoY-transformed signal would produce an
+    authoritative-looking number that means nothing. Unemployment is a rate in
+    percent on both sides (~3-11); payrolls is a YoY FRACTION (|x| < 0.2).
+    """
+    import pandas as pd
+    from indicators.spf_loader import spf_expectation
+    idx = pd.date_range("2000-01-31", periods=300, freq="ME")
+
+    u = spf_expectation("growth.unemployment", idx)
+    assert u is not None and u.notna().any()
+    assert 2.0 < float(u.dropna().median()) < 12.0, "unemployment must be a percent"
+
+    p = spf_expectation("growth.payrolls", idx)
+    assert p is not None and p.notna().any()
+    assert float(p.dropna().abs().median()) < 0.2, "payrolls must be a YoY fraction"
+
+
+def test_every_spf_mapped_signal_is_actually_in_a_basket():
+    """Guard against wiring a forecast that reaches nothing.
+
+    Real GDP growth is the cautionary case: SPF publishes it, but
+    master.gdp_real is in no composite, so an SPF GDP forecast would populate
+    one orphan column and change no composite. It is deliberately absent from
+    the map and must stay so unless the basket changes.
+    """
+    from indicators.spf_loader import _SPF_SIGNAL_MAP
+    from indicators.composites import load_composites_config
+    cfg = load_composites_config("US")
+    in_basket = {i["id"] for b in ("growth_score", "inflation_score")
+                 for i in cfg[b]["indicators"]}
+    stray = set(_SPF_SIGNAL_MAP) - in_basket
+    assert not stray, f"SPF mapped to signals that feed no composite: {stray}"
+
+
+def test_build_signals_prefers_the_forecast_and_falls_back_cleanly():
+    import numpy as np
+    import pandas as pd
+    from indicators.pipeline import load_bindings, _CONFIG_DIR
+    from indicators.normalize import build_signals, compute_surprise
+
+    bindings = {b.id: b for b in load_bindings(_CONFIG_DIR / "us_bindings.yaml")}
+    idx = pd.date_range("2000-01-31", periods=240, freq="ME")
+    series = pd.Series(
+        4.0 + pd.Series(range(240)).mod(12).values * 0.05, index=idx)
+
+    rw = pd.Series({d.date(): v for d, v in compute_surprise(series).dropna().items()})
+
+    mapped = build_signals(series, bindings["growth.unemployment"])
+    got = pd.Series({s.as_of: s.surprise for s in mapped if s.surprise is not None})
+    shared = got.index.intersection(rw.index)
+    assert len(shared) > 24, "no overlap to compare on"
+    # A real forecast must produce a DIFFERENT series from the random walk.
+    assert not np.allclose(got.loc[shared].values, rw.loc[shared].values)
+
+    # An unmapped signal is untouched by any of this.
+    unmapped = build_signals(series, bindings["growth.retail_sales"])
+    got_u = pd.Series({s.as_of: s.surprise for s in unmapped if s.surprise is not None})
+    shared_u = got_u.index.intersection(rw.index)
+    assert len(shared_u) > 24
+    assert np.allclose(got_u.loc[shared_u].values, rw.loc[shared_u].values)
+
+
+def test_non_us_countries_get_no_spf_expectation():
+    """SPF is a US survey. A GB signal must never silently inherit it."""
+    import pandas as pd
+    from indicators.normalize import _resolve_expectation
+    from indicators.pipeline import load_bindings, _CONFIG_DIR
+    gb = {b.id: b for b in load_bindings(_CONFIG_DIR / "countries" / "gb_bindings.yaml")}
+    tail = next(t for t in gb if "unemploy" in t)
+    idx = pd.date_range("2010-01-31", periods=60, freq="ME")
+    assert _resolve_expectation(gb[tail], idx) is None

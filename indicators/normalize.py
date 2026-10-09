@@ -10,6 +10,10 @@ import pandas as pd
 from indicators.models import CountryBinding, Signal
 from indicators.transform import compute_momentum, months_to_periods
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _LOW_HISTORY_THRESHOLD = 15  # fewer obs → set low_history=True
 # Observations required before a surprise is scaled at all. Below this the
 # expanding sigma is too unstable to divide by and the surprise stays null —
@@ -145,6 +149,27 @@ def compute_surprise(clean: pd.Series,
     return out.replace([np.inf, -np.inf], np.nan)
 
 
+def _resolve_expectation(binding: CountryBinding,
+                        index) -> Optional[pd.Series]:
+    """A published forecast for this signal, or None for the random walk.
+
+    Resolved here rather than at the ten pipeline call sites, so the mapping
+    from signal to forecast has exactly one definition. Ruling 3's "drops into
+    the same slot with no other pipeline change" is literally this function.
+
+    Never raises: a forecast provider being unreachable must degrade the
+    surprise to a random walk, not fail an ingest.
+    """
+    if str(binding.country).upper() != "US":
+        return None                                  # SPF is US-only
+    try:
+        from indicators.spf_loader import spf_expectation
+        return spf_expectation(binding.id, index)
+    except Exception:  # pragma: no cover - a forecast feed must never break ingest
+        logger.debug("expectation lookup failed for %s", binding.id, exc_info=True)
+        return None
+
+
 def build_signals(
     transformed: pd.Series,
     binding: CountryBinding,
@@ -169,6 +194,8 @@ def build_signals(
 
     zscores = _zscore_series(clean)
     percentiles = _percentile_series(clean)
+    if expectation is None:
+        expectation = _resolve_expectation(binding, clean.index)
     surprises = compute_surprise(clean, expectation)
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
     series_std = float(clean.std(ddof=1)) if n > 1 else None

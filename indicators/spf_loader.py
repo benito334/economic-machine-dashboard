@@ -44,8 +44,10 @@ import logging
 import time
 import urllib.request
 from pathlib import Path
+from functools import lru_cache
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,15 @@ _BASE = "https://www.philadelphiafed.org/-/media/FRBP/Assets/Surveys-And-Data/su
 _FILES = {
     "rgdp_growth": (f"{_BASE}/Median_RGDP_Growth.xlsx", "Median_Growth", "DRGDP"),
     "cpi":         (f"{_BASE}/Median_CPI_Level.xlsx",   "Median_Level",  "CPI"),
+    # Added 2026-10-09 to give signals.surprise a REAL expectation rather than
+    # a random walk (Ray 2026-10-07 Ruling 3). These three were chosen because
+    # they are the SPF variables that actually map onto basket members:
+    # unemployment, payrolls and industrial production are 33% of the US
+    # growth basket between them. Real GDP growth, by contrast, reaches
+    # nothing — master.gdp_real is not in any basket.
+    "unemp":       (f"{_BASE}/Median_UNEMP_Level.xlsx",   "Median_Level", "UNEMP"),
+    "empl":        (f"{_BASE}/Median_EMP_Level.xlsx",     "Median_Level", "EMP"),
+    "indprod":     (f"{_BASE}/Median_INDPROD_Level.xlsx", "Median_Level", "INDPROD"),
 }
 
 import os
@@ -180,6 +191,85 @@ def forecast_vs_realized(key: str, force_refresh: bool = False) -> tuple[pd.Seri
     realized = (_realized_growth(force_refresh=force_refresh) if key == "rgdp_growth"
                 else _realized_cpi_qoq_annualized(force_refresh=force_refresh))
     return forecast_at_target, realized
+
+
+# ── Real expectations for signals.surprise (Ray 2026-10-07 Ruling 3) ─────────
+# Ruling 3 specifies that a published forecast replaces the random-walk
+# expectation "with no other pipeline change". These are the SPF variables that
+# actually map onto a basket member. Real GDP growth is deliberately absent:
+# master.gdp_real is in no basket, so an SPF GDP forecast would reach nothing.
+#
+# `conversion` exists because the expectation MUST arrive in the signal's own
+# units. Subtracting an SPF level from a YoY-transformed signal would produce
+# an authoritative-looking number that means nothing.
+_SPF_SIGNAL_MAP: dict[str, tuple[str, str, str | None]] = {
+    # signal id tail        (spf key,  conversion,     realized FRED id)
+    "growth.unemployment":   ("unemp",   "direct",       None),
+    "growth.payrolls":       ("empl",    "level_to_yoy", "PAYEMS"),
+    "growth.industrial_prod":("indprod", "level_to_yoy", "INDPRO"),
+}
+
+
+@lru_cache(maxsize=16)
+def _forecast_at_target_cached(key: str) -> pd.Series:
+    return _forecast_at_target(key)
+
+
+def _forecast_at_target(key: str, force_refresh: bool = False) -> pd.Series:
+    """The h3 (one-quarter-ahead) median, indexed by the quarter it describes.
+
+    h3 is the first genuinely EX-ANTE horizon — suffix 2 is an in-quarter
+    nowcast using partial information, which is not a forecast of anything
+    unknown. Same construction forecast_vs_realized() uses.
+    """
+    df = _parse(key, force_refresh=force_refresh)
+    if df.empty or "h3" not in df.columns:
+        return pd.Series(dtype=float)
+    fwd = df["h3"].dropna()
+    idx = [(d.to_period("Q") + 1).to_timestamp("Q") for d in fwd.index]
+    return pd.Series(fwd.values, index=idx).sort_index()
+
+
+def spf_expectation(signal_tail: str, index: pd.DatetimeIndex,
+                    force_refresh: bool = False) -> Optional[pd.Series]:
+    """Monthly expectation for one signal, in that signal's own units.
+
+    Returns None when SPF does not cover the signal, which is the signal to
+    `build_signals` to fall back to the random walk.
+
+    Point-in-time by construction: the h3 forecast for quarter Q comes from
+    the survey taken in Q-1, and the realized level it is divided by is from
+    Q-4. Both were known before Q began.
+    """
+    spec = _SPF_SIGNAL_MAP.get(signal_tail)
+    if spec is None:
+        return None
+    key, conversion, realized_id = spec
+    fc = (_forecast_at_target(key, force_refresh=True) if force_refresh
+          else _forecast_at_target_cached(key))
+    if fc.empty:
+        return None
+
+    if conversion == "level_to_yoy":
+        from indicators.loader import fetch_series
+        lv = fetch_series(realized_id, "M", force_refresh=force_refresh)
+        if lv is None or lv.empty:
+            return None
+        lv.index = pd.to_datetime(lv.index)
+        q = lv.resample("QE").mean()
+        base = q.shift(4).reindex(fc.index)          # realized level 4 quarters back
+        fc = (fc / base) - 1.0                       # -> YoY fraction, the signal's unit
+        fc = fc.replace([np.inf, -np.inf], np.nan).dropna()
+    if fc.empty:
+        return None
+
+    # Broadcast each quarter's forecast across its months, then align.
+    monthly = fc.resample("ME").ffill().reindex(
+        pd.date_range(fc.index.min(), max(fc.index.max(), index.max()), freq="ME"),
+        method="ffill", limit=2,                     # a quarter's value spans 3 months
+    )
+    out = monthly.reindex(pd.DatetimeIndex(index), method="ffill", limit=2)
+    return out if out.notna().any() else None
 
 
 def compute_spf_surprise(force_refresh: bool = False) -> dict:

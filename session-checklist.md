@@ -86,11 +86,19 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    a random-walk expectation this is a standardised CHANGE, not a surprise
    against what was discounted — Ray's own Ruling 4 concession. The genuine
    gains are per-signal standardisation and missing-data renormalisation.
-   **Follow-up, still open:** wire real SPF forecasts into the expectation
-   slot for US GDP growth and CPI. The slot exists and takes a series, so
-   this needs no other pipeline change (Ruling 3). Ray called real forecasts
-   for the core drivers "the thing that would actually convert this from a
-   change measure to a surprise".
+   ~~**Follow-up: wire real SPF forecasts.**~~ **DONE 2026-10-09**, and the
+   target changed once measured. GDP growth and CPI were the obvious
+   candidates and were the wrong ones: `master.gdp_real` is in NO basket, and
+   SPF's CPI is annualized-QoQ against our YoY signal. The SPF variables that
+   actually map are **UNEMP, EMP and INDPROD** — 33% of the US growth basket
+   — and the loader only had 2 of the 5 published files. Now wired with a
+   per-signal units conversion, resolved in one place
+   (`normalize._resolve_expectation`) so the ten pipeline call sites are
+   untouched, exactly as Ruling 3 specifies. Correlation with the random-walk
+   version: 0.59 unemployment / 0.62 payrolls / −0.01 industrial production,
+   so these are materially different series.
+   **Still open:** `inflation.cpi_headline` needs annualized-QoQ → YoY price
+   chaining before SPF CPI can be used; no inflation signal is covered yet.
 5. ~~**Count independent episodes per chip per country.**~~ **DONE
    2026-10-08** — `indicators.backtest.independent_episodes()`, published on
    the Regime Validator page as "Evidence behind each chip". Runs of the same
