@@ -152,8 +152,28 @@ The regime CHIP for those countries is *not* affected — it is gated on distanc
 from target, not on this Z — so do not infer from a healthy chip that the
 composite behind it is fittable.
 
-**`signals.surprise` is always NULL** (0 of 368,225 rows). A declared slot that
-was never built. Do not read it.
+**`signals.surprise` is now POPULATED (2026-10-08) — read the naming caveat.**
+It was 0 non-null of 368,225 rows until this date. It now carries
+`(realized − expectation) / sigma`, per signal, with sigma an expanding
+standard deviation shifted one period so a month is never scaled by a spread
+that had not happened yet. Null for the first 24 observations of a series by
+design, rather than scaled off three data points.
+
+⚠ **The expectation is a random walk for almost every signal, so on those this
+is a standardised CHANGE, not a surprise against what the market discounted.**
+Ray conceded the point directly when pressed (2026-10-07 Ruling 4): *"In the
+absence of true forecasts, the label is technically a misnomer. It is still a
+change measure."* What it genuinely buys over differencing the composite
+yourself is per-signal standardisation — one high-volatility component cannot
+dominate — and explicit missing-data renormalisation. A published forecast
+drops into the same slot per signal when one exists; SPF covers US GDP growth
+and CPI and is not yet wired.
+
+It was built only after Ray's own decision test passed, on **non-overlapping
+monthly returns**: incremental R² over ΔComposite was 0.019 for long bonds
+(F = 5.05, p = 0.007) and 0.082 for equity (F = 5.35, p = 0.006), against his
+≥ 0.01 bar. Gold did not clear it (0.005, p = 0.34), so do not expect it to
+help on every asset.
 
 **`low_coverage`** marks months with too few active signals. For the US these
 are a contiguous block, 1980-01 to 1990-11 — dropping them leaves **no interior

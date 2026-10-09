@@ -61,9 +61,25 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
 3. **Rename in code/docs/UI: the chip reports a STATE, the box reports an
    ENVIRONMENT.** Never "regime" for both. One word caused a multi-hour
    confusion and will cause it again.
-4. **Build genuine surprise.** `signals.surprise` is still 0 non-null of
-   368,225. SPF is already ingested for the validator badges. This is what
-   moves the beta input from proxy to correct (Ray 2026-10-07 Ruling 1).
+4. ~~**Build genuine surprise.**~~ **DONE 2026-10-08, after running the gate
+   Ray set.** His own punch list said to run the incremental-R² test BEFORE
+   building; it had been blocked because "this repo holds no asset returns",
+   which stopped being true during the beta audit. Result on
+   **non-overlapping monthly** returns (so the significance is honest, unlike
+   the forward-return tests): incremental R² over ΔComposite 0.019 for long
+   bonds (F 5.05, p 0.007) and 0.082 for equity (F 5.35, p 0.006) against his
+   ≥0.01 bar; gold 0.005, p 0.34, did not clear. Two of three pass, so built.
+   `normalize.compute_surprise()`; `signals.surprise` goes from 0 non-null of
+   368,225 to populated on the next pipeline run.
+   **Naming caveat is load-bearing and documented everywhere it is read:** on
+   a random-walk expectation this is a standardised CHANGE, not a surprise
+   against what was discounted — Ray's own Ruling 4 concession. The genuine
+   gains are per-signal standardisation and missing-data renormalisation.
+   **Follow-up, still open:** wire real SPF forecasts into the expectation
+   slot for US GDP growth and CPI. The slot exists and takes a series, so
+   this needs no other pipeline change (Ruling 3). Ray called real forecasts
+   for the core drivers "the thing that would actually convert this from a
+   change measure to a surprise".
 5. ~~**Count independent episodes per chip per country.**~~ **DONE
    2026-10-08** — `indicators.backtest.independent_episodes()`, published on
    the Regime Validator page as "Evidence behind each chip". Runs of the same
