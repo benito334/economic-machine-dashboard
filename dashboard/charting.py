@@ -688,9 +688,26 @@ _BY_ID: dict[str, dict] = {e["signal_id"]: e for e in _CATALOG}
 # is treated as "never an explicit choice under the current rules" and resets
 # to the defaults, which is what keeps dynamic mode on by default for everyone
 # who has not deliberately turned it off SINCE this version.
-_THRESHOLD_STORE_VERSION = 2
+def _inflation_tolerance_pp() -> float:
+    """Half-width of the "At Target" band, in percentage points.
 
-_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05, "dynamic": True,
+    The inflation chip's level gate (Ray 2026-10-03 Ruling 1). Uniform across
+    countries on purpose — official tolerance bands vary from +/-0.5pp to
+    +/-2pp, and using each country's own would make "Above Target" mean
+    something different in every column of a cross-country dashboard. The
+    official bands are recorded per country in the config for reference only.
+    TUNABLE in config/inflation_anchor.yaml::bands.tolerance_pp.
+    """
+    try:
+        from indicators.inflation_anchor import load_config
+        return float(load_config()["bands"]["tolerance_pp"])
+    except Exception:  # pragma: no cover - defensive
+        return 0.5
+
+
+_THRESHOLD_STORE_VERSION = 3
+
+_DEFAULT_THRESHOLDS = {"gz": 0.5, "iz": 0.5, "gm": 0.04, "dynamic": True,
                        "conc_adj": False, "v": _THRESHOLD_STORE_VERSION}
 
 
@@ -1736,22 +1753,20 @@ _THRESHOLD_MODAL = dbc.Modal(
                 style={"paddingBottom": "28px"},
             ),
 
-            html.Label("Inflation Momentum threshold  (Δ MoM)", style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
-            html.P("Δ MoM of the composite inflation score. Unlike the growth band above, this "
-                   "still GATES the Inflation chip: the gate measurably helps here (label flips "
-                   "33% of months with it vs 9% without) and did not help growth, so it was kept "
-                   "on this chip only (Ray, 2026-10-06: calibrate the gate per chip). "
-                   "Default 0.05 (2026-10-03).",
-                   style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
-            html.Div(
-                dcc.Slider(id="rh-im-slider", min=-0.1, max=0.1, step=0.005, value=0.05,
-                           marks={-0.1: _modal_mark("-0.10"), -0.05: _modal_mark("-0.05"),
-                                  0: _modal_mark("0"), 0.05: _modal_mark("0.05"), 0.1: _modal_mark("0.10")},
-                           tooltip={"always_visible": False, "style": {"display": "none"}},
-                           allow_direct_input=True,
-                           className="sidebar-slider"),
-                style={"paddingBottom": "28px"},
-            ),
+            html.Label("Inflation chip gate  (distance from target)",
+                       style={"fontWeight": "700", "fontSize": "0.88rem", "color": "var(--font-color)"}),
+            html.P([
+                "Not a slider, because the inflation chip no longer runs on a Z-score. "
+                "As of 2026-10-08 it is gated on ",
+                html.B("distance from the central bank's target"),
+                f" \u2014 beyond \u00b1{_inflation_tolerance_pp():.2f}pp, "
+                "held for the same number of months as growth. Growth has no natural "
+                "\u201cright\u201d level so it is scored against its own history; inflation has "
+                "a target, so it is not (Ray, 2026-10-03). The old momentum gate was a "
+                "stand-in for a level gate that did not work and has been retired. "
+                "Tune it in config/inflation_anchor.yaml::bands.tolerance_pp.",
+            ], style={"fontSize": "0.75rem", "color": "var(--muted-color)", "marginBottom": "6px"}),
+            html.Div(style={"paddingBottom": "10px"}),
         ], style={"padding": "12px 20px 4px"}),
         dbc.ModalFooter([
             dbc.Button("Reset Defaults", id="rh-threshold-reset", color="secondary",
@@ -2720,6 +2735,29 @@ def _growth_breadth_state(
     return "fading"
 
 
+def gap_at(gaps: "pd.Series | None", as_of) -> "tuple[float | None, pd.Series | None]":
+    """(gap, gap history ending at `as_of`) from a `gap_series` result.
+
+    The one place that aligns the anchored inflation read to a composite row,
+    so no caller hand-rolls the slice. Returns (None, None) when the month has
+    no usable gap — which makes `_classify_regime` read Transition, the honest
+    answer when the anchor cannot be computed.
+    """
+    if gaps is None or len(gaps) == 0 or as_of is None:
+        return None, None
+    try:
+        m = pd.Timestamp(as_of).to_period("M")
+    except (ValueError, TypeError):  # pragma: no cover - defensive
+        return None, None
+    upto = gaps[gaps.index <= m]
+    if upto.empty or m not in gaps.index:
+        return None, None
+    v = gaps.loc[m]
+    if pd.isna(v):
+        return None, None
+    return float(v), upto
+
+
 def _classify_regime(
     g_score: "float | None",
     i_score: "float | None",
@@ -2728,12 +2766,39 @@ def _classify_regime(
     thresholds: "dict | None" = None,
     g_history: "pd.Series | None" = None,
     i_history: "pd.Series | None" = None,
+    i_gap: "float | None" = None,
+    i_gap_history: "pd.Series | None" = None,
 ) -> "tuple[str, str]":
     """Return (growth_regime, inflation_regime).
 
-    The GROWTH chip is level-gated: Z beyond ±gz, sustained for
-    `sustained_months`. It does NOT require the month-over-month change to
-    agree. The INFLATION chip keeps the dual Z + momentum condition.
+    The two chips do not share a framework, because growth and inflation are
+    not the same kind of quantity (Ray, 2026-10-03: "different animals and
+    must not share a framework").
+
+    GROWTH is RELATIVE: Z beyond ±gz, sustained for `sustained_months`. Growth
+    has no natural "right" level, so scoring it against its own history is
+    correct. It does NOT require the month-over-month change to agree.
+
+    INFLATION is ABSOLUTE: distance from the central bank's target beyond
+    ±`bands.tolerance_pp`, sustained for the same N. Inflation HAS a target,
+    and "the market, the central bank, and everyone else is always looking at
+    inflation in terms of how far are we from the target" (Ray, 2026-10-03
+    Ruling 1). `i_gap` is that distance in percentage points, from
+    `inflation_anchor.gap_series`.
+
+    `i_score` / `i_delta` no longer gate the inflation chip. They stay in the
+    signature because callers still display the relative Z as the documented
+    SECONDARY read, and because the growth leg's own delta travels the same
+    path. The momentum gate is gone: it only ever existed as a stand-in for a
+    level gate that did not work, and with a functioning absolute gate it costs
+    coverage for nothing (measured: 18% -> 67% of months decisive, median
+    episode 1.3 -> 9.8 months, flip rate 1.9 -> 1.4/yr).
+
+    **A caller that supplies no `i_gap` gets Transition, never a fallback to
+    the retired Z rule.** One definition, read everywhere — a silent fallback
+    is how two rules stay alive, and this project has been bitten by that
+    repeatedly. Missing gap is visible (everything reads Transition) rather
+    than quietly wrong.
 
     That asymmetry is deliberate and evidence-backed (Ray consult + external
     validation 2026-10-06, both logged in docs/Guidance/ray_dalio_review_log.md):
@@ -2764,8 +2829,7 @@ def _classify_regime(
     t = thresholds or _DEFAULT_THRESHOLDS
     _n = _sustained_months()
     gz  = float(thr(t, "gz"))
-    iz  = float(thr(t, "iz"))
-    im  = float(thr(t, "im"))
+    tol = _inflation_tolerance_pp()
 
     # Growth regime — level only (see docstring).
     if g_score is not None and not (isinstance(g_score, float) and pd.isna(g_score)):
@@ -2779,13 +2843,13 @@ def _classify_regime(
     else:
         g_regime = "Transition"
 
-    # Inflation regime
-    if i_score is not None and not (isinstance(i_score, float) and pd.isna(i_score)):
-        iv = float(i_score)
-        id_ = float(i_delta) if (i_delta is not None and not (isinstance(i_delta, float) and pd.isna(i_delta))) else 0.0
-        if iv > iz and id_ > im and _holds_for(i_history, iz, True, _n):
+    # Inflation regime — distance from target, sustained. See the docstring for
+    # why this is an absolute gate while growth's is relative.
+    if i_gap is not None and not (isinstance(i_gap, float) and pd.isna(i_gap)):
+        gv = float(i_gap)
+        if gv > tol and _holds_for(i_gap_history, tol, True, _n):
             i_regime = "Inflation"
-        elif iv < -iz and id_ < -im and _holds_for(i_history, iz, False, _n):
+        elif gv < -tol and _holds_for(i_gap_history, tol, False, _n):
             i_regime = "Disinflation"
         else:
             i_regime = "Transition"
@@ -2796,7 +2860,8 @@ def _classify_regime(
 
 
 def compute_regime_confidence(comp_input: "pd.DataFrame", dynamic: bool,
-                               thresholds: "dict | None", force: str) -> dict:
+                               thresholds: "dict | None", force: str,
+                               gaps: "pd.Series | None" = None) -> dict:
     """Probabilistic regime confidence (coverage-audit Phase B, 2026-10-03):
     the empirical frequency that a historical reading carrying TODAY'S chip
     label actually held into the following month, rather than reversing to
@@ -2818,6 +2883,12 @@ def compute_regime_confidence(comp_input: "pd.DataFrame", dynamic: bool,
     comp_input: a frame with "growth_score"/"inflation_score" columns (e.g.
     from _dyn_threshold_input(), so the SAME windowed series the live chip
     uses). force: "growth" or "inflation".
+
+    gaps: the country's `inflation_anchor.gap_series`. REQUIRED for
+    force="inflation" — without it every replayed month reads Transition and
+    the stat is meaningless rather than merely approximate. Passed as data
+    rather than looked up from a country code, so this stays a pure function
+    and so a test can supply a synthetic series.
     """
     base = dict(_DEFAULT_THRESHOLDS)
     if thresholds:
@@ -2844,9 +2915,12 @@ def compute_regime_confidence(comp_input: "pd.DataFrame", dynamic: bool,
         if dyn_df is not None:
             t["gz"] = float(dyn_df["dyn_gz"].iloc[pos])
             t["iz"] = float(dyn_df["dyn_iz"].iloc[pos])
+        _when = comp["as_of"].iloc[pos] if "as_of" in comp.columns else comp.index[pos]
+        _ig, _igh = gap_at(gaps, _when)
         g_chip, i_chip = _classify_regime(
             comp["growth_score"].iloc[pos], comp["inflation_score"].iloc[pos],
             g_delta.iloc[pos], i_delta.iloc[pos], t,
+            i_gap=_ig, i_gap_history=_igh,
         )
         labels.append(g_chip if force == "growth" else i_chip)
 
@@ -2949,6 +3023,8 @@ def _regime_info_children(
     thresholds: "dict | None" = None,
     g_history: "pd.Series | None" = None,
     i_history: "pd.Series | None" = None,
+    i_gap: "float | None" = None,
+    i_gap_history: "pd.Series | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table.
 
@@ -2986,7 +3062,8 @@ def _regime_info_children(
     # Classify regimes using configurable thresholds
     _t = resolve_thresholds(thresholds)
     g_regime, i_regime = _classify_regime(g_score, i_score, _g_delta_active, _i_delta_active, _t,
-                                          g_history=g_history, i_history=i_history)
+                                          g_history=g_history, i_history=i_history,
+                                          i_gap=i_gap, i_gap_history=i_gap_history)
 
     # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
     # Q2) — used for the color accent only; the chips are the decision rule.
@@ -3857,6 +3934,10 @@ def update_regime_info(
     g_history = _hist(g_sfx, bool(rolling.get("window")),           "growth_score")
     i_history = _hist(i_sfx, bool(rolling.get("inflation_window")), "inflation_score")
 
+    # Target-anchored inflation gate (Ray 2026-10-03 Ruling 1).
+    from indicators.inflation_anchor import gap_series as _gap_series
+    _i_gap, _i_gap_hist = gap_at(_gap_series(country), selected["as_of"])
+
     return (
         _regime_info_children(
             selected,
@@ -3871,6 +3952,8 @@ def update_regime_info(
             thresholds=thresholds_for_row,
             g_history=g_history,
             i_history=i_history,
+            i_gap=_i_gap,
+            i_gap_history=_i_gap_hist,
         ),
         date_display,
     )
@@ -3891,7 +3974,7 @@ def _threshold_display_chips(effective: "dict | None",
     b = base or t
     dynamic = bool(thr(b, "dynamic"))
     gz, iz = float(thr(t, "gz")), float(thr(t, "iz"))
-    gm, im = float(thr(t, "gm")), float(thr(t, "im"))
+    gm = float(thr(t, "gm"))
     base_gz, base_iz = float(thr(b, "gz")), float(thr(b, "iz"))
 
     def _chip(label: str, val: float, prec: int = 2,
@@ -3918,9 +4001,10 @@ def _threshold_display_chips(effective: "dict | None",
     chips = [
         _chip("G·Z", gz, 2, base_gz if dynamic else None), _dot(),
         _chip("I·Z", iz, 2, base_iz if dynamic else None), _dot(),
-        # gm/im are untouched by the dynamic algorithm (step 6) — no base shown.
-        _chip("G·Δ", gm, 3), _dot(),
-        _chip("I·Δ", im, 3),
+        # gm is untouched by the dynamic algorithm (step 6) — no base shown.
+        # There is no I·Δ chip: the inflation leg is target-anchored as of
+        # 2026-10-08 and no longer has a momentum gate to display.
+        _chip("G·Δ", gm, 3),
     ]
     if dynamic:
         chips += [_dot(), html.Span(
@@ -4102,6 +4186,8 @@ def update_regime_chart(
     _full_i = _full[i_col]
     g_delta_s = _full_g.diff()
     i_delta_s = _full_i.diff()
+    from indicators.inflation_anchor import gap_series as _gap_series
+    _gaps = _gap_series(country)
     g_regimes, i_regimes = [], []
     for pos in range(len(comp)):
         row_s = comp.iloc[pos]
@@ -4111,7 +4197,6 @@ def update_regime_chart(
                 "gz": float(_dyn_df["dyn_gz"].iloc[_fp]),
                 "iz": float(_dyn_df["dyn_iz"].iloc[_fp]),
                 "gm": thr(_t, "gm"),
-                "im": thr(_t, "im"),
             }
         else:
             row_t = _t
@@ -4122,6 +4207,7 @@ def update_regime_chart(
             row_t,
             g_history=None if _fp is None else _full_g.iloc[:_fp + 1],
             i_history=None if _fp is None else _full_i.iloc[:_fp + 1],
+            **dict(zip(("i_gap", "i_gap_history"), gap_at(_gaps, row_s["as_of"]))),
         )
         g_regimes.append(gr)
         i_regimes.append(ir)
@@ -4329,7 +4415,6 @@ def _update_threshold_display(
     [Output("rh-gz-slider", "value"),
      Output("rh-iz-slider", "value"),
      Output("rh-gm-slider", "value"),
-     Output("rh-im-slider", "value"),
      Output("rh-dynamic-toggle", "value"),
      Output("rh-conc-toggle", "value")],
     Input("regime-threshold-modal", "is_open"),
@@ -4340,13 +4425,12 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
     """Populate slider values from store when modal opens."""
     if not is_open:
         from dash import no_update
-        return (no_update,) * 6
+        return (no_update,) * 5
     t = resolve_thresholds(stored)
     return (
         float(t["gz"]),
         float(t["iz"]),
         float(t["gm"]),
-        float(t["im"]),
         ["dynamic"] if bool(t["dynamic"]) else [],
         ["conc_adj"] if bool(t["conc_adj"]) else [],
     )
@@ -4359,14 +4443,13 @@ def _sync_threshold_sliders(is_open: bool, stored: "dict | None") -> tuple:
     [State("rh-gz-slider", "value"),
      State("rh-iz-slider", "value"),
      State("rh-gm-slider", "value"),
-     State("rh-im-slider", "value"),
      State("rh-dynamic-toggle", "value"),
      State("regime-threshold-store", "data")],
     prevent_initial_call=True,
 )
 def _save_thresholds(
     n_apply: int, n_reset: int,
-    gz: float, iz: float, gm: float, im: float,
+    gz: float, iz: float, gm: float,
     dynamic_val: "list | None",
     current: "dict | None",
 ) -> dict:
@@ -4385,7 +4468,7 @@ def _save_thresholds(
         def _val(v, key):
             return float(v) if v is not None else float(_cur[key])
         return {"gz": _val(gz, "gz"), "iz": _val(iz, "iz"),
-                "gm": _val(gm, "gm"), "im": _val(im, "im"),
+                "gm": _val(gm, "gm"),
                 "dynamic": bool(dynamic_val),
                 "conc_adj": bool(_cur["conc_adj"]),
                 "v": _THRESHOLD_STORE_VERSION}

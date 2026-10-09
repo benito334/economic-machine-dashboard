@@ -111,6 +111,25 @@ project retired in July 2026 when the seasons became display-only. Historical
 values therefore CHANGED; `methodology_version` moved to `2026.10.07` to say so.
 If you were reading `confidence`, re-read it.
 
+**The inflation CHIP changed on 2026-10-08 — but the composite columns did not.**
+The displayed Inflation / Transition / Disinflation chip is now gated on
+**distance from the central bank's target** (`indicators.inflation_anchor.gap_series`,
+beyond ±`bands.tolerance_pp`, sustained), not on `inflation_score`'s relative
+Z. The momentum gate is retired. `growth_score` / `inflation_score` in both
+composite tables are **unchanged in value** — if you fit betas to those
+columns, nothing moves. What changes is any consumer that was reproducing the
+chip, and `validator_verdicts`, which grades the chip.
+
+Growth is deliberately NOT symmetric: it stays relative-Z, because growth has
+no natural "right" level and inflation has a target (Ray, 2026-10-03). See
+`docs/Guidance/regime_state_vs_environment_2026-10-08.md`.
+
+⚠ **Still pending and NOT in this change:** re-anchoring has no effect on the
+composite series today because the anchor runs alongside, not inside, the
+composite. If the inflation *composite* is ever rebuilt around the target, the
+continuous series moves and **every fitted beta moves with it** — that change
+must land before any beta recalibration, not after.
+
 **`signals.surprise` is always NULL** (0 of 368,225 rows). A declared slot that
 was never built. Do not read it.
 

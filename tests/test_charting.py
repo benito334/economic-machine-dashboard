@@ -1383,9 +1383,12 @@ class TestDynamicToggleImmediateApply:
         # forward into the dict it writes back.
         from dashboard.charting import _apply_dynamic_toggle, _DEFAULT_THRESHOLDS
 
+        # The stale dict still carries `im`, a key retired on 2026-10-08 —
+        # exactly the shape a browser that has not been back since will send.
         result = _apply_dynamic_toggle([], {"gz": 0.5, "iz": 0.5, "gm": 0.0, "im": 0.0})
         assert result["dynamic"] is False            # the click is honored
-        assert result["im"] == _DEFAULT_THRESHOLDS["im"]   # the stale gate is not
+        assert "im" not in result                    # the retired key is dropped
+        assert result["gm"] == _DEFAULT_THRESHOLDS["gm"]  # the stale band is not kept
         assert result["v"] == _DEFAULT_THRESHOLDS["v"]
 
 
@@ -1450,15 +1453,30 @@ class TestComputeRegimeConfidence:
 
         assert result == {"confidence": None, "label": None, "n": 0}
 
-    def test_inflation_force_reads_the_inflation_column(self):
+    def test_inflation_force_reads_the_anchored_gap(self):
+        """The inflation leg is target-anchored as of 2026-10-08, so the replay
+        is driven by the gap series, not by the inflation Z column."""
+        from dashboard.charting import compute_regime_confidence
+
+        comp = self._comp([0.0] * 10, inflation_vals=[0.0] * 10)
+        gaps = pd.Series(1.0, index=pd.PeriodIndex(comp.index, freq="M"))
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T,
+                                           force="inflation", gaps=gaps)
+
+        assert result["label"] == "Inflation"
+        assert result["confidence"] == pytest.approx(1.0)
+
+    def test_inflation_force_without_gaps_is_unavailable_not_wrong(self):
+        """No gap series -> Transition everywhere -> no confidence number.
+        Better than silently grading the retired relative-Z rule."""
         from dashboard.charting import compute_regime_confidence
 
         vals = [round(1.0 + 0.1 * i, 2) for i in range(10)]
         comp = self._comp([0.0] * 10, inflation_vals=vals)
-        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T, force="inflation")
-
-        assert result["label"] == "Inflation"
-        assert result["confidence"] == pytest.approx(1.0)
+        result = compute_regime_confidence(comp, dynamic=False, thresholds=self._T,
+                                           force="inflation")
+        assert result["label"] == "Transition"
+        assert result["confidence"] is None
 
 
 def test_chart_card_sync_hover_flag_marks_card_and_enables_spikes():
@@ -1585,14 +1603,29 @@ def test_growth_chip_still_requires_the_level():
     assert charting._classify_regime(-0.9, 0.0, 0.0, 0.0, _T)[0] == "Retraction"
 
 
-def test_inflation_chip_keeps_its_momentum_gate():
-    # The asymmetry is the point: the gate measurably helps inflation (33% ->
-    # 9% flip rate) and did nothing for growth, so it was kept on this chip only.
+def test_inflation_chip_is_gated_on_distance_from_target_not_momentum():
+    """Replaces test_inflation_chip_keeps_its_momentum_gate (retired 2026-10-08).
+
+    The momentum gate only ever existed as a stand-in for a level gate that did
+    not work: dyn_iz was pinned at its 0.15 sigma floor for 10 of 14 countries
+    while typical |inflation Z| ran 2.3-4.6x that, so the level cleared in 85%
+    of months and momentum did all the gating -- 64 of the 82 percentage points
+    of inflation Transition. With a functioning absolute gate it costs coverage
+    for nothing. Ray 2026-10-03 Ruling 1; measurements in
+    docs/Guidance/ray_consult_regime_frequency_2026-10-08.md.
+    """
+    import pandas as pd
     import dashboard.charting as charting
-    _, i = charting._classify_regime(0.0, 0.9, 0.0, 0.001, _T)
-    assert i == "Transition"                 # level clears, momentum does not
-    _, i = charting._classify_regime(0.0, 0.9, 0.0, 0.20, _T)
+    held = pd.Series([1.0, 1.0])
+    # Momentum is now irrelevant: a flat gap well above target still fires.
+    _, i = charting._classify_regime(0.0, 0.9, 0.0, 0.000, _T,
+                                     i_gap=1.0, i_gap_history=held)
     assert i == "Inflation"
+    # And a big Z move inside the tolerance band does not.
+    inside = pd.Series([0.1, 0.1])
+    _, i = charting._classify_regime(0.0, 0.9, 0.0, 0.20, _T,
+                                     i_gap=0.1, i_gap_history=inside)
+    assert i == "Transition"
 
 
 def test_growth_breadth_state_splits_a_growth_reading_three_ways():
@@ -1622,10 +1655,15 @@ def test_growth_breadth_state_has_a_plain_english_gloss_for_every_state():
         assert charting._GROWTH_MOMENTUM_STATE[state]
 
 
-def test_default_growth_band_is_004_and_inflation_gate_stays_005():
+def test_default_growth_band_is_004_and_there_is_no_inflation_momentum_gate():
+    """gm survives as the growth ANNOTATION band (it gates nothing, 2026-10-06).
+
+    `im` was removed on 2026-10-08: the inflation chip is gated on distance
+    from target, so there is no momentum gate left to default.
+    """
     import dashboard.charting as charting
     assert charting._DEFAULT_THRESHOLDS["gm"] == 0.04
-    assert charting._DEFAULT_THRESHOLDS["im"] == 0.05
+    assert "im" not in charting._DEFAULT_THRESHOLDS
 
 
 def test_threshold_store_initial_data_references_the_module_defaults():
@@ -1734,11 +1772,15 @@ def test_version_bump_is_required_when_a_default_changes():
     # fails loudly on the next default change; bump _THRESHOLD_STORE_VERSION
     # and update the expected values together.
     import dashboard.charting as charting
-    assert charting._THRESHOLD_STORE_VERSION == 2
+    assert charting._THRESHOLD_STORE_VERSION == 3
     assert {k: v for k, v in charting._DEFAULT_THRESHOLDS.items() if k != "v"} == {
-        "gz": 0.5, "iz": 0.5, "gm": 0.04, "im": 0.05,
+        "gz": 0.5, "iz": 0.5, "gm": 0.04,
         "dynamic": True, "conc_adj": False,
     }
+    # `im` was removed on 2026-10-08 when the inflation chip became
+    # target-anchored: its momentum gate was a stand-in for a level gate that
+    # did not work, and a slider that no longer governs anything is a lie.
+    assert "im" not in charting._DEFAULT_THRESHOLDS
 
 
 def test_apply_stamps_the_version_so_a_choice_survives_the_next_bump():
@@ -1751,15 +1793,15 @@ def test_apply_stamps_the_version_so_a_choice_survives_the_next_bump():
     import dash
     with patch.object(dash, "ctx") as mock_ctx:
         mock_ctx.triggered_id = "rh-threshold-apply"
-        out = charting._save_thresholds(1, 0, 0.6, 0.7, 0.03, 0.02, ["dynamic"], None)
+        out = charting._save_thresholds(1, 0, 0.6, 0.7, 0.03, ["dynamic"], None)
     assert out["v"] == charting._THRESHOLD_STORE_VERSION
-    assert (out["gz"], out["iz"], out["gm"], out["im"]) == (0.6, 0.7, 0.03, 0.02)
+    assert (out["gz"], out["iz"], out["gm"]) == (0.6, 0.7, 0.03)
     assert out["dynamic"] is True
     # And it must round-trip unchanged through the resolver.
     assert charting.resolve_thresholds(out) == {**charting._DEFAULT_THRESHOLDS, **out}
 
 
-def test_apply_keeps_a_deliberate_zero_on_the_momentum_sliders():
+def test_apply_keeps_a_deliberate_zero_on_the_momentum_slider():
     # `float(gm or 0.0)` would rewrite a deliberate 0.0; both sliders have a
     # 0.0 stop, so 0.0 has to survive Apply.
     import dashboard.charting as charting
@@ -1767,8 +1809,8 @@ def test_apply_keeps_a_deliberate_zero_on_the_momentum_sliders():
     from unittest.mock import patch
     with patch.object(dash, "ctx") as mock_ctx:
         mock_ctx.triggered_id = "rh-threshold-apply"
-        out = charting._save_thresholds(1, 0, 0.5, 0.5, 0.0, 0.0, [], None)
-    assert out["gm"] == 0.0 and out["im"] == 0.0 and out["dynamic"] is False
+        out = charting._save_thresholds(1, 0, 0.5, 0.5, 0.0, [], None)
+    assert out["gm"] == 0.0 and out["dynamic"] is False
 
 
 def test_reset_writes_a_stamped_default_dict():
@@ -1777,7 +1819,7 @@ def test_reset_writes_a_stamped_default_dict():
     from unittest.mock import patch
     with patch.object(dash, "ctx") as mock_ctx:
         mock_ctx.triggered_id = "rh-threshold-reset"
-        out = charting._save_thresholds(0, 1, 0.5, 0.5, 0.0, 0.0, [], None)
+        out = charting._save_thresholds(0, 1, 0.5, 0.5, 0.0, [], None)
     assert out == charting._DEFAULT_THRESHOLDS
     assert charting.resolve_thresholds(out) == charting._DEFAULT_THRESHOLDS
 
@@ -1968,6 +2010,13 @@ def test_classify_regime_call_sites_in_charting_pass_history():
         "_classify_regime called without history in charting.py:\n"
         + "\n---\n".join(offenders)
     )
+    # Same contract for the anchored inflation gate (2026-10-08): a call that
+    # omits i_gap silently reads Transition on the inflation leg forever.
+    no_gap = [c for c in calls if "i_gap" not in c]
+    assert not no_gap, (
+        "_classify_regime called without i_gap in charting.py:\n"
+        + "\n---\n".join(no_gap)
+    )
 
 
 @pytest.mark.integration
@@ -1980,8 +2029,9 @@ def test_regime_card_chip_matches_command_center_for_every_country():
     """
     from dashboard.charting import (_classify_regime, compute_dynamic_thresholds,
                                     _dyn_threshold_input, resolve_thresholds,
-                                    _conc_share_for, update_regime_info)
+                                    _conc_share_for, update_regime_info, gap_at)
     from dashboard.charting_data import load_composite_history
+    from indicators.inflation_anchor import gap_series
 
     countries = ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
                  "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
@@ -2002,10 +2052,12 @@ def test_regime_card_chip_matches_command_center_for_every_country():
         if bool(t0["dynamic"]) and not dyn.empty:
             t["gz"] = float(dyn["dyn_gz"].iloc[-1])
             t["iz"] = float(dyn["dyn_iz"].iloc[-1])
+        _ig, _igh = gap_at(gap_series(cc), hist["as_of"].iloc[-1])
         expected = _classify_regime(
             hist["growth_score"].iloc[-1], hist["inflation_score"].iloc[-1],
             hist["growth_score"].diff().iloc[-1], hist["inflation_score"].diff().iloc[-1],
             t, g_history=hist["growth_score"], i_history=hist["inflation_score"],
+            i_gap=_ig, i_gap_history=_igh,
         )
         card, _ = update_regime_info(0, {}, 0, 0, 0, cc, None, None, False)
         got = tuple(_card_chips(card))

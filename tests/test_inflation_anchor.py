@@ -248,9 +248,25 @@ def test_sustained_false_without_enough_history():
 # ── Production classifier wiring ─────────────────────────────────────────────
 
 def test_classifier_backcompat_without_history():
-    """Callers that pass no history keep the original single-month rule."""
+    """No history -> the growth leg keeps the original single-month rule.
+
+    The inflation leg reads Transition because no gap was supplied, which is
+    the deliberate contract: a caller that does not provide the anchored gap
+    gets Transition, never a fallback to the retired relative-Z rule.
+    """
     from dashboard.charting import _classify_regime
-    assert _classify_regime(0.9, 0.9, 0.1, 0.1) == ("Growth", "Inflation")
+    assert _classify_regime(0.9, 0.9, 0.1, 0.1) == ("Growth", "Transition")
+
+
+def test_classifier_never_falls_back_to_the_retired_z_rule():
+    """A large inflation Z with no gap must NOT produce an Inflation chip.
+
+    Pins the one-definition contract: the relative-Z inflation rule was retired
+    on 2026-10-08 and must not survive as a silent fallback.
+    """
+    from dashboard.charting import _classify_regime
+    _, i = _classify_regime(0.0, 5.0, 0.0, 5.0, i_gap=None)
+    assert i == "Transition"
 
 
 def test_classifier_sustained_filter_blocks_one_month_spike():
@@ -263,8 +279,27 @@ def test_classifier_sustained_filter_blocks_one_month_spike():
 def test_classifier_sustained_filter_allows_held_move():
     from dashboard.charting import _classify_regime
     held = pd.Series([0.8, 0.9])
+    held_gap = pd.Series([1.2, 1.1])          # pp above target, two months
     assert _classify_regime(0.9, 0.9, 0.1, 0.1,
-                            g_history=held, i_history=held) == ("Growth", "Inflation")
+                            g_history=held, i_history=held,
+                            i_gap=1.1, i_gap_history=held_gap) == ("Growth", "Inflation")
+
+
+def test_classifier_inflation_leg_is_gated_on_the_TARGET_not_the_z():
+    """Ray 2026-10-03 Ruling 1, the whole point of the change.
+
+    A low relative Z with inflation genuinely above target must read
+    Inflation — that is the "3% looks low on your Z-score but the Fed is still
+    hiking" case that had the dashboard out of sync with reality.
+    """
+    from dashboard.charting import _classify_regime
+    gap = pd.Series([1.0, 1.0])
+    _, i = _classify_regime(0.0, -0.9, 0.0, -0.1, i_gap=1.0, i_gap_history=gap)
+    assert i == "Inflation"
+    # ...and a high Z that is AT target must not.
+    at = pd.Series([0.1, 0.1])
+    _, i = _classify_regime(0.0, 2.5, 0.0, 0.5, i_gap=0.1, i_gap_history=at)
+    assert i == "Transition"
 
 
 def test_short_history_does_not_block_a_new_country():
@@ -272,7 +307,9 @@ def test_short_history_does_not_block_a_new_country():
     from dashboard.charting import _classify_regime
     assert _classify_regime(0.9, 0.9, 0.1, 0.1,
                             g_history=pd.Series([0.9]),
-                            i_history=pd.Series([0.9])) == ("Growth", "Inflation")
+                            i_history=pd.Series([0.9]),
+                            i_gap=1.0,
+                            i_gap_history=pd.Series([1.0])) == ("Growth", "Inflation")
 
 
 def test_dynamic_thresholds_respect_the_floor():

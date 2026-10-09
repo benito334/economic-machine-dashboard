@@ -302,11 +302,12 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
     import dash_bootstrap_components as dbc
     from dashboard.charting import (
         _FORCE_WINDOW_COL, _GROWTH_CHIP, _INFLAT_CHIP,
-        _INFLATION_WINDOW_COL, _classify_regime, _dyn_threshold_input,
+        _INFLATION_WINDOW_COL, _classify_regime, _dyn_threshold_input, gap_at as _gap_at,
         _growth_breadth_state,
         _season_label, compute_dynamic_thresholds,
         resolve_thresholds,
     )
+    from indicators.inflation_anchor import gap_series as _gap_series
 
     theme = theme_name or DEFAULT_THEME
     country = str(country_data or "US").upper()
@@ -347,8 +348,11 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
     eff_gz = float(dyn_df["dyn_gz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t["gz"])
     eff_iz = float(dyn_df["dyn_iz"].iloc[-1]) if dyn_on and not dyn_df.empty else float(t["iz"])
     chip_t = {**t, "gz": eff_gz, "iz": eff_iz}
+    _gaps = _gap_series(country)
+    _gap, _gap_hist = _gap_at(_gaps, hist["as_of"].iloc[-1])
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, chip_t,
-                                      g_history=hist[g_col], i_history=hist[i_col])
+                                      g_history=hist[g_col], i_history=hist[i_col],
+                                      i_gap=_gap, i_gap_history=_gap_hist)
     g_mom_state = _growth_breadth_state(g_chip, g, g_d, chip_t)
     season_now = _season_label(g, i, chip_t)
     g_agree = chip_direction_agreement(hist, "growth")

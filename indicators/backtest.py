@@ -230,15 +230,23 @@ def compute_pit_scores(conn, country: str = "US",
 
 # ── Classification + scoring ─────────────────────────────────────────────────
 
-def classify_history(scores: pd.DataFrame, dynamic: bool) -> pd.DataFrame:
+def classify_history(scores: pd.DataFrame, dynamic: bool,
+                     country: str = "US") -> pd.DataFrame:
     """Per-month Growth/Inflation chips under fixed or dynamic thresholds.
 
     Imports the production classifier so there is exactly one implementation
     of the classification rule and the threshold algorithm.
+
+    The inflation leg is target-anchored (Ray 2026-10-03 Ruling 1), so the
+    replay needs the country's gap series as well as its Z scores. Without it
+    every inflation chip would read Transition and the backtest would quietly
+    grade a different rule than production runs.
     """
     from dashboard.charting import (
-        _DEFAULT_THRESHOLDS, _classify_regime, compute_dynamic_thresholds,
+        _DEFAULT_THRESHOLDS, _classify_regime, compute_dynamic_thresholds, gap_at,
     )
+    from indicators.inflation_anchor import gap_series
+    gaps = gap_series(country)
 
     base = dict(_DEFAULT_THRESHOLDS)
     dyn_df = compute_dynamic_thresholds(
@@ -253,9 +261,11 @@ def classify_history(scores: pd.DataFrame, dynamic: bool) -> pd.DataFrame:
         if dyn_df is not None:
             t["gz"] = float(dyn_df["dyn_gz"].iloc[pos])
             t["iz"] = float(dyn_df["dyn_iz"].iloc[pos])
+        _ig, _igh = gap_at(gaps, ts)
         g_chip, i_chip = _classify_regime(
             scores["growth_score"].iloc[pos], scores["inflation_score"].iloc[pos],
             g_delta.iloc[pos], i_delta.iloc[pos], t,
+            i_gap=_ig, i_gap_history=_igh,
         )
         rows.append({"as_of": ts, "growth_chip": g_chip, "inflation_chip": i_chip})
     return pd.DataFrame(rows).set_index("as_of")
