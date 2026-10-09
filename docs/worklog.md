@@ -4,6 +4,99 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-09 (2) — A working agreement, a bug of my own, and PR #4 merged
+
+The owner said they were lost in the nuance and are not a specialist in these
+methodologies. That is a fair read of how the work had been going: optimising
+for rigour produced correct output they could not evaluate, which on something
+driving real money is worse than useless — if they cannot follow it they cannot
+catch me being wrong.
+
+**North Star** (`7464449`). Asked rather than assumed what the project is for.
+Their answer is now the governing statement, embedded verbatim at the top of
+`CLAUDE.md` so it loads every session: *accurately understand the world through
+the lens of Ray Dalio's macro investing, in an academically validated way, with
+mechanistic and documented methodologies that survive scrutiny; that
+understanding is then used to make macro-level investment decisions.*
+Understanding is the goal, investment decisions are its downstream use, honest
+beats useful. Their latitude choice: **decide, but show the evidence** — nothing
+changes a number without a paper, a convention, or a measurement.
+`docs/NORTH_STAR.md` carries the five-question decision test and the seven
+methodology guardrails, each of which caused a real wrong answer this week
+before becoming a rule. `docs/decisions/ADR-TEMPLATE.md` extends the existing
+ADR format with a plain-language summary and a "how this serves the North Star"
+section.
+
+**A bug I shipped the previous day, found in the thing I was recommending**
+(`10d8d0e`). INDPRO is an index and gets rebased; the SPF forecast is on
+whichever base was current when the survey ran. Dividing one by the other
+compares different rulers — the ratio runs 2.08 in 1985-95 down to 1.05 today —
+so the "surprise" averaged −1.84σ instead of ~0. Fixed by chaining growth
+rates, which are base-invariant. Mean −1.84 → −0.10. PAYEMS is a headcount and
+never rebases (0.996–1.003 in every era), so it is the control in a new
+regression test that fails if any SPF surprise drifts past 0.5σ — the test that
+would have caught this a day earlier. Pipeline re-run.
+
+The fix changed the answer it was hiding. Against **NBER recession dating**,
+independent of everything either project builds: the growth surprise separates
+recessions from expansions by −2.09 and is negative in **5 of 5** recessions;
+the real-yield measure it would replace shows **p = 0.93 — no relationship with
+recessions at all**. Before the fix the same test gave a muddy p = 0.063.
+Honest limit recorded: five recessions is five observations (sign test p = 0.031
+one-sided, episode-means t-test p = 0.079).
+
+**ADR-008 rescoped** (`f2d3622`). It was first drafted as a recommendation for
+CreovaOne's codebase. That was over-reach — their own sessions had already
+diagnosed the identical confound and deliberately paused the backfill. Cut to
+`docs/creovaone_note_2026-10-09.md`: one page, one finding, no recommendation
+beyond the evidence, plus the trade-off, the invert flag that would silently
+flip their axis, and the fact that our own IP column needed re-pulling.
+Dividing line now recorded: **we build and validate the measurement; they
+decide what to do with it.**
+
+**CreovaOne housekeeping** (their repo). Committed 9 finished-but-uncommitted
+files whose live refit was *already applied to their database* — the worst state
+to leave anything in, data moved and the code to reproduce it unsaved. Verified
+1815 tests first. Swept four merged branches, pruned two worktrees pointing at a
+path that no longer exists. **Aborted a cherry-pick of a 357-commit-behind
+branch that would have silently reverted their October work** (half-life 48 →
+12, deleting ADR-014) — caught only because the staged file list contained files
+the cherry-pick had no business touching. `funny-roentgen`'s bad-tick detection
+is genuinely unmerged and left alive; it needs deliberate re-application, not a
+cherry-pick.
+
+They then acted on the note within the hour and **retracted ADR-014 themselves**
+— the half-life lengthening was my original handoff recommendation, and testing
+showed it changed zero equity box assignments because real yields have climbed
+for six years, so no half-life reverses it. I was right that something was
+broken and wrong about what. They caught that by testing rather than taking my
+word, which is how it should work.
+
+**PR #4 merged** (`cb388b2`) — 21 commits, 37 files. Before merging, researched
+the one question the owner could not evaluate and gave a recommendation they
+could: inflation measured against target is the Taylor-rule standard (Taylor
+1993, π − π\*), the Fed currently describes inflation as elevated against its 2%
+objective and has just hiked 12-0 because of it, and the old method scored 3%
+core PCE against a history dominated by the 2021-23 spike so it looked
+unremarkable. Stated the honest objection too — the Taylor rule uses a gap for
+growth as well, and our asymmetry rests on the target being published while
+potential output is not.
+
+**Where it leaves things.** `main` at `cb388b2`, 884 tests, zero exclusions,
+dashboard healthy. Both repos clean and pushed. Open, none urgent: SPF for
+`inflation.cpi_headline` (needs a QoQ→YoY conversion), the 70/30 inflation
+reweight (designed, deliberately unshipped because it moves every downstream
+beta), and CreovaOne's bad-tick re-application.
+
+**The thing to carry forward.** Two of today's bugs were mine, and both were
+caught by checking rather than by process — which is why the North Star now
+exists. And the largest result of the two days is a negative: a regime→asset-
+return relationship cannot be demonstrated at conventional significance on this
+data, even pooled. The measurements are markedly more defensible than they were.
+They are not more confident. The second half is the part that protects the owner.
+
+---
+
 ## 2026-10-09 — Worked the 2026-10-08 checklist to zero; the statistical thread closes negative
 
 Nine open items plus two Ray rulings, all closed. Commits `8c07787` → `54b63b5`.

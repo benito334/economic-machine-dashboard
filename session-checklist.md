@@ -14,7 +14,15 @@
 
 ## Open items (updated 2026-10-08)
 
-### From the 2026-10-08 regime/beta session — ordered, nothing implemented yet
+### From the 2026-10-08 regime/beta session — ALL CLOSED, merged in PR #4 (`cb388b2`)
+
+**Status 2026-10-09:** every item below is done and on `main`. Current open
+items live in `CLAUDE.md`'s "To start the next session" block, which is the
+authority — do not take this struck-through list as a to-do.
+
+**Read `docs/NORTH_STAR.md` before any change that affects what a number
+means.** It is the agreed goal plus the decision test, and it governs.
+
 
 Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
 `regime_state_vs_environment_2026-10-08.md` (the definitions — read first),
