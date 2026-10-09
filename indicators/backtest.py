@@ -383,3 +383,65 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ── Chip reliability: how many independent episodes is a chip built on? ──────
+# Ray consult 2026-10-08 (docs/Guidance/ray_dalio_review_log.md): shown that our
+# Inflation chip had fired in essentially ONE macro episode in 43 years, he
+# withdrew his own tilt advice -- "with only one occurrence, that confidence is
+# essentially zero" -- and set a bar of at least 10-15 independent occurrences,
+# tested across periods AND countries, before acting on a regime signal.
+#
+# That bar is only meaningful if the count is published, so here it is. Note the
+# bar itself is a reasonable heuristic rather than a citable standard: no such
+# rule was found in the regime-switching literature, and the nearest genuine
+# convention is events-per-variable (~10) from prediction modelling.
+
+MIN_INDEPENDENT_EPISODES = 10   # TUNABLE: below this, do not tilt on the chip
+EPISODE_GAP_MONTHS = 3          # TUNABLE: see independent_episodes()
+
+
+def independent_episodes(
+    chips: pd.DataFrame,
+    gap_months: int = EPISODE_GAP_MONTHS,
+) -> dict:
+    """Count independent episodes per chip state from a `classify_history` frame.
+
+    An episode is a maximal run of one decisive label. Two runs of the SAME
+    label separated by fewer than `gap_months` of other labels are merged into
+    one: the US inflation chip firing in 2021-05, going quiet, and firing again
+    in 2021-09 is one inflation episode, not two, and counting it as two is how
+    a single macro event masquerades as a sample.
+
+    Returns {force: {"episodes": {label: n}, "decisive_episodes": n,
+                     "months": {label: n}, "meets_bar": bool}}.
+    """
+    out: dict = {}
+    for force, col in (("growth", "growth_chip"), ("inflation", "inflation_chip")):
+        if col not in chips.columns:
+            continue
+        s = chips[col].dropna()
+        runs: list[tuple[str, int, int]] = []          # (label, start_pos, end_pos)
+        for pos, lab in enumerate(s):
+            if runs and runs[-1][0] == lab:
+                runs[-1] = (lab, runs[-1][1], pos)
+            else:
+                runs.append((lab, pos, pos))
+        episodes: dict[str, int] = {}
+        last_end: dict[str, int] = {}
+        for lab, a, b in runs:
+            if lab == "Transition":
+                continue
+            prev = last_end.get(lab)
+            if prev is None or (a - prev) > gap_months:
+                episodes[lab] = episodes.get(lab, 0) + 1
+            last_end[lab] = b
+        months = s.value_counts().to_dict()
+        decisive = sum(episodes.values())
+        out[force] = {
+            "episodes": episodes,
+            "decisive_episodes": decisive,
+            "months": {k: int(v) for k, v in months.items()},
+            "meets_bar": decisive >= MIN_INDEPENDENT_EPISODES,
+        }
+    return out

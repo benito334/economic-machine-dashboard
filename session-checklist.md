@@ -56,10 +56,21 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
 4. **Build genuine surprise.** `signals.surprise` is still 0 non-null of
    368,225. SPF is already ingested for the validator badges. This is what
    moves the beta input from proxy to correct (Ray 2026-10-07 Ruling 1).
-5. **Count independent episodes per chip per country** and publish it. Do not
-   let anything downstream tilt on a chip with fewer than ~10.
-6. **Move backtest validation off `FORWARD_MONTHS = 3`** in `backtest_g3.py` to
-   12-24m. Effect sizes are larger at the longer horizons in every test run.
+5. ~~**Count independent episodes per chip per country.**~~ **DONE
+   2026-10-08** — `indicators.backtest.independent_episodes()`, published on
+   the Regime Validator page as "Evidence behind each chip". Runs of the same
+   label separated by fewer than `EPISODE_GAP_MONTHS` (3) are merged, so one
+   flickering macro event counts once. Bar is `MIN_INDEPENDENT_EPISODES` (10).
+   **Current state: growth passes everywhere; inflation is below bar on
+   EZ (7), BR (8) and MX (9).** The anchor fix moved US inflation from
+   essentially 1 episode to 14.
+6. ~~**Move backtest validation off `FORWARD_MONTHS = 3`.**~~ **DONE
+   2026-10-08** — now 12, with `FORWARD_HORIZONS = (3, 12, 24)` reported side
+   by side so the horizon's effect is visible instead of being a buried
+   constant. Re-checked the A1 rate_expectations decision at every horizon
+   before changing it: incremental IC rises 0.148 (3m) -> 0.257 (12m), so the
+   slot is kept more firmly, not less. `chip_conditioned_returns` now carries
+   the overlapping-window warning in its own docstring.
 7. **Decide what BR / MX / AU should show.** Their inflation composites are
    near-constant (BR sd 0.003 over 10y, MX 0.042, AU 62% of months with an
    exactly-zero MoM delta). No threshold rule rescues a constant series.

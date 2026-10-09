@@ -126,3 +126,64 @@ def test_scenario_wrong_direction_property():
     s2 = Scenario("y", "2020-01-01", "2020-02-01", "growth",
                   "Retraction", frozenset({"Retraction"}))
     assert s2.wrong == "Growth"
+
+
+# ── independent_episodes (Ray bar, 2026-10-08) ───────────────────────────────
+
+def _ep_chips(growth, inflation=None):
+    import pandas as pd
+    n = len(growth)
+    return pd.DataFrame(
+        {"growth_chip": growth,
+         "inflation_chip": inflation if inflation is not None else ["Transition"] * n},
+        index=pd.date_range("2000-01-31", periods=n, freq="ME"),
+    )
+
+
+def test_independent_episodes_counts_maximal_runs():
+    from indicators.backtest import independent_episodes
+    chips = _ep_chips(["Growth"] * 3 + ["Transition"] * 6 + ["Growth"] * 2)
+    out = independent_episodes(chips)
+    assert out["growth"]["episodes"]["Growth"] == 2
+    assert out["growth"]["decisive_episodes"] == 2
+    assert out["growth"]["months"]["Growth"] == 5
+
+
+def test_a_short_gap_does_not_create_a_second_episode():
+    """One macro event that flickers is one event.
+
+    The US inflation chip firing in 2021-05, going quiet, and firing again in
+    2021-09 is a single inflation episode. Counting it as two is how one event
+    masquerades as a sample — the exact error that made the pre-2026-10-08
+    chip look better evidenced than it was.
+    """
+    from indicators.backtest import independent_episodes
+    chips = _ep_chips(["Growth"] * 2 + ["Transition"] * 2 + ["Growth"] * 2)
+    assert independent_episodes(chips, gap_months=3)["growth"]["decisive_episodes"] == 1
+    # A long enough quiet stretch does separate them.
+    far = _ep_chips(["Growth"] * 2 + ["Transition"] * 9 + ["Growth"] * 2)
+    assert independent_episodes(far, gap_months=3)["growth"]["decisive_episodes"] == 2
+
+
+def test_opposite_labels_are_counted_separately():
+    from indicators.backtest import independent_episodes
+    chips = _ep_chips(["Growth"] * 2 + ["Retraction"] * 2 + ["Growth"] * 2)
+    eps = independent_episodes(chips, gap_months=3)["growth"]["episodes"]
+    assert eps["Retraction"] == 1
+    # The two Growth runs are only 2 months apart, so they stay one episode.
+    assert eps["Growth"] == 1
+
+
+def test_meets_bar_tracks_the_configured_minimum():
+    from indicators.backtest import independent_episodes, MIN_INDEPENDENT_EPISODES
+    few = _ep_chips(["Growth"] * 2 + ["Transition"] * 9 + ["Growth"] * 2)
+    assert independent_episodes(few)["growth"]["meets_bar"] is False
+    many = _ep_chips((["Growth"] * 2 + ["Transition"] * 9) * (MIN_INDEPENDENT_EPISODES + 1))
+    assert independent_episodes(many)["growth"]["meets_bar"] is True
+
+
+def test_transition_only_history_has_no_episodes():
+    from indicators.backtest import independent_episodes
+    out = independent_episodes(_ep_chips(["Transition"] * 12))
+    assert out["growth"]["decisive_episodes"] == 0
+    assert out["growth"]["meets_bar"] is False
