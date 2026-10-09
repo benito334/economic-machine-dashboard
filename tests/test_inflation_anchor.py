@@ -248,9 +248,25 @@ def test_sustained_false_without_enough_history():
 # ── Production classifier wiring ─────────────────────────────────────────────
 
 def test_classifier_backcompat_without_history():
-    """Callers that pass no history keep the original single-month rule."""
+    """No history -> the growth leg keeps the original single-month rule.
+
+    The inflation leg reads Transition because no gap was supplied, which is
+    the deliberate contract: a caller that does not provide the anchored gap
+    gets Transition, never a fallback to the retired relative-Z rule.
+    """
     from dashboard.charting import _classify_regime
-    assert _classify_regime(0.9, 0.9, 0.1, 0.1) == ("Growth", "Inflation")
+    assert _classify_regime(0.9, 0.9, 0.1, 0.1) == ("Growth", "Transition")
+
+
+def test_classifier_never_falls_back_to_the_retired_z_rule():
+    """A large inflation Z with no gap must NOT produce an Inflation chip.
+
+    Pins the one-definition contract: the relative-Z inflation rule was retired
+    on 2026-10-08 and must not survive as a silent fallback.
+    """
+    from dashboard.charting import _classify_regime
+    _, i = _classify_regime(0.0, 5.0, 0.0, 5.0, i_gap=None)
+    assert i == "Transition"
 
 
 def test_classifier_sustained_filter_blocks_one_month_spike():
@@ -263,8 +279,27 @@ def test_classifier_sustained_filter_blocks_one_month_spike():
 def test_classifier_sustained_filter_allows_held_move():
     from dashboard.charting import _classify_regime
     held = pd.Series([0.8, 0.9])
+    held_gap = pd.Series([1.2, 1.1])          # pp above target, two months
     assert _classify_regime(0.9, 0.9, 0.1, 0.1,
-                            g_history=held, i_history=held) == ("Growth", "Inflation")
+                            g_history=held, i_history=held,
+                            i_gap=1.1, i_gap_history=held_gap) == ("Growth", "Inflation")
+
+
+def test_classifier_inflation_leg_is_gated_on_the_TARGET_not_the_z():
+    """Ray 2026-10-03 Ruling 1, the whole point of the change.
+
+    A low relative Z with inflation genuinely above target must read
+    Inflation — that is the "3% looks low on your Z-score but the Fed is still
+    hiking" case that had the dashboard out of sync with reality.
+    """
+    from dashboard.charting import _classify_regime
+    gap = pd.Series([1.0, 1.0])
+    _, i = _classify_regime(0.0, -0.9, 0.0, -0.1, i_gap=1.0, i_gap_history=gap)
+    assert i == "Inflation"
+    # ...and a high Z that is AT target must not.
+    at = pd.Series([0.1, 0.1])
+    _, i = _classify_regime(0.0, 2.5, 0.0, 0.5, i_gap=0.1, i_gap_history=at)
+    assert i == "Transition"
 
 
 def test_short_history_does_not_block_a_new_country():
@@ -272,7 +307,9 @@ def test_short_history_does_not_block_a_new_country():
     from dashboard.charting import _classify_regime
     assert _classify_regime(0.9, 0.9, 0.1, 0.1,
                             g_history=pd.Series([0.9]),
-                            i_history=pd.Series([0.9])) == ("Growth", "Inflation")
+                            i_history=pd.Series([0.9]),
+                            i_gap=1.0,
+                            i_gap_history=pd.Series([1.0])) == ("Growth", "Inflation")
 
 
 def test_dynamic_thresholds_respect_the_floor():
@@ -287,3 +324,251 @@ def test_dynamic_thresholds_respect_the_floor():
     out = compute_dynamic_thresholds(calm, base_gz=0.5, base_iz=0.5)
     assert (out["dyn_gz"] >= 0.15 - 1e-9).all()
     assert (out["dyn_iz"] >= 0.15 - 1e-9).all()
+
+
+# ── gap_series — the series form the regime classifier consumes ───────────────
+
+def test_gap_series_agrees_with_anchor_read_on_the_latest_month():
+    """Two readers of one rule. If these drift, the chip and its own display
+    card are telling the user different things — the defect this module exists
+    to prevent."""
+    from indicators.inflation_anchor import gap_series, anchor_read
+    for cc in ("US", "EZ", "GB", "JP", "BR", "MX", "AU"):
+        g = gap_series(cc)
+        a = anchor_read(cc)
+        if g.empty or a.gap_pp is None:
+            continue
+        # anchor_read rounds gap_pp to 3dp; agreement to that precision is exact
+        assert abs(float(g.iloc[-1]) - a.gap_pp) < 1e-3, (
+            f"{cc}: gap_series {g.iloc[-1]} != anchor_read {a.gap_pp}"
+        )
+
+
+def test_gap_series_is_monthly_sorted_and_unique():
+    from indicators.inflation_anchor import gap_series
+    g = gap_series("US")
+    assert not g.empty
+    assert g.index.freqstr == "M"
+    assert g.index.is_monotonic_increasing
+    assert not g.index.duplicated().any()
+
+
+def test_gap_series_drops_months_whose_source_is_older_than_max_age():
+    """Staleness guard: a chip may not claim a state from a year-old print.
+
+    Synthetic, because the real US gap series runs on monthly core PCE and so
+    carries a fresh observation almost every month — there is nothing stale in
+    it to catch.
+    """
+    import pandas as pd
+    from indicators.inflation_anchor import gap_series, load_config
+    cfg = load_config()
+    cfg = {**cfg, "countries": {**cfg["countries"],
+                                "US": {"target_pct": 2.0, "gap_series": ["cpi_headline"]}}}
+    # one lone observation in 2020-01, nothing after
+    sig = pd.DataFrame([{"id": "us.inflation.cpi_headline",
+                         "as_of": pd.Timestamp("2020-01-31"),
+                         "value": 0.035, "zscore": 0.0, "is_stale": False,
+                         "concept": "cpi_headline"}])
+    wide = dict(cfg); wide["bands"] = {**cfg["bands"], "max_age_months": 12}
+    tight = dict(cfg); tight["bands"] = {**cfg["bands"], "max_age_months": 2}
+    g_wide = gap_series("US", config=wide, signals=sig)
+    g_tight = gap_series("US", config=tight, signals=sig)
+    assert len(g_wide) == 13          # the month itself plus 12 carried months
+    assert len(g_tight) == 3          # the month itself plus 2
+    assert abs(float(g_wide.iloc[0]) - 1.5) < 1e-9   # 3.5% - 2.0% target
+
+
+def test_gap_series_unknown_country_is_empty_not_an_error():
+    from indicators.inflation_anchor import gap_series
+    assert gap_series("ZZ").empty
+
+
+# ── Ruling 2: the impulse / persistence split, as the basket WEIGHTS imply it ─
+
+_ALL_COUNTRIES = ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
+                  "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
+
+
+def test_every_inflation_basket_member_is_classified():
+    """Nothing may sit in neither sub-index.
+
+    Before 2026-10-08 `cpi_imf_annual` (10 countries) and `hicp_food` (EZ) were
+    in neither list, so the implied split was unreadable for 11 of 14. Both are
+    flexible-price by Ray's own taxonomy — an annual HEADLINE CPI is not a
+    sticky core measure — and are now in `impulse_members`. A new signal added
+    to an inflation basket without classifying it fails here.
+    """
+    from indicators.inflation_anchor import basket_split_composition
+    stray = {}
+    for cc in _ALL_COUNTRIES:
+        comp = basket_split_composition(cc)
+        unc = comp.get("members", {}).get("unclassified", [])
+        if unc:
+            stray[cc] = unc
+    assert not stray, f"inflation signals in neither sub-index: {stray}"
+
+
+def test_countries_with_both_legs_are_persistence_majority():
+    """Ray's 30/70: where a sticky component exists it must dominate.
+
+    Actual persistence shares as of 2026-10-08 — US 0.80, EZ 0.68, GB 0.61,
+    KR 0.61. US sits above Ray's stated 60-70% band; that is recorded rather
+    than silently accepted, and this test will fail if any of them drifts
+    below half, which would invert the ruling.
+    """
+    from indicators.inflation_anchor import basket_split_composition
+    both = {cc: basket_split_composition(cc) for cc in _ALL_COUNTRIES}
+    both = {cc: c for cc, c in both.items() if c["has_both"]}
+    assert both, "expected at least one country with both legs"
+    for cc, c in both.items():
+        assert c["persistence_share"] > 0.5, (
+            f"{cc}: persistence share {c['persistence_share']} — the sticky "
+            f"component must dominate the flexible one (Ray 2026-10-03 #2)"
+        )
+
+
+def test_impulse_only_countries_are_identified_not_hidden():
+    """Ten of fourteen have no sticky member at all.
+
+    That makes their composite a LEADING impulse index, not a current-state
+    gauge, and it has to be visible rather than presented like the US's
+    core-PCE-weighted read.
+    """
+    from indicators.inflation_anchor import basket_split_composition
+    comps = {cc: basket_split_composition(cc) for cc in _ALL_COUNTRIES}
+    impulse_only = [cc for cc, c in comps.items() if not c["has_both"]]
+    assert impulse_only, "expected impulse-only countries to exist"
+    for cc in impulse_only:
+        assert comps[cc]["members"]["persistence"] == []
+        assert comps[cc]["impulse_weight"] > 0
+
+
+# ── SPF expectations feeding signals.surprise (Ruling 3 slot, 2026-10-09) ────
+
+def test_spf_expectation_is_none_for_an_unmapped_signal():
+    """None is the signal to fall back to the random walk, not an error."""
+    import pandas as pd
+    from indicators.spf_loader import spf_expectation
+    idx = pd.date_range("2015-01-31", periods=24, freq="ME")
+    assert spf_expectation("growth.retail_sales", idx) is None
+    assert spf_expectation("not.a.signal", idx) is None
+
+
+def test_spf_expectation_arrives_in_the_signal_s_own_units():
+    """The whole reason `conversion` exists.
+
+    Subtracting an SPF LEVEL from a YoY-transformed signal would produce an
+    authoritative-looking number that means nothing. Unemployment is a rate in
+    percent on both sides (~3-11); payrolls is a YoY FRACTION (|x| < 0.2).
+    """
+    import pandas as pd
+    from indicators.spf_loader import spf_expectation
+    idx = pd.date_range("2000-01-31", periods=300, freq="ME")
+
+    u = spf_expectation("growth.unemployment", idx)
+    assert u is not None and u.notna().any()
+    assert 2.0 < float(u.dropna().median()) < 12.0, "unemployment must be a percent"
+
+    p = spf_expectation("growth.payrolls", idx)
+    assert p is not None and p.notna().any()
+    assert float(p.dropna().abs().median()) < 0.2, "payrolls must be a YoY fraction"
+
+
+def test_every_spf_mapped_signal_is_actually_in_a_basket():
+    """Guard against wiring a forecast that reaches nothing.
+
+    Real GDP growth is the cautionary case: SPF publishes it, but
+    master.gdp_real is in no composite, so an SPF GDP forecast would populate
+    one orphan column and change no composite. It is deliberately absent from
+    the map and must stay so unless the basket changes.
+    """
+    from indicators.spf_loader import _SPF_SIGNAL_MAP
+    from indicators.composites import load_composites_config
+    cfg = load_composites_config("US")
+    in_basket = {i["id"] for b in ("growth_score", "inflation_score")
+                 for i in cfg[b]["indicators"]}
+    stray = set(_SPF_SIGNAL_MAP) - in_basket
+    assert not stray, f"SPF mapped to signals that feed no composite: {stray}"
+
+
+def test_build_signals_prefers_the_forecast_and_falls_back_cleanly():
+    import numpy as np
+    import pandas as pd
+    from indicators.pipeline import load_bindings, _CONFIG_DIR
+    from indicators.normalize import build_signals, compute_surprise
+
+    bindings = {b.id: b for b in load_bindings(_CONFIG_DIR / "us_bindings.yaml")}
+    idx = pd.date_range("2000-01-31", periods=240, freq="ME")
+    series = pd.Series(
+        4.0 + pd.Series(range(240)).mod(12).values * 0.05, index=idx)
+
+    rw = pd.Series({d.date(): v for d, v in compute_surprise(series).dropna().items()})
+
+    mapped = build_signals(series, bindings["growth.unemployment"])
+    got = pd.Series({s.as_of: s.surprise for s in mapped if s.surprise is not None})
+    shared = got.index.intersection(rw.index)
+    assert len(shared) > 24, "no overlap to compare on"
+    # A real forecast must produce a DIFFERENT series from the random walk.
+    assert not np.allclose(got.loc[shared].values, rw.loc[shared].values)
+
+    # An unmapped signal is untouched by any of this.
+    unmapped = build_signals(series, bindings["growth.retail_sales"])
+    got_u = pd.Series({s.as_of: s.surprise for s in unmapped if s.surprise is not None})
+    shared_u = got_u.index.intersection(rw.index)
+    assert len(shared_u) > 24
+    assert np.allclose(got_u.loc[shared_u].values, rw.loc[shared_u].values)
+
+
+def test_non_us_countries_get_no_spf_expectation():
+    """SPF is a US survey. A GB signal must never silently inherit it."""
+    import pandas as pd
+    from indicators.normalize import _resolve_expectation
+    from indicators.pipeline import load_bindings, _CONFIG_DIR
+    gb = {b.id: b for b in load_bindings(_CONFIG_DIR / "countries" / "gb_bindings.yaml")}
+    tail = next(t for t in gb if "unemploy" in t)
+    idx = pd.date_range("2010-01-31", periods=60, freq="ME")
+    assert _resolve_expectation(gb[tail], idx) is None
+
+
+def test_spf_expectations_are_not_biased_by_index_rebasing():
+    """Regression: a standardised surprise must average about zero.
+
+    Shipped broken on 2026-10-08 and caught 2026-10-09. INDPRO is an INDEX and
+    gets rebased; the SPF forecast is on whatever base was current when the
+    survey ran, today's realized series is on 2017=100. Dividing one by the
+    other compared different rulers — the SPF-to-realized level ratio runs
+    2.08 in 1985-95 falling to 1.05 today — and produced a surprise with a mean
+    of -1.84 sigma. Growth rates are base-invariant, so the conversion chains
+    them instead.
+
+    PAYEMS is a headcount and never rebases (ratio 0.996-1.003 across every
+    era), which is why it stays on the simpler conversion and why this test
+    checks both: one is the canary, the other the control.
+    """
+    import pandas as pd
+    from indicators.spf_loader import spf_expectation
+    from indicators.normalize import compute_surprise
+    from dashboard.charting_data import DB_PATH
+    import duckdb
+
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        for tail in ("growth.industrial_prod", "growth.payrolls", "growth.unemployment"):
+            df = conn.execute(
+                "SELECT as_of, value FROM signals WHERE id = ? AND value IS NOT NULL "
+                "ORDER BY as_of", [f"us.{tail}"],
+            ).df()
+            idx = pd.DatetimeIndex(pd.to_datetime(df["as_of"]))
+            actual = pd.Series(df["value"].values, index=idx)
+            exp = spf_expectation(tail, idx)
+            assert exp is not None, f"{tail} lost its SPF expectation"
+            s = compute_surprise(actual, exp).dropna()
+            assert len(s) > 100, f"{tail}: only {len(s)} surprises"
+            assert abs(float(s.mean())) < 0.5, (
+                f"{tail}: surprise mean {s.mean():+.2f} — a standardised surprise "
+                f"should sit near zero; a large offset means the forecast and the "
+                f"realized series are on different scales"
+            )
+    finally:
+        conn.close()

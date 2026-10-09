@@ -34,8 +34,8 @@ import pandas as pd
 from dash import html
 
 from dashboard.shared_components import (
-    FORCE_COLOR, GREY as _GREY, VERDICT_COLOR, _chart_card, _chip, _section,
-    summarize_validator_axis,
+    AMBER, FORCE_COLOR, GREEN, GREY as _GREY, VERDICT_COLOR, _chart_card, _chip,
+    _section, summarize_validator_axis,
 )
 
 _COUNTRY = "US"
@@ -267,4 +267,123 @@ def get_layout() -> html.Div:
     if spf_section is not None:
         sections.append(spf_section)
 
+    ep = _episode_section()
+    if ep is not None:
+        sections.append(ep)
+
     return html.Div([header] + sections, className="p-3", style={"maxWidth": "1500px"})
+
+
+def _episode_section() -> Optional[html.Div]:
+    """How many INDEPENDENT episodes each chip is built on, per country.
+
+    Ray consult 2026-10-08: shown that our inflation chip had fired in
+    essentially one macro episode in 43 years, he withdrew his own tilt advice
+    — "with only one occurrence, that confidence is essentially zero" — and set
+    a bar of at least 10-15 independent occurrences, tested across periods and
+    countries. A bar nobody can see is not a bar, so it is published here, on
+    the page whose job is to say how much the chip should be trusted.
+
+    The bar is a reasonable heuristic, not a citable standard: no such rule was
+    found in the regime-switching literature, and the nearest real convention
+    is events-per-variable (~10) from prediction modelling.
+    """
+    try:
+        import duckdb
+        from indicators.backtest import (
+            classify_history, independent_episodes, composite_variance_flags,
+            MIN_INDEPENDENT_EPISODES, EPISODE_GAP_MONTHS, MIN_COMPOSITE_Z_SD,
+        )
+        from dashboard.charting_data import DB_PATH
+    except Exception:
+        return None
+
+    countries = ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
+                 "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
+    rows = []
+    try:
+        conn = duckdb.connect(str(DB_PATH), read_only=True)
+    except Exception:
+        return None
+    flags = {}
+    try:
+        flags = composite_variance_flags(conn, countries)
+    except Exception:
+        pass
+    try:
+        for cc in countries:
+            try:
+                sc = conn.execute(
+                    "SELECT as_of, growth_score, inflation_score, credit_score "
+                    "FROM composites_pit WHERE country = ? ORDER BY as_of", [cc],
+                ).df()
+                if sc.empty:
+                    continue
+                sc["as_of"] = pd.to_datetime(sc["as_of"])
+                sc = sc.set_index("as_of").dropna(subset=["growth_score", "inflation_score"])
+                if len(sc) < 24:
+                    continue
+                ep = independent_episodes(classify_history(sc, dynamic=True, country=cc))
+            except Exception:
+                continue
+            rows.append((cc, ep.get("growth", {}), ep.get("inflation", {}),
+                         flags.get(cc, {})))
+    finally:
+        conn.close()
+    if not rows:
+        return None
+
+    def _cell(d: dict) -> html.Td:
+        n = d.get("decisive_episodes", 0)
+        ok = d.get("meets_bar", False)
+        return html.Td([
+            html.Span(str(n), style={"fontWeight": "700",
+                                     "color": GREEN if ok else AMBER}),
+            html.Span("" if ok else "  below bar",
+                      style={"fontSize": "0.7rem", "color": AMBER}),
+        ], style={"padding": "3px 14px 3px 0", "fontFamily": "monospace"})
+
+    def _sd_cell(fl: dict) -> html.Td:
+        sd = fl.get("inflation_sd")
+        ok = fl.get("inflation_usable", True)
+        return html.Td(
+            "—" if sd is None else f"{sd:.3f}" + ("" if ok else "  too flat to fit"),
+            style={"padding": "3px 14px 3px 0", "fontFamily": "monospace",
+                   "color": "var(--font-color)" if ok else AMBER},
+        )
+
+    hdr = ("Country", "Growth episodes", "Inflation episodes",
+           "Inflation composite Z sd")
+    table = html.Table(
+        [html.Tr([html.Th(h, style={"textAlign": "left", "padding": "0 14px 6px 0",
+                                    "fontSize": "0.7rem", "textTransform": "uppercase",
+                                    "letterSpacing": "0.06em", "color": "var(--muted-color)"})
+                  for h in hdr])]
+        + [html.Tr([html.Td(cc, style={"padding": "3px 14px 3px 0",
+                                       "fontFamily": "monospace"}),
+                    _cell(g), _cell(i), _sd_cell(fl)]) for cc, g, i, fl in rows],
+        style={"borderCollapse": "collapse", "fontSize": "0.82rem"},
+    )
+    n_low = sum(1 for _, g, i, _fl in rows
+                if not g.get("meets_bar", False) or not i.get("meets_bar", False))
+    n_flat = sum(1 for *_x, fl in rows if not fl.get("inflation_usable", True))
+    return html.Div([
+        html.Div("Evidence behind each chip",
+                 style={"marginTop": "22px", "fontSize": "0.9rem",
+                        "fontWeight": "700", "color": "var(--font-color)"}),
+        _section("", (
+            f"Independent decisive episodes since the start of each country's history. "
+            f"Runs of the same label separated by fewer than {EPISODE_GAP_MONTHS} months "
+            f"are merged — one macro event that flickers is one event, and counting it "
+            f"twice is how a single episode masquerades as a sample. "
+            f"The bar is {MIN_INDEPENDENT_EPISODES} (Ray, 2026-10-08); "
+            f"{n_low} of {len(rows)} countries fall below it on at least one chip. "
+            f"Do not tilt on a chip marked below bar. "
+            f"The last column is a separate concern: a composite Z-score with "
+            f"almost no variance cannot support a fitted beta however many "
+            f"months of it exist. {n_flat} countries fall below {MIN_COMPOSITE_Z_SD} "
+            f"because they run on an annual bridge forward-filled into a near-flat "
+            f"line. The CHIP is unaffected — it is gated on distance from target, "
+            f"not on this Z — but anything FITTED to the composite is not."
+        ), [table]),
+    ])

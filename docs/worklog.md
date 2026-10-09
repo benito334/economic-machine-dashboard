@@ -4,6 +4,237 @@ Log entries are newest-first. Each entry: date, what was done, what is next, any
 
 ---
 
+## 2026-10-09 — Worked the 2026-10-08 checklist to zero; the statistical thread closes negative
+
+Nine open items plus two Ray rulings, all closed. Commits `8c07787` → `54b63b5`.
+Suite 846 → **883 passed, zero exclusions**. Two full pipeline runs (the documented
+stop-charting → rebuild-all-three → run → restart), both clean, DB flat at 149.7 MB.
+
+**The inflation chip is target-anchored** (`a47ccaf`). Ray's 2026-10-03 Ruling 1,
+built a year ago and wired only to a Command Center display card. The gate is now
+distance from the central bank's target, sustained; the `im` momentum gate is
+retired, not re-tuned, because it only ever stood in for a level gate that did not
+work. Inflation goes 18% → 67% of months decisive, median episode 1.3 → 9.8 months.
+US now reads **Inflation** (core PCE 3.0% vs a 2% target) where it read Transition —
+the exact out-of-sync case Ray diagnosed — and BR and MX fire for the first time in a
+decade. `METHODOLOGY_VERSION` 2026.10.08; composite VALUES unchanged, verified against
+the pre-run numbers, so nothing downstream moved. A caller supplying no gap gets
+Transition, never a fallback to the retired rule, and a source guard enforces it.
+
+**That immediately reintroduced the session's own bug on one axis** (`439584a`) — the
+map still plotted inflation Z while the chip was gated on the gap. Fixed by moving the
+axis to distance-from-target and splitting the season label in two: `_season_label` is
+now a pure function of the two chips, `_season_from_levels` is the positional terrain
+read. The new all-country test caught GB reading "Inflationary Boom" against chips of
+Transition/Inflation — the growth-axis version of the same defect, which had been
+latent all along. A chip-derived season covers 32% of months now against 7% before, so
+the shelved geometry item closed with it.
+
+**Ruling 2 completed** (`88df35c`) and the taxonomy had holes: `cpi_imf_annual` and
+`hicp_food` were in neither sub-index, leaving 11 of 14 baskets unreadable. With that
+fixed the real finding appears — **only US/EZ/GB/KR have a sticky inflation leg at
+all** (persistence share 0.80/0.68/0.61/0.61); the other ten are flexible-price only,
+which by Ray's own framing makes their composite a LEADING index rather than a
+current-state gauge. Now said on screen instead of silently showing nothing.
+
+**`signals.surprise` populated** (`b25f3d1`, `da556a2`), 0 → 345k of 368k rows — but
+only after running the gate Ray set rather than building on his say-so. His punch list
+said run the incremental-R² test first; it had been blocked on asset returns, which
+the beta audit had since supplied. On non-overlapping monthly returns: bonds 0.019
+(F 5.05, p 0.007), equity 0.082 (F 5.35, p 0.006), gold 0.005 (p 0.34). Two of three
+cleared, so built. Then **real SPF forecasts** wired — and the obvious targets were the
+wrong ones. GDP growth reaches nothing (`master.gdp_real` is in no basket) and SPF's
+CPI is annualized-QoQ against our YoY signal. The variables that actually map are
+UNEMP, EMP and INDPROD, 33% of the US growth basket, and the loader carried 2 of the 5
+published files. One trap recorded: `Median_EMPL_Level.xlsx` returns HTTP 200 with an
+HTML error page, so magic bytes are the only usable existence check against that host.
+
+**Smaller items.** Per-chip independent-episode counts published on the Regime Validator
+page against Ray's bar of 10 — growth passes everywhere, inflation is below bar on
+EZ (7), BR (8), MX (9), and the anchor fix is what took US inflation from essentially 1
+episode to 14. Backtest horizon 3 → 12 months with a 3/12/24 sweep, after re-checking
+that the A1 rate_expectations decision survives (incremental IC 0.148 → 0.257, so it is
+kept more firmly). Five countries running the chip on a ~9-month-old annual IMF bridge
+are now labelled rather than muted. `composite_variance_flags` warns that BR/MX/ID/CN
+inflation composites (sd 0.016–0.177) are too flat to fit a beta to — the chip for those
+is fine, which is exactly the wrong inference to let a reader make.
+
+**Item 9 answered negative, and it closes the thread** (`54b63b5`). Pooling was supposed
+to rescue the power problem. New `indicators/panel.py` builds an 11-country bond-return
+panel, and the countries co-move: mean pairwise ρ +0.42, so eleven are worth **2.1**.
+Pooled naive t −2.83 growth / −4.11 inflation; **adjusted −1.24 / −1.80**. 4,191
+country-months are worth 800 — 1.4× the US alone, not 7.5×. Neither clears 2. So:
+one country overlapping looked significant and was an artifact; independent sampling
+killed it; pooled naive looks significant; pooled corrected still is not. **A
+regime→bond-return relationship cannot be demonstrated at conventional significance on
+this data.** Effect sizes are correctly signed and stable; the evidence is not there.
+That bound is now in CLAUDE.md.
+
+**Decisions worth keeping.** Build only after passing the stated gate, not before.
+Label stale sources rather than muting five countries. Scope the state/environment
+rename to the boundary with CreovaOne rather than renaming ~100 internal call sites for
+no clarity gain. And do NOT reweight `inflation_score` to 70/30 — it would move every
+beta fitted downstream, which is the sequencing warning this session spent two days
+writing.
+
+**Next.** `inflation.cpi_headline` needs annualized-QoQ → YoY price chaining before SPF
+CPI can be used, so no inflation signal carries a real forecast yet. The 70/30 composite
+reweight is designed and deliberately unshipped. And
+`docs/creovaone_handoff_2026-10-08.md` **still needs a human to deliver it** — their
+12-month EWMA half-life is assigning All-Weather boxes off coefficients that are not
+distinguishable from zero, and that one is live against real allocation decisions.
+
+---
+
+## 2026-10-08 (2) — Regime chip consistency fix, then the question underneath it: what IS a regime?
+
+Started as a UI complaint ("the chips don't match the regime map"), ended four layers down at
+a definitional problem between this project and its downstream consumer. Four commits:
+`29331d2` (the fix), `2683a87` + `efa7085` (Ray consult), `00dc00d` (beta audit).
+
+### 1. The fix — one regime chip, same on every page (`29331d2`)
+
+`_regime_info_children` (the chip card shared by Regime Map **and** Regime History) and
+`update_regime_chart`'s band-chart loop were the **only** `_classify_regime` call sites in the
+app that did not pass score history, so they silently ran the single-month rule while Command
+Center, Relative Cycles and the User Guide applied `sustained_months = 2`. Same month, same
+country, same thresholds, two different chips — 13-26% of months per country, and live that
+day on **GB** (Transition vs Growth), **JP** (Transition vs Growth) and **ID** (Transition vs
+Inflation). The code comment at `charting.py:1176` asserted the invariant this violated.
+
+Same frame bug underneath, in three places: the dynamic threshold is a 24-month rolling sigma,
+but the card and the header readout computed it on the viewer's **date-range-filtered** frame
+while the scatter computed it on full history (JP: `gz` 0.169 full vs 0.152 at the 1Y preset).
+Both the sigma and the sustained filter now read full history and look the selected month up by
+date. Also fixed in passing: the band chart took MoM deltas from the filtered frame, so the
+first visible row always carried a NaN delta, which `_classify_regime` reads as 0.0 and so
+fails the inflation momentum gate for a month that may well have cleared it.
+
+Verified all 14 countries now agree with Command Center. **846 passed, zero exclusions**
+(842 + 4 new). The new tests include a source guard that greps `charting.py` for any
+`_classify_regime` call missing history (`compute_regime_confidence` is the one documented
+exception) and an integration test comparing the card against Command Center across all 14
+countries — all three confirmed failing on the pre-fix code, naming GB/JP/ID.
+
+**A design mockup was built and then shelved.** Before the deeper question surfaced, the plan
+was a geometry redesign: a 3x3 chip-vocabulary grid where a boundary that no level could clear
+this month is pushed to the axis rim, making the cell the dot occupies *identically* the chip.
+That property was proved exact — **0 disagreements in 2,801 country-months** across six
+countries — and published as an interactive mockup
+(https://claude.ai/code/artifact/18cb5011-905f-4e86-ad9c-a48ece84b967). **Not built**, because
+the next finding made it premature: it would faithfully render an instrument whose inflation
+axis is a non-answer 82% of the time. Revisit only after the chip is recalibrated.
+
+### 2. The measurement that stopped the UI work
+
+Asked how often each chip is actually decisive. Mean across 14 countries, last 10 years:
+**growth 42%, inflation 18%**. Duration once entered: growth median 2.9 months and 36% of time
+in runs >= 6 months; **inflation median 1.3 months and 1% of time in runs >= 6 months**. The
+joint four-season state holds **8% of months, median episode 0.9 months, and has never
+persisted 6 months in any of the 14 countries**.
+
+Root cause is not "the world lacks regimes" — it is that the **inflation level gate is inert**.
+`dyn_iz` is pinned at its 0.15 sigma floor for 10 of 14 countries while typical |inflation Z|
+runs 2.3-4.6x that, so the level clears in 85% of months and the `im = 0.05` momentum gate is
+the only operative condition — 64 of the 82 percentage points of inflation Transition. No value
+of `im` fixes it: removing the gate entirely takes inflation to 82% decisive but **stuck**
+(BR and MX 100% decisive, zero label changes in a decade).
+
+**And this was already ruled on.** Of the four rulings from Ray's 2026-10-03 session, all
+triaged "ready to implement", the two growth-side safeguards shipped and the two inflation-side
+fixes did not — and **the growth threshold floor was additionally applied to the inflation
+threshold**, which is what made the level gate inert, directly against his own "growth and
+inflation are different animals and must not share a framework."
+`indicators/inflation_anchor.py` is complete but reaches only a Command Center display card;
+`_classify_regime` never sees it. Live that day: the anchor read US core PCE **3.0% vs a 2%
+target, "Above Target"**; the chip read **Transition**. Wiring it takes inflation from 18% to
+**75%** decisive (median episode 1.3 -> 4.2 months) and the joint state from 8% to **31%**.
+
+### 3. Ray consult (`efa7085`) — the dashboard is not an allocation engine
+
+Thread `49f32951-41fa-4256-a33f-15a3c3592f40`, run in the browser rather than handed over as a
+paste block. Four rulings, each pushed on, plus an independent verification pass. Full detail
+in `ray_dalio_review_log.md` Session 2026-10-08.
+
+- **All Weather is environment-agnostic by design.** The core allocation was never supposed to
+  consume the regime label, so the coverage figure is largely irrelevant to it. The dashboard's
+  legitimate jobs are model validation, risk-budget calibration, scenario planning and
+  communication. *"Use the dashboard to understand the world, not to rewrite the portfolio
+  every time the weather changes."*
+- **Shown the power problem, he withdrew his own tilt advice** — "with only one occurrence,
+  that confidence is essentially zero" — and set a bar of ~10-15 independent occurrences tested
+  across periods and countries. That is the behaviour this channel exists for.
+- Targeting transitions: real, but only after decomposing the residual into
+  near-signal / neutral / genuine-transition and converting it to a **regime-change hazard
+  (0-1)** treated as a continuous input.
+- Publish continuous scores plus an explicit uncertainty metric; demote the chip to a hint.
+
+**Verification caught one claim that does not hold:** his "10-15 independent occurrences" is
+not a documented regime-switching standard; the nearest real convention is events-per-variable
+(~10) from prediction modelling. Logged as a heuristic, not a citable rule. Also noted a
+caution he did not supply: published regime-tilting results are largely in-sample and share our
+own small-sample problem.
+
+**Operational:** the service errors on long multi-paragraph prompts in both browsers, including
+on Regenerate. Short single-focus prompts in a fresh chat work every time. Same failure as
+2026-10-03.
+
+### 4. Beta audit (`00dc00d`) — the gold anomaly is the half-life, not the classification
+
+The real question turned out not to be timing at all: CreovaOne fits asset betas to our
+composites to decide which All-Weather box each asset belongs in, and gold looked like it was
+not responding to inflation.
+
+Traced the consumer rather than assuming it. `fit_betas()` is a standardized OLS of monthly
+excess return on the two **continuous** series from `composites_pit`, default basis `"change"`.
+No bins, no conditioning, every overlapping month enters. **The discrete chip is never read.**
+Production estimator is `ewma_shrinkage` at a **12-month half-life**.
+
+That half-life gives a Kish effective sample of **34.6 months against 428 available**, on a
+relationship with R^2 ~ 0.02. Reproduced the anomaly exactly: gold's inflation beta at the
+production setting is **+0.0000, t = 0.00**, and the box is then assigned off a growth beta of
+t = -0.86 — also noise. Over full history the same asset reads **+0.0063, t = 3.03**, Rising
+Inflation, the textbook answer. **Gold is not failing to respond to inflation; the estimator
+cannot see whether it does.** Across eight methodology variants gold's box flips three ways;
+LT bonds come out Falling Inflation in all eight, so "long bonds do not respond to falling
+growth" is a real, stable finding.
+
+Externally verified: the literature reports gold's inflation correlation as largely
+insignificant at 2-32 month horizons and reliable only beyond ~10 years, so a weak monthly beta
+was the expected result.
+
+### 5. The definitional resolution (`regime_state_vs_environment_2026-10-08.md`)
+
+Which leaves the question the user was actually pulling their hair out over: this project says
+the economy is mostly in Transition; CreovaOne says Transition never happens. **Both are
+right** — they measure different objects, and one word was doing two jobs.
+
+The chip measures a **level** ("where are we vs our own history"), and a level has a genuine
+middle. The box measures a **deviation** ("did it come in above or below what was priced"), and
+the sign of a continuous variable has no middle. In change space the four boxes are exhaustive:
+26.4 / 22.7 / 25.6 / 25.4 = **100% of 512 months**.
+
+For the box specifically the deviation framing is correct, and the data agrees — **level is the
+weakest regressor for both assets** (gold R^2 0.011 level vs 0.022 change), exactly as Ray's
+"the level is the discounted part" predicts. Tested the legitimate version of the transition
+intuition too: betas keep the same sign across quiet and loud months and are simply 2-3x larger
+in the large-move tercile, so there is no fifth environment — but an all-months OLS estimates
+roughly **half** the beta that applies when the hedge matters.
+
+**Self-correction logged:** an earlier draft proposed promoting the `discounted_surprise` basis
+on an LT-bond R^2 of 0.261. Withdrawn same day — the bond return proxy is `-7.5*d(nominal 10y)`
+and breakeven = nominal - TIPS, so they share the `d(nominal)` term
+(`corr = 0.507`). On gold, which has no such overlap, discounted does not beat change.
+
+**What is next.** Nothing from sections 2-5 is implemented; all of it is documentation and
+measurement. The ordered work is in `session-checklist.md`. The single highest-value item is
+wiring Ray's 2026-10-03 Rulings 1 and 2 into `_classify_regime` and taking the growth-derived
+0.15 sigma floor off the inflation threshold — but note the sequencing warning: re-anchoring
+inflation moves the continuous series and therefore **every fitted beta downstream**, so that
+change must land before any beta recalibration, not after.
+
+---
+
 ## 2026-10-08 — Branch sweep: everything merged to main, one branch retired on evidence
 
 Housekeeping pass across several parallel sessions. Starting state: 9 local branches, 2 worktrees, 1 open PR, and — the only genuinely at-risk thing — **6 uncommitted files in another session's worktree**.

@@ -327,9 +327,23 @@ def test_the_engine_computes_agreement_against_the_delta_not_the_quadrant():
     assert new == pytest.approx(1.0)
 
 
-def test_methodology_version_was_bumped_for_the_redefinition():
-    # A definition change that moves historical values MUST move the stamp,
-    # or a downstream consumer cannot tell it from a change in the world.
+def test_methodology_version_matches_the_latest_logged_change():
+    """A definition change MUST move the stamp, or a downstream consumer
+    cannot tell it from a change in the world.
+
+    Pinned against the module's own changelog header rather than a hand-typed
+    literal, so the two cannot drift: bumping the constant without logging the
+    change (or vice versa) fails here.
+    """
+    import re, pathlib
     from indicators.methodology_version import METHODOLOGY_VERSION
 
-    assert METHODOLOGY_VERSION == "2026.10.07"
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "indicators" / "methodology_version.py").read_text()
+    logged = re.findall(r"^#\s+(\d{4}\.\d{2}\.\d{2})\s", src, re.M)
+    assert logged, "no dated entries found in the changelog header"
+    assert METHODOLOGY_VERSION == max(logged), (
+        f"METHODOLOGY_VERSION={METHODOLOGY_VERSION} but the newest logged "
+        f"change is {max(logged)}"
+    )
+    assert METHODOLOGY_VERSION == "2026.10.08"

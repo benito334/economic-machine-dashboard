@@ -126,3 +126,104 @@ def test_scenario_wrong_direction_property():
     s2 = Scenario("y", "2020-01-01", "2020-02-01", "growth",
                   "Retraction", frozenset({"Retraction"}))
     assert s2.wrong == "Growth"
+
+
+# ── independent_episodes (Ray bar, 2026-10-08) ───────────────────────────────
+
+def _ep_chips(growth, inflation=None):
+    import pandas as pd
+    n = len(growth)
+    return pd.DataFrame(
+        {"growth_chip": growth,
+         "inflation_chip": inflation if inflation is not None else ["Transition"] * n},
+        index=pd.date_range("2000-01-31", periods=n, freq="ME"),
+    )
+
+
+def test_independent_episodes_counts_maximal_runs():
+    from indicators.backtest import independent_episodes
+    chips = _ep_chips(["Growth"] * 3 + ["Transition"] * 6 + ["Growth"] * 2)
+    out = independent_episodes(chips)
+    assert out["growth"]["episodes"]["Growth"] == 2
+    assert out["growth"]["decisive_episodes"] == 2
+    assert out["growth"]["months"]["Growth"] == 5
+
+
+def test_a_short_gap_does_not_create_a_second_episode():
+    """One macro event that flickers is one event.
+
+    The US inflation chip firing in 2021-05, going quiet, and firing again in
+    2021-09 is a single inflation episode. Counting it as two is how one event
+    masquerades as a sample — the exact error that made the pre-2026-10-08
+    chip look better evidenced than it was.
+    """
+    from indicators.backtest import independent_episodes
+    chips = _ep_chips(["Growth"] * 2 + ["Transition"] * 2 + ["Growth"] * 2)
+    assert independent_episodes(chips, gap_months=3)["growth"]["decisive_episodes"] == 1
+    # A long enough quiet stretch does separate them.
+    far = _ep_chips(["Growth"] * 2 + ["Transition"] * 9 + ["Growth"] * 2)
+    assert independent_episodes(far, gap_months=3)["growth"]["decisive_episodes"] == 2
+
+
+def test_opposite_labels_are_counted_separately():
+    from indicators.backtest import independent_episodes
+    chips = _ep_chips(["Growth"] * 2 + ["Retraction"] * 2 + ["Growth"] * 2)
+    eps = independent_episodes(chips, gap_months=3)["growth"]["episodes"]
+    assert eps["Retraction"] == 1
+    # The two Growth runs are only 2 months apart, so they stay one episode.
+    assert eps["Growth"] == 1
+
+
+def test_meets_bar_tracks_the_configured_minimum():
+    from indicators.backtest import independent_episodes, MIN_INDEPENDENT_EPISODES
+    few = _ep_chips(["Growth"] * 2 + ["Transition"] * 9 + ["Growth"] * 2)
+    assert independent_episodes(few)["growth"]["meets_bar"] is False
+    many = _ep_chips((["Growth"] * 2 + ["Transition"] * 9) * (MIN_INDEPENDENT_EPISODES + 1))
+    assert independent_episodes(many)["growth"]["meets_bar"] is True
+
+
+def test_transition_only_history_has_no_episodes():
+    from indicators.backtest import independent_episodes
+    out = independent_episodes(_ep_chips(["Transition"] * 12))
+    assert out["growth"]["decisive_episodes"] == 0
+    assert out["growth"]["meets_bar"] is False
+
+
+def test_composite_variance_flags_separates_flat_from_usable():
+    """A composite Z with almost no variance cannot carry a fitted beta.
+
+    Four countries run on an annual IMF bridge forward-filled into a near-flat
+    line (BR 0.016, MX 0.050, ID 0.101, CN 0.177 as of 2026-10-08) against
+    0.36-1.63 everywhere else. This is a DATA property, not a chip property --
+    the chip is gated on distance from target and is fine for all of them.
+    """
+    import duckdb
+    from indicators.backtest import composite_variance_flags, MIN_COMPOSITE_Z_SD
+    from dashboard.charting_data import DB_PATH
+
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        flags = composite_variance_flags(
+            conn, ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
+                   "DE", "LU", "BR", "CA", "AU", "MX", "ID"])
+    finally:
+        conn.close()
+    assert flags, "no countries returned"
+    # Growth is healthy everywhere; the problem is inflation-only.
+    assert all(v["growth_usable"] for v in flags.values())
+    flat = {cc for cc, v in flags.items() if not v["inflation_usable"]}
+    assert flat, "expected at least one flat inflation composite"
+    # Every flagged country is genuinely below the bar, and none above it is flagged.
+    for cc, v in flags.items():
+        assert v["inflation_usable"] == (v["inflation_sd"] >= MIN_COMPOSITE_Z_SD)
+
+
+def test_composite_variance_flags_skips_unknown_countries():
+    import duckdb
+    from indicators.backtest import composite_variance_flags
+    from dashboard.charting_data import DB_PATH
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        assert composite_variance_flags(conn, ["ZZ"]) == {}
+    finally:
+        conn.close()

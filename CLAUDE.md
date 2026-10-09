@@ -1,5 +1,40 @@
 # Indicators Machine — CLAUDE.md
 
+## ★ NORTH STAR — read this before anything else
+
+> **Accurately understand the world through the lens of Ray Dalio's macro
+> investing — the market's forces, stressors and fundamentals — in an
+> academically validated way, using mechanistic and documented methodologies
+> that survive scrutiny. That understanding is then used to make macro-level
+> investment decisions.**
+
+Agreed with the owner 2026-10-09. Understanding is the goal; investment
+decisions are its downstream use; the standard is academic, not "looks right".
+**When being honest and being useful conflict, honest wins** — then say plainly
+what that costs.
+
+**Full version, including the five-question decision test, the methodology
+guardrails, and what the owner is owed in every reply:
+[`docs/NORTH_STAR.md`](docs/NORTH_STAR.md). Read it before any change that
+affects what a number means.**
+
+Two standing rules from it that are easy to forget:
+
+1. **Decide, but show the evidence.** Anything that changes a number cites a
+   paper, an established convention, or a measurement with numbers attached.
+   Never "this seemed reasonable." Significant decisions get an ADR in
+   `docs/decisions/` using [`ADR-TEMPLATE.md`](docs/decisions/ADR-TEMPLATE.md),
+   which opens with a plain-language summary and a "how this serves the North
+   Star" section.
+2. **Plain language first, then the detail.** The owner is not a specialist in
+   these methodologies and should not have to be. Every reply leads with what
+   changed in ordinary words and a clear recommendation — not a survey of
+   options. Define any unavoidable term in the same sentence. An explanation
+   that cannot be followed cannot be checked, and an unchecked method is the
+   thing this project exists to prevent.
+
+---
+
 > Read this file at the **start of every session** before touching any code. It is the authoritative guide for this project. When in conflict with other sources, this file wins.
 
 ---
@@ -37,6 +72,27 @@ Full specification: [docs/project_plan.md](docs/project_plan.md)
 - Every runnable component (ingestion pipeline, scheduler, Streamlit dashboard) must have a `Dockerfile` or be a service in `docker-compose.yml`.
 - Local dev is fine in a venv, but the acceptance test for any phase is `docker compose up`.
 - Use bind mounts for the data/db paths above — do not bake data into images.
+
+### 1b. Two words, never one: STATE vs ENVIRONMENT
+
+This project produces a regime **state**; the All-Weather framework it feeds
+consumes an **environment**. They are different objects and one word for both
+cost a full session on 2026-10-08.
+
+| | our chip | the All-Weather box |
+| :--- | :--- | :--- |
+| answers | where is the economy vs its own history | did it come in above or below what was priced |
+| measures | a **level** | a **deviation** |
+| has a middle | **yes** — "neither strong nor weak" is a true description, which is why Transition is real and is the modal read | **no** — the sign of a continuous variable has no neutral category, which is why the four boxes cover 100% of months |
+
+**Rules.** Say **state** for the chip and **environment** for the box, in code,
+docs and UI. Never use the chip as a beta input; never display a box as "what
+regime are we in". "Most months are Transition" is not an argument for a fifth
+All-Weather box. Inside this repo the bare word "regime" means the chip and
+only the chip — `dashboard/asset_environments.py` is the one surface that
+speaks about environments, and a test keeps it from drifting back.
+
+Full reasoning, with the measurements: `docs/Guidance/regime_state_vs_environment_2026-10-08.md`.
 
 ### 2. Use existing packages before building from scratch
 Before writing any utility from scratch, check whether it is already available in:
@@ -85,6 +141,10 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 ---
 
 ## Current Status
+
+**As of 2026-10-09:** Everything below still holds. **The 2026-10-08 checklist is closed out** (full detail: `docs/worklog.md`). Shipped across the two days: the inflation chip **re-anchored to the central bank's target** (Ray 2026-10-03 Ruling 1, built a year ago and wired only to a display card until now) — `im` momentum gate retired, `METHODOLOGY_VERSION` **2026.10.08**, inflation 18%→67% of months decisive, median episode 1.3→9.8mo, and BR/MX fire for the first time in a decade; the **Regime Map's inflation axis** moved to distance-from-target so the map cannot contradict the chip, with `_season_label` now a pure function of the two chips (`_season_from_levels` kept separately for background terrain); **Ruling 2's impulse/persistence taxonomy** completed — and it revealed that only **US/EZ/GB/KR have a sticky inflation leg at all**, the other ten being flexible-price only, which makes their composite a LEADING index and is now stated on screen; **`signals.surprise` populated** (0 → 345k of 368k) after passing Ray's own incremental-R² gate, with **real SPF forecasts** wired for `growth.unemployment`/`payrolls`/`industrial_prod` (33% of the US growth basket — note SPF's GDP forecast reaches nothing, `master.gdp_real` is in no basket); per-chip **independent-episode counts** published on the Regime Validator page against Ray's bar of 10 (growth passes everywhere; inflation is below bar on EZ/BR/MX); backtest validation moved off `FORWARD_MONTHS=3` to **12** with a 3/12/24 sweep; and a **`composite_variance_flags`** warning that BR/MX/ID/CN inflation composites (sd 0.016–0.177) are too flat to fit a beta to. **The statistical bottom line, now closed: a regime→bond-return relationship CANNOT be demonstrated at conventional significance on this data.** One country with overlapping windows looked significant and was an artifact; independent sampling killed it; pooling 11 countries looks significant naively (t −2.83/−4.11) but they co-move at ρ̄ +0.42, so 11 countries are worth **2.1** and 4,191 country-months are worth **800** — adjusted t **−1.24/−1.80**, neither clearing 2 (`indicators/panel.py`, pack §10). Effect sizes are correctly signed and stable; the evidence is not there. **Use the chips as diagnosis — which is what Ray said they were for.** Suite **883 passed, zero exclusions**.
+
+**As of 2026-10-08:** Everything below still holds. **Regime chip made consistent across pages, then a definitional problem surfaced underneath it** (full detail: `docs/worklog.md` 2026-10-08 (2)). **Shipped:** `_regime_info_children` (the card on Regime Map AND Regime History) and `update_regime_chart`'s band loop were the only `_classify_regime` call sites not passing score history, so they ran the single-month rule while every other surface applied `sustained_months=2` — same month, same country, two different chips, 13-26% of months per country and live on GB/JP/ID. Same frame bug in three places: the 24-month rolling sigma and the sustained filter were computed on the viewer's **date-filtered** frame while the scatter used full history; all now read full history and look the month up by date. Suite **846 passed, zero exclusions**, including a source guard that greps for any `_classify_regime` call missing history. **Not shipped, but measured and documented — read these three docs before touching the chip or the beta feed:** `docs/Guidance/regime_state_vs_environment_2026-10-08.md` (**read first**), `ray_consult_regime_frequency_2026-10-08.md`, `beta_classification_audit_2026-10-08.md`. The findings: (1) the joint four-season state holds **8% of months, median episode 0.9 months, never 6 months in any of 14 countries** — because the **inflation level gate is inert** (`dyn_iz` pinned at its 0.15σ floor for 10/14 countries while typical |I| runs 2.3-4.6× that), leaving the `im=0.05` momentum gate as the only operative condition, 64 of the 82pp of inflation Transition. (2) **Ray already ruled on this on 2026-10-03 and we implemented half of it** — the two growth-side safeguards shipped, the two inflation-side fixes did not, and the growth threshold floor was *additionally applied to inflation*, which is what broke it. `indicators/inflation_anchor.py` is complete but reaches only a Command Center display card. Wiring it: inflation 18%→**75%** decisive, joint state 8%→**31%**. (3) **New consult** (`ray_dalio_review_log.md` Session 2026-10-08): All Weather is **environment-agnostic by design**, so the core allocation never consumed the chip and the coverage figure is largely irrelevant to it; pushed on the power problem he **withdrew his own tilt advice** ("with only one occurrence, that confidence is essentially zero"). One of his claims failed independent verification and is logged as a heuristic. (4) **The gold-beta anomaly is CreovaOne's 12-month EWMA half-life, not our classification** — effective sample 34.6 months of 428, gold's inflation beta +0.0000 (t=0.00) at that setting vs +0.0063 (t=3.03) on full history. **RULE: the chip reports a STATE (a level, which legitimately has a middle); the All-Weather box reports an ENVIRONMENT (a deviation, which structurally cannot). Never call both "regime", never use one for the other's job.** **SEQUENCING WARNING: re-anchoring inflation to target moves the continuous composite and therefore every beta fitted downstream — it must land before any beta recalibration, not after.** Ordered next steps in `session-checklist.md`. A proved-exact Regime Map geometry redesign is **shelved deliberately** (mockup: https://claude.ai/code/artifact/18cb5011-905f-4e86-ad9c-a48ece84b967) — it would faithfully render an instrument that is a non-answer 82% of the time.
 
 **As of 2026-10-07 (3):** Everything below still holds. **Point-in-time composites + methodology stamp** (full detail: `docs/worklog.md` 2026-10-07 (3)) — a downstream consumer (CreovaOne) fits asset betas to `composites`, which surfaced that a past row is not stable. Three mechanisms were running together and separating them is the whole fix: (1) **methodology/threshold/weight changes rewriting history is CORRECT and unchanged** — one consistent lens is the point of a diagnostic; (2) **full-history Z-scores are statistical look-ahead** (`normalize.build_signals` says so in its own docstring — a 2010 row is scored against a distribution through today); (3) data revisions are separate again (`backtest_g3` ALFRED path, `history.duckdb`). So the fix is **additive, not a behaviour change**: new **`composites_pit`** table (pipeline **Pass 5b**, 7,764 rows, all 14 countries) carries the same baskets/weights on expanding-window `shift(1)` Z-scores. US gap vs the live series: growth corr 0.942 / sign disagrees 14.6% of months, **inflation corr 0.654 / 24.5%**. New `indicators/methodology_version.py` adds `methodology_version` + `config_hash` columns to both composite tables — manual version keyed to Methodology §15, auto hash of the weight config because a manual version never catches an importance-editor edit or a regression recalibration (`weight_change_log` already holds 10 such US changes). **Rule: read `composites_pit` for anything FITTED across time; `composites` for reading the machine.** Neither is vintage-corrected. New **`docs/consumer_contract.md`** — read this before changing a published column name or semantic. Two bugs caught by running all 14 countries rather than inspecting: `backtest.PIT_MIN_SIGNALS = 3` vs production's `min_signals_required: 1` silently zeroed Luxembourg (2 growth signals) and would have holed every sparse basket — `compute_pit_scores` now takes `min_signals`, and the backtest default stays 3 because `docs/backtests/*.md` reports numbers computed at it; and `us_composites.yaml` lives under `config/countries/` like every other country, so `["US"] + glob` double-counted. Also same-day: **`*_momentum` renamed to `*_breadth`** across all six forces (model field, DB column, every internal read, and the UI labels — Signals section headers and the force-detail banner/card now read "Breadth"). These were always the SHARE of contributing signals moving in the force's positive direction, never a rate of change, and the old name collided with the genuine MoM-delta momentum shown in the same UI. **Deliberately unchanged: the per-signal "Momentum" direction column and the "Momentum Z (12mo)" / "Δ MoM" readouts — those ARE momentum.** Additive rename: `*_momentum` columns are kept, still written with the identical value, and were backfilled across all 8,306 rows, so no consumer breaks; a guard test fails on any remaining `dashboard/` read of the mirror. Also same-day: **`confidence` REDEFINED** (not renamed) as **Chip Direction Agreement**, computed in the pipeline instead of live in the dashboard. It had been measuring agreement with the four-season QUADRANT off a raw `score >= 0` sign split that ignores thresholds — the rule retired 2026-07-06 when seasons became display-only. New per-force `growth_dir_agreement`/`inflation_dir_agreement`; `confidence` is their mean. Moving it into the engine fixed two drifts in the dashboard's own version: it measured **every** `force=='growth'` signal (19 for the US) rather than the **12** that build the composite, and **never flipped `invert` signals** (a falling unemployment rate counted as disagreeing with a rising growth chip). `chip_direction_agreement()` is now a READER of the stored column — one definition, read everywhere, same shape as the threshold resolver. All 14 countries recomputed; **`METHODOLOGY_VERSION` bumped to 2026.10.07** (a definition change that moves historical values must move the stamp — pinned by a test). Still open: `signals.surprise` is 0 non-null of 368,225, deliberately unbuilt pending Ray's incremental-R² test.
 
@@ -152,7 +212,18 @@ Currently: US series via FRED API only. All other countries use latest-revised d
 | 2 Country rollout | 🔄 **In progress** | 14 economies live: US/EZ/GB/JP/KR/CN/IN/DE/LU + BR/CA/AU/MX/ID (Ray commodity picks, 2026-07-07); next: Ray tier-2 (VN/TR/ZA/SA/SG) |
 | 3 Back-test / regime replay | ✅ **Done** | `indicators/backtest.py` (G1+G2 PIT replay + scenarios) + `backtest_g3.py` (ALFRED vintage replay, asset outcomes, rate_expectations IC — A1 closed) |
 
-**To start the next session:** the Ray-framework roadmap (`docs/Guidance/ray_framework_roadmap.md`) is **complete through Phase G**, and Phase 2 covers 14 economies (US/EZ/GB/JP/KR/CN/IN/DE/LU/BR/CA/AU/MX/ID, 462 signals). Open items, in rough priority: **Ray tier-2 country rollouts** (his ranked missing list continues: Vietnam, Turkey, South Africa, Saudi Arabia, Singapore — Russia hits the no-Rosstat constraint; expect the BR/IN pattern), **fill the D4 manual slots** (download V-Dem CY-Core + GPR xls, run scripts/prepare_*.py, re-run pipeline — infra is built), ONS registration-free API for live GB monthly CPI + e-Stat registration for JP, no free German core-CPI series (wishlist), and the 2007-squeeze stage-threshold tweak candidate (needs more episodes before tuning). BEA note: `debt_service_ratio`, `current_account`, and `NIIP` all refreshed to Q1 2026 (ingested 2026-07-09); June payrolls also ingested. EZ current account gap remains unresolvable from free APIs — documented in `docs/Guidance/EU_singals_guidance.md`; Global Overview shows dash.
+**To start the next session:** read `docs/Guidance/regime_state_vs_environment_2026-10-08.md` **first** if you are touching the chip, the map, or anything a downstream project fits to — it is short and it settles the definitions. The 2026-10-08 checklist is closed; `session-checklist.md` carries what remains.
+
+Open items, in priority order:
+
+1. **Deliver `docs/creovaone_handoff_2026-10-08.md` to CreovaOne — needs a human.** Their `ewma_shrinkage` 12-month half-life gives an effective sample of 34.6 months against 428, so All-Weather boxes are being assigned off coefficients that are not distinguishable from zero. This is live against real allocation decisions and is the only open item with money attached.
+2. **SPF for `inflation.cpi_headline`** — needs annualized-QoQ → YoY price chaining. No inflation signal carries a real forecast yet; the three growth ones do. Slot and mechanism already exist (`spf_loader._SPF_SIGNAL_MAP`, `normalize._resolve_expectation`).
+3. **Ray's 70/30 impulse/persistence reweight of `inflation_score`** — designed, deliberately unshipped. ⚠ **It moves the continuous series and therefore every beta fitted downstream; it must land BEFORE any beta recalibration and with a handoff written first, not after.**
+4. **Ray tier-2 country rollouts** — his ranked list continues: Vietnam, Turkey, South Africa, Saudi Arabia, Singapore (Russia hits the no-Rosstat constraint; expect the BR/IN pattern).
+5. **Fill the D4 manual slots** — download V-Dem CY-Core + GPR xls, run `scripts/prepare_*.py`, re-run the pipeline. Infra is built.
+6. Standing data gaps: ONS registration-free API for live GB monthly CPI, e-Stat registration for JP, no free German core-CPI series (wishlist), and the 2007-squeeze stage-threshold tweak (needs more episodes before tuning). EZ current account remains unresolvable from free APIs — `docs/Guidance/EU_singals_guidance.md`; Global Overview shows a dash.
+
+**What NOT to spend effort on, with reasons:** chasing statistical significance for a regime→asset-return claim on this data — it was tested three ways on 2026-10-08/09 and does not survive honest sampling even pooled across 11 countries (`indicators/panel.py`); and a wholesale rename of `_classify_regime` / `/regime-map` / `regime-threshold-store` — the word is unambiguous inside this repo and the fix belongs at the CreovaOne boundary, where it has been applied.
 
 **Signal drill-down + info popup notes (as of 2026-06-25):**
 - Click signal name → `{"type": "signal-link", "index": sig_id}` → `signal-drill-id` store → modal with 2-panel (level/Z) or 3-panel chart (+ raw FRED cache for yoy_pct signals). Shared hover spike via clientside callback on `signal-drill-chart` figure.

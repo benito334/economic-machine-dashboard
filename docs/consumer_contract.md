@@ -111,8 +111,80 @@ project retired in July 2026 when the seasons became display-only. Historical
 values therefore CHANGED; `methodology_version` moved to `2026.10.07` to say so.
 If you were reading `confidence`, re-read it.
 
-**`signals.surprise` is always NULL** (0 of 368,225 rows). A declared slot that
-was never built. Do not read it.
+**The inflation CHIP changed on 2026-10-08 — but the composite columns did not.**
+The displayed Inflation / Transition / Disinflation chip is now gated on
+**distance from the central bank's target** (`indicators.inflation_anchor.gap_series`,
+beyond ±`bands.tolerance_pp`, sustained), not on `inflation_score`'s relative
+Z. The momentum gate is retired. `growth_score` / `inflation_score` in both
+composite tables are **unchanged in value** — if you fit betas to those
+columns, nothing moves. What changes is any consumer that was reproducing the
+chip, and `validator_verdicts`, which grades the chip.
+
+Growth is deliberately NOT symmetric: it stays relative-Z, because growth has
+no natural "right" level and inflation has a target (Ray, 2026-10-03). See
+`docs/Guidance/regime_state_vs_environment_2026-10-08.md`.
+
+⚠ **Still pending and NOT in this change:** re-anchoring has no effect on the
+composite series today because the anchor runs alongside, not inside, the
+composite. If the inflation *composite* is ever rebuilt around the target, the
+continuous series moves and **every fitted beta moves with it** — that change
+must land before any beta recalibration, not after.
+
+**Four countries' inflation composite is too flat to fit a beta to.** Measured
+over the last 10 years of `composites_pit`, `inflation_score` standard deviation:
+
+| country | sd | |
+| :--- | ---: | :--- |
+| BR | **0.016** | unusable |
+| MX | **0.050** | unusable |
+| ID | **0.101** | unusable |
+| CN | **0.177** | unusable |
+| everyone else | 0.36 – 1.63 | fine |
+
+Those four run on an annual IMF bridge that is forward-filled into a near-flat
+line, so the series has months but almost no information. A regression will
+still return a coefficient; it will be meaningless. **Skip the inflation leg
+for BR / MX / ID / CN, or mark those assets unclassified on that axis.** Growth
+is fine for all 14. `indicators.backtest.composite_variance_flags()` computes
+this, and the Regime Validator page shows it next to the episode counts.
+
+The regime CHIP for those countries is *not* affected — it is gated on distance
+from target, not on this Z — so do not infer from a healthy chip that the
+composite behind it is fittable.
+
+**`signals.surprise` is now POPULATED (2026-10-08) — read the naming caveat.**
+It was 0 non-null of 368,225 rows until this date. It now carries
+`(realized − expectation) / sigma`, per signal, with sigma an expanding
+standard deviation shifted one period so a month is never scaled by a spread
+that had not happened yet. Null for the first 24 observations of a series by
+design, rather than scaled off three data points.
+
+**Three US signals now carry a REAL forecast (2026-10-09):**
+`growth.unemployment`, `growth.payrolls` and `growth.industrial_prod` use the
+Philadelphia Fed SPF one-quarter-ahead median, converted into each signal's own
+units — 33% of the US growth basket by weight. For those three the column is a
+genuine surprise against a published consensus, and it differs materially from
+the random-walk version (correlation 0.59 / 0.62 / −0.01 respectively).
+
+SPF's real-GDP-growth forecast is deliberately NOT wired: `master.gdp_real` is
+in no basket, so it would reach nothing.
+
+⚠ **For every OTHER signal the expectation is still a random walk, so on those
+this is a standardised CHANGE, not a surprise against what the market
+discounted.**
+Ray conceded the point directly when pressed (2026-10-07 Ruling 4): *"In the
+absence of true forecasts, the label is technically a misnomer. It is still a
+change measure."* What it genuinely buys over differencing the composite
+yourself is per-signal standardisation — one high-volatility component cannot
+dominate — and explicit missing-data renormalisation. A published forecast
+drops into the same slot per signal when one exists; SPF covers US GDP growth
+and CPI and is not yet wired.
+
+It was built only after Ray's own decision test passed, on **non-overlapping
+monthly returns**: incremental R² over ΔComposite was 0.019 for long bonds
+(F = 5.05, p = 0.007) and 0.082 for equity (F = 5.35, p = 0.006), against his
+≥ 0.01 bar. Gold did not clear it (0.005, p = 0.34), so do not expect it to
+help on every asset.
 
 **`low_coverage`** marks months with too few active signals. For the US these
 are a contiguous block, 1980-01 to 1990-11 — dropping them leaves **no interior

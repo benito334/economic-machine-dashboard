@@ -390,7 +390,11 @@ def chip_state(
     if dynamic_on and not dyn_df.empty:
         t["gz"] = float(dyn_df["dyn_gz"].iloc[-1])
         t["iz"] = float(dyn_df["dyn_iz"].iloc[-1])
-    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t)
+    from dashboard.charting import gap_at
+    from indicators.inflation_anchor import gap_series
+    _ig, _igh = gap_at(gap_series(country), hist["as_of"].iloc[-1])
+    g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
+                                      i_gap=_ig, i_gap_history=_igh)
 
     return {
         "country": country,

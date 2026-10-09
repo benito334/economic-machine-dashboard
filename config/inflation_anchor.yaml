@@ -25,6 +25,17 @@ bands:
   tolerance_pp: 0.5        # TUNABLE: |gap| <= this => "At Target"
   # Secondary severity shading, in percentage points of gap. Display only.
   far_pp: 1.5              # TUNABLE: |gap| >= this => "far from target"
+  # A chip must not claim a state from a very old print. Beyond this age the
+  # gap is NaN and the inflation chip reads Transition. Generous on purpose:
+  # the countries whose monthly CPI mirrors are dead (GB/KR/CN/IN/MX/AU) run on
+  # an annual IMF bridge and legitimately sit near this bound for part of each
+  # year; a tight value would silently mute them.
+  max_age_months: 12       # TUNABLE: age of the chosen gap series, in months
+  # Beyond this the chip still fires but is LABELLED stale on screen. Five
+  # countries (KR/CN/IN/CA/AU) run on an annual IMF bridge and sit ~9 months
+  # old for most of the year; muting them would be worse than saying so, but
+  # leaving them looking as fresh as the US's monthly core PCE is dishonest.
+  stale_age_months: 3      # TUNABLE: age beyond which the chip is flagged
 
 # ── Impulse vs persistence (Ray ruling 2, same session) ──────────────────────
 # "Inflation is a two-part machine: an impulse that shows up in flexible prices
@@ -43,13 +54,13 @@ split:
   persistence_weight: 0.70 # TUNABLE
   min_members: 2           # TUNABLE: fewer contributing members => sub-index is null
   # Concept tails, matched against the signal id suffix.
-  impulse_members:
-    - crude_oil
-    - breakeven_avg
-    - ppi_broad
-    - ppi
-    - hicp_energy
-    - cpi_headline
+  impulse_members: [crude_oil, breakeven_avg, ppi_broad, ppi, hicp_energy,
+                    cpi_headline, cpi_imf_annual, hicp_food]
+  # cpi_imf_annual and hicp_food added 2026-10-08. Both are flexible-price
+  # by Ray's own taxonomy -- an annual HEADLINE CPI is not a sticky core
+  # measure, and food is the textbook flexible price. They were in neither
+  # list, which left 11 of 14 countries carrying unclassified weight and
+  # made the implied split unreadable.
   persistence_members:
     - pce_core
     - cpi_core

@@ -53,7 +53,19 @@ logger = logging.getLogger(__name__)
 REPORT_PATH = Path(__file__).parents[1] / "docs" / "backtests" / "pit_regime_backtest_g3_us.md"
 
 BOND_DURATION = 7.5          # 10Y Treasury modified-duration approximation
-FORWARD_MONTHS = 3           # forward-return horizon for outcome tests
+# Forward-return horizon for the outcome tests. Raised 3 -> 12 on 2026-10-08:
+# every effect measured in the 2026-10-08 regime audit was LARGER at 12-24
+# months than at 3, which is unsurprising — macro regimes are not a
+# three-month phenomenon, and a 3-month window was testing the signal at a
+# horizon it was never claimed to work on. The rate_expectations IC decision
+# (A1) was re-checked at every horizon before changing this and survives:
+# incremental IC 0.148 at 3m rises to 0.257 at 12m, so the slot is kept more
+# firmly, not less.
+FORWARD_MONTHS = 12
+# Reported side by side so the horizon's effect is visible rather than a
+# buried parameter choice, and so the 3-month numbers in earlier editions of
+# docs/backtests/pit_regime_backtest_g3_us.md stay comparable.
+FORWARD_HORIZONS = (3, 12, 24)
 
 # US basket series treated as market-priced / not meaningfully revised —
 # vintage replay uses final values for these (flagged in the report).
@@ -257,6 +269,14 @@ def chip_conditioned_returns(
 
     Forward window starts the month AFTER the chip month — no overlap between
     the information date and the return window.
+
+    ⚠ Successive rows DO overlap each other once horizon > 1: sampled monthly,
+    a 12-month forward window shares 11 months with its neighbour. That inflates
+    the apparent sample size and any t-statistic computed naively across these
+    rows. Means and counts here are honest; significance is not, and the
+    2026-10-08 audit found that nothing in this family survives independent
+    (every-horizon-th-month) sampling. Treat the spread between chips as an
+    effect size to weigh, never as a tested claim.
     """
     fwd = (
         returns.rolling(horizon).sum().shift(-horizon) * (12.0 / horizon)
@@ -267,6 +287,20 @@ def chip_conditioned_returns(
     joined = pd.concat([ch, fwd], axis=1, join="inner").dropna()
     joined.columns = ["chip", "fwd"]
     return joined.groupby("chip")["fwd"].agg(["mean", "count"])
+
+
+def chip_conditioned_returns_by_horizon(
+    chips: pd.DataFrame, returns: pd.Series, chip_col: str,
+    horizons: "tuple[int, ...]" = FORWARD_HORIZONS,
+) -> dict:
+    """`chip_conditioned_returns` at several horizons: {horizon: {chip: {...}}}.
+
+    The horizon is the single most consequential parameter in these tests and
+    was previously a module constant nobody looked at. Reporting the sweep
+    makes its effect visible.
+    """
+    return {h: chip_conditioned_returns(chips, returns, chip_col, horizon=h).to_dict("index")
+            for h in horizons}
 
 
 def rate_expectations_ic(conn) -> dict:
@@ -362,6 +396,13 @@ def run_g3() -> dict:
                 chip_conditioned_returns(chips_fixed_vint, bond, "inflation_chip").to_dict("index"),
             "bond_by_inflation_chip_dynamic":
                 chip_conditioned_returns(chips_dyn_vint, bond, "inflation_chip").to_dict("index"),
+            # The same two tests swept across horizons, so the single most
+            # consequential parameter here is visible rather than implicit.
+            "bond_by_inflation_chip_by_horizon":
+                chip_conditioned_returns_by_horizon(chips_dyn_vint, bond, "inflation_chip"),
+            "equity_by_growth_chip_by_horizon":
+                chip_conditioned_returns_by_horizon(chips_dyn_vint, eq, "growth_chip"),
+            "horizons": list(FORWARD_HORIZONS),
             "equity_months": int(len(eq)),
             "bond_months": int(len(bond)),
         }

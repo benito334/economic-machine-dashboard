@@ -334,3 +334,64 @@ class TestSanityCheck:
         latest = sigs[-1]
         latest.value = None
         assert sanity_check(latest, b) == []
+
+
+# ── compute_surprise (Ray 2026-10-07 Ruling 3, built 2026-10-08) ─────────────
+
+def test_surprise_is_the_standardised_deviation_from_expectation():
+    import numpy as np, pandas as pd
+    from indicators.normalize import compute_surprise
+    idx = pd.date_range("2000-01-31", periods=80, freq="ME")
+    s = pd.Series(np.arange(80, dtype=float), index=idx)   # +1 every month
+    out = compute_surprise(s)
+    # A perfectly steady series has zero deviation from a random walk, so its
+    # sigma is zero and the surprise is undefined rather than infinite.
+    assert out.dropna().empty or (out.dropna().abs() < 1e-9).all()
+
+
+def test_surprise_uses_an_explicit_expectation_when_given():
+    """Ruling 3: real forecasts must drop into the same slot with no other
+    pipeline change. Pins that the slot actually works."""
+    import numpy as np, pandas as pd
+    from indicators.normalize import compute_surprise
+    idx = pd.date_range("2000-01-31", periods=60, freq="ME")
+    rng = np.random.default_rng(0)
+    s = pd.Series(rng.normal(0, 1, 60), index=idx)
+    rw = compute_surprise(s)
+    fc = compute_surprise(s, expectation=pd.Series(0.0, index=idx))
+    assert not rw.equals(fc)
+    assert fc.notna().sum() > 0
+
+
+def test_surprise_sigma_is_point_in_time():
+    """A month's surprise must not be scaled by a spread that had not
+    happened yet — appending future data cannot move a past value."""
+    import numpy as np, pandas as pd
+    from indicators.normalize import compute_surprise
+    rng = np.random.default_rng(1)
+    base = pd.Series(rng.normal(0, 1, 60),
+                     index=pd.date_range("2000-01-31", periods=60, freq="ME"))
+    extended = pd.concat([base, pd.Series(
+        rng.normal(0, 25, 24),                     # a violent later regime
+        index=pd.date_range("2005-01-31", periods=24, freq="ME"))])
+    before = compute_surprise(base)
+    after = compute_surprise(extended).loc[base.index]
+    pd.testing.assert_series_equal(before.dropna(), after.dropna(), check_names=False)
+
+
+def test_surprise_is_null_during_warmup_not_fabricated():
+    import numpy as np, pandas as pd
+    from indicators.normalize import compute_surprise, _SURPRISE_MIN_PERIODS
+    idx = pd.date_range("2000-01-31", periods=40, freq="ME")
+    s = pd.Series(np.random.default_rng(2).normal(0, 1, 40), index=idx)
+    out = compute_surprise(s)
+    assert out.iloc[:_SURPRISE_MIN_PERIODS].isna().all()
+    assert out.iloc[-1] is not None
+
+
+def test_surprise_survives_a_degenerate_series():
+    import pandas as pd
+    from indicators.normalize import compute_surprise
+    assert compute_surprise(pd.Series(dtype=float)).empty
+    flat = pd.Series([2.0] * 40, index=pd.date_range("2000-01-31", periods=40, freq="ME"))
+    assert compute_surprise(flat).dropna().empty          # zero sigma -> null, not inf

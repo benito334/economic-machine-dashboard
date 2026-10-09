@@ -47,6 +47,10 @@ _CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 #               the basket moving with the chip's heading, invert-aware, over
 #               the contributing signals only. New per-force
 #               growth/inflation_dir_agreement columns.
+#   2026.10.08  Inflation chip re-anchored to the central bank's TARGET
+#               (|gap| > bands.tolerance_pp, sustained) instead of its own
+#               relative Z. Momentum gate `im` retired. Growth unchanged and
+#               still relative: the two chips no longer share a framework.
 #   2026.10.06  Growth chip made level-gated; momentum demoted to an
 #               annotation. gm 0.05 -> 0.04. Inflation chip unchanged.
 #   2026.10.03  gm/im momentum gates raised 0.0 -> 0.05; sustained-months
@@ -54,7 +58,7 @@ _CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 #   2026.07.10  Composite age-decay made release-schedule-aware.
 #   2026.07.06  Canonical rolling windows (48m growth / 90m inflation);
 #               confidence redefined as Chip Direction Agreement.
-METHODOLOGY_VERSION = "2026.10.07"
+METHODOLOGY_VERSION = "2026.10.08"
 
 
 # ── The automatic fingerprint ────────────────────────────────────────────────

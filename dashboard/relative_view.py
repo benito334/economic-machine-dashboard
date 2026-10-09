@@ -176,7 +176,9 @@ def _chip_label_history(hist, g_col: str, i_col: str, t: dict, dyn) -> tuple:
     Uses per-row dynamic thresholds when available so past rows are judged the
     way the dashboard judged them, not by today's thresholds.
     """
-    from dashboard.charting import _classify_regime
+    from dashboard.charting import _classify_regime, gap_at as _gap_at
+    from indicators.inflation_anchor import gap_series as _gap_series
+    _gaps = _gap_series(country) if country else None
     total = len(hist)
     dg = hist[g_col].diff()
     di = hist[i_col].diff()
@@ -190,12 +192,14 @@ def _chip_label_history(hist, g_col: str, i_col: str, t: dict, dyn) -> tuple:
             tt["gz"] = float(dyn["dyn_gz"].iloc[pos])
             tt["iz"] = float(dyn["dyn_iz"].iloc[pos])
         gd, idd = dg.iloc[pos], di.iloc[pos]
+        _gap, _gap_hist = _gap_at(_gaps, hist["as_of"].iloc[pos])
         gc, ic = _classify_regime(
             float(g), float(i),
             None if pd.isna(gd) else float(gd),
             None if pd.isna(idd) else float(idd), tt,
             g_history=hist[g_col].iloc[:pos + 1],
-            i_history=hist[i_col].iloc[:pos + 1])
+            i_history=hist[i_col].iloc[:pos + 1],
+            i_gap=_gap, i_gap_history=_gap_hist)
         ts = pd.Timestamp(hist["as_of"].iloc[pos])
         g_out.append((ts, gc))
         i_out.append((ts, ic))
@@ -222,7 +226,9 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
     from dashboard.charting import (
         _GROWTH_CHIP, _INFLAT_CHIP,
         _classify_regime, compute_dynamic_thresholds, resolve_thresholds,
+        gap_at as _gap_at,
     )
+    from indicators.inflation_anchor import gap_series as _gap_series
 
     hist = load_composite_history(country=country)
     if hist.empty:
@@ -248,8 +254,10 @@ def _country_card(country: str, thresholds: dict) -> html.Div:
         else:
             t["gz"] = float(dyn["dyn_gz"].iloc[-1])
             t["iz"] = float(dyn["dyn_iz"].iloc[-1])
+    _gap, _gap_hist = _gap_at(_gap_series(country), hist["as_of"].iloc[-1])
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
-                                      g_history=hist[g_col], i_history=hist[i_col])
+                                      g_history=hist[g_col], i_history=hist[i_col],
+                                      i_gap=_gap, i_gap_history=_gap_hist)
 
     # Long-term cycle stage
     try:

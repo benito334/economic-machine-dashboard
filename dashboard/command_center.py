@@ -170,6 +170,20 @@ def _anchor_chip(anchor: Optional[dict]):
     sp = anchor.get("split") or {}
     if sp.get("impulse") is not None and sp.get("persistence") is not None:
         bits.append(f"impulse {sp['impulse']:+.2f} / persistence {sp['persistence']:+.2f}")
+    else:
+        # Ray 2026-10-03 Ruling 2: inflation is a two-part machine, and the
+        # half-year lead of a flexible-price index is "a feature, not a bug" --
+        # but it means such an index is LEADING, not a current-state gauge.
+        # Ten of fourteen countries have no sticky member at all, and saying
+        # nothing left them looking like the US's core-PCE-weighted read.
+        try:
+            from indicators.inflation_anchor import basket_split_composition
+            comp = basket_split_composition(a.country)
+        except Exception:
+            comp = {}
+        if comp and not comp.get("has_both"):
+            bits.append("no sticky component — flexible-price only, so this "
+                        "leads the trend rather than measuring it")
     return _chip_span(label, _ANCHOR_COLOR.get(a.label, "#888"), title=" · ".join(bits))
 
 
@@ -265,8 +279,10 @@ def render_command_center(country_data, page_trigger, thresholds,
         _DEFAULT_THRESHOLDS, _FORCE_WINDOW_COL, _GROWTH_CHIP, _GROWTH_MOMENTUM_STATE,
         _INFLAT_CHIP, _growth_breadth_state,
         _INFLATION_WINDOW_COL, _classify_regime, compute_dynamic_thresholds,
+        gap_at as _gap_at,
         compute_regime_confidence, resolve_thresholds, thr,
     )
+    from indicators.inflation_anchor import gap_series as _gap_series
 
     country = str(country_data or "US").upper()
     hist = load_composite_history(country=country)
@@ -324,8 +340,13 @@ def render_command_center(country_data, page_trigger, thresholds,
         t["iz"] = float(dyn_df["dyn_iz"].iloc[-1])
     # Sustained-Z filter (Ray 2026-10-03): pass the windowed score history so the
     # Z leg must have held for N consecutive months, not just this one.
+    # Inflation chip is target-anchored (Ray 2026-10-03 Ruling 1): the gate is
+    # distance from the central bank's target, not distance from its own norm.
+    _gaps = _gap_series(country)
+    _gap, _gap_hist = _gap_at(_gaps, hist["as_of"].iloc[-1])
     g_chip, i_chip = _classify_regime(g, i, g_d, i_d, t,
-                                      g_history=hist[g_col], i_history=hist[i_col])
+                                      g_history=hist[g_col], i_history=hist[i_col],
+                                      i_gap=_gap, i_gap_history=_gap_hist)
     # Momentum is no longer a gate on the growth chip (2026-10-06) — it
     # describes what is happening inside the regime, shown beside the chip.
     g_mom_state = _growth_breadth_state(g_chip, g, g_d, t)
@@ -334,8 +355,8 @@ def render_command_center(country_data, page_trigger, thresholds,
     # empirical frequency that a reading like today's actually held into the
     # next month, historically. A complement to the chip, never a
     # replacement — g_chip/i_chip above are unchanged by this.
-    g_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "growth")
-    i_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "inflation")
+    g_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "growth", _gaps)
+    i_conf = compute_regime_confidence(dyn_input, dynamic_on, t, "inflation", _gaps)
 
     # External validator rollup (docs/external_validators_plan.md, 2026-10-03):
     # independent FRED-benchmark cross-check against the chip — a different

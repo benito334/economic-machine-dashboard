@@ -10,7 +10,15 @@ import pandas as pd
 from indicators.models import CountryBinding, Signal
 from indicators.transform import compute_momentum, months_to_periods
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _LOW_HISTORY_THRESHOLD = 15  # fewer obs → set low_history=True
+# Observations required before a surprise is scaled at all. Below this the
+# expanding sigma is too unstable to divide by and the surprise stays null —
+# better a hole than a number scaled by three observations.
+_SURPRISE_MIN_PERIODS = 24
 
 _STALE_THRESHOLDS: dict[str, timedelta] = {
     "D": timedelta(days=5),
@@ -103,10 +111,70 @@ def _is_stale(obs_date: date, frequency: str, is_latest: bool,
     return (date.today() - obs_date) > threshold
 
 
+def compute_surprise(clean: pd.Series,
+                     expectation: Optional[pd.Series] = None) -> pd.Series:
+    """Standardised per-signal surprise (Ray 2026-10-07 Ruling 3).
+
+        Surprise_i,t = (Realized_i,t - Expectation_i,t) / sigma_i
+
+    `expectation` is the published forecast where one exists. Where none does
+    — 17 of 19 US growth signals today — it falls back to the **previous
+    realized value**, i.e. a random walk. Ruling 3 specifies exactly that, and
+    specifies that real forecasts "drop into the same slot with no other
+    pipeline change", which is why this takes a series rather than reaching
+    for a forecast provider itself.
+
+    ⚠ **Honest naming, per Ruling 4.** On a random-walk expectation this is a
+    standardised CHANGE, not a surprise against what was discounted — Ray
+    conceded the point directly when pressed: *"In the absence of true
+    forecasts, the label is technically a misnomer. It is still a change
+    measure."* What it genuinely buys over differencing the composite is
+    (i) per-signal standardisation, so a high-volatility component cannot
+    dominate, and (ii) explicit missing-data renormalisation.
+
+    Built 2026-10-08 only after Ray's own decision test passed on
+    non-overlapping monthly returns: incremental R² over ΔComposite was 0.019
+    for long bonds (F=5.05, p=0.007) and 0.082 for equity (F=5.35, p=0.006),
+    against his ≥0.01 bar. Gold did not clear it (0.005, p=0.34).
+
+    sigma is an EXPANDING standard deviation shifted one period, so a month's
+    surprise is never scaled by a spread that had not happened yet.
+    """
+    if clean is None or len(clean) < 2:
+        return pd.Series(dtype=float, index=getattr(clean, "index", None))
+    exp = clean.shift(1) if expectation is None else expectation.reindex(clean.index)
+    dev = clean - exp
+    sigma = dev.expanding(min_periods=_SURPRISE_MIN_PERIODS).std(ddof=1).shift(1)
+    out = dev / sigma.replace(0.0, np.nan)
+    return out.replace([np.inf, -np.inf], np.nan)
+
+
+def _resolve_expectation(binding: CountryBinding,
+                        index) -> Optional[pd.Series]:
+    """A published forecast for this signal, or None for the random walk.
+
+    Resolved here rather than at the ten pipeline call sites, so the mapping
+    from signal to forecast has exactly one definition. Ruling 3's "drops into
+    the same slot with no other pipeline change" is literally this function.
+
+    Never raises: a forecast provider being unreachable must degrade the
+    surprise to a random walk, not fail an ingest.
+    """
+    if str(binding.country).upper() != "US":
+        return None                                  # SPF is US-only
+    try:
+        from indicators.spf_loader import spf_expectation
+        return spf_expectation(binding.id, index)
+    except Exception:  # pragma: no cover - a forecast feed must never break ingest
+        logger.debug("expectation lookup failed for %s", binding.id, exc_info=True)
+        return None
+
+
 def build_signals(
     transformed: pd.Series,
     binding: CountryBinding,
     raw: Optional[pd.Series] = None,
+    expectation: Optional[pd.Series] = None,
 ) -> list[Signal]:
     """
     Convert a fully-transformed series into a list of Signal objects.
@@ -126,6 +194,9 @@ def build_signals(
 
     zscores = _zscore_series(clean)
     percentiles = _percentile_series(clean)
+    if expectation is None:
+        expectation = _resolve_expectation(binding, clean.index)
+    surprises = compute_surprise(clean, expectation)
     c1m, c3m, c12m = compute_momentum(clean, binding.frequency)
     series_std = float(clean.std(ddof=1)) if n > 1 else None
 
@@ -181,6 +252,7 @@ def build_signals(
                 zscore=_f(zscores.iloc[i]),
                 level_percentile=_f(percentiles.iloc[i]),
                 low_history=low_history,
+                surprise=_f(surprises.iloc[i]) if i < len(surprises) else None,
                 change_1m=_f(c1m.iloc[i]),
                 change_3m=c3m_float,
                 change_12m=_f(c12m.iloc[i]),
