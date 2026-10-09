@@ -294,6 +294,54 @@ def anchor_read(
                            f"(tried {spec['gap_series']}).")
 
 
+def basket_split_composition(country: str = "US", config: "dict | None" = None) -> dict:
+    """How a country's inflation basket divides into impulse vs persistence.
+
+    Ray 2026-10-03 Ruling 2: "inflation is a two-part machine" — a flexible-
+    price impulse and a sticky persistence — to be combined ~30/70 and
+    published side by side. This reports what the configured basket WEIGHTS
+    actually imply, as opposed to what the two sub-indices read today, so a
+    weight edit that breaks the ruling is visible.
+
+    `has_both` is the one that matters. Ten of fourteen countries have **no
+    persistence member at all** — their whole inflation basket is headline or
+    annual CPI, which is flexible-price. For those the composite is, in Ray's
+    own framing, a leading impulse index and not a current-state gauge, and it
+    must not be presented as if it were the US's core-PCE-weighted read.
+    """
+    import yaml
+    cfg = config or load_config()
+    split = cfg["split"]
+    imp_set, per_set = set(split["impulse_members"]), set(split["persistence_members"])
+    path = (_CONFIG_PATH.parents[1] / "config" / "countries"
+            / f"{country.lower()}_composites.yaml")
+    if not path.exists():
+        return {"country": country.upper(), "has_both": False, "members": {}}
+    doc = yaml.safe_load(path.read_text()) or {}
+    inds = (doc.get("inflation_score") or {}).get("indicators") or []
+    imp_w = per_w = unc_w = 0.0
+    members = {"impulse": [], "persistence": [], "unclassified": []}
+    for ind in inds:
+        w = float(ind.get("importance", 0.0)) * float(ind.get("base_share", 1.0))
+        concept = str(ind["id"]).rsplit(".", 1)[-1]
+        if concept in per_set:
+            per_w += w; members["persistence"].append(concept)
+        elif concept in imp_set:
+            imp_w += w; members["impulse"].append(concept)
+        else:
+            unc_w += w; members["unclassified"].append(concept)
+    total = imp_w + per_w
+    return {
+        "country": country.upper(),
+        "impulse_weight": round(imp_w, 4),
+        "persistence_weight": round(per_w, 4),
+        "unclassified_weight": round(unc_w, 4),
+        "persistence_share": round(per_w / total, 4) if total else None,
+        "has_both": bool(imp_w > 0 and per_w > 0),
+        "members": members,
+    }
+
+
 def impulse_persistence(
     country: str = "US",
     as_of: Optional[str] = None,

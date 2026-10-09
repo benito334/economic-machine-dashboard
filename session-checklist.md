@@ -26,8 +26,16 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    Inflation chip is target-anchored; `im` retired; METHODOLOGY_VERSION
    2026.10.08. Inflation 18% -> 67% decisive, median episode 1.3 -> 9.8mo.
    `composites` column VALUES are unchanged, so no downstream beta moved.
-   **Ruling 2 (impulse/persistence 30/70) is still NOT wired** — the module
-   has `impulse_persistence()` but nothing consumes it. Still open.
+   **Ruling 2 (impulse/persistence 30/70): DONE 2026-10-08.** Taxonomy
+   completed (`cpi_imf_annual`, `hicp_food` were unclassified, leaving 11 of
+   14 baskets unreadable); new `basket_split_composition()`; the impulse-only
+   case is now stated on Command Center instead of silently showing nothing;
+   three guard tests. **Finding: only US/EZ/GB/KR have a sticky leg at all
+   (persistence share 0.80/0.68/0.61/0.61). The other TEN are flexible-price
+   only, so their composite is a LEADING index, not a current-state gauge.**
+   Deliberately did NOT reweight `inflation_score` to 70/30 — that would move
+   the continuous series and every downstream beta with it. See item 4/the
+   sequencing warning.
 
 1b. ~~**Regime Map inflation axis disagrees with the chip.**~~ **DONE
    2026-10-08** — the inflation axis now plots distance from target, the

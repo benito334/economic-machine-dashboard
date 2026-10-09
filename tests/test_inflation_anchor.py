@@ -382,3 +382,63 @@ def test_gap_series_drops_months_whose_source_is_older_than_max_age():
 def test_gap_series_unknown_country_is_empty_not_an_error():
     from indicators.inflation_anchor import gap_series
     assert gap_series("ZZ").empty
+
+
+# ── Ruling 2: the impulse / persistence split, as the basket WEIGHTS imply it ─
+
+_ALL_COUNTRIES = ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
+                  "DE", "LU", "BR", "CA", "AU", "MX", "ID"]
+
+
+def test_every_inflation_basket_member_is_classified():
+    """Nothing may sit in neither sub-index.
+
+    Before 2026-10-08 `cpi_imf_annual` (10 countries) and `hicp_food` (EZ) were
+    in neither list, so the implied split was unreadable for 11 of 14. Both are
+    flexible-price by Ray's own taxonomy — an annual HEADLINE CPI is not a
+    sticky core measure — and are now in `impulse_members`. A new signal added
+    to an inflation basket without classifying it fails here.
+    """
+    from indicators.inflation_anchor import basket_split_composition
+    stray = {}
+    for cc in _ALL_COUNTRIES:
+        comp = basket_split_composition(cc)
+        unc = comp.get("members", {}).get("unclassified", [])
+        if unc:
+            stray[cc] = unc
+    assert not stray, f"inflation signals in neither sub-index: {stray}"
+
+
+def test_countries_with_both_legs_are_persistence_majority():
+    """Ray's 30/70: where a sticky component exists it must dominate.
+
+    Actual persistence shares as of 2026-10-08 — US 0.80, EZ 0.68, GB 0.61,
+    KR 0.61. US sits above Ray's stated 60-70% band; that is recorded rather
+    than silently accepted, and this test will fail if any of them drifts
+    below half, which would invert the ruling.
+    """
+    from indicators.inflation_anchor import basket_split_composition
+    both = {cc: basket_split_composition(cc) for cc in _ALL_COUNTRIES}
+    both = {cc: c for cc, c in both.items() if c["has_both"]}
+    assert both, "expected at least one country with both legs"
+    for cc, c in both.items():
+        assert c["persistence_share"] > 0.5, (
+            f"{cc}: persistence share {c['persistence_share']} — the sticky "
+            f"component must dominate the flexible one (Ray 2026-10-03 #2)"
+        )
+
+
+def test_impulse_only_countries_are_identified_not_hidden():
+    """Ten of fourteen have no sticky member at all.
+
+    That makes their composite a LEADING impulse index, not a current-state
+    gauge, and it has to be visible rather than presented like the US's
+    core-PCE-weighted read.
+    """
+    from indicators.inflation_anchor import basket_split_composition
+    comps = {cc: basket_split_composition(cc) for cc in _ALL_COUNTRIES}
+    impulse_only = [cc for cc, c in comps.items() if not c["has_both"]]
+    assert impulse_only, "expected impulse-only countries to exist"
+    for cc in impulse_only:
+        assert comps[cc]["members"]["persistence"] == []
+        assert comps[cc]["impulse_weight"] > 0

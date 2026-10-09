@@ -54,13 +54,13 @@ split:
   persistence_weight: 0.70 # TUNABLE
   min_members: 2           # TUNABLE: fewer contributing members => sub-index is null
   # Concept tails, matched against the signal id suffix.
-  impulse_members:
-    - crude_oil
-    - breakeven_avg
-    - ppi_broad
-    - ppi
-    - hicp_energy
-    - cpi_headline
+  impulse_members: [crude_oil, breakeven_avg, ppi_broad, ppi, hicp_energy,
+                    cpi_headline, cpi_imf_annual, hicp_food]
+  # cpi_imf_annual and hicp_food added 2026-10-08. Both are flexible-price
+  # by Ray's own taxonomy -- an annual HEADLINE CPI is not a sticky core
+  # measure, and food is the textbook flexible price. They were in neither
+  # list, which left 11 of 14 countries carrying unclassified weight and
+  # made the implied split unreadable.
   persistence_members:
     - pce_core
     - cpi_core

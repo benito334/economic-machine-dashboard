@@ -170,6 +170,20 @@ def _anchor_chip(anchor: Optional[dict]):
     sp = anchor.get("split") or {}
     if sp.get("impulse") is not None and sp.get("persistence") is not None:
         bits.append(f"impulse {sp['impulse']:+.2f} / persistence {sp['persistence']:+.2f}")
+    else:
+        # Ray 2026-10-03 Ruling 2: inflation is a two-part machine, and the
+        # half-year lead of a flexible-price index is "a feature, not a bug" --
+        # but it means such an index is LEADING, not a current-state gauge.
+        # Ten of fourteen countries have no sticky member at all, and saying
+        # nothing left them looking like the US's core-PCE-weighted read.
+        try:
+            from indicators.inflation_anchor import basket_split_composition
+            comp = basket_split_composition(a.country)
+        except Exception:
+            comp = {}
+        if comp and not comp.get("has_both"):
+            bits.append("no sticky component — flexible-price only, so this "
+                        "leads the trend rather than measuring it")
     return _chip_span(label, _ANCHOR_COLOR.get(a.label, "#888"), title=" · ".join(bits))
 
 
