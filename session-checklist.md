@@ -58,9 +58,20 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    **Still needs a human to deliver it** — it is their repo and their
    allocation call, not ours to change.
 
-3. **Rename in code/docs/UI: the chip reports a STATE, the box reports an
-   ENVIRONMENT.** Never "regime" for both. One word caused a multi-hour
-   confusion and will cause it again.
+3. ~~**Rename in code/docs/UI: chip = STATE, box = ENVIRONMENT.**~~ **DONE
+   2026-10-08, scoped deliberately.** Audited first: inside this repo the bare
+   word "regime" means the chip and ONLY the chip, consistently — the one
+   surface that actually speaks about All-Weather environments,
+   `dashboard/asset_environments.py`, was calling them regimes, and that is
+   fixed with an explicit contrast in the page copy. A standing rule now sits
+   in CLAUDE.md §1b (it had only been buried in a dated status entry), and a
+   test keeps that page from drifting back.
+   **Deliberately NOT done: a wholesale rename of `_classify_regime`,
+   `/regime-map`, `regime-threshold-store` etc.** ~100 call sites plus routes
+   and element ids, for no clarity gain, since "regime" is unambiguous within
+   this repo. The confusion arose at the BOUNDARY with CreovaOne, which is
+   where the fix belongs and where it has been applied (consumer contract,
+   handoff, the state-vs-environment note).
 4. ~~**Build genuine surprise.**~~ **DONE 2026-10-08, after running the gate
    Ray set.** His own punch list said to run the incremental-R² test BEFORE
    building; it had been blocked because "this repo holds no asset returns",

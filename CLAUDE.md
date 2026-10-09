@@ -38,6 +38,27 @@ Full specification: [docs/project_plan.md](docs/project_plan.md)
 - Local dev is fine in a venv, but the acceptance test for any phase is `docker compose up`.
 - Use bind mounts for the data/db paths above — do not bake data into images.
 
+### 1b. Two words, never one: STATE vs ENVIRONMENT
+
+This project produces a regime **state**; the All-Weather framework it feeds
+consumes an **environment**. They are different objects and one word for both
+cost a full session on 2026-10-08.
+
+| | our chip | the All-Weather box |
+| :--- | :--- | :--- |
+| answers | where is the economy vs its own history | did it come in above or below what was priced |
+| measures | a **level** | a **deviation** |
+| has a middle | **yes** — "neither strong nor weak" is a true description, which is why Transition is real and is the modal read | **no** — the sign of a continuous variable has no neutral category, which is why the four boxes cover 100% of months |
+
+**Rules.** Say **state** for the chip and **environment** for the box, in code,
+docs and UI. Never use the chip as a beta input; never display a box as "what
+regime are we in". "Most months are Transition" is not an argument for a fifth
+All-Weather box. Inside this repo the bare word "regime" means the chip and
+only the chip — `dashboard/asset_environments.py` is the one surface that
+speaks about environments, and a test keeps it from drifting back.
+
+Full reasoning, with the measurements: `docs/Guidance/regime_state_vs_environment_2026-10-08.md`.
+
 ### 2. Use existing packages before building from scratch
 Before writing any utility from scratch, check whether it is already available in:
 `fredapi`, `wbgapi`, `sdmx`, `imfp`, `duckdb`, `pandas`, `numpy`, `scipy`, `streamlit`, `plotly`, `APScheduler`, `pydantic`, `requests`, `tenacity`, `python-dotenv`

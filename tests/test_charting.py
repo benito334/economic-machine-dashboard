@@ -2150,3 +2150,29 @@ def test_map_season_never_names_a_season_the_chips_do_not_support():
         if named and (gc == "Transition" or ic == "Transition"):
             bad.append(f"{cc}: map says {season!r} but chips are {gc}/{ic}")
     assert not bad, "map names a season the chips do not support:\n" + "\n".join(bad)
+
+
+def test_the_environments_page_never_calls_an_environment_a_regime():
+    """Checklist item 3, 2026-10-08. One word for two objects cost a session.
+
+    `asset_environments.py` is the only surface in this repo that speaks about
+    the All-Weather ENVIRONMENT (a deviation) rather than our regime STATE
+    chip (a level). It used to call them regimes. The remaining allowed hits
+    are the deliberate contrast between the two and references to the Regime
+    Map's axis orientation — anything else is the ambiguity creeping back.
+    """
+    import pathlib, re
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "dashboard" / "asset_environments.py").read_text()
+    allowed = ("regime **state**", 'call an environment a "regime"',
+               "Regime-Map axis orientation", "Regime Map's axis orientation",
+               "regime chip:")
+    offenders = [
+        ln.strip() for ln in src.splitlines()
+        if re.search(r"\bregimes?\b", ln, re.I)
+        and not any(a in ln for a in allowed)
+    ]
+    assert not offenders, (
+        "asset_environments.py calls an environment a regime:\n  "
+        + "\n  ".join(offenders)
+    )

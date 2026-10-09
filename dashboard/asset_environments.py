@@ -1,4 +1,11 @@
-"""Assets by Environment — which buckets do well in each growth/inflation regime.
+"""Assets by Environment — which buckets do well in each growth/inflation ENVIRONMENT.
+
+Vocabulary, deliberately: this page is about the All-Weather **environment**
+(a deviation — did growth/inflation come in above or below what was priced),
+NOT about this dashboard's regime **state** chip (a level, which legitimately
+has a middle). One word for both is what cost a session on 2026-10-08; see
+docs/Guidance/regime_state_vs_environment_2026-10-08.md. Nothing on this page
+may call an environment a "regime".
 
 A plain-language reference built from a Digital Ray consult (the user's chat
 "Can you map out for me the buckets performance in each environment…",
@@ -19,7 +26,7 @@ from dash import html
 _G = "#2e9e5b"      # Growth is the primary lever
 _I = "#e8a317"      # Inflation is the primary lever
 
-# ── The four quadrants (Regime-Map orientation: Growth →, Inflation ↑) ────────
+# ── The four environments (Regime-Map axis orientation: Growth →, Inflation ↑) ──
 # Each: environment name, the two drivers, a tint, and the assets that do well
 # there with their primary-lever badge.
 _QUADRANTS = {
@@ -147,7 +154,7 @@ def get_layout() -> html.Div:
             "letterSpacing": "0.06em", "color": "var(--muted-color)", "textAlign": "left",
             "padding": "8px 10px", "borderBottom": "1px solid var(--border-color)"}
 
-    # ── The 2×2 matrix, laid out in Regime-Map orientation ──
+    # ── The 2×2 matrix, laid out on the Regime Map's axis orientation ──
     matrix = html.Div([
         # y-axis label
         html.Div([
@@ -230,10 +237,20 @@ def get_layout() -> html.Div:
             html.Span("Assets by Environment", style={"fontSize": "1.15rem", "fontWeight": "700",
                       "color": "var(--font-color)"}),
         ]),
-        html.Div("Which buckets tend to do well in each growth × inflation regime — the four "
-                 "All-Weather quadrants. The badge on each asset marks its primary driver in "
-                 "that box.", style={"color": "var(--muted-color)", "fontSize": "0.82rem",
-                 "marginTop": "4px", "marginBottom": "18px", "maxWidth": "760px"}),
+        html.Div([
+            "Which buckets tend to do well in each growth \u00d7 inflation "
+            "environment — the four All-Weather boxes. The badge on each asset "
+            "marks its primary driver in that box. ",
+            html.Span(
+                "An environment is not the same object as this dashboard's "
+                "regime chip: the chip reads a LEVEL (where the economy is vs "
+                "its own history, which can legitimately be neither high nor "
+                "low), while an environment is a DEVIATION (did it come in "
+                "above or below what was priced), which has no middle.",
+                style={"color": "var(--muted-color)", "fontStyle": "italic"},
+            ),
+        ], style={"color": "var(--muted-color)", "fontSize": "0.82rem",
+                  "marginTop": "4px", "marginBottom": "18px", "maxWidth": "760px"}),
         matrix,
         legend,
 
@@ -245,7 +262,7 @@ def get_layout() -> html.Div:
 
         _h2("Full driver-by-driver detail"),
         _p("Ray's read of each bucket under all four individual drivers. “Stronger” = tends to "
-           "earn positive excess return for its risk in that regime; “Weaker” = typically lags "
+           "earn positive excess return for its risk in that environment; “Weaker” = typically lags "
            "or loses; “Mixed” = contingent on policy, sector, or liquidity."),
         table,
 
