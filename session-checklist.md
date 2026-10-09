@@ -21,15 +21,27 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
 `ray_consult_regime_frequency_2026-10-08.md` (the measurements),
 `beta_classification_audit_2026-10-08.md` (the downstream consequence).
 
-1. **Wire Ray's 2026-10-03 Rulings 1 + 2 into `_classify_regime`, and take the
-   growth-derived 0.15 sigma floor OFF the inflation threshold.** `indicators/
-   inflation_anchor.py` is complete and reaches only a Command Center display
-   card. This is the single highest-value item: inflation goes 18% -> 75%
-   decisive, joint four-season 8% -> 31%.
-   **SEQUENCING WARNING — re-anchoring moves the continuous composite, and
-   therefore every beta CreovaOne has fitted. This must land BEFORE any beta
-   recalibration, never after.** Bump `METHODOLOGY_VERSION`; it is a
-   consumer-contract event.
+1. ~~**Wire Ray's 2026-10-03 Ruling 1 into `_classify_regime`.**~~ **DONE
+   2026-10-08** — commits `8c07787` (gap_series) and `a47ccaf` (the rule).
+   Inflation chip is target-anchored; `im` retired; METHODOLOGY_VERSION
+   2026.10.08. Inflation 18% -> 67% decisive, median episode 1.3 -> 9.8mo.
+   `composites` column VALUES are unchanged, so no downstream beta moved.
+   **Ruling 2 (impulse/persistence 30/70) is still NOT wired** — the module
+   has `impulse_persistence()` but nothing consumes it. Still open.
+
+1b. **NEW, created by 1 — the Regime Map's inflation axis now disagrees with
+   the inflation chip.** The scatter plots inflation **Z** with ±`iz` lines and
+   four-season corners, but the chip is gated on **distance from target**. This
+   is the same bug class fixed in `29331d2` at the start of the session, now
+   reintroduced on one axis by design change rather than by oversight.
+   Options, in preference order: (a) plot the **gap** on the inflation axis
+   (growth Z × inflation gap — Ray's "different animals" made visual, and it
+   makes the ±tolerance lines the real gate); (b) keep Z but label the axis
+   explicitly secondary and drop the season corners. **Do (a).** It also
+   subsumes the shelved geometry work in item 8.
+   Same applies to Regime History's inflation panel and the Signals inflation
+   force page banner.
+
 2. **Tell CreovaOne about the half-life.** Their `ewma_shrinkage` default of a
    12-month half-life gives an effective sample of 34.6 months against 428
    available, on a relationship with R^2 ~ 0.02. Gold's inflation beta at that
