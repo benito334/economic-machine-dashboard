@@ -287,3 +287,61 @@ def test_dynamic_thresholds_respect_the_floor():
     out = compute_dynamic_thresholds(calm, base_gz=0.5, base_iz=0.5)
     assert (out["dyn_gz"] >= 0.15 - 1e-9).all()
     assert (out["dyn_iz"] >= 0.15 - 1e-9).all()
+
+
+# ── gap_series — the series form the regime classifier consumes ───────────────
+
+def test_gap_series_agrees_with_anchor_read_on_the_latest_month():
+    """Two readers of one rule. If these drift, the chip and its own display
+    card are telling the user different things — the defect this module exists
+    to prevent."""
+    from indicators.inflation_anchor import gap_series, anchor_read
+    for cc in ("US", "EZ", "GB", "JP", "BR", "MX", "AU"):
+        g = gap_series(cc)
+        a = anchor_read(cc)
+        if g.empty or a.gap_pp is None:
+            continue
+        # anchor_read rounds gap_pp to 3dp; agreement to that precision is exact
+        assert abs(float(g.iloc[-1]) - a.gap_pp) < 1e-3, (
+            f"{cc}: gap_series {g.iloc[-1]} != anchor_read {a.gap_pp}"
+        )
+
+
+def test_gap_series_is_monthly_sorted_and_unique():
+    from indicators.inflation_anchor import gap_series
+    g = gap_series("US")
+    assert not g.empty
+    assert g.index.freqstr == "M"
+    assert g.index.is_monotonic_increasing
+    assert not g.index.duplicated().any()
+
+
+def test_gap_series_drops_months_whose_source_is_older_than_max_age():
+    """Staleness guard: a chip may not claim a state from a year-old print.
+
+    Synthetic, because the real US gap series runs on monthly core PCE and so
+    carries a fresh observation almost every month — there is nothing stale in
+    it to catch.
+    """
+    import pandas as pd
+    from indicators.inflation_anchor import gap_series, load_config
+    cfg = load_config()
+    cfg = {**cfg, "countries": {**cfg["countries"],
+                                "US": {"target_pct": 2.0, "gap_series": ["cpi_headline"]}}}
+    # one lone observation in 2020-01, nothing after
+    sig = pd.DataFrame([{"id": "us.inflation.cpi_headline",
+                         "as_of": pd.Timestamp("2020-01-31"),
+                         "value": 0.035, "zscore": 0.0, "is_stale": False,
+                         "concept": "cpi_headline"}])
+    wide = dict(cfg); wide["bands"] = {**cfg["bands"], "max_age_months": 12}
+    tight = dict(cfg); tight["bands"] = {**cfg["bands"], "max_age_months": 2}
+    g_wide = gap_series("US", config=wide, signals=sig)
+    g_tight = gap_series("US", config=tight, signals=sig)
+    assert len(g_wide) == 13          # the month itself plus 12 carried months
+    assert len(g_tight) == 3          # the month itself plus 2
+    assert abs(float(g_wide.iloc[0]) - 1.5) < 1e-9   # 3.5% - 2.0% target
+
+
+def test_gap_series_unknown_country_is_empty_not_an_error():
+    from indicators.inflation_anchor import gap_series
+    assert gap_series("ZZ").empty

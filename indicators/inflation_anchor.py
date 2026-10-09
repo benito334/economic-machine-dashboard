@@ -128,6 +128,104 @@ def _series_for(df: pd.DataFrame, concept: str, col: str = "value") -> pd.Series
     return s[~s.index.duplicated(keep="last")].sort_index()
 
 
+def _rank_candidates(df: pd.DataFrame, spec: dict) -> list:
+    """Configured gap series that have data, FRESHEST first, config order as tie-break.
+
+    Several countries' monthly CPI mirrors are dead (GB, KR, CN, IN, MX, AU —
+    docs/Guidance/data_source_wishlist.md) and strict config order would anchor
+    the read to a print over a year old when a live IMF annual bridge exists.
+
+    Factored out of anchor_read so `gap_series` applies the IDENTICAL rule. Two
+    copies of a selection rule is how the chip and its own display card drift
+    apart, which is the defect this whole module exists to fix.
+    """
+    cands = []
+    for rank, concept in enumerate(spec["gap_series"]):
+        cand = _series_for(df, concept)
+        if not cand.empty:
+            cands.append((cand.index[-1], -rank, concept, cand))
+    cands.sort(reverse=True)
+    return cands
+
+
+def gap_series(
+    country: str = "US",
+    *,
+    config: Optional[dict] = None,
+    signals: Optional[pd.DataFrame] = None,
+    conn=None,
+) -> pd.Series:
+    """Month-end PeriodIndex -> distance from target in percentage points.
+
+    The series form of `anchor_read().gap_pp`, for callers that need the whole
+    history cheaply — the regime classifier runs this over 500+ months per
+    country and cannot afford a per-month DB read.
+
+    Same selection rule as `anchor_read` (`_rank_candidates`), evaluated as of
+    each month so a historical read never sees a print published later.
+
+    A month whose freshest candidate is older than `bands.max_age_months`
+    yields NaN rather than a stale number: a chip should not claim a state
+    from a year-old observation. Countries on an annual IMF bridge legitimately
+    sit near that bound, which is why the default is generous rather than tight.
+    """
+    cfg = config or load_config()
+    cc = country.upper()
+    spec = cfg["countries"].get(cc)
+    if spec is None:
+        return pd.Series(dtype=float)
+    df = signals if signals is not None else load_inflation_signals(cc, conn)
+    if df.empty:
+        return pd.Series(dtype=float)
+
+    target = float(spec["target_pct"])
+    max_age = int(cfg["bands"].get("max_age_months", 12))
+
+    ranked = _rank_candidates(df, spec)
+    if not ranked:
+        return pd.Series(dtype=float)
+
+    # Per concept: month-end value and the date that value was actually observed,
+    # both forward-filled, so "freshest as of month m" is answerable per row.
+    vals, obs, order = {}, {}, {}
+    for _last, neg_rank, concept, s in ranked:
+        m = s.copy()
+        m.index = pd.PeriodIndex(m.index, freq="M")
+        m = m[~m.index.duplicated(keep="last")]
+        d = pd.Series(m.index, index=m.index)
+        vals[concept] = m
+        obs[concept] = d
+        order[concept] = -neg_rank          # back to config rank, lower = preferred
+
+    # Carry forward to the CURRENT month, not just to the last observation.
+    # A print from three months ago is still the live read — that is exactly
+    # what anchor_read does when `as_of` is None — and it is `max_age_months`,
+    # not the end of the data, that decides when carrying stops.
+    last_obs = max(v.index.max() for v in vals.values())
+    end = max(last_obs, pd.Timestamp.today().to_period("M"))
+    idx = pd.period_range(min(v.index.min() for v in vals.values()), end, freq="M")
+    V = pd.DataFrame({c: v.reindex(idx).ffill() for c, v in vals.items()})
+    O = pd.DataFrame({c: o.reindex(idx).ffill() for c, o in obs.items()})
+
+    out = {}
+    for m in idx:
+        best, best_key = None, None
+        for c in V.columns:
+            v, o = V.at[m, c], O.at[m, c]
+            if pd.isna(v) or pd.isna(o):
+                continue
+            key = (o, -order[c])            # freshest wins; config order breaks ties
+            if best_key is None or key > best_key:
+                best_key, best = key, (v, o)
+        if best is None:
+            continue
+        v, o = best
+        if (m - o).n > max_age:
+            continue                        # too stale to claim a state
+        out[m] = float(v) * 100.0 - target  # signals are decimal fractions
+    return pd.Series(out, dtype=float).sort_index()
+
+
 def anchor_read(
     country: str = "US",
     as_of: Optional[str] = None,
@@ -159,12 +257,7 @@ def anchor_read(
     # IN, MX, AU — documented in docs/Guidance/data_source_wishlist.md) and
     # strict config order would anchor the read to a print over a year old when
     # a live IMF annual bridge exists.
-    candidates = []
-    for rank, concept in enumerate(spec["gap_series"]):
-        cand = _series_for(df, concept)
-        if not cand.empty:
-            candidates.append((cand.index[-1], -rank, concept, cand))
-    candidates.sort(reverse=True)
+    candidates = _rank_candidates(df, spec)
 
     for _, _, concept, s in candidates[:1]:
         # Signals are stored as decimal fractions (0.0301 == 3.01%).

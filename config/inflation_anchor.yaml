@@ -25,6 +25,12 @@ bands:
   tolerance_pp: 0.5        # TUNABLE: |gap| <= this => "At Target"
   # Secondary severity shading, in percentage points of gap. Display only.
   far_pp: 1.5              # TUNABLE: |gap| >= this => "far from target"
+  # A chip must not claim a state from a very old print. Beyond this age the
+  # gap is NaN and the inflation chip reads Transition. Generous on purpose:
+  # the countries whose monthly CPI mirrors are dead (GB/KR/CN/IN/MX/AU) run on
+  # an annual IMF bridge and legitimately sit near this bound for part of each
+  # year; a tight value would silently mute them.
+  max_age_months: 12       # TUNABLE: age of the chosen gap series, in months
 
 # ── Impulse vs persistence (Ray ruling 2, same session) ──────────────────────
 # "Inflation is a two-part machine: an impulse that shows up in flexible prices
