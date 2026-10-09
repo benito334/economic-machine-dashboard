@@ -1,7 +1,7 @@
 # ADR-008: What should measure "growth" when we sort assets into boxes
 
 **Date:** 2026-10-09
-**Status:** Proposed — owner decision needed before the CreovaOne historical backfill runs
+**Status:** Accepted 2026-10-09 — evidence gathered, recommendation stands. CreovaOne-side refit still required before its backfill runs.
 **Serves:** `docs/NORTH_STAR.md`
 
 ---
@@ -96,8 +96,53 @@ production. These are not the same series.
 **That it covers enough to matter.** The three SPF-backed signals are **33% of the
 US growth basket** by weight, including its two highest-weighted members.
 
-**What the evidence does NOT yet include:** nobody has refit the 55 holdings on
-this axis and compared box assignments. That test should run before adoption.
+### Measured 2026-10-09, after building the axis
+
+**A bug was found and fixed in the process, in the very thing being proposed.**
+The SPF industrial-production forecast is an index LEVEL on whatever base was
+current when the survey ran; today's `INDPRO` is on 2017=100. Dividing one by
+the other compares different rulers — the SPF-to-realized level ratio measures
+**2.08** in 1985-95, 1.51 in 1995-2005, 1.10 in 2005-15, 1.05 since — and
+produced a surprise averaging **−1.84σ** instead of ~0. Shipped in `da556a2`
+(2026-10-08), caught here. Fixed by chaining growth RATES, which are
+base-invariant: the quarterly growth implied within a single survey (h3/h2,
+same base, so it cancels) compounded onto three realized quarterly rates. IP
+surprise mean **−1.84 → −0.10**, sd 3.72 → 1.08. `PAYEMS` is a headcount and
+never rebases (ratio 0.996–1.003 in every era), so it keeps the simple
+conversion and now serves as the control in a regression test.
+
+**Against NBER recession dating** — independent of every series we ingest, and
+the strongest external check available:
+
+| | proposed axis (growth surprise) | incumbent (Δ real yield) |
+| :--- | ---: | ---: |
+| mean in recession | **−1.96** | −0.005 |
+| mean in expansion | **+0.13** | +0.003 |
+| difference | **−2.09** | −0.008 |
+| t (monthly) | **−7.35** | −0.09 |
+| p (monthly) | **<0.0001** | 0.93 |
+
+Treating each recession as ONE observation rather than counting months — the
+honest unit, since 47 recession months are 5 recessions:
+
+| recession | mean growth surprise |
+| :--- | ---: |
+| 1982-01 … 1982-11 | −1.50 |
+| 1990-08 … 1991-03 | −0.90 |
+| 2001-04 … 2001-11 | −1.25 |
+| 2008-01 … 2009-06 | −2.43 |
+| 2020-03 … 2020-04 | −7.39 |
+
+**5 of 5 negative.** Sign test across episodes p = 0.031 one-sided; t-test on
+the five episode means p = 0.079. Consistent in direction in every recession,
+not driven by one, but **underpowered** — five episodes is five episodes.
+
+**Correlation with the incumbent is +0.07**, confirming these are not two
+measurements of the same thing.
+
+**What the evidence does NOT include:** nobody has refit the 55 holdings on
+this axis and compared box assignments. That remains a precondition on the
+CreovaOne side before its backfill.
 
 ## The five checks
 

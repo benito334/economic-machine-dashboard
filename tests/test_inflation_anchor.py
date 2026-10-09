@@ -529,3 +529,46 @@ def test_non_us_countries_get_no_spf_expectation():
     tail = next(t for t in gb if "unemploy" in t)
     idx = pd.date_range("2010-01-31", periods=60, freq="ME")
     assert _resolve_expectation(gb[tail], idx) is None
+
+
+def test_spf_expectations_are_not_biased_by_index_rebasing():
+    """Regression: a standardised surprise must average about zero.
+
+    Shipped broken on 2026-10-08 and caught 2026-10-09. INDPRO is an INDEX and
+    gets rebased; the SPF forecast is on whatever base was current when the
+    survey ran, today's realized series is on 2017=100. Dividing one by the
+    other compared different rulers — the SPF-to-realized level ratio runs
+    2.08 in 1985-95 falling to 1.05 today — and produced a surprise with a mean
+    of -1.84 sigma. Growth rates are base-invariant, so the conversion chains
+    them instead.
+
+    PAYEMS is a headcount and never rebases (ratio 0.996-1.003 across every
+    era), which is why it stays on the simpler conversion and why this test
+    checks both: one is the canary, the other the control.
+    """
+    import pandas as pd
+    from indicators.spf_loader import spf_expectation
+    from indicators.normalize import compute_surprise
+    from dashboard.charting_data import DB_PATH
+    import duckdb
+
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        for tail in ("growth.industrial_prod", "growth.payrolls", "growth.unemployment"):
+            df = conn.execute(
+                "SELECT as_of, value FROM signals WHERE id = ? AND value IS NOT NULL "
+                "ORDER BY as_of", [f"us.{tail}"],
+            ).df()
+            idx = pd.DatetimeIndex(pd.to_datetime(df["as_of"]))
+            actual = pd.Series(df["value"].values, index=idx)
+            exp = spf_expectation(tail, idx)
+            assert exp is not None, f"{tail} lost its SPF expectation"
+            s = compute_surprise(actual, exp).dropna()
+            assert len(s) > 100, f"{tail}: only {len(s)} surprises"
+            assert abs(float(s.mean())) < 0.5, (
+                f"{tail}: surprise mean {s.mean():+.2f} — a standardised surprise "
+                f"should sit near zero; a large offset means the forecast and the "
+                f"realized series are on different scales"
+            )
+    finally:
+        conn.close()

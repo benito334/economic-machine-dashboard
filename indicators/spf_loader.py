@@ -206,7 +206,7 @@ _SPF_SIGNAL_MAP: dict[str, tuple[str, str, str | None]] = {
     # signal id tail        (spf key,  conversion,     realized FRED id)
     "growth.unemployment":   ("unemp",   "direct",       None),
     "growth.payrolls":       ("empl",    "level_to_yoy", "PAYEMS"),
-    "growth.industrial_prod":("indprod", "level_to_yoy", "INDPRO"),
+    "growth.industrial_prod":("indprod", "level_to_yoy_chained", "INDPRO"),
 }
 
 
@@ -250,7 +250,41 @@ def spf_expectation(signal_tail: str, index: pd.DatetimeIndex,
     if fc.empty:
         return None
 
-    if conversion == "level_to_yoy":
+    if conversion == "level_to_yoy_chained":
+        # INDPRO is an INDEX and gets rebased. The SPF forecast is on the base
+        # current when the survey ran; today's realized series is on 2017=100.
+        # Dividing one by the other compares different rulers — measured
+        # 2026-10-09, the ratio of SPF level to realized level runs 2.08 in
+        # 1985-95, 1.51 in 1995-05, 1.10 in 2005-15, 1.05 since. That produced
+        # a surprise with a mean of -1.84 sigma instead of ~0.
+        #
+        # Growth RATES are base-invariant, so chain them instead: take the
+        # quarterly growth the survey itself implies (h3/h2, both on the SAME
+        # base, so the base cancels) and compound it onto three realized
+        # quarterly growth rates.
+        from indicators.loader import fetch_series
+        df = _parse(key)
+        if df.empty or "h2" not in df.columns or "h3" not in df.columns:
+            return None
+        pair = df[["h2", "h3"]].dropna()
+        q_fc = (pair["h3"] / pair["h2"]) - 1.0          # base-invariant QoQ
+        q_fc.index = [(d.to_period("Q") + 1).to_timestamp("Q") for d in pair.index]
+        q_fc = q_fc.sort_index()
+        lv = fetch_series(realized_id, "M", force_refresh=force_refresh)
+        if lv is None or lv.empty:
+            return None
+        lv.index = pd.to_datetime(lv.index)
+        q = lv.resample("QE").mean()
+        g = q.pct_change()                               # realized QoQ, also base-invariant
+        chained = {}
+        for tgt, gf in q_fc.items():
+            prior = g.reindex([tgt - pd.offsets.QuarterEnd(k) for k in (3, 2, 1)])
+            if prior.isna().any() or pd.isna(gf):
+                continue
+            chained[tgt] = float(np.prod(1.0 + prior.values) * (1.0 + gf) - 1.0)
+        fc = pd.Series(chained).sort_index()
+        fc = fc.replace([np.inf, -np.inf], np.nan).dropna()
+    elif conversion == "level_to_yoy":
         from indicators.loader import fetch_series
         lv = fetch_series(realized_id, "M", force_refresh=force_refresh)
         if lv is None or lv.empty:
