@@ -187,3 +187,43 @@ def test_transition_only_history_has_no_episodes():
     out = independent_episodes(_ep_chips(["Transition"] * 12))
     assert out["growth"]["decisive_episodes"] == 0
     assert out["growth"]["meets_bar"] is False
+
+
+def test_composite_variance_flags_separates_flat_from_usable():
+    """A composite Z with almost no variance cannot carry a fitted beta.
+
+    Four countries run on an annual IMF bridge forward-filled into a near-flat
+    line (BR 0.016, MX 0.050, ID 0.101, CN 0.177 as of 2026-10-08) against
+    0.36-1.63 everywhere else. This is a DATA property, not a chip property --
+    the chip is gated on distance from target and is fine for all of them.
+    """
+    import duckdb
+    from indicators.backtest import composite_variance_flags, MIN_COMPOSITE_Z_SD
+    from dashboard.charting_data import DB_PATH
+
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        flags = composite_variance_flags(
+            conn, ["US", "EZ", "GB", "JP", "KR", "CN", "IN",
+                   "DE", "LU", "BR", "CA", "AU", "MX", "ID"])
+    finally:
+        conn.close()
+    assert flags, "no countries returned"
+    # Growth is healthy everywhere; the problem is inflation-only.
+    assert all(v["growth_usable"] for v in flags.values())
+    flat = {cc for cc, v in flags.items() if not v["inflation_usable"]}
+    assert flat, "expected at least one flat inflation composite"
+    # Every flagged country is genuinely below the bar, and none above it is flagged.
+    for cc, v in flags.items():
+        assert v["inflation_usable"] == (v["inflation_sd"] >= MIN_COMPOSITE_Z_SD)
+
+
+def test_composite_variance_flags_skips_unknown_countries():
+    import duckdb
+    from indicators.backtest import composite_variance_flags
+    from dashboard.charting_data import DB_PATH
+    conn = duckdb.connect(str(DB_PATH), read_only=True)
+    try:
+        assert composite_variance_flags(conn, ["ZZ"]) == {}
+    finally:
+        conn.close()

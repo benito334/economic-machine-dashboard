@@ -130,6 +130,28 @@ composite. If the inflation *composite* is ever rebuilt around the target, the
 continuous series moves and **every fitted beta moves with it** — that change
 must land before any beta recalibration, not after.
 
+**Four countries' inflation composite is too flat to fit a beta to.** Measured
+over the last 10 years of `composites_pit`, `inflation_score` standard deviation:
+
+| country | sd | |
+| :--- | ---: | :--- |
+| BR | **0.016** | unusable |
+| MX | **0.050** | unusable |
+| ID | **0.101** | unusable |
+| CN | **0.177** | unusable |
+| everyone else | 0.36 – 1.63 | fine |
+
+Those four run on an annual IMF bridge that is forward-filled into a near-flat
+line, so the series has months but almost no information. A regression will
+still return a coefficient; it will be meaningless. **Skip the inflation leg
+for BR / MX / ID / CN, or mark those assets unclassified on that axis.** Growth
+is fine for all 14. `indicators.backtest.composite_variance_flags()` computes
+this, and the Regime Validator page shows it next to the episode counts.
+
+The regime CHIP for those countries is *not* affected — it is gated on distance
+from target, not on this Z — so do not infer from a healthy chip that the
+composite behind it is fittable.
+
 **`signals.surprise` is always NULL** (0 of 368,225 rows). A declared slot that
 was never built. Do not read it.
 

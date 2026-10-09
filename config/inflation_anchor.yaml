@@ -31,6 +31,11 @@ bands:
   # an annual IMF bridge and legitimately sit near this bound for part of each
   # year; a tight value would silently mute them.
   max_age_months: 12       # TUNABLE: age of the chosen gap series, in months
+  # Beyond this the chip still fires but is LABELLED stale on screen. Five
+  # countries (KR/CN/IN/CA/AU) run on an annual IMF bridge and sit ~9 months
+  # old for most of the year; muting them would be worse than saying so, but
+  # leaving them looking as fresh as the US's monthly core PCE is dishonest.
+  stale_age_months: 3      # TUNABLE: age beyond which the chip is flagged
 
 # ── Impulse vs persistence (Ray ruling 2, same session) ──────────────────────
 # "Inflation is a two-part machine: an impulse that shows up in flexible prices

@@ -2668,6 +2668,20 @@ def _sustained_months() -> int:
         return 1
 
 
+def _inflation_stale_age_months() -> int:
+    """Age beyond which the inflation chip's source is labelled stale.
+
+    The chip still fires — see the config note — but a read carried from a
+    nine-month-old annual print must not look like one taken from last
+    month's core PCE.
+    """
+    try:
+        from indicators.inflation_anchor import load_config
+        return int(load_config()["bands"].get("stale_age_months", 3))
+    except Exception:  # pragma: no cover - defensive
+        return 3
+
+
 def _holds_for(history: "pd.Series | None", threshold: float, above: bool,
                n: int) -> bool:
     """Did the Z condition hold for n consecutive periods, latest included?
@@ -3072,6 +3086,7 @@ def _regime_info_children(
     i_history: "pd.Series | None" = None,
     i_gap: "float | None" = None,
     i_gap_history: "pd.Series | None" = None,
+    i_gap_source: "dict | None" = None,
 ) -> list:
     """Build the full-width regime info card: summary strip + component table.
 
@@ -3115,6 +3130,18 @@ def _regime_info_children(
     # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
     # Q2) — used for the color accent only; the chips are the decision rule.
     quadrant = _season_label(g_regime, i_regime)
+
+    # ── Inflation-chip provenance (2026-10-08) ───────────────────────────────
+    _i_src_note, _i_src_stale = "", False
+    if i_gap_source:
+        _age = i_gap_source.get("age_months")
+        _src = i_gap_source.get("gap_series")
+        if _age is not None:
+            _i_src_stale = int(_age) > _inflation_stale_age_months()
+            _ago = "this month" if int(_age) <= 0 else f"{int(_age)}mo old"
+            _i_src_note = f"inflation vs target via {_src or '?'} · {_ago}"
+            if _i_src_stale:
+                _i_src_note += " ⚠"
 
     # ── Chip Direction Agreement (Ray audit ruling 2026-07-06, Q3) ────────────
     # Replaces the legacy quadrant-based confidence. Per force: the fraction of
@@ -3324,6 +3351,17 @@ def _regime_info_children(
                     style={"fontSize": "0.66rem", "color": "var(--muted-color)",
                            "marginTop": "4px", "letterSpacing": "0.02em"},
                 )] if _g_mom_state else []),
+                # Provenance of the inflation chip's own input. A read carried
+                # from a nine-month-old annual print must not look like one
+                # taken from last month's core PCE (2026-10-08): five countries
+                # run on an annual IMF bridge and sit ~9 months old for most of
+                # the year.
+                *([html.Div(
+                    _i_src_note,
+                    style={"fontSize": "0.66rem", "marginTop": "3px",
+                           "letterSpacing": "0.02em",
+                           "color": AMBER if _i_src_stale else "var(--muted-color)"},
+                )] if _i_src_note else []),
                 *([past_badge] if past_badge is not None else []),
                 date_block,
             ], style={"paddingRight": "20px", "width": "215px", "flexShrink": "0",
@@ -3991,6 +4029,12 @@ def update_regime_info(
     # Target-anchored inflation gate (Ray 2026-10-03 Ruling 1).
     from indicators.inflation_anchor import gap_series as _gap_series
     _i_gap, _i_gap_hist = gap_at(_gap_series(country), selected["as_of"])
+    try:
+        from indicators.inflation_anchor import anchor_read as _anchor_read
+        _ar = _anchor_read(country, as_of=str(selected["as_of"]))
+        _i_src = {"gap_series": _ar.gap_series, "age_months": _ar.age_months}
+    except Exception:
+        _i_src = None
 
     return (
         _regime_info_children(
@@ -4008,6 +4052,7 @@ def update_regime_info(
             i_history=i_history,
             i_gap=_i_gap,
             i_gap_history=_i_gap_hist,
+            i_gap_source=_i_src,
         ),
         date_display,
     )

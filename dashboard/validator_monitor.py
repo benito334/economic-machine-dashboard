@@ -291,8 +291,8 @@ def _episode_section() -> Optional[html.Div]:
     try:
         import duckdb
         from indicators.backtest import (
-            classify_history, independent_episodes,
-            MIN_INDEPENDENT_EPISODES, EPISODE_GAP_MONTHS,
+            classify_history, independent_episodes, composite_variance_flags,
+            MIN_INDEPENDENT_EPISODES, EPISODE_GAP_MONTHS, MIN_COMPOSITE_Z_SD,
         )
         from dashboard.charting_data import DB_PATH
     except Exception:
@@ -305,6 +305,11 @@ def _episode_section() -> Optional[html.Div]:
         conn = duckdb.connect(str(DB_PATH), read_only=True)
     except Exception:
         return None
+    flags = {}
+    try:
+        flags = composite_variance_flags(conn, countries)
+    except Exception:
+        pass
     try:
         for cc in countries:
             try:
@@ -321,7 +326,8 @@ def _episode_section() -> Optional[html.Div]:
                 ep = independent_episodes(classify_history(sc, dynamic=True, country=cc))
             except Exception:
                 continue
-            rows.append((cc, ep.get("growth", {}), ep.get("inflation", {})))
+            rows.append((cc, ep.get("growth", {}), ep.get("inflation", {}),
+                         flags.get(cc, {})))
     finally:
         conn.close()
     if not rows:
@@ -337,18 +343,30 @@ def _episode_section() -> Optional[html.Div]:
                       style={"fontSize": "0.7rem", "color": AMBER}),
         ], style={"padding": "3px 14px 3px 0", "fontFamily": "monospace"})
 
+    def _sd_cell(fl: dict) -> html.Td:
+        sd = fl.get("inflation_sd")
+        ok = fl.get("inflation_usable", True)
+        return html.Td(
+            "—" if sd is None else f"{sd:.3f}" + ("" if ok else "  too flat to fit"),
+            style={"padding": "3px 14px 3px 0", "fontFamily": "monospace",
+                   "color": "var(--font-color)" if ok else AMBER},
+        )
+
+    hdr = ("Country", "Growth episodes", "Inflation episodes",
+           "Inflation composite Z sd")
     table = html.Table(
         [html.Tr([html.Th(h, style={"textAlign": "left", "padding": "0 14px 6px 0",
                                     "fontSize": "0.7rem", "textTransform": "uppercase",
                                     "letterSpacing": "0.06em", "color": "var(--muted-color)"})
-                  for h in ("Country", "Growth episodes", "Inflation episodes")])]
+                  for h in hdr])]
         + [html.Tr([html.Td(cc, style={"padding": "3px 14px 3px 0",
                                        "fontFamily": "monospace"}),
-                    _cell(g), _cell(i)]) for cc, g, i in rows],
+                    _cell(g), _cell(i), _sd_cell(fl)]) for cc, g, i, fl in rows],
         style={"borderCollapse": "collapse", "fontSize": "0.82rem"},
     )
-    n_low = sum(1 for _, g, i in rows
+    n_low = sum(1 for _, g, i, _fl in rows
                 if not g.get("meets_bar", False) or not i.get("meets_bar", False))
+    n_flat = sum(1 for *_x, fl in rows if not fl.get("inflation_usable", True))
     return html.Div([
         html.Div("Evidence behind each chip",
                  style={"marginTop": "22px", "fontSize": "0.9rem",
@@ -360,6 +378,12 @@ def _episode_section() -> Optional[html.Div]:
             f"twice is how a single episode masquerades as a sample. "
             f"The bar is {MIN_INDEPENDENT_EPISODES} (Ray, 2026-10-08); "
             f"{n_low} of {len(rows)} countries fall below it on at least one chip. "
-            f"Do not tilt on a chip marked below bar."
+            f"Do not tilt on a chip marked below bar. "
+            f"The last column is a separate concern: a composite Z-score with "
+            f"almost no variance cannot support a fitted beta however many "
+            f"months of it exist. {n_flat} countries fall below {MIN_COMPOSITE_Z_SD} "
+            f"because they run on an annual bridge forward-filled into a near-flat "
+            f"line. The CHIP is unaffected — it is gated on distance from target, "
+            f"not on this Z — but anything FITTED to the composite is not."
         ), [table]),
     ])

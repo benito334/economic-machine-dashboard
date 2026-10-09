@@ -71,9 +71,23 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    before changing it: incremental IC rises 0.148 (3m) -> 0.257 (12m), so the
    slot is kept more firmly, not less. `chip_conditioned_returns` now carries
    the overlapping-window warning in its own docstring.
-7. **Decide what BR / MX / AU should show.** Their inflation composites are
-   near-constant (BR sd 0.003 over 10y, MX 0.042, AU 62% of months with an
-   exactly-zero MoM delta). No threshold rule rescues a constant series.
+7. ~~**Decide what BR / MX / AU should show.**~~ **DONE 2026-10-08, and the
+   framing was stale — re-measured first.** The anchor fix (a47ccaf) already
+   solved the dead-chip half: gap sd is 1.0–2.6 for ALL 14 countries now,
+   BR 2.32 and MX 1.46 included, so the chip is healthy everywhere. What was
+   left was two different problems the old note had conflated:
+   (b) the inflation COMPOSITE Z is still degenerate — BR 0.016, MX 0.050,
+   ID 0.101, CN 0.177 vs 0.36–1.63 elsewhere. That is what CreovaOne fits
+   betas to. New `composite_variance_flags()` + `MIN_COMPOSITE_Z_SD` (0.25),
+   shown on the Regime Validator page and written into both
+   `consumer_contract.md` and the CreovaOne handoff as item 1b: skip the
+   inflation leg for those four. AU is NOT one of them (sd 0.600).
+   (c) NEW, not in the original framing: five countries (KR/CN/IN/CA/AU) run
+   the chip on an annual IMF bridge currently ~9 months stale, and looked
+   exactly as confident as the US's monthly core PCE. Now labelled rather
+   than muted — new `bands.stale_age_months` (3) and a provenance line under
+   the chip reading e.g. "inflation vs target via cpi_imf_annual · 8mo old ⚠".
+   Muting them would be worse than saying so.
 8. ~~**Regime Map geometry redesign — SHELVED.**~~ **SUBSUMED by 1b
    (2026-10-08).** Kept below for the record and for the mockup link.
    Original note: The 3x3

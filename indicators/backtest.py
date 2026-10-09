@@ -400,6 +400,43 @@ if __name__ == "__main__":
 MIN_INDEPENDENT_EPISODES = 10   # TUNABLE: below this, do not tilt on the chip
 EPISODE_GAP_MONTHS = 3          # TUNABLE: see independent_episodes()
 
+# A composite Z-score series with almost no variance cannot support a fitted
+# beta, however many months of it there are. Measured 2026-10-08 over the last
+# 10y of composites_pit: BR 0.016, MX 0.050, ID 0.101, CN 0.177 against
+# 0.36-1.63 for everyone else — a clean gap, because those four run on an
+# annual IMF bridge that is forward-filled into a near-flat line. The regime
+# CHIP is unaffected (it is gated on distance from target, not on this Z), but
+# anything FITTED to the composite is not.
+MIN_COMPOSITE_Z_SD = 0.25       # TUNABLE: below this, do not fit betas to it
+
+
+def composite_variance_flags(conn, countries: "list[str]", years: int = 10) -> dict:
+    """{country: {"growth_sd": x, "inflation_sd": y, "inflation_usable": bool}}.
+
+    Reads `composites_pit`, which is the series a downstream consumer should be
+    fitting to (docs/consumer_contract.md).
+    """
+    out: dict = {}
+    cutoff = pd.Timestamp.today() - pd.DateOffset(years=years)
+    for cc in countries:
+        try:
+            df = conn.execute(
+                "SELECT as_of, growth_score, inflation_score FROM composites_pit "
+                "WHERE country = ? ORDER BY as_of", [cc],
+            ).df()
+        except Exception:
+            continue
+        if df.empty:
+            continue
+        df["as_of"] = pd.to_datetime(df["as_of"])
+        df = df[df["as_of"] >= cutoff]
+        g_sd = float(df["growth_score"].dropna().std() or 0.0)
+        i_sd = float(df["inflation_score"].dropna().std() or 0.0)
+        out[cc] = {"growth_sd": g_sd, "inflation_sd": i_sd,
+                   "inflation_usable": i_sd >= MIN_COMPOSITE_Z_SD,
+                   "growth_usable": g_sd >= MIN_COMPOSITE_Z_SD}
+    return out
+
 
 def independent_episodes(
     chips: pd.DataFrame,

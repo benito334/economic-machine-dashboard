@@ -4,10 +4,10 @@
 (`backend/app/plugins/beta_estimators/ewma_shrinkage.py`,
 `backend/app/services/macro_beta_service.py`).
 
-Two items. **One is a live defect in your estimator that is affecting real box
-assignments today. The other is a methodology change on our side that, after
-checking your code, turns out not to affect you at all** — included so you don't
-have to go and verify that yourself.
+Three items. **Two are live defects affecting real box assignments today — one
+in your estimator, one in four countries' data. The third is a methodology
+change on our side that, after checking your code, turns out not to affect you
+at all** — included so you don't have to go and verify that yourself.
 
 Prompted by your observation that gold does not look like it responds to
 inflation and that long bonds do not look like they respond to falling growth.
@@ -20,6 +20,7 @@ The first of those is an artifact. The second is real.
 | # | What | Your action | Urgency |
 | :-- | :--- | :--- | :--- |
 | 1 | 12-month EWMA half-life leaves no statistical power; boxes are assigned off insignificant coefficients | Raise the half-life, or gate box assignment on significance | **High — affects allocation now** |
+| 1b | BR / MX / ID / CN inflation composite is too flat to fit (sd 0.016–0.177) | Skip the inflation leg for those four | **High — four countries wrong now** |
 | 2 | Our `METHODOLOGY_VERSION` moved to `2026.10.08` | None. Verified against your code. | None |
 
 ---
@@ -127,6 +128,25 @@ Signs are stable across move sizes, so there is no separate "quiet" regime and
 no case for a fifth box. But an all-months OLS estimates roughly **half** the
 beta that applies in the months the box exists to hedge. Worth knowing when you
 size a hedge off one of these numbers.
+
+---
+
+## 1b. Four countries' inflation composite cannot carry a beta
+
+Added 2026-10-08, same investigation. `inflation_score` standard deviation over
+the last 10 years of `composites_pit`: **BR 0.016, MX 0.050, ID 0.101,
+CN 0.177**, against 0.36–1.63 for the other ten. Those four run on an annual
+IMF bridge forward-filled into a near-flat line — months of data, almost no
+information. Your regression will return a coefficient for them regardless.
+
+**Skip the inflation leg for BR / MX / ID / CN, or mark those assets
+unclassified on that axis.** Growth is fine for all 14.
+`indicators.backtest.composite_variance_flags()` computes the flag if you want
+to read it rather than hard-code the list.
+
+Do not infer the reverse from the dashboard: those countries' regime chips look
+healthy, because the chip is gated on distance from target rather than on this
+Z. A good chip does not imply a fittable composite.
 
 ---
 
