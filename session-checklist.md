@@ -29,18 +29,14 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    **Ruling 2 (impulse/persistence 30/70) is still NOT wired** — the module
    has `impulse_persistence()` but nothing consumes it. Still open.
 
-1b. **NEW, created by 1 — the Regime Map's inflation axis now disagrees with
-   the inflation chip.** The scatter plots inflation **Z** with ±`iz` lines and
-   four-season corners, but the chip is gated on **distance from target**. This
-   is the same bug class fixed in `29331d2` at the start of the session, now
-   reintroduced on one axis by design change rather than by oversight.
-   Options, in preference order: (a) plot the **gap** on the inflation axis
-   (growth Z × inflation gap — Ray's "different animals" made visual, and it
-   makes the ±tolerance lines the real gate); (b) keep Z but label the axis
-   explicitly secondary and drop the season corners. **Do (a).** It also
-   subsumes the shelved geometry work in item 8.
-   Same applies to Regime History's inflation panel and the Signals inflation
-   force page banner.
+1b. ~~**Regime Map inflation axis disagrees with the chip.**~~ **DONE
+   2026-10-08** — the inflation axis now plots distance from target, the
+   gates are ±tolerance_pp, and the season label is a pure function of the
+   two chips rather than of the dot's position. Growth stays relative-Z, so
+   the asymmetry of the axes now IS Ray's "different animals" ruling made
+   visual. Three tests pin it, one across all 14 countries.
+   Note it also closed item 8: a chip-derived season covers 32% of months now
+   (7% under the old inflation gate), which is what made it viable at last.
 
 2. **Tell CreovaOne about the half-life.** Their `ewma_shrinkage` default of a
    12-month half-life gives an effective sample of 34.6 months against 428
@@ -60,7 +56,9 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
 7. **Decide what BR / MX / AU should show.** Their inflation composites are
    near-constant (BR sd 0.003 over 10y, MX 0.042, AU 62% of months with an
    exactly-zero MoM delta). No threshold rule rescues a constant series.
-8. **Regime Map geometry redesign — SHELVED, do not start.** The 3x3
+8. ~~**Regime Map geometry redesign — SHELVED.**~~ **SUBSUMED by 1b
+   (2026-10-08).** Kept below for the record and for the mockup link.
+   Original note: The 3x3
    chip-grid/rim-pushed-boundary design is proved exact (0 disagreements in
    2,801 country-months) and mocked up at
    https://claude.ai/code/artifact/18cb5011-905f-4e86-ad9c-a48ece84b967 — but it

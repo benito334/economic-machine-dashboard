@@ -2064,3 +2064,89 @@ def test_regime_card_chip_matches_command_center_for_every_country():
         if got != expected:
             mismatches.append(f"{cc}: card={got} command_center={expected}")
     assert not mismatches, "regime chip differs by page:\n" + "\n".join(mismatches)
+
+
+# ── 1b: the map's inflation axis must be the chip's inflation gate ───────────
+# The 2026-10-08 rule change moved the inflation chip to distance-from-target
+# while the scatter still plotted the relative Z, reintroducing on one axis the
+# map-vs-chip disagreement that 29331d2 fixed. These pin the repair.
+
+def test_scatter_inflation_axis_plots_distance_from_target():
+    from dashboard.charting import update_scatter_chart
+    from indicators.inflation_anchor import anchor_read
+    for cc in ("US", "JP", "CN"):
+        fig = update_scatter_chart(0, {}, "Carbon", 0, 0, cc, None, None)
+        assert "distance from target" in fig.layout.yaxis.title.text.lower()
+        live = anchor_read(cc).gap_pp
+        if live is None:
+            continue
+        sel_y = float(fig.data[-1].y[0])       # the big selected-month marker
+        assert abs(sel_y - live) < 1e-2, f"{cc}: plotted {sel_y} vs anchor {live}"
+
+
+def test_season_from_levels_gates_inflation_on_the_tolerance_not_the_z():
+    """The TERRAIN function: background geography, gated on the two levels."""
+    import dashboard.charting as charting
+    tol = charting._inflation_tolerance_pp()
+    t = {"gz": 0.5}
+    assert charting._season_from_levels(0.9, tol + 0.5, t) == "Inflationary Boom"
+    assert charting._season_from_levels(0.9, -(tol + 0.5), t) == "Expansion"
+    # Gap inside the tolerance -> no season, however large the growth Z.
+    assert charting._season_from_levels(3.0, tol / 2, t) == "Transition — no clear season"
+
+
+def test_season_label_is_a_pure_function_of_the_two_chips():
+    """The VERDICT function. Deriving the season from the chips is what makes
+    it impossible for the map to name a season the chips do not support."""
+    import dashboard.charting as charting
+    assert charting._season_label("Growth", "Inflation") == "Inflationary Boom"
+    assert charting._season_label("Growth", "Disinflation") == "Expansion"
+    assert charting._season_label("Retraction", "Inflation") == "Stagflation"
+    assert charting._season_label("Retraction", "Disinflation") == "Disinflationary Slowdown"
+    for pair in (("Growth", "Transition"), ("Transition", "Inflation"),
+                 ("Transition", "Transition")):
+        assert charting._season_label(*pair) == "Transition — no clear season"
+    assert charting._season_label(None, "Inflation") == "—"
+
+
+def test_map_season_never_names_a_season_the_chips_do_not_support():
+    """The invariant 1b exists to restore, checked on live data for every
+    modelled country: if the map names a season, both chips must be decisive.
+    """
+    from dashboard.charting import (_season_label, _classify_regime, gap_at,
+                                    resolve_thresholds, compute_dynamic_thresholds,
+                                    _dyn_threshold_input, _conc_share_for)
+    from dashboard.charting_data import load_composite_history
+    from indicators.inflation_anchor import gap_series
+    import pandas as pd
+
+    t0 = resolve_thresholds(None)
+    bad = []
+    for cc in ("US", "EZ", "GB", "JP", "KR", "CN", "IN",
+               "DE", "LU", "BR", "CA", "AU", "MX", "ID"):
+        hist = load_composite_history(country=cc)
+        if hist.empty:
+            continue
+        gaps = gap_series(cc)
+        dyn = compute_dynamic_thresholds(
+            _dyn_threshold_input(hist, "growth_score", "inflation_score"),
+            base_gz=float(t0["gz"]), base_iz=float(t0["iz"]),
+            conc_share=_conc_share_for(cc, t0),
+        )
+        t = dict(t0)
+        if bool(t0["dynamic"]) and not dyn.empty:
+            t["gz"] = float(dyn["dyn_gz"].iloc[-1])
+        g = hist["growth_score"].iloc[-1]
+        ig, igh = gap_at(gaps, hist["as_of"].iloc[-1])
+        season = None  # filled from the chips below
+        gc, ic = _classify_regime(
+            g, hist["inflation_score"].iloc[-1],
+            hist["growth_score"].diff().iloc[-1], hist["inflation_score"].diff().iloc[-1],
+            t, g_history=hist["growth_score"], i_history=hist["inflation_score"],
+            i_gap=ig, i_gap_history=igh,
+        )
+        season = _season_label(gc, ic)
+        named = season not in ("—", "Transition — no clear season")
+        if named and (gc == "Transition" or ic == "Transition"):
+            bad.append(f"{cc}: map says {season!r} but chips are {gc}/{ic}")
+    assert not bad, "map names a season the chips do not support:\n" + "\n".join(bad)

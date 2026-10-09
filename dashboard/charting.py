@@ -2758,6 +2758,23 @@ def gap_at(gaps: "pd.Series | None", as_of) -> "tuple[float | None, pd.Series | 
     return float(v), upto
 
 
+def gap_column(gaps: "pd.Series | None", as_of_like) -> "pd.Series":
+    """Align a `gap_series` onto a frame's as_of column, vectorised.
+
+    `gap_at` is the single-row form; this is the whole-column form the charts
+    need. Months with no usable gap come back NaN, which renders as a hole
+    rather than as a fabricated zero.
+    """
+    idx = pd.PeriodIndex(pd.to_datetime(pd.Series(as_of_like).values), freq="M")
+    if gaps is None or len(gaps) == 0:
+        return pd.Series([float("nan")] * len(idx), dtype=float)
+    # .map, not .reindex: a composite frame can carry two rows in one month
+    # (the in-progress month is stamped with today's date alongside the
+    # month-end row), and reindex refuses a duplicated target axis.
+    lookup = gaps[~gaps.index.duplicated(keep="last")]
+    return pd.Series([lookup.get(m, float("nan")) for m in idx], dtype=float)
+
+
 def _classify_regime(
     g_score: "float | None",
     i_score: "float | None",
@@ -2989,25 +3006,55 @@ def _resolve_row_thresholds(
     return {**t, "gz": float(row["dyn_gz"]), "iz": float(row["dyn_iz"])}
 
 
-def _season_label(g_score, i_score, thresholds: "dict | None" = None) -> str:
-    """Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06, Q2).
+def _season_from_levels(g_score, i_gap, thresholds: "dict | None" = None) -> str:
+    """POSITIONAL season: where a point sits relative to the two gates.
 
-    A season name applies only when BOTH scores sit beyond the ±gz/±iz
-    threshold lines — inside the band the honest label is Transition. This is
-    map geography / display shorthand; the chips are the decision rule.
+    Terrain, not a verdict. It knows only the two levels, so it cannot see the
+    sustained-months condition the growth chip applies, and it will therefore
+    name a season on a month whose chip reads Transition. Use it ONLY for
+    background geography and for the weight Monte Carlo, where a perturbed
+    weight vector has no history to sustain.
+
+    For anything attached to a month, use `_season_label`, which reads the
+    chips. The axes are gated differently on purpose (growth relative,
+    inflation absolute) — see `_classify_regime`.
     """
     t = thresholds or _DEFAULT_THRESHOLDS
-    gz, iz = float(thr(t, "gz")), float(thr(t, "iz"))
-    if (g_score is None or i_score is None
+    gz = float(thr(t, "gz"))
+    tol = _inflation_tolerance_pp()
+    if (g_score is None or i_gap is None
             or (isinstance(g_score, float) and pd.isna(g_score))
-            or (isinstance(i_score, float) and pd.isna(i_score))):
+            or (isinstance(i_gap, float) and pd.isna(i_gap))):
         return "—"
-    g, i = float(g_score), float(i_score)
-    if abs(g) <= gz or abs(i) <= iz:
+    g, i = float(g_score), float(i_gap)
+    if abs(g) <= gz or abs(i) <= tol:
         return "Transition — no clear season"
     return {(True, True): "Inflationary Boom", (True, False): "Expansion",
             (False, True): "Stagflation", (False, False): "Disinflationary Slowdown"}[
         (g > 0, i > 0)]
+
+
+def _season_label(g_chip: "str | None", i_chip: "str | None") -> str:
+    """The season a month is in — a pure function of its two chips.
+
+    One definition, read everywhere. Deriving the season from the chips rather
+    than recomputing it from levels is what makes it impossible for the map to
+    name a season the chips do not support; a level-only version misses the
+    sustained-months condition and does exactly that (caught on GB,
+    2026-10-08, "Inflationary Boom" against chips reading Transition/Inflation).
+
+    This became viable only once the inflation chip was anchored to target: a
+    chip-derived season covers 32% of months now, against 7% under the old
+    relative-Z inflation gate, which is why the earlier audit kept the
+    level-based version instead.
+    """
+    names = {("Growth", "Inflation"): "Inflationary Boom",
+             ("Growth", "Disinflation"): "Expansion",
+             ("Retraction", "Inflation"): "Stagflation",
+             ("Retraction", "Disinflation"): "Disinflationary Slowdown"}
+    if not g_chip or not i_chip:
+        return "—"
+    return names.get((g_chip, i_chip), "Transition — no clear season")
 
 
 def _regime_info_children(
@@ -3067,7 +3114,7 @@ def _regime_info_children(
 
     # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
     # Q2) — used for the color accent only; the chips are the decision rule.
-    quadrant = _season_label(g_score, i_score, _t)
+    quadrant = _season_label(g_regime, i_regime)
 
     # ── Chip Direction Agreement (Ray audit ruling 2026-07-06, Q3) ────────────
     # Replaces the legacy quadrant-based confidence. Per force: the fraction of
@@ -3284,10 +3331,17 @@ def _regime_info_children(
 
             # ── Force Z-Scores ─────────────────────────────────────────────────
             _group(
-                f"Force Z-Scores{_win_label}",
+                f"Force Reads{_win_label}",
                 [
-                    _val_block("Growth",    g_score, _GROWTH_COLOR,    f"{n_g}/{n_g_total} signals"),
-                    _val_block("Inflation", i_score, _INFLATION_COLOR, f"{n_i}/{n_i_total} signals"),
+                    _val_block("Growth  (Z)", g_score, _GROWTH_COLOR,
+                               f"{n_g}/{n_g_total} signals"),
+                    # Ray 2026-10-03: "make it clear which is the anchor." The
+                    # gap is the number the chip is gated on; the relative Z is
+                    # the documented secondary read and moves to the sub-line.
+                    _val_block("Inflation  (vs target)", i_gap, _INFLATION_COLOR,
+                               (f"{n_i}/{n_i_total} signals · Z "
+                                + ("—" if i_score is None or (isinstance(i_score, float) and pd.isna(i_score))
+                                   else f"{float(i_score):+.2f}"))),
                 ],
             ),
 
@@ -4000,7 +4054,9 @@ def _threshold_display_chips(effective: "dict | None",
 
     chips = [
         _chip("G·Z", gz, 2, base_gz if dynamic else None), _dot(),
-        _chip("I·Z", iz, 2, base_iz if dynamic else None), _dot(),
+        # The inflation gate is an absolute distance from target and is NOT
+        # volatility-scaled, so no dynamic base is shown beside it.
+        _chip("I·gap(pp)", _inflation_tolerance_pp(), 2), _dot(),
         # gm is untouched by the dynamic algorithm (step 6) — no base shown.
         # There is no I·Δ chip: the inflation leg is target-anchored as of
         # 2026-10-08 and no longer has a momentum gate to display.
@@ -4132,8 +4188,8 @@ def update_regime_chart(
     # Threshold-aware seasonal-archetype label (Ray audit ruling 2026-07-06,
     # Q2): a season name applies only beyond the ±gz/±iz lines; inside the
     # band the label is Transition. Uses the active (rolling or full) columns.
-    quadrant_series = comp.apply(
-        lambda row: _season_label(row.get(g_col), row.get(i_col), thresholds), axis=1)
+    # quadrant_series is built AFTER the per-row chips below — the season is a
+    # function of the chips now, not of the levels.
 
     win_label_g = f"G:{zscore_window}mo" if (g_sfx and g_col != "growth_score") else ""
     win_label_i = f"I:{inflation_window}mo" if (i_sfx and i_col != "inflation_score") else ""
@@ -4211,6 +4267,9 @@ def update_regime_chart(
         )
         g_regimes.append(gr)
         i_regimes.append(ir)
+
+    quadrant_series = pd.Series(
+        [_season_label(a, b) for a, b in zip(g_regimes, i_regimes)], index=comp.index)
 
     # ── Step selection (used by both the band chart and every card below) ─────
     step = step or 0
@@ -4641,6 +4700,20 @@ def update_scatter_chart(
     g_col = f"growth_score_{g_sfx}" if g_sfx and _has_rolling(comp_all, f"growth_score_{g_sfx}") else "growth_score"
     i_col = f"inflation_score_{i_sfx}" if i_sfx and _has_rolling(comp_all, f"inflation_score_{i_sfx}") else "inflation_score"
 
+    # The inflation axis plots DISTANCE FROM TARGET, not the relative Z
+    # (2026-10-08). The chip is gated on the gap, so the map has to be too or
+    # the dot's position contradicts the chip beside it — the defect fixed in
+    # 29331d2, which the rule change would otherwise have reintroduced here.
+    # Growth stays relative, because growth has no target: the asymmetry of
+    # the axes IS Ray's "different animals" ruling, made visual.
+    from indicators.inflation_anchor import gap_series as _gap_series
+    _gaps = _gap_series(country)
+    i_col = "_i_gap_pp"
+    comp_all = comp_all.copy()
+    comp_filtered = comp_filtered.copy()
+    comp_all[i_col] = gap_column(_gaps, comp_all["as_of"]).values
+    comp_filtered[i_col] = gap_column(_gaps, comp_filtered["as_of"]).values
+
     fig = go.Figure()
 
     if comp_all.empty or comp_filtered.empty:
@@ -4720,16 +4793,30 @@ def update_scatter_chart(
     _bg_th = resolve_thresholds(thresholds)
     _dyn_bg = None
     if bool(_bg_th["dynamic"]):
+        # Dynamic scaling applies to the GROWTH axis only. The inflation gate is
+        # an absolute distance from target and is not volatility-scaled — the
+        # Fed does not move its target because the data got noisy.
+        # Only dyn_gz is wanted, but compute_dynamic_thresholds needs both
+        # columns. Build the frame explicitly rather than via
+        # _dyn_threshold_input: that helper renames g_col/i_col, and when both
+        # resolve to "growth_score" it yields a duplicated column name and the
+        # arithmetic inside raises on the ambiguous axis.
+        _dyn_in = pd.DataFrame({
+            "as_of": comp_all["as_of"].values,
+            "growth_score": comp_all[g_col].values,
+            "inflation_score": comp_all[g_col].values,   # unused; dyn_iz discarded
+        })
+        if "credit_score" in comp_all.columns:
+            _dyn_in["credit_score"] = comp_all["credit_score"].values
         _dyn_bg = compute_dynamic_thresholds(
-            _dyn_threshold_input(comp_all, g_col, i_col),
+            _dyn_in,
             base_gz=float(_bg_th["gz"]), base_iz=float(_bg_th["iz"]),
             conc_share=_conc_share_for(country, _bg_th),
         )
         if not _dyn_bg.empty:
             _bg_th["gz"] = float(_dyn_bg["dyn_gz"].iloc[sel_idx_all])
-            _bg_th["iz"] = float(_dyn_bg["dyn_iz"].iloc[sel_idx_all])
     _bgz = float(thr(_bg_th, "gz"))
-    _biz = float(thr(_bg_th, "iz"))
+    _biz = _inflation_tolerance_pp()
     quad_bg = [
         (_bgz,  100,  _biz,  100, "Inflationary Boom",        "#F4C842"),
         (_bgz,  100,  -100, -_biz, "Expansion",                "#5CBA8A"),
@@ -4760,22 +4847,28 @@ def update_scatter_chart(
         dict(type="line", xref="paper", yref="y", x0=0, x1=1, y0=-_iz, y1=-_iz, line=_th_line),
     ]
 
-    # ── Threshold-aware season label for hovers (Ray Q2: Transition inside
-    # the band; season names only beyond the lines). In dynamic mode each
-    # history dot is labeled against ITS OWN month's thresholds — the honest
-    # per-row read, matching how the classifier judged that month. ───────────
-    if _dyn_bg is not None and not _dyn_bg.empty:
-        eff_quadrant = pd.Series([
-            _season_label(
-                comp_all.iloc[pos].get(g_col), comp_all.iloc[pos].get(i_col),
-                {"gz": float(_dyn_bg["dyn_gz"].iloc[pos]),
-                 "iz": float(_dyn_bg["dyn_iz"].iloc[pos])},
-            )
-            for pos in range(len(comp_all))
-        ], index=comp_all.index)
-    else:
-        eff_quadrant = comp_all.apply(
-            lambda row: _season_label(row.get(g_col), row.get(i_col), _bg_th), axis=1)
+    # ── Per-dot season label, derived from that month's CHIPS ───────────────
+    # Not from the dot's position: a level-only label misses the
+    # sustained-months condition and will name a season on a month the chips
+    # call Transition (caught on GB, 2026-10-08). Each row is classified with
+    # its own month's dynamic growth threshold and its own gap history, which
+    # is how the classifier judged it at the time.
+    _sg = comp_all[g_col]
+    _si = comp_all["inflation_score"] if "inflation_score" in comp_all.columns else _sg
+    _sgd, _sid = _sg.diff(), _si.diff()
+    _labels = []
+    for pos in range(len(comp_all)):
+        _rt = dict(_bg_th)
+        if _dyn_bg is not None and not _dyn_bg.empty:
+            _rt["gz"] = float(_dyn_bg["dyn_gz"].iloc[pos])
+        _ig, _igh = gap_at(_gaps, comp_all["as_of"].iloc[pos])
+        _gc, _ic = _classify_regime(
+            _sg.iloc[pos], _si.iloc[pos], _sgd.iloc[pos], _sid.iloc[pos], _rt,
+            g_history=_sg.iloc[:pos + 1], i_history=_si.iloc[:pos + 1],
+            i_gap=_ig, i_gap_history=_igh,
+        )
+        _labels.append(_season_label(_gc, _ic))
+    eff_quadrant = pd.Series(_labels, index=comp_all.index)
 
     # ── All-history grey context dots ────────────────────────────────────────
     hist_dates = [str(d)[:7] for d in comp_all["as_of"]]
@@ -4786,7 +4879,7 @@ def update_scatter_chart(
         name="History",
         marker=dict(size=4, color=t["muted_color"], opacity=0.25),
         customdata=list(zip(hist_dates, eff_quadrant)),
-        hovertemplate="%{customdata[0]}<br>Growth: %{x:.2f} · Inflation: %{y:.2f}<br>%{customdata[1]}<extra></extra>",
+        hovertemplate="%{customdata[0]}<br>Growth Z: %{x:.2f} · Inflation vs target: %{y:+.2f}pp<br>%{customdata[1]}<extra></extra>",
         showlegend=False,
     ))
 
@@ -4820,7 +4913,7 @@ def update_scatter_chart(
             mode="markers",
             marker=dict(size=trail_sizes, color=trail_rgba),
             customdata=list(zip(trail_dates, trail_q)),
-            hovertemplate="%{customdata[0]}<br>Growth: %{x:.2f} · Inflation: %{y:.2f}<br>%{customdata[1]}<extra></extra>",
+            hovertemplate="%{customdata[0]}<br>Growth Z: %{x:.2f} · Inflation vs target: %{y:+.2f}pp<br>%{customdata[1]}<extra></extra>",
             showlegend=False,
         ))
 
@@ -4838,7 +4931,7 @@ def update_scatter_chart(
         y=[sel_i],
         mode="markers",
         marker=dict(size=18, color=sel_color, line=dict(width=2.5, color="#ffffff")),
-        hovertemplate=f"{sel_label}<br>Growth: {_g_str}<br>Inflation: {_i_str}<br>{sel_quadrant}<extra></extra>",
+        hovertemplate=f"{sel_label}<br>Growth Z: {_g_str}<br>Inflation vs target: {_i_str}pp<br>{sel_quadrant}<extra></extra>",
         showlegend=False,
     ))
 
@@ -4863,12 +4956,13 @@ def update_scatter_chart(
     ))
 
     _g_win_sfx = f" ({zscore_window}mo)" if (g_sfx and g_col != "growth_score") else ""
-    _i_win_sfx = f" ({inflation_window}mo)" if (i_sfx and i_col != "inflation_score") else ""
+    # No window suffix on the inflation axis: distance from target is an
+    # absolute quantity with no normalisation window to choose.
     layout = figure_layout(theme_name)
     layout.update(dict(
         xaxis=dict(title=f"Growth Force Z-Score{_g_win_sfx}", range=x_range,
                    zeroline=False, gridcolor=t["grid_color"], showgrid=True),
-        yaxis=dict(title=f"Inflation Force Z-Score{_i_win_sfx}", range=y_range,
+        yaxis=dict(title="Inflation — distance from target (pp)", range=y_range,
                    zeroline=False, gridcolor=t["grid_color"], showgrid=True),
         shapes=shapes,
         annotations=annotations + coverage_annotations,

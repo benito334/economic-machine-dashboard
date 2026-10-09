@@ -354,7 +354,7 @@ def render_guide(country_data, theme_name, page_trigger, thresholds,
                                       g_history=hist[g_col], i_history=hist[i_col],
                                       i_gap=_gap, i_gap_history=_gap_hist)
     g_mom_state = _growth_breadth_state(g_chip, g, g_d, chip_t)
-    season_now = _season_label(g, i, chip_t)
+    season_now = _season_label(g_chip, i_chip)
     g_agree = chip_direction_agreement(hist, "growth")
     i_agree = chip_direction_agreement(hist, "inflation")
 

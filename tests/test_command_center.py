@@ -111,17 +111,28 @@ def test_routes_registered():
 # ── 2026-07-06 unification audit (Ray rulings) ────────────────────────────────
 
 def test_season_label_threshold_aware():
-    """Ray Q2: season names apply only beyond ±gz/±iz; inside = Transition."""
-    from dashboard.charting import _season_label
-    assert _season_label(1.2, 0.9, None) == "Inflationary Boom"
-    assert _season_label(1.2, -0.9, None) == "Expansion"
-    assert _season_label(-1.2, 0.9, None) == "Stagflation"
-    assert _season_label(-1.2, -0.9, None) == "Disinflationary Slowdown"
-    assert "Transition" in _season_label(0.3, 0.2, None)       # inside band
-    assert "Transition" in _season_label(1.2, 0.2, None)       # one side inside
-    assert _season_label(None, 0.9, None) == "—"
-    # custom thresholds move the band
-    assert "Transition" in _season_label(0.9, 0.9, {"gz": 1.0, "iz": 1.0})
+    """Season geography, split in two on 2026-10-08.
+
+    `_season_from_levels` is the positional TERRAIN read (growth Z vs ±gz,
+    inflation vs ±tolerance_pp in percentage points). `_season_label` is the
+    VERDICT and is a pure function of the two chips, so it cannot name a
+    season the chips do not support.
+    """
+    from dashboard.charting import _season_from_levels, _season_label
+
+    # terrain: second argument is now a GAP in pp, not an inflation Z
+    assert _season_from_levels(1.2, 0.9, None) == "Inflationary Boom"
+    assert _season_from_levels(1.2, -0.9, None) == "Expansion"
+    assert _season_from_levels(-1.2, 0.9, None) == "Stagflation"
+    assert _season_from_levels(-1.2, -0.9, None) == "Disinflationary Slowdown"
+    assert "Transition" in _season_from_levels(0.3, 0.2, None)   # inside band
+    assert "Transition" in _season_from_levels(1.2, 0.2, None)   # one side inside
+    assert _season_from_levels(None, 0.9, None) == "—"
+    assert "Transition" in _season_from_levels(0.9, 0.9, {"gz": 1.0})
+
+    # verdict: chips in, season out
+    assert _season_label("Growth", "Inflation") == "Inflationary Boom"
+    assert "Transition" in _season_label("Growth", "Transition")
 
 
 def test_chip_direction_agreement_reads_the_stored_value():

@@ -588,7 +588,16 @@ def update_monte_carlo(country: str, _, theme_name: str, _run=None):
 
     # Lazy import — charting imports this module; the season label is the
     # single Ray-approved (threshold-aware) zone definition (audit 2026-07-06).
-    from dashboard.charting import _season_label
+    from dashboard.charting import _season_from_levels
+    from indicators.inflation_anchor import anchor_read
+
+    # The inflation axis is HELD FIXED at the country's live distance from
+    # target (2026-10-08). That is not a simplification — perturbing composite
+    # weights cannot move it, because the gap is CPI against the central bank's
+    # target and no weight of ours enters it. So this chart now answers a
+    # narrower and more honest question than it used to: how much of the zone
+    # uncertainty comes from the GROWTH basket's weights alone.
+    _live_gap = anchor_read(country).gap_pp
 
     outcomes_df = pd.DataFrame(result["outcomes"])
     n_total = len(result["outcomes"])
@@ -596,20 +605,23 @@ def update_monte_carlo(country: str, _, theme_name: str, _run=None):
     base_i = result["base_inflation"]
 
     outcomes_df["zone"] = [
-        _season_label(gg, ii, _MC_THRESHOLDS)
-        for gg, ii in zip(outcomes_df["growth_score"], outcomes_df["inflation_score"])
+        _season_from_levels(gg, _live_gap, _MC_THRESHOLDS)
+        for gg in outcomes_df["growth_score"]
     ]
     q_counts = outcomes_df["zone"].value_counts().to_dict()
-    base_q = _season_label(base_g, base_i, _MC_THRESHOLDS)
+    base_q = _season_from_levels(base_g, _live_gap, _MC_THRESHOLDS)
     pct_same = round(q_counts.get(base_q, 0) / n_total * 100, 1)
 
     scatter_fig = _mc_scatter(outcomes_df, base_g, base_i, base_q, theme_name)
     donut_fig   = _mc_donut(q_counts, n_total, theme_name)
+    _gap_txt = ("n/a" if _live_gap is None else f"{_live_gap:+.2f}pp")
     caption = (
         f"{pct_same}% of trials stay in the base zone ({base_q}) "
         f"(±15% importance perturbation, 500 trials; zones use the "
         f"threshold-aware season geography at static ±{_MC_THRESHOLDS['gz']:.1f}). "
-        f"Unperturbed: Growth={base_g:+.3f}, Inflation={base_i:+.3f}."
+        f"Unperturbed: Growth={base_g:+.3f}, Inflation={base_i:+.3f}. "
+        f"Only the GROWTH axis is perturbed: the inflation leg is distance "
+        f"from target ({_gap_txt}), which no weight of ours can move."
     )
     return scatter_fig, donut_fig, caption
 
