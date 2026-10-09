@@ -1,5 +1,40 @@
 # Indicators Machine — CLAUDE.md
 
+## ★ NORTH STAR — read this before anything else
+
+> **Accurately understand the world through the lens of Ray Dalio's macro
+> investing — the market's forces, stressors and fundamentals — in an
+> academically validated way, using mechanistic and documented methodologies
+> that survive scrutiny. That understanding is then used to make macro-level
+> investment decisions.**
+
+Agreed with the owner 2026-10-09. Understanding is the goal; investment
+decisions are its downstream use; the standard is academic, not "looks right".
+**When being honest and being useful conflict, honest wins** — then say plainly
+what that costs.
+
+**Full version, including the five-question decision test, the methodology
+guardrails, and what the owner is owed in every reply:
+[`docs/NORTH_STAR.md`](docs/NORTH_STAR.md). Read it before any change that
+affects what a number means.**
+
+Two standing rules from it that are easy to forget:
+
+1. **Decide, but show the evidence.** Anything that changes a number cites a
+   paper, an established convention, or a measurement with numbers attached.
+   Never "this seemed reasonable." Significant decisions get an ADR in
+   `docs/decisions/` using [`ADR-TEMPLATE.md`](docs/decisions/ADR-TEMPLATE.md),
+   which opens with a plain-language summary and a "how this serves the North
+   Star" section.
+2. **Plain language first, then the detail.** The owner is not a specialist in
+   these methodologies and should not have to be. Every reply leads with what
+   changed in ordinary words and a clear recommendation — not a survey of
+   options. Define any unavoidable term in the same sentence. An explanation
+   that cannot be followed cannot be checked, and an unchecked method is the
+   thing this project exists to prevent.
+
+---
+
 > Read this file at the **start of every session** before touching any code. It is the authoritative guide for this project. When in conflict with other sources, this file wins.
 
 ---
