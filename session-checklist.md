@@ -38,11 +38,18 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    Note it also closed item 8: a chip-derived season covers 32% of months now
    (7% under the old inflation gate), which is what made it viable at last.
 
-2. **Tell CreovaOne about the half-life.** Their `ewma_shrinkage` default of a
-   12-month half-life gives an effective sample of 34.6 months against 428
-   available, on a relationship with R^2 ~ 0.02. Gold's inflation beta at that
-   setting is +0.0000 (t = 0.00) and its box is assigned off noise. Not our
-   repo, but it is our composites being misused — raise it.
+2. ~~**Tell CreovaOne about the half-life.**~~ **WRITTEN 2026-10-08** —
+   `docs/creovaone_handoff_2026-10-08.md`, against their actual estimator
+   code, with a half-life sweep showing no coefficient on either asset is
+   distinguishable from zero at their 12-month setting, and gold's box axis
+   flipping between 60m and 120m. Three ranked fixes; preferred one is to
+   shrink on PRECISION rather than on `n_eff` (their credibility weight keys
+   off sample size only, so a t=0.00 estimate still gets 59% weight).
+   Also flagged: `shrink_toward_peers` publishes the UNSHRUNK t-stats
+   alongside the shrunk betas.
+   **Still needs a human to deliver it** — it is their repo and their
+   allocation call, not ours to change.
+
 3. **Rename in code/docs/UI: the chip reports a STATE, the box reports an
    ENVIRONMENT.** Never "regime" for both. One word caused a multi-hour
    confusion and will cause it again.
