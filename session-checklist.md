@@ -139,9 +139,20 @@ Context: `docs/worklog.md` 2026-10-08 (2). Three new docs, read in this order:
    https://claude.ai/code/artifact/18cb5011-905f-4e86-ad9c-a48ece84b967 — but it
    would faithfully render an instrument whose inflation axis is a non-answer
    82% of the time. Revisit only after item 1.
-9. **Pool the 14-country panel for statistical power.** 43 years of monthly US
-   data gives 21 independent 24-month observations; nothing survives
-   independent sampling on one country.
+9. ~~**Pool the 14-country panel for statistical power.**~~ **DONE
+   2026-10-09 — and the answer is that pooling does NOT rescue it.**
+   New `indicators/panel.py`: a 10y bond return proxy per country (11 have a
+   usable long yield; BR/CN/ID have only short rates). Countries co-move, so
+   the design-effect correction `N/(1+(N-1)rho)` applies: mean pairwise rho
+   of monthly bond returns is **+0.42**, making 11 countries worth **2.1**.
+   Pooled regression with country fixed effects: naive t −2.83 growth /
+   −4.11 inflation, **adjusted t −1.24 / −1.80**. 4,191 country-months are
+   worth 800; against the US alone's 561 that is 1.4x, not 7.5x.
+   **Neither coefficient clears |t|=2 after correction.** Both betas are
+   correctly signed and stable, but the evidence does not reach conventional
+   significance even pooled. Recorded in
+   `ray_consult_regime_frequency_2026-10-08.md` §10 with the full four-row
+   summary of the session's statistical thread.
 
 ---
 

@@ -283,6 +283,54 @@ vary from ±0.5pp to ±2pp?
 
 ---
 
+## 10 — Q4 answered: pooling the panel does NOT rescue the power (2026-10-09)
+
+Ray's answer to the power problem was to test "across different time periods
+**and countries**". Built and measured (`indicators/panel.py`): a 10y bond
+total-return proxy per country from each one's own long yield, 11 countries
+with usable data.
+
+**Countries are not independent observations.** Applying the standard
+design-effect correction, `N_eff = N / (1 + (N−1)·ρ̄)`:
+
+| panel | mean pairwise ρ | effective count |
+| :--- | ---: | ---: |
+| monthly bond returns | **+0.42** | **2.1** of 11 |
+| Δ growth composite | +0.19 | 3.8 of 11 |
+| Δ inflation composite | +0.13 | 4.7 of 11 |
+
+Eleven countries are worth two to four. The pooled regression, country fixed
+effects, monthly returns so no window overlap:
+
+| | β | naive t | **adjusted t** |
+| :--- | ---: | ---: | ---: |
+| Δ growth | −0.0023 | −2.83 | **−1.24** |
+| Δ inflation | −0.0051 | −4.11 | **−1.80** |
+
+4,191 country-months are worth **800**. Against the US alone's 561 months,
+pooling buys about **1.4×**, not 7.5×.
+
+**So the answer to Q4 is no.** Both naive statistics look significant; neither
+survives the correction. Both betas are correctly signed — rising growth and
+rising inflation each hurt bonds — and the effect sizes are stable, but the
+evidence does not reach conventional significance even pooled.
+
+That closes the statistical thread of this pack:
+
+| test | verdict |
+| :--- | :--- |
+| one country, overlapping windows | looked significant — artifact |
+| one country, independent sampling | not significant |
+| pooled panel, naive | looks significant |
+| **pooled panel, corrected** | **still not significant** |
+
+The honest bound on what this system can claim: on free monthly macro data
+across 14 countries, a regime→bond-return relationship cannot be demonstrated
+at conventional significance. Use the chips as diagnosis, which is what Ray
+said they were for.
+
+---
+
 ## Appendix — method, caveats, reproduction
 
 **Chips.** Production `_classify_regime` with `dynamic: True`, `gz/iz` base 0.5,
