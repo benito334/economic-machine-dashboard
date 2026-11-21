@@ -305,13 +305,21 @@ def get_layout() -> html.Div:
         "② Short-term cycle — where the Fed is headed",
         "The policy stance and the levers that steer the 5–8yr business cycle.",
         [
-            _chart_card("Effective Fed Funds", _hist("policy.fed_funds"), cur("policy.fed_funds"),
-                        "%", "The core policy lever.", color=_BLUE,
+            _chart_card("Effective Fed Funds vs. 2y Treasury", _hist("policy.fed_funds"),
+                        cur("policy.fed_funds"),
+                        "%", "The core policy lever, against what the market expects it to average.",
+                        color=_BLUE,
+                        df2=_hist("policy.yield_2y"), color2=_AMBER,
+                        label="Effective Fed Funds", label2="2y Treasury",
                         info="The interest rate banks charge each other for overnight loans, which "
                              "the Fed steers directly through its target range. It is the base cost "
                              "of money — nearly every other rate is priced off it. Rising = the Fed "
                              "tightening to cool growth and inflation; falling = easing to support "
-                             "activity."),
+                             "activity. The 2-year Treasury yield is overlaid because it embeds the "
+                             "market's average expected policy rate over the next two years: when it "
+                             "sits above funds the market is pricing hikes, below it, cuts. The gap "
+                             "between the two lines is the 'Rate expectations' card below, shown here "
+                             "as its two levels. The header value is the funds rate."),
             _chart_card("Real policy rate", _hist("policy.real_fed_funds"), cur("policy.real_fed_funds"),
                         "%", "Funds − core inflation. >0 tight, <0 easy.", zero_line=True, color=_AMBER,
                         info="The fed funds rate minus core inflation — the policy rate after stripping "
